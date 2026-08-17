@@ -20,7 +20,10 @@ export function mockForgeBackend(
       } as Response;
     }
     const { tool } = JSON.parse(init?.body ?? '{}') as { tool: string };
-    const name = tool.replace('mcp__engine-scene__', '').replace('mcp__asset-pipeline__', '');
+    const name = tool
+      .replace('mcp__engine-scene__', '')
+      .replace('mcp__asset-pipeline__', '')
+      .replace('mcp__code-forge__', '');
     if (!(name in map)) throw new Error(`未 mock 的工具: ${name}(full=${tool})`);
     return {
       ok: true,
@@ -37,7 +40,10 @@ export class ForgeMock {
   private _map: Record<string, unknown> = {};
   private _fetch = vi.fn(async (_url: unknown, init?: { body?: string }) => {
     const { tool } = JSON.parse(init?.body ?? '{}') as { tool: string };
-    const name = tool.replace('mcp__engine-scene__', '').replace('mcp__asset-pipeline__', '');
+    const name = tool
+      .replace('mcp__engine-scene__', '')
+      .replace('mcp__asset-pipeline__', '')
+      .replace('mcp__code-forge__', '');
     if (!(name in this._map)) throw new Error(`未 mock 的工具: ${name}(full=${tool})`);
     return {
       ok: true,

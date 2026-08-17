@@ -128,7 +128,7 @@ impl From<serde_json::Error> for SceneError {
 /// 组件字段简表(供 Inspector/agent 发现)。
 pub struct FieldSpec {
     pub name: &'static str,
-    /// 类型标记:string / number / bool / [f32;3] / enum:a|b|c
+    /// 类型标记:string / number / bool / [f32;3] / enum:a|b|c / dict(F4 新增,任意 JSON 对象)
     pub ty: &'static str,
 }
 
@@ -138,7 +138,8 @@ pub struct ComponentSpec {
     pub fields: &'static [FieldSpec],
 }
 
-/// 首发组件集:MeshRenderer / RigidBody / Light / Camera。
+/// 首发组件集:MeshRenderer / RigidBody / Light / Camera;
+/// F4 wave.2 + Script(10 §1 Unity 决策行:挂 .rx 模块或节点图,暴露属性 dict)。
 pub const REGISTRY: &[ComponentSpec] = &[
     ComponentSpec {
         name: "MeshRenderer",
@@ -170,6 +171,31 @@ pub const REGISTRY: &[ComponentSpec] = &[
             FieldSpec { name: "fov", ty: "number" },
             FieldSpec { name: "near", ty: "number" },
             FieldSpec { name: "far", ty: "number" },
+        ],
+    },
+    // F4(09 §3 字段集扩展):Script = 交互逻辑挂载点——module(.rx 模块路径)或
+    // graphRef(.rxgraph 路径,Content/Graphs/*)二选一非空,props 为暴露属性覆盖 dict。
+    ComponentSpec {
+        name: "Script",
+        fields: &[
+            FieldSpec { name: "module", ty: "string" },
+            FieldSpec { name: "graphRef", ty: "string" },
+            FieldSpec { name: "props", ty: "dict" },
+        ],
+    },
+    // F4 wave.3(D-F4-F,09 §3 扩展):Tag = 实体标签(一组件一标签;
+    // has_tag = 组件存在性 + tag 值匹配查询,供图解释器 entity.has_tag/find_by_tag)。
+    ComponentSpec {
+        name: "Tag",
+        fields: &[FieldSpec { name: "tag", ty: "string" }],
+    },
+    // F4 wave.3(D-F4-F/G,09 §3 扩展):Trigger = 触发区(box AABB,不建物理 body;
+    // 逻辑层每帧 AABB overlap 沿检测产 on_trigger_enter/on_trigger_exit)。
+    ComponentSpec {
+        name: "Trigger",
+        fields: &[
+            FieldSpec { name: "kind", ty: "enum:box" },
+            FieldSpec { name: "extents", ty: "[f32;3]" },
         ],
     },
 ];
@@ -213,6 +239,7 @@ pub fn validate_props(ctype: &str, props: &Value) -> Result<(), String> {
             "[f32;3]" => v
                 .as_array()
                 .is_some_and(|a| a.len() == 3 && a.iter().all(Value::is_number)),
+            "dict" => v.is_object(),
             _ if f.ty.starts_with("enum:") => v
                 .as_str()
                 .is_some_and(|s| f.ty[5..].split('|').any(|e| e == s)),
@@ -454,17 +481,22 @@ mod tests {
     }
 
     #[test]
-    fn registry_lists_four_types_with_fields() {
+    fn registry_lists_seven_types_with_fields() {
         let v = list_types_json();
         let arr = v.as_array().unwrap();
-        assert_eq!(arr.len(), 4);
+        assert_eq!(arr.len(), 7);
         let names: Vec<&str> = arr.iter().filter_map(|t| t["name"].as_str()).collect();
-        for want in ["MeshRenderer", "RigidBody", "Light", "Camera"] {
+        for want in ["MeshRenderer", "RigidBody", "Light", "Camera", "Script", "Tag", "Trigger"] {
             assert!(names.contains(&want), "注册表缺 {want}");
         }
         let rb = arr.iter().find(|t| t["name"] == "RigidBody").unwrap();
         assert_eq!(rb["fields"][0]["name"], "kind");
         assert_eq!(rb["fields"][0]["type"], "enum:static|dynamic|kinematic");
+        // F4:Script 字段集(module/graphRef/props:dict)。
+        let sc = arr.iter().find(|t| t["name"] == "Script").unwrap();
+        let fields: Vec<&str> = sc["fields"].as_array().unwrap().iter().filter_map(|f| f["name"].as_str()).collect();
+        assert_eq!(fields, ["module", "graphRef", "props"]);
+        assert_eq!(sc["fields"][2]["type"], "dict");
     }
 
     #[test]
@@ -481,6 +513,33 @@ mod tests {
         assert!(validate_props("Light", &json!({"kind": "point", "color": [1.0, 0.0, 0.0], "intensity": 1.0})).is_err());
         assert!(validate_props("Light", &json!({"kind": "point", "color": [1.0, 0.0, 0.0], "intensity": 1.0, "castShadow": "yes"})).is_err());
         assert!(validate_props("Camera", &json!("not object")).is_err());
+    }
+
+    #[test]
+    fn script_component_validate() {
+        // F4 wave.2:Script 合法 props(module/graphRef 字符串 + props dict)通过。
+        assert!(validate_props("Script", &json!({
+            "module": "", "graphRef": "Content/Graphs/door_opener.rxgraph", "props": { "openSpeed": 120.0 }
+        })).is_ok());
+        assert!(validate_props("Script", &json!({
+            "module": "Content/Scripts/door.rx", "graphRef": "", "props": {}
+        })).is_ok());
+        // props 非 object 拒;缺字段拒;graphRef 非字符串拒。
+        assert!(validate_props("Script", &json!({ "module": "", "graphRef": "g", "props": "not-dict" })).is_err());
+        assert!(validate_props("Script", &json!({ "module": "", "graphRef": "g" })).is_err());
+        assert!(validate_props("Script", &json!({ "module": "", "graphRef": 1, "props": {} })).is_err());
+    }
+
+    #[test]
+    fn tag_trigger_validate() {
+        // F4 wave.3(D-F4-F):Tag(tag:string)/ Trigger(kind:enum:box + extents:[f32;3])。
+        assert!(validate_props("Tag", &json!({"tag": "player"})).is_ok());
+        assert!(validate_props("Tag", &json!({"tag": 1})).is_err());
+        assert!(validate_props("Tag", &json!({})).is_err());
+        assert!(validate_props("Trigger", &json!({"kind": "box", "extents": [2.0, 2.0, 2.0]})).is_ok());
+        assert!(validate_props("Trigger", &json!({"kind": "sphere", "extents": [2.0, 2.0, 2.0]})).is_err());
+        assert!(validate_props("Trigger", &json!({"kind": "box", "extents": [2.0, 2.0]})).is_err());
+        assert!(validate_props("Trigger", &json!({"kind": "box"})).is_err());
     }
 
     #[test]

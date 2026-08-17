@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "id": "g_probe",
+  "name": "Probe",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "i",
+      "type": "event.on_input",
+      "pos": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "li",
+      "type": "debug.log",
+      "pos": [
+        1.0,
+        0.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "i"
+        }
+      }
+    },
+    {
+      "id": "c",
+      "type": "event.on_contact_begin",
+      "pos": [
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "id": "lc",
+      "type": "debug.log",
+      "pos": [
+        1.0,
+        1.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "c"
+        }
+      }
+    },
+    {
+      "id": "u",
+      "type": "event.on_update",
+      "pos": [
+        0.0,
+        2.0
+      ]
+    },
+    {
+      "id": "lu",
+      "type": "debug.log",
+      "pos": [
+        1.0,
+        2.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "u"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "i",
+        "exec"
+      ],
+      "to": [
+        "li",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "c",
+        "exec"
+      ],
+      "to": [
+        "lc",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "u",
+        "exec"
+      ],
+      "to": [
+        "lu",
+        "exec"
+      ]
+    }
+  ]
+}

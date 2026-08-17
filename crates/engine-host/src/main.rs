@@ -83,7 +83,10 @@ fn parse_port() -> u16 {
     17810
 }
 
-/// 物理后台线程:真实时间 accumulator,固定步空跑;step 错误计数不 panic。
+/// 物理后台线程:真实时间 accumulator 驱动固定步。
+/// F4 wave.3:仅 play_running 态推进完整逻辑帧(advance_frame = 物理 step + 接触翻译 +
+/// 变换回写 + 图解释);edit/play_paused 态不步进并重置 accumulator(edit 态步进会空耗
+/// 且污染 steps 语义;Paused 态由 play.step 单帧驱动,墙钟步进会破坏确定性)。
 fn spawn_physics_thread(state: Arc<Mutex<HostState>>) {
     thread::spawn(move || {
         let dt_secs = f64::from(DT_FIXED);
@@ -101,13 +104,12 @@ fn spawn_physics_thread(state: Arc<Mutex<HostState>>) {
                 continue;
             }
             let mut st = rpc::lock(&state);
+            if st.play != rpc::PlayState::Running {
+                acc = 0.0;
+                continue;
+            }
             while acc >= dt_secs {
-                if let Some(world) = st.physics.as_mut() {
-                    match world.step(DT_FIXED) {
-                        Ok(_) => st.steps += 1,
-                        Err(_) => st.step_errors += 1,
-                    }
-                }
+                rpc::advance_frame(&mut st);
                 acc -= dt_secs;
             }
         }

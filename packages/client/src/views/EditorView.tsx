@@ -22,6 +22,8 @@ import {
 import { cn } from '@/lib/cn';
 import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
 import AssetsPanel from '@/components/editor/AssetsPanel';
+import NodeGraphView from '@/components/editor/NodeGraphView';
+import { useGraphStore } from '@/lib/graphStore';
 import {
   COMPOSER_MODES,
   useEditorStore,
@@ -292,11 +294,8 @@ function ViewportPanel() {
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 items-center justify-center bg-panel">
-          <p className="text-center text-xs text-muted-faint">
-            NodeGraph 占位(F4 承接:逻辑节点图查看与微调,10 §5)
-          </p>
-        </div>
+        /* G NodeGraph 同位页签(F4 wave.4):图查看/微调/保存 */
+        <NodeGraphView />
       )}
     </section>
   );
@@ -718,6 +717,9 @@ export default function EditorView() {
   const refreshPlayState = useEditorStore((s) => s.refreshPlayState);
   const loadEvents = useEditorStore((s) => s.loadEvents);
   const chatOpen = useEditorStore((s) => s.chatOpen);
+  const centerTab = useEditorStore((s) => s.centerTab);
+  const selectedId = useEditorStore((s) => s.selectedId);
+  const loadGraphForSelected = useGraphStore((s) => s.loadForSelectedEntity);
 
   // 进视图即拉一次真实数据(实体 / 摘要 / PIE 状态 / 事件流)
   useEffect(() => {
@@ -726,6 +728,11 @@ export default function EditorView() {
     void refreshPlayState();
     void loadEvents();
   }, [loadEntities, refreshSummary, refreshPlayState, loadEvents]);
+
+  // F4 wave.4:切到 NodeGraph 页签,或页签可见时选中实体变化 → 按 Script.graphRef 载图(无 → 空态)
+  useEffect(() => {
+    if (centerTab === 'nodegraph') void loadGraphForSelected();
+  }, [centerTab, selectedId, loadGraphForSelected]);
 
   return (
     <div className="flex h-full min-h-0 bg-white">

@@ -6,6 +6,8 @@ edition.workspace = true
 
 [dependencies]
 forge-scene = { path = "../forge-scene" }
+# F4 wave.3:图解释执行运行时(play 态逻辑帧调度 + 热重载)。
+forge-logic = { path = "../forge-logic" }
 rurix-physics = { path = "H:/rurix/src/rurix-physics" }
 soft-raster = { path = "H:/rurix/src/soft-raster" }
 # wave.2 Viewport:rurix-rt vulkan 档 render_exec(场景实渲染 + Readback);loader 运行时

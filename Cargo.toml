@@ -1,11 +1,13 @@
 [workspace]
 members = [
   "crates/forge-scene",
+  "crates/forge-logic",
   "crates/engine-host",
   "crates/forge-agentd",
   "crates/assetd",
   "crates/mcp/engine-scene-mcp",
   "crates/mcp/asset-pipeline-mcp",
+  "crates/mcp/code-forge-mcp",
   "crates/viewport-presenter",
 ]
 resolver = "2"

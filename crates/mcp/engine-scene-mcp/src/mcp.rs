@@ -1,6 +1,7 @@
 //! MCP stdio 服务:newline-delimited JSON-RPC(initialize / tools/list / tools/call)。
 
 use std::io::{BufRead, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use serde_json::{json, Value};
@@ -270,6 +271,19 @@ fn tool_list() -> Value {
                 "description": "PIE 状态:edit | play_running | play_paused",
                 "inputSchema": { "type": "object", "properties": {} }
             },
+            // ---- logic.*(F4 wave.3)----
+            {
+                "name": "logic_inject_input",
+                "description": "注入输入事件(play 态限定;下一逻辑帧按规范序派发 on_input)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "action": { "type": "string", "description": "动作名" },
+                        "value": { "type": "number", "description": "动作值" }
+                    },
+                    "required": ["action", "value"]
+                }
+            },
             // ---- viewport.*(F1 wave.2)----
             {
                 "name": "viewport_frame",
@@ -344,6 +358,69 @@ fn lock(s: &Mutex<Supervisor>) -> MutexGuard<'_, Supervisor> {
     s.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+// ---------- F4 wave.2:Script 组件引用防护 ----------
+// 10 §6.3:挂载 component_set 写 Script { graphRef } 或 { module }。graphRef/module 为
+// 路径形态(非 GUID);非空时校验 <workspace>/projects/demo/<ref> 文件存在,不存在 →
+// 结构化错误 SCRIPT_REF_NOT_FOUND(照 F2 UNKNOWN_GUID 语义)。
+// 如实记录:F2 未在 component_set 层做资产引用防护(仅 asset_delete 引用阻断),本校验
+// 落 mcp 层(转发 host 前);component_add / entity_batch_apply 内的 Script 不在本波范围。
+
+/// 资产项目根 = <workspace>/projects/demo(照 forge-agentd asset_project_root 先例;
+/// CARGO_MANIFEST_DIR = crates/mcp/engine-scene-mcp,上三级 = workspace 根)。
+fn project_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("CARGO_MANIFEST_DIR 上三级须存在")
+        .join("projects")
+        .join("demo")
+}
+
+/// 单个 Script props 检查:graphRef/module 非空字符串 → 文件须存在。
+fn check_script_props(props: &Value, root: &Path) -> Result<(), String> {
+    let Some(obj) = props.as_object() else { return Ok(()) };
+    for key in ["graphRef", "module"] {
+        if let Some(s) = obj.get(key).and_then(Value::as_str) {
+            if !s.is_empty() && !root.join(s).is_file() {
+                return Err(format!(
+                    "Script.{key} 引用的文件不存在: {s}(项目根 {})",
+                    root.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// component_set(type=Script,props 整体替换)与 entity_create(内联 components)的挂载防护。
+fn script_ref_guard(tool: &str, args: &Value) -> Result<(), String> {
+    let root = project_root();
+    match tool {
+        "component_set" => {
+            if args.get("type").and_then(Value::as_str) != Some("Script") {
+                return Ok(());
+            }
+            if let Some(props) = args.get("props") {
+                check_script_props(props, &root)?;
+            }
+            Ok(())
+        }
+        "entity_create" => {
+            if let Some(comps) = args.get("components").and_then(Value::as_array) {
+                for c in comps {
+                    if c.get("type").and_then(Value::as_str) == Some("Script") {
+                        if let Some(props) = c.get("props") {
+                            check_script_props(props, &root)?;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// 构造 result 响应。
 fn ok(id: Value, result: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": result })
@@ -407,6 +484,7 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "play_step" => "play.step",
         "play_exit" => "play.exit",
         "play_state" => "play.state",
+        "logic_inject_input" => "logic.inject_input",
         "viewport_frame" => "viewport.frame",
         "viewport_pick" => "viewport.pick",
         "viewport_set_camera" => "viewport.setCamera",
@@ -448,6 +526,17 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
             Ok(tool_wrap(&Value::Array(events), false))
         }
         "host_events_drain" => Ok(host_tool(sup, "events.drain", json!({}))),
+        // F4 wave.2:Script 挂载引用防护(转发 host 前的 mcp 层校验)。
+        "component_set" | "entity_create" => {
+            if let Err(msg) = script_ref_guard(name, &args) {
+                return Ok(tool_wrap(
+                    &json!({ "error": "SCRIPT_REF_NOT_FOUND", "message": msg }),
+                    true,
+                ));
+            }
+            let method = passthrough_method(name).expect("component_set/entity_create 必有映射");
+            Ok(host_tool(sup, method, args))
+        }
         other => match passthrough_method(other) {
             Some(method) => Ok(host_tool(sup, method, args)),
             None => Err(err(Value::Null, -32602, &format!("未知工具:{other}"))),
@@ -504,11 +593,95 @@ pub fn serve_stdio(sup: Arc<Mutex<Supervisor>>) {
                 }
             }),
             "" => id.map(|i| err(i, -32600, "invalid request: 缺 method")),
-            other => id.map(|i| err(i, -32601, &format!("method not found: {other}"))),
-        };
+        other => id.map(|i| err(i, -32601, &format!("method not found: {other}"))),
+    };
         if let Some(r) = resp {
             let _ = writeln!(stdout, "{r}");
             let _ = stdout.flush();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_root(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge_script_guard_{}_{}_{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("Content/Graphs")).unwrap();
+        std::fs::create_dir_all(dir.join("Content/Scripts")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn script_props_ref_existence() {
+        let root = tmp_root("props");
+        std::fs::write(root.join("Content/Graphs/g.rxgraph"), b"{}\n").unwrap();
+        std::fs::write(root.join("Content/Scripts/door.rx"), b"fn main() {}\n").unwrap();
+        // 存在的 graphRef / module 通过;空字符串跳过(未挂载该轨)。
+        assert!(check_script_props(
+            &json!({ "module": "", "graphRef": "Content/Graphs/g.rxgraph", "props": {} }),
+            &root
+        )
+        .is_ok());
+        assert!(check_script_props(
+            &json!({ "module": "Content/Scripts/door.rx", "graphRef": "", "props": {} }),
+            &root
+        )
+        .is_ok());
+        // 不存在 → Err(graphRef / module 均查)。
+        let e = check_script_props(
+            &json!({ "module": "", "graphRef": "Content/Graphs/ghost.rxgraph", "props": {} }),
+            &root,
+        )
+        .unwrap_err();
+        assert!(e.contains("Script.graphRef") && e.contains("ghost.rxgraph"), "{e}");
+        let e = check_script_props(
+            &json!({ "module": "Content/Scripts/ghost.rx", "graphRef": "", "props": {} }),
+            &root,
+        )
+        .unwrap_err();
+        assert!(e.contains("Script.module"), "{e}");
+        // 双轨均空 → 通过(占位挂载)。
+        assert!(check_script_props(&json!({ "module": "", "graphRef": "", "props": {} }), &root).is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn guard_only_intercepts_script() {
+        // 非 Script 组件不查(引用路径再假也放行——本层只管 Script)。
+        assert!(script_ref_guard(
+            "component_set",
+            &json!({ "id": 1, "type": "MeshRenderer", "props": { "mesh": "ghost", "material": "ghost" } })
+        )
+        .is_ok());
+        // component_set Script 不带 props(仅改 enabled)不查。
+        assert!(script_ref_guard(
+            "component_set",
+            &json!({ "id": 1, "type": "Script", "enabled": false })
+        )
+        .is_ok());
+        // entity_create 内联 Script + 不存在 graphRef → Err。
+        let e = script_ref_guard(
+            "entity_create",
+            &json!({
+                "name": "door",
+                "components": [
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/definitely_missing.rxgraph", "props": {} } }
+                ]
+            }),
+        )
+        .unwrap_err();
+        assert!(e.contains("definitely_missing.rxgraph"), "{e}");
+        // entity_create 无 components → 通过。
+        assert!(script_ref_guard("entity_create", &json!({ "name": "plain" })).is_ok());
     }
 }

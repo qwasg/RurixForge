@@ -497,6 +497,45 @@ async function runSmokeScenario() {
     if (count < 1) throw new Error(`Assets 面板无资产条目(count=${count})`);
     return;
   }
+  // F4 wave.4 G-F4-3:nodegraph 场景 = editor 导航 → 切 NodeGraph 页签 → 图路径加载
+  // door_opener.rxgraph(graph_get 经 host→agentd→code-forge-mcp)→ 节点卡片计数断言。
+  if (smokeScenario === 'nodegraph') {
+    const nav = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=nodegraph nav click: ${nav}`);
+    if (!nav) throw new Error('sidebar 未找到「编辑器」入口按钮');
+    // 编辑器挂载后有多轮 MCP 往返(实体/摘要/PIE/事件),留足窗口
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    // 切 NodeGraph 页签(无选中实体 → 空态,路径输入框在顶栏常驻)
+    const tab = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='NodeGraph'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=nodegraph tab click: ${tab}`);
+    if (!tab) throw new Error('未找到 NodeGraph 页签按钮');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    // 填图路径(React 受控 input 须走原生 setter + input 事件)
+    const filled = await mainWindow.webContents.executeJavaScript(
+      "(() => { const i=document.querySelector('[data-graph-path-input]'); if(!i) return false; const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set; s.call(i,'Content/Graphs/door_opener.rxgraph'); i.dispatchEvent(new Event('input',{bubbles:true})); return i.value; })()"
+    );
+    smokeLog(`scenario=nodegraph path filled: ${filled}`);
+    if (!filled) throw new Error('未找到图路径输入框(data-graph-path-input)');
+    // 分两步点「加载」:让 React 先消化 input 事件再读 pathDraft
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const loaded = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=document.querySelector('[data-graph-load]'); if(b && !b.disabled){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=nodegraph load click: ${loaded}`);
+    if (!loaded) throw new Error('「加载」按钮不可点');
+    // 等 graph_get 往返 + 节点渲染
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const count = await mainWindow.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-graph-node]').length"
+    );
+    smokeLog(`scenario=nodegraph graph nodes: ${count}`);
+    if (count < 4) throw new Error(`NodeGraph 节点卡片不足(count=${count} < 4)`);
+    return;
+  }
   if (smokeScenario !== 'editor') return;
   const clicked = await mainWindow.webContents.executeJavaScript(
     "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"

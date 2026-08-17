@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": "g_bad_data_cycle",
+  "name": "BadDataCycle",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "a",
+      "type": "transform.lerp",
+      "pos": [40, 80],
+      "inputs": {
+        "a": { "node": "b", "pin": "out" },
+        "b": { "const": 1.0 },
+        "t": { "const": 0.5 }
+      }
+    },
+    {
+      "id": "b",
+      "type": "transform.lerp",
+      "pos": [240, 80],
+      "inputs": {
+        "a": { "node": "a", "pin": "out" },
+        "b": { "const": 1.0 },
+        "t": { "const": 0.5 }
+      }
+    }
+  ],
+  "edges": []
+}

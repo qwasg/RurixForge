@@ -706,13 +706,18 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let tools = v["tools"].as_array().expect("tools 应为数组");
-        assert_eq!(tools.len(), 55);
+        assert_eq!(tools.len(), 67);
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__scene_summary"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__entity_batch_apply"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
         assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_import"));
         assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_list"));
         assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_thumbnail"));
+        assert!(tools.iter().any(|t| t == "mcp__code-forge__rx_check"));
+        assert!(tools.iter().any(|t| t == "mcp__code-forge__rx_test"));
+        assert!(tools.iter().any(|t| t == "mcp__code-forge__code_symbol_search"));
+        assert!(tools.iter().any(|t| t == "mcp__code-forge__code_references"));
+        assert!(tools.iter().any(|t| t == "mcp__code-forge__code_structured_edit"));
     }
 
     #[tokio::test]
@@ -1060,8 +1065,13 @@ mod tests {
 
     // ---------- F3 wave.2:subagents 热加载 + skills/{name} + skills/config/write ----------
 
+    /// subagents 目录读写测试互斥(F4 wave.3 修复):hot_reload 写真实 data/agents 临时文件,
+    /// 与 list 断言「恰好 5 个」存在并发竞争窗口(cargo test 同进程并行)——两测试同锁串行。
+    static SUBAGENTS_DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[tokio::test]
     async fn subagents_list_five_builtin_profiles() {
+        let _dir_guard = SUBAGENTS_DIR_LOCK.lock().unwrap();
         let resp = build_app()
             .oneshot(get("/api/forge/subagents"))
             .await
@@ -1087,6 +1097,7 @@ mod tests {
 
     #[tokio::test]
     async fn subagents_hot_reload_without_restart() {
+        let _dir_guard = SUBAGENTS_DIR_LOCK.lock().unwrap();
         let app = build_app();
         let dir = subagents::agents_dir();
         std::fs::create_dir_all(&dir).unwrap();

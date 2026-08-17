@@ -187,6 +187,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-forge-mcp"
+version = "0.1.0"
+dependencies = [
+ "forge-logic",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,6 +232,7 @@ name = "engine-host"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "forge-logic",
  "forge-scene",
  "naga",
  "openh264",
@@ -298,6 +308,15 @@ dependencies = [
  "serde_json",
  "tokio",
  "tower",
+]
+
+[[package]]
+name = "forge-logic"
+version = "0.1.0"
+dependencies = [
+ "forge-scene",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

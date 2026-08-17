@@ -119,7 +119,7 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 40, "tools/list 须为 40 个工具:{names:?}");
+    assert_eq!(names.len(), 41, "tools/list 须为 41 个工具:{names:?}");
     for want in [
         "host_ping", "scene_new", "scene_summary", "render_once", "host_events",
         "entity_create", "entity_destroy", "entity_rename", "entity_get", "entity_list",
@@ -132,13 +132,16 @@ fn watchdog_restarts_host_after_kill() {
         "viewport_share_open", "viewport_share_close",
         // F3 wave.3:debug 三件套——场景图全量转储 + 内存事件环排空
         "scene_graph_dump", "host_events_drain",
+        // F4 wave.3:逻辑输入注入
+        "logic_inject_input",
     ] {
         assert!(names.contains(&want), "tools/list 缺 {want}:{names:?}");
     }
 
     // F1 透传实测:component_list_types + entity_create + entity_list + play_state。
     let types = mcp.call_tool("component_list_types", json!({}));
-    assert_eq!(types.as_array().unwrap().len(), 4, "注册表须 4 类型");
+    // F4 wave.3(D-F4-F):注册表 + Script + Tag + Trigger → 7 类型。
+    assert_eq!(types.as_array().unwrap().len(), 7, "注册表须 7 类型");
     let created = mcp.call_tool(
         "entity_create",
         json!({

@@ -5,6 +5,7 @@
 
 const TOOL_PREFIX = 'mcp__engine-scene__';
 const ASSET_TOOL_PREFIX = 'mcp__asset-pipeline__';
+const CODE_TOOL_PREFIX = 'mcp__code-forge__';
 
 /** 结构化 API 错误(code 来自 host/agentd,或 TOOL_ERROR / BAD_RESPONSE) */
 export class ForgeApiError extends Error {
@@ -109,6 +110,14 @@ export async function callAssetTool<T = unknown>(
   args: Record<string, unknown> = {},
 ): Promise<T> {
   return callToolWithPrefix(ASSET_TOOL_PREFIX, name, args);
+}
+
+/** 调用 code-forge 工具(name 不带前缀,内部补 mcp__code-forge__;F4 graph/rx 工具链)。 */
+export async function callCodeTool<T = unknown>(
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  return callToolWithPrefix(CODE_TOOL_PREFIX, name, args);
 }
 
 /** 非 MCP 的 agentd REST GET(/api/forge/*  plain JSON,非信封)。 */

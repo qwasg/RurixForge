@@ -50,6 +50,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__play_step",
     "mcp__engine-scene__play_exit",
     "mcp__engine-scene__play_state",
+    // F4 wave.3:逻辑输入注入(play 态驱动图解释器 on_input)
+    "mcp__engine-scene__logic_inject_input",
     "mcp__engine-scene__viewport_frame",
     "mcp__engine-scene__viewport_pick",
     "mcp__engine-scene__viewport_set_camera",
@@ -75,17 +77,33 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__asset-pipeline__mesh_inspect",
     // F2 wave.5:asset-cleanup dryRun 扫描
     "mcp__asset-pipeline__asset_cleanup_scan",
+    // F4 wave.1:code-forge(rx 工具链五工具,子进程包上游 rx CLI/rurixc)
+    "mcp__code-forge__rx_check",
+    "mcp__code-forge__rx_build",
+    "mcp__code-forge__rx_run",
+    "mcp__code-forge__rx_fmt",
+    "mcp__code-forge__rx_test",
+    // F4 wave.2:code-forge graph 三工具(.rxgraph 校验/创建/读取,10 §6)
+    "mcp__code-forge__graph_validate",
+    "mcp__code-forge__graph_create",
+    "mcp__code-forge__graph_get",
+    // F4 wave.4:code-forge code_* 三工具(符号搜索/LSP 引用/结构化编辑,05 §4)
+    "mcp__code-forge__code_symbol_search",
+    "mcp__code-forge__code_references",
+    "mcp__code-forge__code_structured_edit",
 ];
 
 const SCENE_PREFIX: &str = "mcp__engine-scene__";
 const ASSET_PREFIX: &str = "mcp__asset-pipeline__";
+const CODE_PREFIX: &str = "mcp__code-forge__";
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// MCP 服务标识(双工:engine-scene + asset-pipeline)。
+/// MCP 服务标识(三工:engine-scene + asset-pipeline + code-forge)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServerKind {
     EngineScene,
     AssetPipeline,
+    CodeForge,
 }
 
 impl ServerKind {
@@ -94,6 +112,8 @@ impl ServerKind {
             Some(ServerKind::EngineScene)
         } else if tool.starts_with(ASSET_PREFIX) {
             Some(ServerKind::AssetPipeline)
+        } else if tool.starts_with(CODE_PREFIX) {
+            Some(ServerKind::CodeForge)
         } else {
             None
         }
@@ -103,6 +123,7 @@ impl ServerKind {
         match self {
             ServerKind::EngineScene => SCENE_PREFIX,
             ServerKind::AssetPipeline => ASSET_PREFIX,
+            ServerKind::CodeForge => CODE_PREFIX,
         }
     }
 }
@@ -144,6 +165,19 @@ fn asset_server_bin() -> PathBuf {
         .nth(2)
         .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
     root.join("target").join("debug").join("asset-pipeline-mcp.exe")
+}
+
+/// code-forge-mcp 二进制路径:env FORGE_CODE_FORGE_MCP_BIN 优先。
+fn code_forge_server_bin() -> PathBuf {
+    if let Ok(p) = std::env::var("FORGE_CODE_FORGE_MCP_BIN") {
+        return PathBuf::from(p);
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir
+        .ancestors()
+        .nth(2)
+        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
+    root.join("target").join("debug").join("code-forge-mcp.exe")
 }
 
 /// 资产项目根 = <workspace>/projects/demo(05 §1.2 mcp.json 示例对齐)。
@@ -252,11 +286,13 @@ impl McpClient {
 /// 全局长连接(OnceLock + Mutex;None = 未连接或已断线)
 static SCENE_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
 static ASSET_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
+static CODE_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
 
 fn client_slot(kind: ServerKind) -> &'static Mutex<Option<McpClient>> {
     match kind {
         ServerKind::EngineScene => SCENE_CLIENT.get_or_init(|| Mutex::new(None)),
         ServerKind::AssetPipeline => ASSET_CLIENT.get_or_init(|| Mutex::new(None)),
+        ServerKind::CodeForge => CODE_CLIENT.get_or_init(|| Mutex::new(None)),
     }
 }
 
@@ -277,6 +313,7 @@ async fn ensure_connected<'a>(
             asset_server_bin(),
             vec!["--project".to_string(), asset_project_root().to_string_lossy().into_owned()],
         ),
+        ServerKind::CodeForge => (code_forge_server_bin(), vec![]),
     };
     if !bin.exists() {
         return Err(McpError(format!(

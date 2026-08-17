@@ -3,13 +3,17 @@
 //! F1:实体/组件/变换全量 CRUD、命令栈 undo/redo、checkpoint/rollback、
 //! PIE 双态(编辑态 / 运行态),所有变更类方法记逆操作、可撤销。
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
+use forge_logic::interp::{LogicContact, LogicPhase, LogicRuntime};
 use forge_scene::{Component, Entity, Scene, Transform};
-use rurix_physics::{BackendKind, PhysicsWorld, WorldDesc};
+use rurix_physics::{
+    BackendKind, BodyDesc, BodyId, BodyKind, MassProps, PhysicsTransform, PhysicsWorld, ShapeDesc,
+    SyncBudget, WorldDesc,
+};
 use serde_json::{json, Value};
 
 use crate::timeutil::utc_now_iso8601;
@@ -268,6 +272,12 @@ pub struct HostState {
     pub cpu_uploads: u64,
     /// 事件 ring(cap 1024)。
     pub events: VecDeque<Value>,
+    /// 图解释运行时(F4 wave.3;play.enter 装配,play.exit 销毁)。
+    pub logic: Option<LogicRuntime>,
+    /// 实体 ↔ body 映射(F4 wave.3 D-F4-I;play.enter 批建,play.exit 批删)。
+    pub body_map: HashMap<u64, BodyId>,
+    /// 待派发输入事件队列(F4 wave.3 logic.inject_input;下一逻辑帧取空)。
+    pub input_queue: Vec<(String, f64)>,
     /// 启动时刻(uptime 计算)。
     pub started: Instant,
     /// 编辑器相机(wave.2;视口状态,非场景状态——不入 .rxscene、不参与 undo)。
@@ -366,6 +376,9 @@ impl HostState {
             cpu_uploads: 0,
             h264: H264State::new(),
             events,
+            logic: None,
+            body_map: HashMap::new(),
+            input_queue: Vec::new(),
             started: Instant::now(),
             camera: crate::viewport::EditorCamera::default(),
         }
@@ -432,6 +445,144 @@ fn create_world() -> (Option<PhysicsWorld>, &'static str) {
         }
     }
     (None, "none")
+}
+
+// ---------- F4 wave.3:图解释运行时 + 物理接线 ----------
+
+/// 资产项目根 = <workspace>/projects/demo(CARGO_MANIFEST_DIR = crates/engine-host,
+/// 上两级 = workspace 根);env FORGE_PROJECT_ROOT 覆盖(测试注入临时项目根)。
+fn project_root() -> PathBuf {
+    if let Ok(p) = std::env::var("FORGE_PROJECT_ROOT") {
+        return PathBuf::from(p);
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("CARGO_MANIFEST_DIR 上两级须存在")
+        .join("projects")
+        .join("demo")
+}
+
+/// RigidBody 组件 → BodyDesc(D-F4-I):kind 映射 static→Static/dynamic→Dynamic/
+/// kinematic→Kinematic;shape = Box,half_extents = |scale|/2 分量下限钳 1e-3;
+/// mass → MassProps{mass, friction 0.5, restitution 0.0, allow_sleep true};layer 0;ccd false。
+/// enabled=false 或无 RigidBody 组件 → None。
+fn rigid_body_desc(e: &Entity) -> Option<BodyDesc> {
+    let rb = e.component("RigidBody").filter(|c| c.enabled)?;
+    let kind = match rb.props.get("kind").and_then(Value::as_str) {
+        Some("static") => BodyKind::Static,
+        Some("dynamic") => BodyKind::Dynamic,
+        Some("kinematic") => BodyKind::Kinematic,
+        _ => return None,
+    };
+    let mass = rb.props.get("mass").and_then(Value::as_f64).unwrap_or(1.0) as f32;
+    let half = |i: usize| (e.transform.scale[i].abs() / 2.0).max(1e-3);
+    Some(BodyDesc {
+        kind,
+        shape: ShapeDesc::Box {
+            half_extents: [half(0), half(1), half(2)],
+        },
+        layer: 0,
+        mass_props: MassProps {
+            mass,
+            friction: 0.5,
+            restitution: 0.0,
+            allow_sleep: true,
+        },
+        ccd: false,
+        transform: PhysicsTransform {
+            translation: e.transform.translation,
+            rotation: e.transform.rotation,
+        },
+    })
+}
+
+/// 读图文件并校验:项目根相对路径 → GraphDoc(读取/解析/校验失败如实 Err)。
+fn load_graph_doc(graph_ref: &str) -> Result<forge_logic::graph::GraphDoc, String> {
+    let path = project_root().join(graph_ref);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("图读取失败 {}: {e}", path.display()))?;
+    let doc = forge_logic::graph::GraphDoc::from_json(&text)
+        .map_err(|e| format!("图解析失败 {graph_ref}: {e}"))?;
+    let errs = forge_logic::validate::validate_graph(&doc);
+    if !errs.is_empty() {
+        let summary = errs
+            .iter()
+            .map(|e| format!("{}({})", e.code, e.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("图校验失败 {graph_ref}: {summary}"));
+    }
+    Ok(doc)
+}
+
+/// 从场景收集启用 Script 组件的 (entityId, graphRef, props 覆盖 dict)。
+fn collect_script_graphs(scene: &Scene) -> Vec<(u64, String, Value)> {
+    let mut out = Vec::new();
+    for e in &scene.entities {
+        let Some(sc) = e.component("Script").filter(|c| c.enabled) else {
+            continue;
+        };
+        let gref = sc
+            .props
+            .get("graphRef")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if gref.is_empty() {
+            continue;
+        }
+        let props = sc.props.get("props").cloned().unwrap_or_else(|| json!({}));
+        out.push((e.id, gref.to_string(), props));
+    }
+    out
+}
+
+/// 完整逻辑帧(F4 wave.3;Running 后台线程与 Paused play.step 共用):
+/// world.step → drain_contacts(每帧新 SyncBudget)→ BodyId→实体翻译(规范序保序)→
+/// active_transforms 回写 run_scene → runtime.frame(trigger 沿检测在 frame 内)→
+/// logic.* 事件进 ring。
+pub(crate) fn advance_frame(st: &mut HostState) {
+    let mut contacts: Vec<LogicContact> = Vec::new();
+    if let Some(world) = st.physics.as_mut() {
+        match world.step(DT_FIXED) {
+            Ok(_) => st.steps += 1,
+            Err(_) => st.step_errors += 1,
+        }
+        let mut budget = SyncBudget::new(4096, 4096, 4096);
+        let raw: Vec<_> = world.drain_contacts(&mut budget).collect();
+        // BodyId → 实体 id 反向映射(body 数小,每帧重建换简单)。
+        let rev: HashMap<BodyId, u64> = st.body_map.iter().map(|(e, b)| (*b, *e)).collect();
+        for c in raw {
+            let (Some(&ea), Some(&eb)) = (rev.get(&c.a), rev.get(&c.b)) else {
+                continue;
+            };
+            let phase = match c.phase {
+                rurix_physics::ContactPhase::Begin => LogicPhase::Begin,
+                rurix_physics::ContactPhase::Persist => LogicPhase::Persist,
+                rurix_physics::ContactPhase::End => LogicPhase::End,
+            };
+            contacts.push(LogicContact { a: ea, b: eb, phase });
+        }
+        // 回写:active 动态/运动体变换 → run_scene 实体(Static 不在表,逻辑驱动不被踩)。
+        if let Some(run) = st.run_scene.as_mut() {
+            for (body, t) in world.active_transforms() {
+                if let Some(&eid) = rev.get(&body) {
+                    if let Some(e) = run.entity_mut(eid) {
+                        e.transform.translation = t.translation;
+                        e.transform.rotation = t.rotation;
+                    }
+                }
+            }
+        }
+    }
+    let inputs = std::mem::take(&mut st.input_queue);
+    let mut logs: Vec<(String, Value)> = Vec::new();
+    if let (Some(rt), Some(run)) = (st.logic.as_mut(), st.run_scene.as_mut()) {
+        rt.frame(run, DT_FIXED, inputs, contacts, &mut logs);
+    }
+    for (name, payload) in logs {
+        push_event(st, &name, payload);
+    }
 }
 
 /// 构造 JSON-RPC result 响应。
@@ -699,6 +850,7 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "play.step" => play_step(st),
         "play.exit" => play_exit(st),
         "play.state" => Ok(json!({ "state": st.play.as_str() })),
+        "logic.inject_input" => logic_inject_input(st, params),
         "viewport.frame" => viewport_frame(st, params),
         "viewport.setCamera" => viewport_set_camera(st, params),
         "viewport.getCamera" => Ok(st.camera.to_json()),
@@ -1077,8 +1229,47 @@ fn component_set(st: &mut HostState, params: &Value) -> HResult {
     forge_scene::validate_component(&new).map_err(|e| (-32602, format!("invalid params: {e}")))?;
     st.apply_tracked(Op::SetComponent { id, component: new })
         .map_err(|e| (-32000, e))?;
+    // F4 wave.3 热重载(D-F4-B):play 态写 Script → 该实体图实例重建 + on_start 重发 +
+    // 黑板重置;edit 态改图下次 play.enter 生效(play_enter 重读文件,无需动作)。
+    if st.play != PlayState::Edit && ctype == "Script" {
+        hot_reload_script(st, id)?;
+    }
     push_event(st, "component.set", json!({ "id": id, "type": ctype }));
     Ok(json!({ "id": id, "type": ctype }))
+}
+
+/// play 态 Script 热重载:重读 graphRef 文件(图可能已改)→ reload;graphRef 空 → 卸载。
+/// 组件写入已生效;重载失败如实 Err(图坏时运行实例保持卸载前状态被移除,不伪造运行)。
+fn hot_reload_script(st: &mut HostState, id: u64) -> Result<(), (i64, String)> {
+    let Some(run) = st.run_scene.as_ref() else {
+        return Ok(());
+    };
+    let Some(sc) = run.entity(id).and_then(|e| e.component("Script")) else {
+        return Ok(());
+    };
+    let gref = sc
+        .props
+        .get("graphRef")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let props = sc.props.get("props").cloned().unwrap_or_else(|| json!({}));
+    let Some(rt) = st.logic.as_mut() else {
+        return Ok(());
+    };
+    if gref.is_empty() {
+        rt.unload(id);
+        return Ok(());
+    }
+    let doc = load_graph_doc(&gref)
+        .map_err(|e| (-32000, format!("component.set 已写入但热重载失败(实体 {id}): {e}")))?;
+    let run = st.run_scene.as_mut().expect("play 态必有 run_scene");
+    let mut logs: Vec<(String, Value)> = Vec::new();
+    rt.reload(id, doc, &props, run, &mut logs);
+    for (name, payload) in logs {
+        push_event(st, &name, payload);
+    }
+    Ok(())
 }
 
 fn component_get(st: &HostState, params: &Value) -> HResult {
@@ -1105,8 +1296,41 @@ fn transform_set(st: &mut HostState, params: &Value) -> HResult {
     let t = merge_transform(old, params)?;
     st.apply_tracked(Op::SetTransform { id, transform: t })
         .map_err(|e| (-32000, e))?;
+    // F4 wave.3:play 态改带 body 实体的 transform → 同步 body(remove+re-add,
+    // 双后端通用;速度/接触态重置——编辑器传送语义,否则下一步回写会踩回旧位)。
+    if st.play != PlayState::Edit && st.body_map.contains_key(&id) {
+        sync_body_after_transform(st, id)?;
+    }
     push_event(st, "transform.set", json!({ "id": id }));
     Ok(json!(t))
+}
+
+/// play 态实体 transform 变更后的 body 同步:remove + 按当前 transform/组件重建,
+/// body_map 换到新 BodyId。失败如实 Err(实体已改,body 可能已缺失——调用方可见)。
+fn sync_body_after_transform(st: &mut HostState, id: u64) -> Result<(), (i64, String)> {
+    let (Some(&old_body), Some(run)) = (st.body_map.get(&id), st.run_scene.as_ref()) else {
+        return Ok(());
+    };
+    let e = run
+        .entity(id)
+        .ok_or((-32000, format!("实体 {id} 不存在")))?;
+    let Some(desc) = rigid_body_desc(e) else {
+        return Ok(()); // RigidBody 被禁用/移除 → 不重建
+    };
+    let Some(world) = st.physics.as_mut() else {
+        return Ok(());
+    };
+    let _ = world.remove_bodies_batch(&[old_body]);
+    match world.add_bodies_batch(&[desc]) {
+        Ok(ids) => {
+            st.body_map.insert(id, ids[0]);
+            Ok(())
+        }
+        Err(e) => {
+            st.body_map.remove(&id);
+            Err((-32000, format!("实体 {id} transform 已改但 body 重建失败: {e}")))
+        }
+    }
 }
 
 fn transform_get(st: &HostState, params: &Value) -> HResult {
@@ -1265,13 +1489,68 @@ fn play_enter(st: &mut HostState) -> HResult {
     if st.play != PlayState::Edit {
         return domain_err(format!("当前状态 {} 禁止 play.enter", st.play.as_str()));
     }
-    st.run_scene = Some(st.scene.clone());
+    // F4 wave.3 ①:RigidBody 实体批建 body(D-F4-I),填 body_map。
+    let run = st.scene.clone();
+    let mut descs = Vec::new();
+    let mut owners = Vec::new();
+    for e in &run.entities {
+        if let Some(d) = rigid_body_desc(e) {
+            descs.push(d);
+            owners.push(e.id);
+        }
+    }
+    if let Some(world) = st.physics.as_mut() {
+        if !descs.is_empty() {
+            match world.add_bodies_batch(&descs) {
+                Ok(ids) => {
+                    for (eid, b) in owners.into_iter().zip(ids) {
+                        st.body_map.insert(eid, b);
+                    }
+                }
+                Err(e) => return domain_err(format!("play.enter 建 body 失败: {e}")),
+            }
+        }
+    }
+    st.run_scene = Some(run);
+    // F4 wave.3 ②:Script 实体读 graphRef → 校验 → load(on_start 即 load 时执行,
+    // 10 §3.1);读取/解析/校验失败 → 清理 body 后如实报错,不进 play。
+    let mut rt = LogicRuntime::new();
+    let mut logs: Vec<(String, Value)> = Vec::new();
+    let scripts = collect_script_graphs(st.run_scene.as_ref().expect("刚设置"));
+    for (eid, gref, props) in scripts {
+        let doc = match load_graph_doc(&gref) {
+            Ok(d) => d,
+            Err(msg) => {
+                play_enter_rollback(st);
+                return domain_err(format!("play.enter 图加载失败(实体 {eid} {gref}): {msg}"));
+            }
+        };
+        let run = st.run_scene.as_mut().expect("刚设置");
+        rt.load(eid, doc, &props, run, &mut logs);
+    }
+    st.logic = Some(rt);
     st.play = PlayState::Running;
     // 跨场景切换,命令栈清空避免误作用。
     st.undo.clear();
     st.redo.clear();
+    for (name, payload) in logs {
+        push_event(st, &name, payload);
+    }
     push_event(st, "play.enter", json!({}));
     Ok(json!({ "state": st.play.as_str() }))
+}
+
+/// play.enter 失败回滚:移除已建 body + 清 body_map/run_scene/logic(不进 play)。
+fn play_enter_rollback(st: &mut HostState) {
+    if let Some(world) = st.physics.as_mut() {
+        let bodies: Vec<BodyId> = st.body_map.values().copied().collect();
+        if !bodies.is_empty() {
+            let _ = world.remove_bodies_batch(&bodies);
+        }
+    }
+    st.body_map.clear();
+    st.run_scene = None;
+    st.logic = None;
 }
 
 fn play_pause(st: &mut HostState) -> HResult {
@@ -1296,12 +1575,8 @@ fn play_step(st: &mut HostState) -> HResult {
     if st.play != PlayState::Paused {
         return domain_err(format!("当前状态 {} 禁止 play.step", st.play.as_str()));
     }
-    if let Some(world) = st.physics.as_mut() {
-        match world.step(DT_FIXED) {
-            Ok(_) => st.steps += 1,
-            Err(_) => st.step_errors += 1,
-        }
-    }
+    // F4 wave.3:完整逻辑帧(物理 step → 接触翻译 → 回写 → 图解释;logic.* 先入环)。
+    advance_frame(st);
     push_event(st, "play.step", json!({}));
     Ok(json!({ "state": st.play.as_str(), "steps": st.steps }))
 }
@@ -1310,10 +1585,369 @@ fn play_exit(st: &mut HostState) -> HResult {
     if st.play == PlayState::Edit {
         return domain_err("当前状态 edit 禁止 play.exit");
     }
+    // F4 wave.3:批删 body(D-F4-I)+ 销毁图运行时 + 清输入队列。
+    if let Some(world) = st.physics.as_mut() {
+        let bodies: Vec<BodyId> = st.body_map.values().copied().collect();
+        if !bodies.is_empty() {
+            let _ = world.remove_bodies_batch(&bodies);
+        }
+    }
+    st.body_map.clear();
+    st.logic = None;
+    st.input_queue.clear();
     st.run_scene = None;
     st.play = PlayState::Edit;
     st.undo.clear();
     st.redo.clear();
     push_event(st, "play.exit", json!({}));
     Ok(json!({ "state": st.play.as_str() }))
+}
+
+/// logic.inject_input {action, value}:play 态限定,入队待下一逻辑帧派发(on_input)。
+fn logic_inject_input(st: &mut HostState, params: &Value) -> HResult {
+    if st.play == PlayState::Edit {
+        return domain_err("edit 态禁止 logic.inject_input,请先 play.enter");
+    }
+    let action = params
+        .get("action")
+        .and_then(Value::as_str)
+        .ok_or((-32602, "invalid params: action 须为字符串".to_string()))?
+        .to_string();
+    let value = params
+        .get("value")
+        .and_then(Value::as_f64)
+        .ok_or((-32602, "invalid params: value 须为数值".to_string()))?;
+    st.input_queue.push((action.clone(), value));
+    let depth = st.input_queue.len();
+    push_event(st, "logic.inject_input", json!({ "action": action, "value": value }));
+    Ok(json!({ "queued": true, "depth": depth }))
+}
+
+#[cfg(test)]
+mod tests {
+    //! F4 wave.3 宿主接线测试:RigidBody→body 批建/回写、contact Begin 进环、
+    //! trigger enter/exit + rotate_tween(G-F4-3 门)、规范序、热重载、坏图拒入。
+    use super::*;
+    use std::sync::OnceLock;
+
+    /// 临时项目根(进程级一次):Content/Graphs 下落测试图,env FORGE_PROJECT_ROOT 指入。
+    /// 各测试只读不写,无竞态。
+    fn test_project_root() -> PathBuf {
+        static ROOT: OnceLock<PathBuf> = OnceLock::new();
+        ROOT.get_or_init(|| {
+            let dir = std::env::temp_dir().join(format!("forge_f4w3_host_test_{}", std::process::id()));
+            let graphs = dir.join("Content").join("Graphs");
+            std::fs::create_dir_all(&graphs).unwrap();
+            // 门图:on_start 写黑板 x=openSpeed + trigger enter(has_tag 门控)→ rotate_tween;
+            // trigger exit → debug.log。
+            std::fs::write(
+                graphs.join("door.rxgraph"),
+                r#"{
+  "version": 1, "id": "g_door", "name": "Door",
+  "exposedProps": [ { "name": "openSpeed", "kind": "F32", "default": 90.0 } ],
+  "nodes": [
+    { "id": "s", "type": "event.on_start", "pos": [0, 0] },
+    { "id": "vs", "type": "var.set", "pos": [1, 0],
+      "inputs": { "name": { "const": "x" }, "value": { "ref": "openSpeed" } } },
+    { "id": "n1", "type": "event.on_trigger_enter", "pos": [0, 1] },
+    { "id": "n2", "type": "flow.branch", "pos": [1, 1],
+      "inputs": { "condition": { "node": "n3", "pin": "out" } } },
+    { "id": "n3", "type": "entity.has_tag", "pos": [0, 2],
+      "inputs": { "entity": { "node": "n1", "pin": "otherEntity" }, "tag": { "const": "player" } } },
+    { "id": "n4", "type": "transform.rotate_tween", "pos": [2, 1],
+      "inputs": { "target": { "const": "$self" }, "angle": { "ref": "openSpeed" }, "duration": { "const": 1.2 } } },
+    { "id": "x1", "type": "event.on_trigger_exit", "pos": [0, 3] },
+    { "id": "x2", "type": "debug.log", "pos": [1, 3], "inputs": { "message": { "const": "bye" } } }
+  ],
+  "edges": [
+    { "from": ["s", "exec"], "to": ["vs", "exec"] },
+    { "from": ["n1", "exec"], "to": ["n2", "exec"] },
+    { "from": ["n2", "then"], "to": ["n4", "exec"] },
+    { "from": ["x1", "exec"], "to": ["x2", "exec"] }
+  ]
+}
+"#,
+            )
+            .unwrap();
+            // 探针图:on_input/on_contact_begin/on_update 各 debug.log(规范序断言用)。
+            std::fs::write(
+                graphs.join("probe.rxgraph"),
+                r#"{
+  "version": 1, "id": "g_probe", "name": "Probe",
+  "nodes": [
+    { "id": "i", "type": "event.on_input", "pos": [0, 0] },
+    { "id": "li", "type": "debug.log", "pos": [1, 0], "inputs": { "message": { "const": "i" } } },
+    { "id": "c", "type": "event.on_contact_begin", "pos": [0, 1] },
+    { "id": "lc", "type": "debug.log", "pos": [1, 1], "inputs": { "message": { "const": "c" } } },
+    { "id": "u", "type": "event.on_update", "pos": [0, 2] },
+    { "id": "lu", "type": "debug.log", "pos": [1, 2], "inputs": { "message": { "const": "u" } } }
+  ],
+  "edges": [
+    { "from": ["i", "exec"], "to": ["li", "exec"] },
+    { "from": ["c", "exec"], "to": ["lc", "exec"] },
+    { "from": ["u", "exec"], "to": ["lu", "exec"] }
+  ]
+}
+"#,
+            )
+            .unwrap();
+            std::env::set_var("FORGE_PROJECT_ROOT", &dir);
+            dir
+        })
+        .clone()
+    }
+
+    fn host() -> Mutex<HostState> {
+        Mutex::new(HostState::new())
+    }
+
+    fn call(st: &Mutex<HostState>, method: &str, params: Value) -> Value {
+        let r = dispatch(st, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }));
+        assert!(r.get("error").is_none(), "{method} 不应报错: {r}");
+        r["result"].clone()
+    }
+
+    fn call_err(st: &Mutex<HostState>, method: &str, params: Value) -> (i64, String) {
+        let r = dispatch(st, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }));
+        (
+            r["error"]["code"].as_i64().expect("应有 error.code"),
+            r["error"]["message"].as_str().unwrap_or("").to_string(),
+        )
+    }
+
+    fn drain(st: &Mutex<HostState>) -> Vec<Value> {
+        call(st, "events.drain", json!({})).as_array().unwrap().clone()
+    }
+
+    fn step_n(st: &Mutex<HostState>, n: usize) {
+        for _ in 0..n {
+            call(st, "play.step", json!({}));
+        }
+    }
+
+    fn yaw_deg(rot: &[Value]) -> f64 {
+        let (x, y, z, w) = (
+            rot[0].as_f64().unwrap(),
+            rot[1].as_f64().unwrap(),
+            rot[2].as_f64().unwrap(),
+            rot[3].as_f64().unwrap(),
+        );
+        (2.0 * (w * y + x * z))
+            .atan2(1.0 - 2.0 * (y * y + z * z))
+            .to_degrees()
+    }
+
+    /// RigidBody dynamic → play.enter 建 body,step 回写 y 减;exit 清 body_map。
+    #[test]
+    fn dynamic_body_builds_and_writes_back() {
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t" }));
+        let e = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "ball",
+                "components": [ { "type": "RigidBody", "props": { "kind": "dynamic", "mass": 1.0 } } ],
+                "translation": [0.0, 10.0, 0.0]
+            }),
+        );
+        let id = e["id"].as_u64().unwrap();
+        call(&st, "play.enter", json!({}));
+        assert_eq!(lock(&st).body_map.len(), 1, "play.enter 须建 1 body");
+        call(&st, "play.pause", json!({}));
+        step_n(&st, 30);
+        let t = call(&st, "transform.get", json!({ "id": id }));
+        let y = t["translation"][1].as_f64().unwrap();
+        assert!(y < 9.9, "30 帧自由落体后 y 须明显下降,实际 {y}");
+        call(&st, "play.exit", json!({}));
+        assert!(lock(&st).body_map.is_empty(), "play.exit 须清 body_map");
+    }
+
+    /// contact Begin 进环 + 同帧规范序 logic.input < logic.contact < logic.update。
+    #[test]
+    fn contact_begin_and_canonical_order() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t" }));
+        call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "floor",
+                "components": [ { "type": "RigidBody", "props": { "kind": "static", "mass": 1.0 } } ],
+                "translation": [0.0, -0.5, 0.0], "scale": [10.0, 1.0, 10.0]
+            }),
+        );
+        let ball = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "ball",
+                "components": [
+                    { "type": "RigidBody", "props": { "kind": "dynamic", "mass": 1.0 } },
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/probe.rxgraph", "props": {} } }
+                ],
+                "translation": [0.0, 3.0, 0.0]
+            }),
+        );
+        let ball_id = ball["id"].as_u64().unwrap();
+        call(&st, "play.enter", json!({}));
+        call(&st, "play.pause", json!({}));
+        drain(&st);
+        // 每帧注入 input;落地帧须同帧含 input → contact(begin)→ update。
+        let mut ordered = false;
+        for _ in 0..120 {
+            call(&st, "logic.inject_input", json!({ "action": "jump", "value": 1.0 }));
+            call(&st, "play.step", json!({}));
+            let evs = drain(&st);
+            let pos = |name: &str, phase: Option<&str>| {
+                evs.iter().position(|e| {
+                    e["event"] == name
+                        && phase.map_or(true, |p| e["phase"] == p)
+                })
+            };
+            if let Some(ic) = pos("logic.contact", Some("begin")) {
+                let ii = pos("logic.input", None).expect("落地帧须有 logic.input");
+                let iu = pos("logic.update", None).expect("落地帧须有 logic.update");
+                assert!(ii < ic && ic < iu, "规范序 input<contact<update,实际 {evs:?}");
+                let contact = evs.iter().find(|e| e["event"] == "logic.contact").unwrap();
+                assert_eq!(contact["entityId"], json!(ball_id), "contact 派发到球实体图");
+                ordered = true;
+                break;
+            }
+        }
+        assert!(ordered, "120 帧内须出现 contact Begin(球落地板)");
+        call(&st, "play.exit", json!({}));
+    }
+
+    /// G-F4-3 内核:trigger enter → has_tag(player)→ rotate_tween 90°;退出 exit。
+    #[test]
+    fn trigger_enter_opens_door_and_exit_fires() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t" }));
+        let door = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "door",
+                "components": [
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/door.rxgraph", "props": {} } },
+                    { "type": "Trigger", "props": { "kind": "box", "extents": [2.0, 2.0, 2.0] } }
+                ],
+                "translation": [0.0, 0.0, 0.0]
+            }),
+        );
+        let door_id = door["id"].as_u64().unwrap();
+        let player = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "player",
+                "components": [ { "type": "Tag", "props": { "tag": "player" } } ],
+                "translation": [10.0, 0.0, 0.0]
+            }),
+        );
+        let player_id = player["id"].as_u64().unwrap();
+        call(&st, "play.enter", json!({}));
+        // on_start 于 enter 时执行(logic.start + 黑板 x=90)。
+        let evs = drain(&st);
+        assert!(evs.iter().any(|e| e["event"] == "logic.start" && e["entityId"] == door_id), "enter 须发 logic.start: {evs:?}");
+        assert_eq!(lock(&st).logic.as_ref().unwrap().debug_var(door_id, "x"), Some(json!(90.0)));
+        call(&st, "play.pause", json!({}));
+        drain(&st);
+        call(&st, "transform.set", json!({ "id": player_id, "translation": [0.0, 0.0, 0.0] }));
+        step_n(&st, 90);
+        let evs = drain(&st);
+        assert!(
+            evs.iter().any(|e| e["event"] == "logic.trigger" && e["phase"] == "enter" && e["otherEntity"] == player_id),
+            "须含 trigger enter: {evs:?}"
+        );
+        let t = call(&st, "transform.get", json!({ "id": door_id }));
+        let yaw = yaw_deg(t["rotation"].as_array().unwrap());
+        assert!((yaw - 90.0).abs() <= 1.0, "90 帧(1.5s)后 yaw 须 ≈90°,实际 {yaw}");
+        // 移出 → exit。
+        call(&st, "transform.set", json!({ "id": player_id, "translation": [10.0, 0.0, 0.0] }));
+        step_n(&st, 1);
+        let evs = drain(&st);
+        assert!(
+            evs.iter().any(|e| e["event"] == "logic.trigger" && e["phase"] == "exit"),
+            "须含 trigger exit: {evs:?}"
+        );
+        call(&st, "play.exit", json!({}));
+    }
+
+    /// 热重载:play 态 component_set Script props → on_start 重发 + 黑板重置为新值。
+    #[test]
+    fn hot_reload_reemits_on_start_and_resets() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t" }));
+        let door = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "door",
+                "components": [
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/door.rxgraph", "props": {} } },
+                    { "type": "Trigger", "props": { "kind": "box", "extents": [2.0, 2.0, 2.0] } }
+                ]
+            }),
+        );
+        let door_id = door["id"].as_u64().unwrap();
+        call(&st, "play.enter", json!({}));
+        call(&st, "play.pause", json!({}));
+        drain(&st);
+        call(
+            &st,
+            "component.set",
+            json!({
+                "id": door_id, "type": "Script",
+                "props": { "module": "", "graphRef": "Content/Graphs/door.rxgraph", "props": { "openSpeed": 45.0 } }
+            }),
+        );
+        let evs = drain(&st);
+        assert!(
+            evs.iter().any(|e| e["event"] == "logic.start" && e["entityId"] == door_id),
+            "热重载须重发 logic.start: {evs:?}"
+        );
+        assert_eq!(
+            lock(&st).logic.as_ref().unwrap().debug_var(door_id, "x"),
+            Some(json!(45.0)),
+            "重载后黑板按新 props 重置"
+        );
+        call(&st, "play.exit", json!({}));
+    }
+
+    /// 坏图/缺图如实拒绝:play.enter 报错且不进 play;body_map 不留残。
+    #[test]
+    fn play_enter_rejects_missing_graph() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t" }));
+        call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "bad",
+                "components": [
+                    { "type": "RigidBody", "props": { "kind": "dynamic", "mass": 1.0 } },
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/ghost.rxgraph", "props": {} } }
+                ]
+            }),
+        );
+        let (code, msg) = call_err(&st, "play.enter", json!({}));
+        assert_eq!(code, -32000);
+        assert!(msg.contains("ghost.rxgraph"), "错误须含图名: {msg}");
+        assert_eq!(call(&st, "play.state", json!({}))["state"], "edit", "失败不得进 play");
+        assert!(lock(&st).body_map.is_empty(), "失败须清 body");
+    }
+
+    /// logic.inject_input 仅 play 态合法。
+    #[test]
+    fn inject_input_rejected_in_edit() {
+        let st = host();
+        let (code, _) = call_err(&st, "logic.inject_input", json!({ "action": "jump", "value": 1.0 }));
+        assert_eq!(code, -32000, "edit 态注入须拒");
+    }
 }
