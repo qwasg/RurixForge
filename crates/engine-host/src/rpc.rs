@@ -666,6 +666,7 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         })),
         "scene.new" => scene_new(st, params),
         "scene.summary" => Ok(scene_summary(st)),
+        "scene.graph_dump" => Ok(scene_graph_dump(st)),
         "render.once" => Ok(render_once(st)),
         "events.drain" => {
             let drained: Vec<Value> = st.events.drain(..).collect();
@@ -730,6 +731,18 @@ fn scene_new(st: &mut HostState, params: &Value) -> HResult {
     push_event(st, "scene.created", json!({ "name": name }));
     let s = st.scene.summary();
     Ok(json!({ "name": s.name, "entityCount": s.entity_count }))
+}
+
+/// 场景图全量转储(F3 debug 三件套之一):实体 id/name/transform/组件快照单次调用,
+/// 供 debug-scene-issue skill 与问题诊断一次性取全量场景态(免逐 entity.get 往返)。
+fn scene_graph_dump(st: &HostState) -> Value {
+    let s = st.active();
+    json!({
+        "name": s.name,
+        "playState": st.play.as_str(),
+        "entityCount": s.entities.len(),
+        "entities": s.entities.iter().map(|e| json!(e)).collect::<Vec<_>>(),
+    })
 }
 
 fn scene_summary(st: &HostState) -> Value {

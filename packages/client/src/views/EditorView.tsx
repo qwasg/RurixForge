@@ -23,7 +23,9 @@ import { cn } from '@/lib/cn';
 import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
 import AssetsPanel from '@/components/editor/AssetsPanel';
 import {
+  COMPOSER_MODES,
   useEditorStore,
+  type ComposerMode,
   type EntityData,
   type GizmoMode,
   type PlayState,
@@ -597,6 +599,7 @@ function ChatDock() {
   const chatPrefill = useEditorStore((s) => s.chatPrefill);
   const clearChatPrefill = useEditorStore((s) => s.clearChatPrefill);
   const [draft, setDraft] = useState('');
+  const [mode, setMode] = useState<ComposerMode>('build');
 
   // F2 wave.3:Assets 右键「生成」预填(F3 gen-image/gen-model seam)
   useEffect(() => {
@@ -610,7 +613,7 @@ function ChatDock() {
     const text = draft.trim();
     if (text === '') return;
     setDraft('');
-    void sendChat(text);
+    void sendChat(text, mode);
   };
 
   return (
@@ -623,6 +626,23 @@ function ChatDock() {
         <button type="button" title="Collapse Chat" className={iconBtn} onClick={toggleChat}>
           <ChevronRight size={13} strokeWidth={1.8} />
         </button>
+      </div>
+      {/* composer 五模式切换器(04 §3 / 07 §5;multitask 走 swarm 分片执行) */}
+      <div className="flex shrink-0 gap-1 px-2 pb-1" data-testid="composer-modes">
+        {COMPOSER_MODES.map((m) => (
+          <button
+            key={m}
+            type="button"
+            data-mode={m}
+            onClick={() => setMode(m)}
+            className={cn(
+              'rounded-full px-2 py-0.5 text-2xs transition-colors',
+              mode === m ? 'bg-ink text-white' : 'bg-white text-ink-soft hover:bg-panel-hover',
+            )}
+          >
+            {m}
+          </button>
+        ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-1">
         {chatMessages.length === 0 && (
@@ -640,7 +660,33 @@ function ChatDock() {
               m.role === 'error' && 'mr-4 bg-white text-2xs text-accent-blue shadow-composer',
             )}
           >
+            {m.role === 'user' && m.mode && m.mode !== 'build' && (
+              <span className="mb-0.5 inline-block rounded-full bg-white/20 px-1.5 text-2xs">{m.mode}</span>
+            )}
             <div className="whitespace-pre-wrap break-all">{m.text}</div>
+            {/* multitask 分片报告卡片(数据来自 /api/forge/swarm/execute 真实响应) */}
+            {m.swarm && (
+              <div className="mt-1 space-y-0.5" data-testid="swarm-card">
+                {m.swarm.shards.map((s) => (
+                  <div key={s.shardId} className="flex items-center gap-1 text-2xs">
+                    <span
+                      className={cn(
+                        'inline-block h-1.5 w-1.5 rounded-full',
+                        s.status === 'done' ? 'bg-accent-green' : 'bg-red-500',
+                      )}
+                    />
+                    <span>{s.shardId}</span>
+                    <span className="text-muted-faint">
+                      {s.status} ok={s.okCount} err={s.errorCount}
+                    </span>
+                  </div>
+                ))}
+                <div className="border-t border-line-soft pt-0.5 text-2xs text-muted-faint">
+                  聚合 {m.swarm.aggregate.succeeded}/{m.swarm.aggregate.totalItems} 成功 ·{' '}
+                  {m.swarm.aggregate.failed} 失败 · disjoint={String(m.swarm.aggregate.disjoint)}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -652,7 +698,7 @@ function ChatDock() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') send();
             }}
-            placeholder="Ask the engine..."
+            placeholder={mode === 'multitask' ? '批量任务:如「给全部关卡块生成碰撞体」' : 'Ask the engine...'}
             className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted-faint"
           />
           <button type="button" title="Send" className={iconBtn} onClick={send}>

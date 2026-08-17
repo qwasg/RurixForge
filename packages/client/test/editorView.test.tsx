@@ -100,4 +100,72 @@ describe('<EditorView />', () => {
       await screen.findByText((_, el) => el?.textContent === 'mock-gpu · draws 1 · frames 1 · px 0'),
     ).toBeInTheDocument();
   });
+
+  it('Composer 五模式切换 + multitask 分片卡片渲染(F3 wave.4 G-F3-4)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockForgeBackend(
+        {
+          entity_list: {
+            entities: [
+              {
+                id: 1,
+                name: 'Cube',
+                transform: { translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+                components: [],
+              },
+            ],
+          },
+          scene_summary: {
+            name: 'Demo',
+            entityCount: 1,
+            playState: 'edit',
+            render: { frames: 3, lastTris: 1, lastNonZeroPixels: 42 },
+          },
+          play_state: { state: 'edit' },
+          host_events: [],
+          component_list_types: [],
+          viewport_get_camera: { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 },
+        },
+        {
+          '/api/forge/swarm/execute': {
+            shardType: 'scene-partition',
+            shards: [
+              { shardId: 'shard-1', status: 'done', okCount: 1, errorCount: 0 },
+              { shardId: 'shard-2', status: 'done', okCount: 0, errorCount: 0 },
+            ],
+            aggregate: { totalItems: 1, succeeded: 1, failed: 0, disjoint: true, consistent: true },
+          },
+        },
+      ),
+    );
+
+    render(<EditorView />);
+    // 展开 Chat dock
+    fireEvent.click(screen.getByTitle('Toggle Chat'));
+    const modes = await screen.findByTestId('composer-modes');
+    // 五模式齐全
+    expect(modes.querySelectorAll('button')).toHaveLength(5);
+
+    // 切 multitask:选中态 + placeholder 随模式变化
+    const mtBtn = modes.querySelector('[data-mode="multitask"]') as HTMLButtonElement;
+    fireEvent.click(mtBtn);
+    expect(mtBtn.className).toContain('bg-ink');
+    expect(
+      screen.getByPlaceholderText('批量任务:如「给全部关卡块生成碰撞体」'),
+    ).toBeInTheDocument();
+
+    // 发送 → 分片卡片渲染分片进度与聚合结论(数据来自 /swarm/execute 响应)
+    fireEvent.change(screen.getByPlaceholderText('批量任务:如「给全部关卡块生成碰撞体」'), {
+      target: { value: '给全部关卡块生成碰撞体' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+
+    const card = await screen.findByTestId('swarm-card');
+    expect(card).toHaveTextContent('shard-1');
+    expect(card).toHaveTextContent('done ok=1 err=0');
+    expect(card).toHaveTextContent('聚合 1/1 成功 · 0 失败 · disjoint=true');
+    // user 消息带模式徽标(切换器按钮 + 徽标 = 至少 2 处 multitask 文本)
+    expect(screen.getAllByText('multitask').length).toBeGreaterThanOrEqual(2);
+  });
 });

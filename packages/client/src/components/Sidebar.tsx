@@ -400,6 +400,7 @@ export default function Sidebar() {
         <button
           type="button"
           title="Settings"
+          onClick={() => useAppStore.getState().openSettings()}
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-faint transition-colors hover:bg-panel-hover hover:text-muted"
         >
           <Settings size={15} strokeWidth={1.8} />

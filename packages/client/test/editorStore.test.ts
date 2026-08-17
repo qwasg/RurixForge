@@ -137,6 +137,82 @@ describe('editorStore', () => {
     expect(s.chatOpen).toBe(true); // 清除预填不回收面板
   });
 
+  // ---- F3 wave.4:Composer 五模式载荷 + multitask 分片卡片 ----
+
+  it('sendChat:选中模式随发送载荷(user 消息记录 mode)', async () => {
+    fetchMock = mockForgeBackend({
+      scene_summary: {
+        name: 'Demo',
+        entityCount: 1,
+        playState: 'edit',
+        render: { frames: 1, lastTris: 1, lastNonZeroPixels: 1 },
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    for (const mode of ['build', 'plan', 'debug', 'ask'] as const) {
+      await useEditorStore.getState().sendChat(`hello ${mode}`, mode);
+    }
+    const users = useEditorStore.getState().chatMessages.filter((m) => m.role === 'user');
+    expect(users.map((m) => m.mode)).toEqual(['build', 'plan', 'debug', 'ask']);
+  });
+
+  it('sendChat multitask:碰撞模板 → /swarm/execute 载荷 + 分片卡片消息', async () => {
+    const executeCalls: Array<Record<string, unknown>> = [];
+    fetchMock = mockForgeBackend(
+      { entity_list: { entities: [CUBE] } },
+      {
+        '/api/forge/swarm/execute': (init?: { body?: string }) => {
+          executeCalls.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>);
+          return {
+            shardType: 'scene-partition',
+            shards: [{ shardId: 'shard-1', status: 'done', okCount: 1, errorCount: 0 }],
+            aggregate: { totalItems: 1, succeeded: 1, failed: 0, disjoint: true, consistent: true },
+          };
+        },
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ entities: [CUBE] });
+
+    await useEditorStore.getState().sendChat('给全部关卡块生成碰撞体', 'multitask');
+
+    // /swarm/execute 载荷:scene-partition + 全部实体 id + add_component RigidBody
+    expect(executeCalls).toHaveLength(1);
+    expect(executeCalls[0].shardType).toBe('scene-partition');
+    expect(executeCalls[0].items).toEqual([CUBE.id]);
+    expect(executeCalls[0].shardCount).toBe(4);
+    expect((executeCalls[0].operation as { type: string }).type).toBe('RigidBody');
+
+    // 分片卡片消息:assistant 带 swarm 报告;multitask 后 reload 拉实体
+    const msgs = useEditorStore.getState().chatMessages;
+    const card = msgs.find((m) => m.swarm);
+    expect(card).toBeDefined();
+    expect(card!.swarm!.aggregate).toMatchObject({ totalItems: 1, succeeded: 1, failed: 0 });
+    expect(card!.text).toContain('1/1');
+    const tools = fetchMock.mock.calls.map((c) => {
+      try {
+        return (JSON.parse((c[1] as { body: string }).body) as { tool?: string }).tool;
+      } catch {
+        return undefined;
+      }
+    });
+    expect(tools).toContain('mcp__engine-scene__entity_list');
+  });
+
+  it('sendChat multitask:模板未命中 → error 消息如实,不伪造执行', async () => {
+    fetchMock = mockForgeBackend({});
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ entities: [CUBE] });
+
+    await useEditorStore.getState().sendChat('给我讲个故事', 'multitask');
+    const msgs = useEditorStore.getState().chatMessages;
+    const err = msgs[msgs.length - 1];
+    expect(err.role).toBe('error');
+    expect(err.text).toContain('multitask 模板未命中');
+    expect(msgs.some((m) => m.swarm)).toBe(false);
+  });
+
   // ---- F1 wave.2:viewport 相机 / 点选 / gizmo ----
 
   const CAM = { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 };

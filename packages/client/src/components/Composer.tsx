@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowUp, Check, ChevronDown, Mic, Plus } from 'lucide-react';
 import { AGENT_MODEL } from '../lib/mock';
 import { cn } from '../lib/cn';
+import { COMPOSER_MODES, type ComposerMode } from '../lib/editorStore';
 
 export interface ComposerProps {
   autoFocus?: boolean;
   placeholder?: string;
-  onSend?: (text: string) => void;
+  onSend?: (text: string, mode: ComposerMode) => void;
 }
 
 /* 模型下拉的假选项(首项为当前模型,见 mock.AGENT_MODEL) */
@@ -23,9 +24,12 @@ export default function Composer({
 }: ComposerProps) {
   const [value, setValue] = useState('');
   const [model, setModel] = useState(AGENT_MODEL);
+  const [mode, setMode] = useState<ComposerMode>('build');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const modeMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (autoFocus) taRef.current?.focus();
@@ -58,11 +62,30 @@ export default function Composer({
     };
   }, [menuOpen]);
 
+  /* 点击外部 / Esc 关闭模式菜单 */
+  useEffect(() => {
+    if (!modeMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
+        setModeMenuOpen(false);
+      }
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setModeMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [modeMenuOpen]);
+
   const canSend = value.trim().length > 0;
 
   const send = () => {
     if (!canSend) return;
-    onSend?.(value.trim());
+    onSend?.(value.trim(), mode);
     setValue('');
   };
 
@@ -93,6 +116,48 @@ export default function Composer({
         >
           <Plus className="h-4 w-4" />
         </button>
+
+        {/* composer 五模式切换器(04 §3 / 07 §5) */}
+        <div className="relative" ref={modeMenuRef}>
+          <button
+            type="button"
+            data-testid="composer-mode-select"
+            onClick={() => setModeMenuOpen((v) => !v)}
+            className="flex items-center gap-1 rounded-full bg-panel-hover px-2 py-1 text-xs font-medium text-ink transition-colors hover:bg-panel-active"
+          >
+            <span>{mode}</span>
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 text-muted transition-transform',
+                modeMenuOpen && 'rotate-180',
+              )}
+            />
+          </button>
+          {modeMenuOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-white p-1 shadow-pop">
+              {COMPOSER_MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  data-mode={m}
+                  onClick={() => {
+                    setMode(m);
+                    setModeMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-ink-soft transition-colors hover:bg-panel-hover"
+                >
+                  <Check
+                    className={cn(
+                      'h-3.5 w-3.5 shrink-0',
+                      m === mode ? 'text-ink' : 'text-transparent',
+                    )}
+                  />
+                  <span>{m}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="relative" ref={menuRef}>
           <button

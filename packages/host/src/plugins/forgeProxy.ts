@@ -3,7 +3,9 @@ import type { PluginFn } from '../ctx.js';
 import type { Logger } from './logger.js';
 
 /**
- * forgeProxy 插件:/api/forge/mcp/* 与 /api/forge/llm/* 反向代理到 forge-agentd。
+ * forgeProxy 插件:/api/forge/mcp/* 与 /api/forge/llm/* 反向代理到 forge-agentd;
+ * F3 扩:agentd REST 面(skills/subagents/swarm/proposals)同代理——desktop/web 场景
+ * client 只认 host 单源(3080),agentd REST 必须经 host 透传。
  * 方法与 body 透传;上游不可达 → 502 {error:{code:"UPSTREAM_UNREACHABLE"}}。
  * host 自有 /api/forge/health、/api/forge/sessions 不走代理(前缀不重叠)。
  */
@@ -13,7 +15,15 @@ export interface ForgeProxy {
 }
 
 const DEFAULT_UPSTREAM = 'http://127.0.0.1:8103';
-const PROXY_PREFIXES = ['/api/forge/mcp', '/api/forge/llm'];
+const PROXY_PREFIXES = [
+  '/api/forge/mcp',
+  '/api/forge/llm',
+  // F3:agentd REST 面(skills 管理 / subagent 清单 / swarm 分片 / F2 proposals)
+  '/api/forge/skills',
+  '/api/forge/subagents',
+  '/api/forge/swarm',
+  '/api/forge/proposals',
+];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
 function matches(pathname: string): boolean {

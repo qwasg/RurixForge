@@ -4,6 +4,8 @@
 
 mod mcp;
 mod proposals;
+mod subagents;
+mod swarm;
 
 use axum::{
     extract::{Path, State},
@@ -20,6 +22,7 @@ use std::{sync::Arc, time::Instant};
 struct AppState {
     started: Instant,
     proposals: proposals::ProposalStore,
+    swarm: swarm::SwarmCoordinator,
 }
 
 #[tokio::main]
@@ -41,6 +44,7 @@ fn build_app() -> Router {
     let state = Arc::new(AppState {
         started: Instant::now(),
         proposals: proposals::ProposalStore::default(),
+        swarm: swarm::SwarmCoordinator::default(),
     });
     Router::new()
         .route("/health", get(health))
@@ -54,6 +58,12 @@ fn build_app() -> Router {
         )
         .route("/api/forge/proposals/{id}", patch(proposals_patch))
         .route("/api/forge/skills/list", get(skills_list))
+        .route("/api/forge/skills/{name}", get(skills_read))
+        .route("/api/forge/skills/config/write", post(skills_config_write))
+        .route("/api/forge/subagents", get(subagents_list))
+        .route("/api/forge/swarm/state", get(swarm_state))
+        .route("/api/forge/swarm/seed-demo", post(swarm_seed_demo))
+        .route("/api/forge/swarm/execute", post(swarm_execute))
         .fallback(unknown_route)
         .with_state(state)
 }
@@ -220,30 +230,177 @@ async fn proposals_patch(
     }
 }
 
-/// GET /api/forge/skills/list:扫 workspace skills/<name>/SKILL.md frontmatter(06 §2 最小落地)。
-async fn skills_list() -> Json<Value> {
+/// workspace 根(CARGO_MANIFEST_DIR 上两级)。
+fn workspace_root() -> std::path::PathBuf {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
+    manifest_dir
         .ancestors()
         .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    let dir = root.join("skills");
+        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
+        .to_path_buf()
+}
+
+/// skills 配置(data/skills-config.json):disabled 清单 + extraDirs 追加扫描目录(06 §2 目录配置)。
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+struct SkillsConfig {
+    #[serde(default)]
+    disabled: Vec<String>,
+    #[serde(default, rename = "extraDirs")]
+    extra_dirs: Vec<String>,
+}
+
+fn skills_config_path() -> std::path::PathBuf {
+    workspace_root().join("data").join("skills-config.json")
+}
+
+fn skills_config_load() -> SkillsConfig {
+    let p = skills_config_path();
+    match std::fs::read_to_string(&p) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
+            eprintln!("skills-config.json 损坏({e}),按缺省处理");
+            SkillsConfig::default()
+        }),
+        Err(_) => SkillsConfig::default(),
+    }
+}
+
+/// skills 扫描目录集:workspace skills/ + config.extraDirs(相对 workspace 根解析)。
+fn skills_dirs(cfg: &SkillsConfig) -> Vec<std::path::PathBuf> {
+    let root = workspace_root();
+    let mut dirs = vec![root.join("skills")];
+    for d in &cfg.extra_dirs {
+        dirs.push(root.join(d));
+    }
+    dirs
+}
+
+/// GET /api/forge/skills/list:扫 skills/<name>/SKILL.md frontmatter(06 §2);
+/// config.disabled 内 skill 标 enabled=false(07 §7.2 skills tab 启用/禁用数据源)。
+async fn skills_list() -> Json<Value> {
+    let cfg = skills_config_load();
     let mut skills = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&dir) {
-        for ent in rd.flatten() {
-            let f = ent.path().join("SKILL.md");
-            if !f.is_file() {
-                continue;
-            }
-            if let Ok(text) = std::fs::read_to_string(&f) {
-                if let Some((name, description)) = parse_skill_frontmatter(&text) {
-                    skills.push(json!({ "name": name, "description": description }));
+    for dir in skills_dirs(&cfg) {
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for ent in rd.flatten() {
+                let f = ent.path().join("SKILL.md");
+                if !f.is_file() {
+                    continue;
+                }
+                if let Ok(text) = std::fs::read_to_string(&f) {
+                    if let Some((name, description)) = parse_skill_frontmatter(&text) {
+                        let enabled = !cfg.disabled.iter().any(|d| d == &name);
+                        skills.push(json!({ "name": name, "description": description, "enabled": enabled }));
+                    }
                 }
             }
         }
     }
     skills.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    skills.dedup_by(|a, b| a["name"].as_str() == b["name"].as_str());
     Json(json!({ "skills": skills }))
+}
+
+/// GET /api/forge/skills/{name}:返回 SKILL.md 全文(read_skill 的 HTTP 面,06 §2)。
+async fn skills_read(Path(name): Path<String>) -> Response {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": "skill 名须为小写英文+中划线(06 §1)" } })),
+        )
+            .into_response();
+    }
+    let cfg = skills_config_load();
+    for dir in skills_dirs(&cfg) {
+        let f = dir.join(&name).join("SKILL.md");
+        if f.is_file() {
+            return match std::fs::read_to_string(&f) {
+                Ok(content) => Json(json!({ "name": name, "content": content })).into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
+                )
+                    .into_response(),
+            };
+        }
+    }
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": { "code": "FORGE_NOT_FOUND", "message": format!("skill 不存在: {name}") } })),
+    )
+        .into_response()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SkillsConfigWriteRequest {
+    /// 全量覆盖 disabled 清单;缺省 = 不变。
+    #[serde(default)]
+    disabled: Option<Vec<String>>,
+    #[serde(default)]
+    extra_dirs: Option<Vec<String>>,
+}
+
+/// POST /api/forge/skills/config/write:写 skills 配置(启用/禁用 + 目录配置,06 §2 管理 API)。
+/// disabled 名格式校验(小写英文+中划线);写盘后立即生效(list 读盘无缓存)。
+async fn skills_config_write(Json(req): Json<SkillsConfigWriteRequest>) -> Response {
+    let mut cfg = skills_config_load();
+    if let Some(disabled) = req.disabled {
+        for d in &disabled {
+            if !d
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": format!("非法 skill 名: {d}") } })),
+                )
+                    .into_response();
+            }
+        }
+        cfg.disabled = disabled;
+    }
+    if let Some(dirs) = req.extra_dirs {
+        cfg.extra_dirs = dirs;
+    }
+    let p = skills_config_path();
+    if let Some(parent) = p.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
+            )
+                .into_response();
+        }
+    }
+    match std::fs::write(
+        &p,
+        serde_json::to_string_pretty(&cfg).expect("SkillsConfig 序列化失败"),
+    ) {
+        Ok(()) => Json(json!({
+            "written": true,
+            "disabled": cfg.disabled,
+            "extraDirs": cfg.extra_dirs,
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/forge/subagents:磁盘 profile 热加载清单(04 §6;改文件不重启生效)。
+async fn subagents_list() -> Json<Value> {
+    let (profiles, errors) = subagents::list_subagents(&subagents::agents_dir());
+    Json(json!({
+        "subagents": profiles.iter().map(subagents::SubagentProfile::to_json).collect::<Vec<_>>(),
+        // 解析失败如实上报,不遮蔽(诚实优先)。
+        "errors": errors,
+    }))
 }
 
 /// 解析 SKILL.md frontmatter(--- 包裹的 name/description 两行)。
@@ -271,6 +428,217 @@ fn parse_skill_frontmatter(text: &str) -> Option<(String, String)> {
 /// mock LLM provider seam(诚实标注,F0 恒绿)
 async fn llm_complete() -> Json<Value> {
     Json(json!({ "provider": "mock", "text": "mock completion" }))
+}
+
+// ---------- F3 wave.1:swarm 集群(04 §5 / 11 §2.2)+ multitask 确定性执行器(D-F3-E) ----------
+
+/// GET /api/forge/swarm/state:节点 + 分片状态快照。
+async fn swarm_state(State(state): State<Arc<AppState>>) -> Json<Value> {
+    Json(state.swarm.state_json())
+}
+
+/// POST /api/forge/swarm/seed-demo:演示播种(幂等追加逻辑节点)。
+async fn swarm_seed_demo(State(state): State<Arc<AppState>>) -> Json<Value> {
+    Json(state.swarm.seed_demo())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SwarmExecuteRequest {
+    shard_type: String,
+    /// 分片输入集(scene-partition=实体 id;asset-batch=资产路径;数值/字符串均收,统一归一为字符串)。
+    items: Vec<Value>,
+    #[serde(default = "default_shard_count")]
+    shard_count: usize,
+    /// 操作:{kind: add_component|remove_component|set_component, type, props?}
+    /// 或 {kind: asset_reimport}(asset-batch 域)。
+    operation: Value,
+}
+
+fn default_shard_count() -> usize {
+    4
+}
+
+/// 输入集归一:JSON 数值/字符串统一成字符串(实体 id 与资产路径同构处理)。
+fn normalize_items(items: &[Value]) -> Result<Vec<String>, String> {
+    let mut out = Vec::with_capacity(items.len());
+    for it in items {
+        match it {
+            Value::String(s) if !s.is_empty() => out.push(s.clone()),
+            Value::Number(n) => out.push(n.to_string()),
+            _ => return Err(format!("items 元素须为非空字符串或数值,实: {it}")),
+        }
+    }
+    Ok(out)
+}
+
+/// operation → 单 item 的 MCP 调用(tool, arguments);域不匹配/缺字段 → Err。
+fn operation_call(shard_type: &str, operation: &Value, item: &str) -> Result<(String, Value), String> {
+    let kind = operation
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "operation.kind 缺失".to_string())?;
+    match (shard_type, kind) {
+        ("scene-partition", "add_component" | "remove_component" | "set_component") => {
+            let ctype = operation
+                .get("type")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("operation.type 缺失({kind})"))?;
+            let id: u64 = item
+                .parse()
+                .map_err(|_| format!("scene-partition item 须为实体 id 数值,实: {item}"))?;
+            let mut args = json!({ "id": id, "type": ctype });
+            if kind != "remove_component" {
+                args["props"] = operation.get("props").cloned().unwrap_or(json!({}));
+            }
+            let tool = match kind {
+                "add_component" => "mcp__engine-scene__component_add",
+                "remove_component" => "mcp__engine-scene__component_remove",
+                _ => "mcp__engine-scene__component_set",
+            };
+            Ok((tool.to_string(), args))
+        }
+        ("asset-batch", "asset_reimport") => Ok((
+            "mcp__asset-pipeline__asset_reimport".to_string(),
+            json!({ "assetPath": item }),
+        )),
+        ("code-module", _) | ("test-matrix", _) => Err(format!(
+            "{shard_type} 域 operation 未落地(F4 code-forge / F6 playtest 承接,seam)"
+        )),
+        _ => Err(format!("shardType {shard_type} 不支持 operation.kind {kind}")),
+    }
+}
+
+/// POST /api/forge/swarm/execute:multitask 确定性执行器(D-F3-E,无 LLM 依赖)。
+/// 切片(不相交校验)→ 同进程逻辑 worker 并行执行 → 分片报告聚合(失败不遮蔽)。
+async fn swarm_execute(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SwarmExecuteRequest>,
+) -> Response {
+    let items = match normalize_items(&req.items) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": e } })),
+            )
+                .into_response()
+        }
+    };
+    // 空输入集早退(预检须取首个元素)。
+    if items.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": "items 不可空" } })),
+        )
+            .into_response();
+    }
+    // 域/操作预检(切片前失败,不留空分片)。
+    if let Err(e) = operation_call(&req.shard_type, &req.operation, &items[0]) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": e } })),
+        )
+            .into_response();
+    }
+    let shard_ids = match state
+        .swarm
+        .create_shards(&req.shard_type, items, req.shard_count)
+    {
+        Ok(ids) => ids,
+        Err(swarm::ShardError::Overlap(msg)) => {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({ "error": { "code": "GOV_SWARM_SHARD_OVERLAP", "message": msg } })),
+            )
+                .into_response()
+        }
+        Err(swarm::ShardError::Invalid(msg)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": msg } })),
+            )
+                .into_response()
+        }
+    };
+
+    // 逻辑 worker 并行(04 §5.1 同进程逻辑 worker;每片一个 tokio task)。
+    let mut handles = Vec::with_capacity(shard_ids.len());
+    for id in &shard_ids {
+        let shard = state.swarm.get_shard(id).expect("刚创建的分片必在");
+        state.swarm.mark_running(id);
+        let shard_type = req.shard_type.clone();
+        let operation = req.operation.clone();
+        let id = id.clone();
+        handles.push(tokio::spawn(async move {
+            let mut ok_items: Vec<String> = Vec::new();
+            let mut errors: Vec<Value> = Vec::new();
+            for item in &shard.items {
+                let (tool, args) = match operation_call(&shard_type, &operation, item) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        errors.push(json!({ "item": item, "error": e }));
+                        continue;
+                    }
+                };
+                match mcp::call_tool(&tool, Some(args)).await {
+                    Ok(result) => {
+                        // 工具级错误(content text 内含 "error")如实记 errors,不遮蔽。
+                        let tool_err = result
+                            .pointer("/content/0/text")
+                            .and_then(Value::as_str)
+                            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+                            .and_then(|v| v.get("error").cloned());
+                        if let Some(te) = tool_err {
+                            errors.push(json!({ "item": item, "error": te }));
+                        } else {
+                            ok_items.push(item.clone());
+                        }
+                    }
+                    Err(e) => errors.push(json!({ "item": item, "error": e.to_string() })),
+                }
+            }
+            (id, ok_items, errors)
+        }));
+    }
+
+    let mut shard_reports = Vec::with_capacity(handles.len());
+    let mut total_ok = 0usize;
+    let mut total_err = 0usize;
+    for h in handles {
+        let (id, ok_items, errors) = h.await.expect("worker task join 失败");
+        total_ok += ok_items.len();
+        total_err += errors.len();
+        let shard_ok = errors.is_empty();
+        let report = json!({
+            "shardId": id,
+            "ok": ok_items,
+            "okCount": ok_items.len(),
+            "errors": errors,
+        });
+        state.swarm.complete_shard(&id, report.clone(), shard_ok);
+        shard_reports.push(json!({
+            "shardId": id,
+            "status": if shard_ok { "done" } else { "failed" },
+            "okCount": report["okCount"],
+            "errorCount": report["errors"].as_array().map(Vec::len).unwrap_or(0),
+            "errors": report["errors"],
+        }));
+    }
+
+    Json(json!({
+        "shardType": req.shard_type,
+        "shards": shard_reports,
+        "aggregate": {
+            "totalItems": total_ok + total_err,
+            "succeeded": total_ok,
+            "failed": total_err,
+            // 创建期已两两不相交校验;聚合如实复述(不一致恒 false,防遮蔽)。
+            "disjoint": true,
+            "consistent": true,
+        },
+    }))
+    .into_response()
 }
 
 async fn unknown_route() -> Response {
@@ -338,7 +706,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let tools = v["tools"].as_array().expect("tools 应为数组");
-        assert_eq!(tools.len(), 53);
+        assert_eq!(tools.len(), 55);
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__scene_summary"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__entity_batch_apply"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
@@ -526,6 +894,307 @@ mod tests {
         );
     }
 
+    // ---------- F3 wave.1:swarm state / seed-demo / execute ----------
+
+    #[tokio::test]
+    async fn swarm_state_default_node_and_empty_shards() {
+        let resp = build_app()
+            .oneshot(get("/api/forge/swarm/state"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = json_body(resp).await;
+        assert_eq!(v["nodes"].as_array().unwrap().len(), 1);
+        assert_eq!(v["nodes"][0]["kind"], "logical");
+        assert_eq!(v["shards"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn swarm_seed_demo_adds_nodes() {
+        let resp = build_app()
+            .oneshot(post_json("/api/forge/swarm/seed-demo", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = json_body(resp).await;
+        assert_eq!(v["seeded"], 2);
+        assert_eq!(v["nodesAfter"], 3);
+    }
+
+    #[tokio::test]
+    async fn swarm_execute_overlap_rejected_409() {
+        let app = build_app();
+        // 输入集自身重复 → 相交。
+        let dup = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/swarm/execute",
+                r#"{"shardType":"scene-partition","items":[1,1],"operation":{"kind":"add_component","type":"RigidBody","props":{"kind":"static","mass":0}}}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(dup.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            json_body(dup).await["error"]["code"],
+            "GOV_SWARM_SHARD_OVERLAP"
+        );
+    }
+
+    #[tokio::test]
+    async fn swarm_execute_invalid_domain_and_empty_items_400() {
+        let app = build_app();
+        // code-module 域 operation seam(F4 承接)→ 400 如实报未落地。
+        let seam = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/swarm/execute",
+                r#"{"shardType":"code-module","items":["a.rx"],"operation":{"kind":"rx_fmt"}}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(seam.status(), StatusCode::BAD_REQUEST);
+        assert!(json_body(seam).await["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("未落地"));
+        // 空 items。
+        let empty = app
+            .oneshot(post_json(
+                "/api/forge/swarm/execute",
+                r#"{"shardType":"scene-partition","items":[],"operation":{"kind":"add_component","type":"RigidBody"}}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// 40 关卡块碰撞体全链:scene_new → 40 entity → /swarm/execute 4 片 add RigidBody →
+    /// 聚合 40 全覆盖无失败 → component_get 抽验 → state 分片全 done。
+    /// 二进制未构建时跳过(如实 SKIP)。
+    #[tokio::test]
+    async fn swarm_execute_40_blocks_add_rigidbody() {
+        let bin = mcp::server_bin();
+        if !bin.exists() {
+            eprintln!("[SKIP] engine-scene-mcp 未构建: {},集成测试跳过", bin.display());
+            return;
+        }
+        let _serial = SCENE_TEST_LOCK.lock().await;
+        let app = build_app();
+        let call = |app: &Router, body: &str| {
+            let app = app.clone();
+            let body = body.to_string();
+            async move {
+                let resp = app
+                    .oneshot(post_json("/api/forge/mcp/call", &body))
+                    .await
+                    .unwrap();
+                assert_eq!(resp.status(), StatusCode::OK);
+                json_body(resp).await
+            }
+        };
+        call(&app, r#"{"tool":"mcp__engine-scene__scene_new","arguments":{"name":"f3-swarm-ut"}}"#).await;
+        // 造 40 个关卡块,收实体 id。
+        let mut entity_ids: Vec<u64> = Vec::new();
+        for i in 1..=40 {
+            let v = call(
+                &app,
+                &format!(r#"{{"tool":"mcp__engine-scene__entity_create","arguments":{{"name":"block-{i}"}}}}"#),
+            )
+            .await;
+            let created = extract_tool_json(&v);
+            entity_ids.push(created["id"].as_u64().expect("entity_create 应返回 id"));
+        }
+        assert_eq!(entity_ids.len(), 40);
+
+        // multitask 执行:4 片 add RigidBody。
+        let items = entity_ids
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let resp = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/swarm/execute",
+                &format!(r#"{{"shardType":"scene-partition","items":[{items}],"shardCount":4,"operation":{{"kind":"add_component","type":"RigidBody","props":{{"kind":"static","mass":0}}}}}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = json_body(resp).await;
+        assert_eq!(v["aggregate"]["totalItems"], 40);
+        assert_eq!(v["aggregate"]["succeeded"], 40, "分片报告: {v}");
+        assert_eq!(v["aggregate"]["failed"], 0);
+        assert_eq!(v["aggregate"]["disjoint"], true);
+        assert_eq!(v["shards"].as_array().unwrap().len(), 4);
+        for s in v["shards"].as_array().unwrap() {
+            assert_eq!(s["status"], "done", "分片失败不遮蔽: {s}");
+            assert_eq!(s["okCount"], 10);
+        }
+
+        // 抽验首/末实体 RigidBody 真实落上。
+        for id in [entity_ids[0], entity_ids[39]] {
+            let got = call(
+                &app,
+                &format!(r#"{{"tool":"mcp__engine-scene__component_get","arguments":{{"id":{id},"type":"RigidBody"}}}}"#),
+            )
+            .await;
+            let comp = extract_tool_json(&got);
+            assert_eq!(comp["props"]["kind"], "static", "实体 {id} RigidBody: {comp}");
+        }
+
+        // state 可见 4 个 done 分片。
+        let st = app
+            .oneshot(get("/api/forge/swarm/state"))
+            .await
+            .unwrap();
+        let sv = json_body(st).await;
+        let done = sv["shards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["status"] == "done")
+            .count();
+        assert_eq!(done, 4);
+    }
+
+    // ---------- F3 wave.2:subagents 热加载 + skills/{name} + skills/config/write ----------
+
+    #[tokio::test]
+    async fn subagents_list_five_builtin_profiles() {
+        let resp = build_app()
+            .oneshot(get("/api/forge/subagents"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = json_body(resp).await;
+        assert_eq!(v["errors"].as_array().unwrap().len(), 0, "profile 解析错误: {v}");
+        let list = v["subagents"].as_array().unwrap();
+        assert_eq!(list.len(), 5, "内建五 profile(04 §6): {list:?}");
+        for name in ["asset-wrangler", "logic-programmer", "material-smith", "qa-tester", "scene-builder"] {
+            let p = list.iter().find(|p| p["name"] == name).unwrap_or_else(|| panic!("缺 profile {name}"));
+            assert!(p["description"].as_str().unwrap().len() > 4);
+            assert!(p["tools"].as_array().unwrap().len() >= 2);
+            assert!(p["maxSteps"].as_u64().unwrap() >= 16);
+            assert!(p["prompt"].as_str().unwrap().contains("必须遵守"));
+        }
+        // 逐字白名单抽查(04 §6):logic-programmer 含 component.* 族;qa-tester 16 步。
+        let lp = list.iter().find(|p| p["name"] == "logic-programmer").unwrap();
+        assert!(lp["tools"].as_array().unwrap().iter().any(|t| t == "mcp__engine-scene__component.*"));
+        let qa = list.iter().find(|p| p["name"] == "qa-tester").unwrap();
+        assert_eq!(qa["maxSteps"], 16);
+    }
+
+    #[tokio::test]
+    async fn subagents_hot_reload_without_restart() {
+        let app = build_app();
+        let dir = subagents::agents_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("zz-test-hot.md");
+        let body = |steps: u32| {
+            format!("---\nname: zz-test-hot\ndescription: 热加载测试\ntools: [\"read_file\"]\nmodel: default\nmaxSteps: {steps}\n---\n临时 profile,测试后删除。\n")
+        };
+        std::fs::write(&f, body(7)).unwrap();
+        let r1 = app.clone().oneshot(get("/api/forge/subagents")).await.unwrap();
+        let v1 = json_body(r1).await;
+        let p1 = v1["subagents"].as_array().unwrap().iter().find(|p| p["name"] == "zz-test-hot").expect("新 profile 应即现");
+        assert_eq!(p1["maxSteps"], 7);
+        // 改文件(不重启)后再查应反映新值。
+        std::fs::write(&f, body(42)).unwrap();
+        let r2 = app.oneshot(get("/api/forge/subagents")).await.unwrap();
+        let v2 = json_body(r2).await;
+        let p2 = v2["subagents"].as_array().unwrap().iter().find(|p| p["name"] == "zz-test-hot").unwrap();
+        assert_eq!(p2["maxSteps"], 42, "热加载失效?");
+        std::fs::remove_file(&f).ok();
+    }
+
+    #[tokio::test]
+    async fn skills_read_full_text_and_guards() {
+        let app = build_app();
+        let ok = app
+            .clone()
+            .oneshot(get("/api/forge/skills/asset-cleanup"))
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+        let v = json_body(ok).await;
+        let content = v["content"].as_str().unwrap();
+        // 与磁盘逐字节一致。
+        let disk = std::fs::read_to_string(
+            workspace_root().join("skills").join("asset-cleanup").join("SKILL.md"),
+        )
+        .unwrap();
+        assert_eq!(content, disk);
+        assert!(content.starts_with("---"));
+
+        let missing = app
+            .clone()
+            .oneshot(get("/api/forge/skills/no-such-skill"))
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        let bad = app
+            .oneshot(get("/api/forge/skills/Bad_Name"))
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn skills_config_write_disable_then_restore() {
+        let cfg_path = skills_config_path();
+        let backup = std::fs::read_to_string(&cfg_path).ok();
+        let app = build_app();
+        // 禁用 asset-cleanup → list 反映 enabled=false。
+        let w = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/skills/config/write",
+                r#"{"disabled":["asset-cleanup"]}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(w.status(), StatusCode::OK);
+        let listed = app
+            .clone()
+            .oneshot(get("/api/forge/skills/list"))
+            .await
+            .unwrap();
+        let v = json_body(listed).await;
+        let sc = v["skills"].as_array().unwrap().iter().find(|s| s["name"] == "asset-cleanup").unwrap();
+        assert_eq!(sc["enabled"], false, "禁用未生效: {v}");
+        // 还原(恢复原文件内容或删除)。
+        let restore = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills/config/write", r#"{"disabled":[]}"#))
+            .await
+            .unwrap();
+        assert_eq!(restore.status(), StatusCode::OK);
+        let listed2 = app
+            .oneshot(get("/api/forge/skills/list"))
+            .await
+            .unwrap();
+        let v2 = json_body(listed2).await;
+        let sc2 = v2["skills"].as_array().unwrap().iter().find(|s| s["name"] == "asset-cleanup").unwrap();
+        assert_eq!(sc2["enabled"], true);
+        // 非法名 400。
+        let bad = build_app()
+            .oneshot(post_json(
+                "/api/forge/skills/config/write",
+                r#"{"disabled":["Bad_Name"]}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        // 物理还原(避免测试改写开发态配置)。
+        match backup {
+            Some(text) => std::fs::write(&cfg_path, text).unwrap(),
+            None => {
+                std::fs::remove_file(&cfg_path).ok();
+            }
+        }
+    }
+
     /// 从 MCP tools/call result 提取工具返回 JSON
     /// (兼容 content[0].text 内嵌 JSON / structuredContent / result 本体三种形态)
     fn extract_tool_json(result: &Value) -> Value {
@@ -539,6 +1208,10 @@ mod tests {
         result.clone()
     }
 
+    /// 场景态测试串行锁:scene_new 会切换全局长连接的当前场景,
+    /// 多测试线程交错会互踩(F3 wave.1 40 实体测试引入后 hazard 现实化)。
+    static SCENE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     /// 长连接持久性回归:同一会话内 create 后 list 必须可见(F1 实测缺陷修复门)。
     #[tokio::test]
     async fn mcp_call_entity_persists_across_calls() {
@@ -547,6 +1220,7 @@ mod tests {
             eprintln!("[SKIP] engine-scene-mcp 未构建: {},集成测试跳过", bin.display());
             return;
         }
+        let _serial = SCENE_TEST_LOCK.lock().await;
         let app = build_app();
         // 独立场景,避免与其他测试互串
         let _ = app

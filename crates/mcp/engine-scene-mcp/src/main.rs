@@ -1,4 +1,6 @@
+#![recursion_limit = "256"]
 //! engine-scene-mcp — Forge 引擎场景 MCP 服务器(stdio NDJSON JSON-RPC)。
+//! (F3 wave.3:tools/list 巨型 json! 字面量随工具数增长触及默认递归上限,提额留档。)
 //!
 //! 启动即 autoStart engine-host(路径:env FORGE_ENGINE_HOST_BIN > 默认
 //! <workspace>/target/debug/engine-host.exe);看门狗线程每 500ms host.ping,

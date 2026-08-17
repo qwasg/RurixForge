@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { PINNED_AGENTS, WORKSPACES } from './mock';
 import type { SidebarAgent, Workspace } from './types';
 
-export type Route = 'home' | 'agent' | 'automations' | 'customize' | 'editor';
+export type Route = 'home' | 'agent' | 'automations' | 'customize' | 'editor' | 'settings';
 export type RightPanelView = 'menu' | 'changes' | 'browser' | 'terminal' | 'files';
 
 interface AppState {
@@ -22,6 +22,7 @@ interface AppState {
   openAutomations: () => void;
   openCustomize: () => void;
   openEditor: () => void;
+  openSettings: () => void;
   toggleSidebar: () => void;
   setPaletteOpen: (open: boolean) => void;
   toggleRightPanel: () => void;
@@ -51,6 +52,7 @@ export const useAppStore = create<AppState>((set) => ({
   openAutomations: () => set({ route: 'automations' }),
   openCustomize: () => set({ route: 'customize' }),
   openEditor: () => set({ route: 'editor' }),
+  openSettings: () => set({ route: 'settings' }),
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
   setPaletteOpen: (open) => set({ paletteOpen: open }),
   toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),

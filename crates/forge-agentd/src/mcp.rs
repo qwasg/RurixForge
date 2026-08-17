@@ -16,6 +16,8 @@ use tokio::sync::{Mutex, MutexGuard};
 pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__host_ping",
     "mcp__engine-scene__host_events",
+    // F3 wave.3:debug 三件套——内存事件环排空(场景域事件)
+    "mcp__engine-scene__host_events_drain",
     "mcp__engine-scene__scene_new",
     "mcp__engine-scene__scene_summary",
     "mcp__engine-scene__render_once",
@@ -35,6 +37,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__transform_batch_set",
     "mcp__engine-scene__scene_save",
     "mcp__engine-scene__scene_load",
+    // F3 wave.3:debug 三件套——场景图全量转储
+    "mcp__engine-scene__scene_graph_dump",
     "mcp__engine-scene__scene_diff",
     "mcp__engine-scene__scene_checkpoint",
     "mcp__engine-scene__scene_rollback",

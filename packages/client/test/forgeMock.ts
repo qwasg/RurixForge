@@ -2,9 +2,23 @@ import { vi } from 'vitest';
 
 /** 按工具名路由的假后端:返回 agentd 信封形态(content[0].text 内嵌 JSON)。
  * 工具名含前缀(mcp__engine-scene__/mcp__asset-pipeline__),key 存前缀后的名字。
+ * rest:非 MCP 的 /api/forge/* REST 面(F3 swarm/skills 管理),key = 完整路径,
+ * value 为响应体或 (init) => 响应体(GET 无 body 亦可命中)。
  */
-export function mockForgeBackend(map: Record<string, unknown>) {
+export function mockForgeBackend(
+  map: Record<string, unknown>,
+  rest: Record<string, unknown> = {},
+) {
   return vi.fn(async (_url: unknown, init?: { body?: string }) => {
+    const url = String(_url);
+    if (url in rest) {
+      const v = rest[url];
+      return {
+        ok: true,
+        status: 200,
+        json: async () => (typeof v === 'function' ? (v as (i?: { body?: string }) => unknown)(init) : v),
+      } as Response;
+    }
     const { tool } = JSON.parse(init?.body ?? '{}') as { tool: string };
     const name = tool.replace('mcp__engine-scene__', '').replace('mcp__asset-pipeline__', '');
     if (!(name in map)) throw new Error(`未 mock 的工具: ${name}(full=${tool})`);

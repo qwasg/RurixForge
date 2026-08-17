@@ -143,7 +143,7 @@ fn determinism_save_reload_byte_identical_across_processes() {
     let e3 = create_demo(&mut c1, "丙", 3.0);
     c1.call(
         "component.add",
-        json!({ "id": e3, "type": "Light", "props": { "kind": "point", "color": [1.0, 0.5, 0.25], "intensity": 3.0 } }),
+        json!({ "id": e3, "type": "Light", "props": { "kind": "point", "color": [1.0, 0.5, 0.25], "intensity": 3.0, "castShadow": true } }),
     );
     c1.call("transform.set", json!({ "id": e2, "translation": [2.0, 1.5, -0.5] }));
     c1.call("scene.save", json!({ "path": p1.to_string_lossy() }));

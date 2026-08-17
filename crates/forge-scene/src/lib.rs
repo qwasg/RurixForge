@@ -128,7 +128,7 @@ impl From<serde_json::Error> for SceneError {
 /// 组件字段简表(供 Inspector/agent 发现)。
 pub struct FieldSpec {
     pub name: &'static str,
-    /// 类型标记:string / number / [f32;3] / enum:a|b|c
+    /// 类型标记:string / number / bool / [f32;3] / enum:a|b|c
     pub ty: &'static str,
 }
 
@@ -160,6 +160,8 @@ pub const REGISTRY: &[ComponentSpec] = &[
             FieldSpec { name: "kind", ty: "string" },
             FieldSpec { name: "color", ty: "[f32;3]" },
             FieldSpec { name: "intensity", ty: "number" },
+            // F3(D-F3-B):阴影语义载体;渲染内核不消费(rurix-rt 无阴影贴图面,如实标注)。
+            FieldSpec { name: "castShadow", ty: "bool" },
         ],
     },
     ComponentSpec {
@@ -207,6 +209,7 @@ pub fn validate_props(ctype: &str, props: &Value) -> Result<(), String> {
         let ok = match f.ty {
             "string" => v.is_string(),
             "number" => v.is_number(),
+            "bool" => v.is_boolean(),
             "[f32;3]" => v
                 .as_array()
                 .is_some_and(|a| a.len() == 3 && a.iter().all(Value::is_number)),
@@ -378,7 +381,7 @@ mod tests {
                 },
                 components: vec![Component::new(
                     "Light",
-                    json!({"kind": "directional", "color": [1.0, 0.9, 0.8], "intensity": 2.5}),
+                    json!({"kind": "directional", "color": [1.0, 0.9, 0.8], "intensity": 2.5, "castShadow": true}),
                 )],
             },
         ];
@@ -473,6 +476,10 @@ mod tests {
         assert!(validate_props("Camera", &json!({"fov": 60.0, "near": 0.1})).is_err());
         assert!(validate_props("RigidBody", &json!({"kind": "bad", "mass": 1.0})).is_err());
         assert!(validate_props("Light", &json!({"kind": "point", "color": [1.0, 0.0], "intensity": 1.0})).is_err());
+        // F3(D-F3-B):castShadow bool 校验——合法值通过;缺字段/非布尔拒绝。
+        assert!(validate_props("Light", &json!({"kind": "point", "color": [1.0, 0.0, 0.0], "intensity": 1.0, "castShadow": false})).is_ok());
+        assert!(validate_props("Light", &json!({"kind": "point", "color": [1.0, 0.0, 0.0], "intensity": 1.0})).is_err());
+        assert!(validate_props("Light", &json!({"kind": "point", "color": [1.0, 0.0, 0.0], "intensity": 1.0, "castShadow": "yes"})).is_err());
         assert!(validate_props("Camera", &json!("not object")).is_err());
     }
 

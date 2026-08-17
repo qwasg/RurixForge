@@ -1,5 +1,16 @@
 import { create } from 'zustand';
-import { callTool } from './forgeApi';
+import { apiPost, callTool } from './forgeApi';
+
+/** composer 五模式(04 §3 / 07 §5) */
+export type ComposerMode = 'build' | 'plan' | 'debug' | 'ask' | 'multitask';
+export const COMPOSER_MODES: ComposerMode[] = ['build', 'plan', 'debug', 'ask', 'multitask'];
+
+/** swarm 分片报告(/api/forge/swarm/execute 响应子集,卡片渲染用) */
+export interface SwarmReport {
+  shardType: string;
+  shards: Array<{ shardId: string; status: string; okCount: number; errorCount: number }>;
+  aggregate: { totalItems: number; succeeded: number; failed: number; disjoint: boolean };
+}
 
 /** 编辑器状态:实体 / 选中 / PIE / 事件流 / 帧统计,action 全部真实打后端。 */
 
@@ -41,6 +52,10 @@ export type HostEvent = Record<string, unknown>;
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
   text: string;
+  /** 发送时的 composer 模式(user 消息记录;04 §3) */
+  mode?: ComposerMode;
+  /** multitask 分片执行报告卡片载荷(assistant 消息) */
+  swarm?: SwarmReport;
 }
 
 export type CenterTab = 'viewport' | 'nodegraph';
@@ -103,6 +118,36 @@ function quatMul(a: number[], b: number[]): number[] {
   ];
 }
 
+/**
+ * multitask 确定性模板执行(D-F3-E):文本意图 → /api/forge/swarm/execute。
+ * 当前模板集(未命中如实报错,不伪造执行):
+ * - 「…碰撞体/collider…」→ 对场景全部实体 add RigidBody(static),scene-partition 4 片。
+ */
+export async function executeMultitask(text: string, entities: EntityData[]): Promise<SwarmReport> {
+  if (/碰撞|collider/i.test(text)) {
+    if (entities.length === 0) {
+      throw new Error('multitask 失败:当前场景无实体,无法生成碰撞体');
+    }
+    const resp = await apiPost<SwarmReport & { aggregate: SwarmReport['aggregate'] & { consistent?: boolean } }>(
+      '/api/forge/swarm/execute',
+      {
+        shardType: 'scene-partition',
+        items: entities.map((e) => e.id),
+        shardCount: 4,
+        operation: { kind: 'add_component', type: 'RigidBody', props: { kind: 'static', mass: 0 } },
+      },
+    );
+    return {
+      shardType: resp.shardType,
+      shards: resp.shards,
+      aggregate: resp.aggregate,
+    };
+  }
+  throw new Error(
+    `multitask 模板未命中:「${text.slice(0, 40)}」。当前支持模板:批量碰撞体(含「碰撞体/collider」);更多模板随 F4/F6 工具面落地`,
+  );
+}
+
 interface SceneSummary {
   name: string;
   entityCount: number;
@@ -163,7 +208,7 @@ interface EditorState {
   saveScene: () => Promise<void>;
   loadScene: () => Promise<void>;
 
-  sendChat: (text: string) => Promise<void>;
+  sendChat: (text: string, mode?: ComposerMode) => Promise<void>;
 
   setGizmo: (g: GizmoMode) => void;
   setCenterTab: (t: CenterTab) => void;
@@ -378,10 +423,26 @@ export const useEditorStore = create<EditorState>((set, get) => {
         set({ stats: s.render, sceneName: s.name, playState: s.playState });
       }),
 
-    sendChat: (text) =>
+    sendChat: (text, mode = 'build') =>
       run(async () => {
-        set((s) => ({ chatMessages: [...s.chatMessages, { role: 'user', text }] }));
+        set((s) => ({ chatMessages: [...s.chatMessages, { role: 'user', text, mode }] }));
         try {
+          if (mode === 'multitask') {
+            // F3 multitask 确定性执行器(D-F3-E,无 LLM):模板解析 → /swarm/execute → 分片卡片。
+            const report = await executeMultitask(text, get().entities);
+            set((s) => ({
+              chatMessages: [
+                ...s.chatMessages,
+                {
+                  role: 'assistant',
+                  text: `分片执行:${report.aggregate.succeeded}/${report.aggregate.totalItems} 成功,${report.aggregate.failed} 失败`,
+                  swarm: report,
+                },
+              ],
+            }));
+            await reload();
+            return;
+          }
           // F1 seam:无 LLM,以 scene_summary 实测全链路回显
           const r = await callTool<SceneSummary>('scene_summary');
           set((s) => ({

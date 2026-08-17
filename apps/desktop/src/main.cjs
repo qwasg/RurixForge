@@ -465,6 +465,22 @@ async function waitForOsCaptureFlag() {
 
 /** 冒烟场景脚本:editor = 点击侧栏「编辑器」入口,等编辑器真实拉数后再截 */
 async function runSmokeScenario() {
+  // F3 wave.4 G-F3-4:settings 场景 = 侧栏 Settings 按钮 → skills tab 真实列表计数断言。
+  if (smokeScenario === 'settings') {
+    const clicked = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.title==='Settings'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=settings nav click: ${clicked}`);
+    if (!clicked) throw new Error('sidebar 未找到 Settings 按钮');
+    // 等 /api/forge/skills/list 往返 + 列表渲染。
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const count = await mainWindow.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-skill-name]').length"
+    );
+    smokeLog(`scenario=settings skill items: ${count}`);
+    if (count < 13) throw new Error(`设置页 skills 条目不足(count=${count} < 13)`);
+    return;
+  }
   // F2 wave.3 G-F2-3:assets 场景 = editor 导航 + 资产条目计数断言。
   if (smokeScenario === 'assets') {
     const clicked = await mainWindow.webContents.executeJavaScript(

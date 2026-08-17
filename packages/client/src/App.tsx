@@ -8,6 +8,7 @@ import AutomationsView from './views/AutomationsView';
 import CustomizeView from './views/CustomizeView';
 import AgentView from './views/AgentView';
 import EditorView from './views/EditorView';
+import SettingsView from './views/SettingsView';
 
 export default function App() {
   const route = useAppStore((s) => s.route);
@@ -36,6 +37,7 @@ export default function App() {
           {route === 'customize' && <CustomizeView />}
           {route === 'agent' && <AgentView />}
           {route === 'editor' && <EditorView />}
+          {route === 'settings' && <SettingsView />}
         </main>
       </div>
       <SearchPalette />

@@ -1,6 +1,14 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
+import { useAppStore } from '@/lib/store';
+import { mockForgeBackend } from './forgeMock';
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  useAppStore.setState({ route: 'home', activeAgentId: null });
+});
 
 /**
  * 冒烟:window.forgeAPI 保持 undefined,
@@ -21,5 +29,17 @@ describe('<App />', () => {
     expect(
       screen.getByPlaceholderText('Plan, Build. / for skills, @ for context'),
     ).toBeInTheDocument();
+  });
+
+  it('settings 路由:openSettings → 设置页骨架(F3 wave.4)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockForgeBackend({}, { '/api/forge/skills/list': { skills: [] } }),
+    );
+    render(<App />);
+    useAppStore.getState().openSettings();
+    expect(await screen.findByTestId('settings-view')).toBeInTheDocument();
+    // 默认落 skills tab(DEFAULT_TAB):菜单钮 + 内容区标题双处呈现
+    expect(screen.getAllByText('Skills').length).toBeGreaterThanOrEqual(2);
   });
 });

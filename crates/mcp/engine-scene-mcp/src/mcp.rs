@@ -48,6 +48,11 @@ fn tool_list() -> Value {
                 "description": "读 <workspace>/data/host-events.jsonl,返回事件行数组",
                 "inputSchema": { "type": "object", "properties": {} }
             },
+            {
+                "name": "host_events_drain",
+                "description": "排空 host 内存事件环(component.added/scene.changed 等场景域事件;排空式读取,debug 三件套之一,F3)",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
             // ---- entity.* ----
             {
                 "name": "entity_create",
@@ -183,6 +188,11 @@ fn tool_list() -> Value {
                 }
             },
             // ---- scene.* 存取 / diff / checkpoint ----
+            {
+                "name": "scene_graph_dump",
+                "description": "场景图全量转储(实体 id/name/transform/组件快照,单次调用;debug 三件套之一,F3)",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
             {
                 "name": "scene_save",
                 "description": "保存编辑态场景(缺省 <cwd>/data/scene.rxscene;规范字节,确定性)",
@@ -383,6 +393,7 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "transform_set" => "transform.set",
         "transform_get" => "transform.get",
         "transform_batch_set" => "transform.batchSet",
+        "scene_graph_dump" => "scene.graph_dump",
         "scene_save" => "scene.save",
         "scene_load" => "scene.load",
         "scene_diff" => "scene.diff",
@@ -436,6 +447,7 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
             let events = lock(sup).read_events_log();
             Ok(tool_wrap(&Value::Array(events), false))
         }
+        "host_events_drain" => Ok(host_tool(sup, "events.drain", json!({}))),
         other => match passthrough_method(other) {
             Some(method) => Ok(host_tool(sup, method, args)),
             None => Err(err(Value::Null, -32602, &format!("未知工具:{other}"))),

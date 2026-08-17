@@ -119,7 +119,7 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 38, "tools/list 须为 38 个工具:{names:?}");
+    assert_eq!(names.len(), 40, "tools/list 须为 40 个工具:{names:?}");
     for want in [
         "host_ping", "scene_new", "scene_summary", "render_once", "host_events",
         "entity_create", "entity_destroy", "entity_rename", "entity_get", "entity_list",
@@ -130,6 +130,8 @@ fn watchdog_restarts_host_after_kill() {
         "play_enter", "play_pause", "play_resume", "play_step", "play_exit", "play_state",
         "viewport_frame", "viewport_pick", "viewport_set_camera", "viewport_get_camera",
         "viewport_share_open", "viewport_share_close",
+        // F3 wave.3:debug 三件套——场景图全量转储 + 内存事件环排空
+        "scene_graph_dump", "host_events_drain",
     ] {
         assert!(names.contains(&want), "tools/list 缺 {want}:{names:?}");
     }

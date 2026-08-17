@@ -110,3 +110,29 @@ export async function callAssetTool<T = unknown>(
 ): Promise<T> {
   return callToolWithPrefix(ASSET_TOOL_PREFIX, name, args);
 }
+
+/** 非 MCP 的 agentd REST GET(/api/forge/*  plain JSON,非信封)。 */
+export async function apiGet<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(path);
+  const body = (await res.json()) as unknown;
+  if (!res.ok) {
+    const err = (body as { error?: { code?: string; message?: string } })?.error;
+    throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return body as T;
+}
+
+/** 非 MCP 的 agentd REST POST(plain JSON)。 */
+export async function apiPost<T = unknown>(path: string, payload: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = (await res.json()) as unknown;
+  if (!res.ok) {
+    const err = (body as { error?: { code?: string; message?: string } })?.error;
+    throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return body as T;
+}
