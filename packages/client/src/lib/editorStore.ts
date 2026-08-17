@@ -127,6 +127,8 @@ interface EditorState {
   workbenchTab: WorkbenchTab;
   chatOpen: boolean;
   chatMessages: ChatMessage[];
+  /** F2 wave.3:Assets 右键「生成」预填 seam(F3 gen-image/gen-model 接入前仅预填文案) */
+  chatPrefill: string | null;
 
   /** 编辑器相机(null = 未拉取) */
   camera: CameraData | null;
@@ -167,6 +169,10 @@ interface EditorState {
   setCenterTab: (t: CenterTab) => void;
   setWorkbenchTab: (t: WorkbenchTab) => void;
   toggleChat: () => void;
+  /** 预填 Chat 输入框并确保 Chat 打开(Assets 右键「生成」) */
+  prefillChat: (text: string) => void;
+  /** ChatDock 消费预填后清除 */
+  clearChatPrefill: () => void;
 
   loadCamera: () => Promise<void>;
   updateCamera: (patch: Partial<CameraData>) => Promise<void>;
@@ -212,6 +218,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     workbenchTab: 'console',
     chatOpen: false,
     chatMessages: [],
+    chatPrefill: null,
 
     camera: null,
     viewportDegraded: null,
@@ -397,6 +404,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setCenterTab: (t) => set({ centerTab: t }),
     setWorkbenchTab: (t) => set({ workbenchTab: t }),
     toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+    prefillChat: (text) => set({ chatPrefill: text, chatOpen: true }),
+    clearChatPrefill: () => set({ chatPrefill: null }),
 
     loadCamera: () =>
       run(async () => {

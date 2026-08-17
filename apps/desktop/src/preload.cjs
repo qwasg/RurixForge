@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   viewport: {
     reportBounds: (b) => ipcRenderer.send('viewport:bounds', b),
   },
+  // F2 wave.3:Assets 面板桌面能力(导入文件对话框 / 在文件夹中显示)。
+  assets: {
+    pickImport: () => ipcRenderer.invoke('assets:pick-import'),
+    showInFolder: (rel) => ipcRenderer.send('assets:show-in-folder', rel),
+  },
   platform: process.platform,
   versions: {
     electron: process.versions.electron,

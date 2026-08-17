@@ -13,7 +13,7 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::{Mutex, MutexGuard};
 
 /// 已挂载的 engine-scene 工具面(显式全量清单,与 engine-scene-mcp 工具表一一对应)
-pub const KNOWN_TOOLS: [&str; 38] = [
+pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__host_ping",
     "mcp__engine-scene__host_events",
     "mcp__engine-scene__scene_new",
@@ -52,10 +52,54 @@ pub const KNOWN_TOOLS: [&str; 38] = [
     "mcp__engine-scene__viewport_get_camera",
     "mcp__engine-scene__viewport_share_open",
     "mcp__engine-scene__viewport_share_close",
+    // F2 wave.1+2:asset-pipeline(资产管线)
+    "mcp__asset-pipeline__asset_import",
+    "mcp__asset-pipeline__asset_list",
+    "mcp__asset-pipeline__asset_get_meta",
+    "mcp__asset-pipeline__asset_build_status",
+    "mcp__asset-pipeline__asset_refs",
+    "mcp__asset-pipeline__asset_delete",
+    "mcp__asset-pipeline__asset_move",
+    "mcp__asset-pipeline__asset_fix_redirectors",
+    "mcp__asset-pipeline__asset_reimport",
+    "mcp__asset-pipeline__asset_set_meta",
+    // F2 wave.3:贴图缩略图(原图直出 data URL)
+    "mcp__asset-pipeline__asset_thumbnail",
+    // F2 wave.4:材质/贴图处理/网格检查
+    "mcp__asset-pipeline__material_create",
+    "mcp__asset-pipeline__texture_process",
+    "mcp__asset-pipeline__mesh_inspect",
 ];
 
-const TOOL_PREFIX: &str = "mcp__engine-scene__";
+const SCENE_PREFIX: &str = "mcp__engine-scene__";
+const ASSET_PREFIX: &str = "mcp__asset-pipeline__";
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// MCP 服务标识(双工:engine-scene + asset-pipeline)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServerKind {
+    EngineScene,
+    AssetPipeline,
+}
+
+impl ServerKind {
+    fn from_tool(tool: &str) -> Option<Self> {
+        if tool.starts_with(SCENE_PREFIX) {
+            Some(ServerKind::EngineScene)
+        } else if tool.starts_with(ASSET_PREFIX) {
+            Some(ServerKind::AssetPipeline)
+        } else {
+            None
+        }
+    }
+
+    fn prefix(self) -> &'static str {
+        match self {
+            ServerKind::EngineScene => SCENE_PREFIX,
+            ServerKind::AssetPipeline => ASSET_PREFIX,
+        }
+    }
+}
 
 /// MCP 调用失败(spawn / 传输 / 超时 / 协议错误)
 #[derive(Debug)]
@@ -83,6 +127,29 @@ pub fn server_bin() -> PathBuf {
     root.join("target").join("debug").join("engine-scene-mcp.exe")
 }
 
+/// asset-pipeline-mcp 二进制路径:env FORGE_ASSET_PIPELINE_MCP_BIN 优先。
+fn asset_server_bin() -> PathBuf {
+    if let Ok(p) = std::env::var("FORGE_ASSET_PIPELINE_MCP_BIN") {
+        return PathBuf::from(p);
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir
+        .ancestors()
+        .nth(2)
+        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
+    root.join("target").join("debug").join("asset-pipeline-mcp.exe")
+}
+
+/// 资产项目根 = <workspace>/projects/demo(05 §1.2 mcp.json 示例对齐)。
+fn asset_project_root() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir
+        .ancestors()
+        .nth(2)
+        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
+    root.join("projects").join("demo")
+}
+
 /// 长连接句柄:子进程 + stdin/stdout 行流 + 自增 id
 struct McpClient {
     child: Child,
@@ -92,9 +159,13 @@ struct McpClient {
 }
 
 impl McpClient {
-    /// spawn + initialize 握手
-    async fn connect(bin: &Path) -> Result<Self, McpError> {
-        let mut child = Command::new(bin)
+    /// spawn + initialize 握手(args 为空 = 无额外参数)。
+    async fn connect(bin: &Path, args: &[String]) -> Result<Self, McpError> {
+        let mut cmd = Command::new(bin);
+        for a in args {
+            cmd.arg(a);
+        }
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -173,57 +244,69 @@ impl McpClient {
 }
 
 /// 全局长连接(OnceLock + Mutex;None = 未连接或已断线)
-static CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
+static SCENE_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
+static ASSET_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
 
-fn client_slot() -> &'static Mutex<Option<McpClient>> {
-    CLIENT.get_or_init(|| Mutex::new(None))
+fn client_slot(kind: ServerKind) -> &'static Mutex<Option<McpClient>> {
+    match kind {
+        ServerKind::EngineScene => SCENE_CLIENT.get_or_init(|| Mutex::new(None)),
+        ServerKind::AssetPipeline => ASSET_CLIENT.get_or_init(|| Mutex::new(None)),
+    }
 }
 
 /// 取可用连接:无连接/已退出则重连
 async fn ensure_connected<'a>(
+    kind: ServerKind,
     guard: &mut MutexGuard<'a, Option<McpClient>>,
 ) -> Result<(), McpError> {
     if let Some(c) = guard.as_mut() {
-        // try_wait 探活:已退出则丢弃重连
         match c.child.try_wait() {
-            Ok(None) => return Ok(()), // 存活
-            _ => **guard = None,       // 已退出或不可查 → 重连
+            Ok(None) => return Ok(()),
+            _ => **guard = None,
         }
     }
-    let bin = server_bin();
+    let (bin, args) = match kind {
+        ServerKind::EngineScene => (server_bin(), vec![]),
+        ServerKind::AssetPipeline => (
+            asset_server_bin(),
+            vec!["--project".to_string(), asset_project_root().to_string_lossy().into_owned()],
+        ),
+    };
     if !bin.exists() {
         return Err(McpError(format!(
-            "engine-scene-mcp 二进制不存在: {}",
+            "{:?} 二进制不存在: {}",
+            kind,
             bin.display()
         )));
     }
-    **guard = Some(McpClient::connect(&bin).await?);
+    **guard = Some(McpClient::connect(&bin, &args).await?);
     Ok(())
 }
 
-/// 调用 engine-scene 工具:tool 为全名(mcp__engine-scene__X),内部映射为 X。
-/// 传输失败时丢弃连接并重试一次(长连接对端可能被看门狗换过)。
+/// 调用 MCP 工具:tool 为全名(带前缀),按前缀路由到对应服务。
 pub async fn call_tool(tool: &str, arguments: Option<Value>) -> Result<Value, McpError> {
+    let kind = ServerKind::from_tool(tool)
+        .ok_or_else(|| McpError(format!("未知工具前缀: {tool}")))?;
     let name = tool
-        .strip_prefix(TOOL_PREFIX)
-        .ok_or_else(|| McpError(format!("未知工具名: {tool}")))?;
-    tokio::time::timeout(CALL_TIMEOUT, call_with_retry(name, arguments))
+        .strip_prefix(kind.prefix())
+        .ok_or_else(|| McpError(format!("工具名前缀剥离失败: {tool}")))?;
+    tokio::time::timeout(CALL_TIMEOUT, call_with_retry(kind, name, arguments))
         .await
         .map_err(|_| McpError("MCP 调用超时(10s)".to_string()))?
 }
 
-async fn call_with_retry(name: &str, arguments: Option<Value>) -> Result<Value, McpError> {
-    let mut guard = client_slot().lock().await;
+async fn call_with_retry(kind: ServerKind, name: &str, arguments: Option<Value>) -> Result<Value, McpError> {
+    let mut guard = client_slot(kind).lock().await;
     let mut last_err: Option<McpError> = None;
     for attempt in 0..2 {
-        ensure_connected(&mut guard).await?;
+        ensure_connected(kind, &mut guard).await?;
         let client = guard.as_mut().expect("ensure_connected 后必有连接");
         let params = json!({ "name": name, "arguments": arguments.clone().unwrap_or_else(|| json!({})) });
         match client.request("tools/call", params).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 last_err = Some(e);
-                *guard = None; // 断线,下一轮重连
+                *guard = None;
                 if attempt == 1 {
                     break;
                 }

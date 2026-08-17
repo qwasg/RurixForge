@@ -4,6 +4,7 @@
  */
 
 const TOOL_PREFIX = 'mcp__engine-scene__';
+const ASSET_TOOL_PREFIX = 'mcp__asset-pipeline__';
 
 /** 结构化 API 错误(code 来自 host/agentd,或 TOOL_ERROR / BAD_RESPONSE) */
 export class ForgeApiError extends Error {
@@ -45,10 +46,11 @@ export function unwrapToolResult(result: unknown): unknown {
 }
 
 /**
- * 调用 engine-scene 工具(name 不带前缀,内部补 mcp__engine-scene__)。
+ * 调用 MCP 工具(name 不带前缀,prefix 决定路由;mcp__engine-scene__ / mcp__asset-pipeline__)。
  * HTTP 非 2xx → 抛 ForgeApiError(code 取自 {error.code});信封 isError → 抛 TOOL_ERROR。
  */
-export async function callTool<T = unknown>(
+export async function callToolWithPrefix<T = unknown>(
+  prefix: string,
   name: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
@@ -57,7 +59,7 @@ export async function callTool<T = unknown>(
     res = await fetch('/api/forge/mcp/call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool: `${TOOL_PREFIX}${name}`, arguments: args }),
+      body: JSON.stringify({ tool: `${prefix}${name}`, arguments: args }),
     });
   } catch (err) {
     throw new ForgeApiError('NETWORK', `请求失败: ${(err as Error).message}`);
@@ -89,4 +91,22 @@ export async function callTool<T = unknown>(
     throw new ForgeApiError('TOOL_ERROR', msg, res.status);
   }
   return value as T;
+}
+
+/**
+ * 调用 engine-scene 工具(name 不带前缀,内部补 mcp__engine-scene__)。
+ */
+export async function callTool<T = unknown>(
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  return callToolWithPrefix(TOOL_PREFIX, name, args);
+}
+
+/** 调用 asset-pipeline 工具(name 不带前缀,内部补 mcp__asset-pipeline__)。 */
+export async function callAssetTool<T = unknown>(
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  return callToolWithPrefix(ASSET_TOOL_PREFIX, name, args);
 }

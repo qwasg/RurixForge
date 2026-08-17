@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
@@ -465,6 +465,22 @@ async function waitForOsCaptureFlag() {
 
 /** 冒烟场景脚本:editor = 点击侧栏「编辑器」入口,等编辑器真实拉数后再截 */
 async function runSmokeScenario() {
+  // F2 wave.3 G-F2-3:assets 场景 = editor 导航 + 资产条目计数断言。
+  if (smokeScenario === 'assets') {
+    const clicked = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=assets nav click: ${clicked}`);
+    if (!clicked) throw new Error('sidebar 未找到「编辑器」入口按钮');
+    // 等 Assets 面板 load() 完成(asset_list + asset_build_status 两往返)。
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    const count = await mainWindow.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-asset-guid]').length"
+    );
+    smokeLog(`scenario=assets asset items: ${count}`);
+    if (count < 1) throw new Error(`Assets 面板无资产条目(count=${count})`);
+    return;
+  }
   if (smokeScenario !== 'editor') return;
   const clicked = await mainWindow.webContents.executeJavaScript(
     "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
@@ -549,6 +565,27 @@ async function main() {
   });
   ipcMain.on('win:close', () => mainWindow && mainWindow.close());
   ipcMain.on('viewport:bounds', (_e, b) => syncPresenter(b));
+
+  // F2 wave.3:Assets 面板右键菜单桌面能力(仅桌面端可用;web 端菜单项如实禁用)。
+  // 导入到此处:系统文件对话框选源文件(多选),返回绝对路径列表,renderer 再走 asset_import。
+  ipcMain.handle('assets:pick-import', async () => {
+    if (!mainWindow) return [];
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '导入资产到 Content',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Assets', extensions: ['gltf', 'glb', 'png', 'jpg', 'jpeg'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    return r.canceled ? [] : r.filePaths;
+  });
+  // 在文件夹中显示:rel = Content 相对路径,主进程拼项目根(demo)后 showItemInFolder。
+  ipcMain.on('assets:show-in-folder', (_e, rel) => {
+    if (typeof rel !== 'string' || rel.includes('..') || rel.includes(':')) return;
+    const abs = path.join(repoRoot, 'projects', 'demo', 'Content', rel);
+    if (fs.existsSync(abs)) shell.showItemInFolder(abs);
+  });
 
   if (!spawnHost()) return;
   if (isSmoke) smokeLog(`host spawned pid=${hostProcess && hostProcess.pid}`);

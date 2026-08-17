@@ -1,0 +1,13 @@
+guid: 8fe48198-4676-47dd-a53e-c64095fbb418
+type: texture
+importer: png
+provenance:
+  origin: user-import
+  detail:
+    derivedFrom: e858d90b-19b7-425e-84a0-01a92733d053
+    ops:
+      resize:
+        height: 4
+        width: 4
+    tool: texture_process
+build_state: current

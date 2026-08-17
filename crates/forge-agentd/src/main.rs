@@ -64,7 +64,7 @@ async fn sessions() -> Json<Value> {
 
 /// 已挂载 MCP 工具面(声明式 stub)
 async fn mcp_tools() -> Json<Value> {
-    Json(json!({ "tools": mcp::KNOWN_TOOLS.as_slice() }))
+    Json(json!({ "tools": mcp::KNOWN_TOOLS }))
 }
 
 #[derive(Deserialize)]
@@ -163,10 +163,13 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let tools = v["tools"].as_array().expect("tools 应为数组");
-        assert_eq!(tools.len(), 38);
+        assert_eq!(tools.len(), 52);
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__scene_summary"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__entity_batch_apply"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
+        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_import"));
+        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_list"));
+        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_thumbnail"));
     }
 
     #[tokio::test]

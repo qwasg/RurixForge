@@ -1,0 +1,10 @@
+[package]
+name = "asset-pipeline-mcp"
+description = "Forge 资产管线 MCP 服务器:stdio NDJSON JSON-RPC,内嵌 assetd 库;无 supervisor(库非进程)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+assetd = { path = "../../assetd" }
+serde.workspace = true
+serde_json.workspace = true

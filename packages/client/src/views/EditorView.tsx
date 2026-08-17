@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
+import AssetsPanel from '@/components/editor/AssetsPanel';
 import {
   useEditorStore,
   type EntityData,
@@ -152,26 +153,9 @@ function HierarchyPanel() {
   );
 }
 
-// ---------- B Assets(F2 占位) ----------
-
-function AssetsPanel() {
-  return (
-    <section
-      className="flex h-[150px] shrink-0 flex-col border-t border-line-soft"
-      aria-label="Assets"
-    >
-      <div className="flex items-center justify-between px-2 pb-1 pt-2">
-        <span className="text-2xs text-muted-faint">Assets</span>
-        <span className="text-2xs text-muted-faint">F2</span>
-      </div>
-      <div className="flex flex-1 items-center justify-center px-3 pb-2">
-        <p className="text-center text-xs text-muted-faint">
-          素材浏览器占位(F2 承接:网格/列表、类型过滤、拖入实例化)
-        </p>
-      </div>
-    </section>
-  );
-}
+// ---------- B Assets(F2 wave.3 全量) ----------
+// AssetsPanel 已迁至 components/editor/AssetsPanel.tsx:网格/列表、类型过滤、搜索、
+// 拖拽实例化、右键六菜单、buildState 角标。
 
 // ---------- C Viewport / G NodeGraph ----------
 
@@ -610,7 +594,17 @@ function ChatDock() {
   const chatMessages = useEditorStore((s) => s.chatMessages);
   const sendChat = useEditorStore((s) => s.sendChat);
   const toggleChat = useEditorStore((s) => s.toggleChat);
+  const chatPrefill = useEditorStore((s) => s.chatPrefill);
+  const clearChatPrefill = useEditorStore((s) => s.clearChatPrefill);
   const [draft, setDraft] = useState('');
+
+  // F2 wave.3:Assets 右键「生成」预填(F3 gen-image/gen-model seam)
+  useEffect(() => {
+    if (chatPrefill !== null) {
+      setDraft(chatPrefill);
+      clearChatPrefill();
+    }
+  }, [chatPrefill, clearChatPrefill]);
 
   const send = () => {
     const text = draft.trim();

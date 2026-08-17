@@ -22,6 +22,13 @@ export interface ForgeAPI {
       visible: boolean;
     }) => void;
   };
+  /** F2 wave.3:Assets 面板桌面能力(desktop preload 提供;web 端缺省,菜单项如实禁用) */
+  assets?: {
+    /** 系统文件对话框选源文件(多选),返回绝对路径;取消 → [] */
+    pickImport?: () => Promise<string[]>;
+    /** 在系统文件管理器中显示(Content 相对路径) */
+    showInFolder?: (rel: string) => void;
+  };
   platform: string;
 }
 

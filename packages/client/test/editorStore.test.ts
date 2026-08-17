@@ -126,6 +126,17 @@ describe('editorStore', () => {
     expect(useEditorStore.getState().lastError).toContain('未 mock 的工具');
   });
 
+  it('prefillChat:预填文案并打开 Chat,clearChatPrefill 清除(F2 wave.3 seam)', () => {
+    useEditorStore.getState().prefillChat('基于资产 Meshes/cube.gltf 生成变体:');
+    let s = useEditorStore.getState();
+    expect(s.chatPrefill).toBe('基于资产 Meshes/cube.gltf 生成变体:');
+    expect(s.chatOpen).toBe(true);
+    useEditorStore.getState().clearChatPrefill();
+    s = useEditorStore.getState();
+    expect(s.chatPrefill).toBeNull();
+    expect(s.chatOpen).toBe(true); // 清除预填不回收面板
+  });
+
   // ---- F1 wave.2:viewport 相机 / 点选 / gizmo ----
 
   const CAM = { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 };

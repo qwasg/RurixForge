@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { callTool, ForgeApiError } from '@/lib/forgeApi';
 import { bridge } from '@/lib/bridge';
 import { useEditorStore, type ViewportInfo } from '@/lib/editorStore';
+import { useAssetStore } from '@/lib/assetStore';
 
 /**
  * Viewport 画布(F1 wave.2):GPU 场景实渲染帧(rurix-rt vulkan render_exec → Readback)
@@ -215,6 +216,22 @@ export function ViewportCanvas() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onWheel={(e) => void st().zoomCamera(e.deltaY)}
+      onDragOver={(e) => {
+        e.preventDefault(); // 允许 drop
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const guid = e.dataTransfer.getData('forge/asset-guid');
+        const atype = e.dataTransfer.getData('forge/asset-type');
+        if (!guid || (atype !== 'mesh' && atype !== 'prefab')) return;
+        // 实例化到相机目标点前方 2m(或原点)。
+        const cam = st().camera;
+        const pos: [number, number, number] = cam
+          ? [cam.target[0], cam.target[1], cam.target[2]]
+          : [0, 0, 0];
+        void useAssetStore.getState().instantiate(guid, pos).then(() => st().loadEntities());
+      }}
       onKeyDown={(e) => {
         if (e.key === 'f' || e.key === 'F') void st().focusSelected();
         if (e.key === 'w' || e.key === 'W') st().setGizmo('translate');
