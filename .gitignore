@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/
+target/
+*.log
+.DS_Store
+gateway-go/forge-gateway.exe
+apps/ide/

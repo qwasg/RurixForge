@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-white text-ink font-sans text-base antialiased;
+    user-select: none;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  /* 细滚动条,贴近 Cursor 风格 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d8d5d0;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #c3c0ba;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* 黑色主按钮(New Automation / Browse Marketplace / Commit & Push) */
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-black;
+  }
+  /* 幽灵小按钮(Ask Agent / Show Details / New File / Load Diff) */
+  .btn-ghost {
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-white px-3 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-panel-hover;
+  }
+  /* 侧栏导航行 */
+  .nav-row {
+    @apply flex w-full items-center gap-2 rounded-md px-2 py-[5px] text-left text-sm text-ink-soft transition-colors hover:bg-panel-hover;
+  }
+  /* 圆角 chip(模型选择器、模式切换等) */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-xs text-muted transition-colors hover:bg-panel-hover;
+  }
+}

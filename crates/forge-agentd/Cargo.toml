@@ -1,0 +1,16 @@
+[package]
+name = "forge-agentd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# io-util:stdin/stdout 异步读写(MCP stdio 客户端与测试所需)
+tokio = { workspace = true, features = ["io-util"] }
+
+[dev-dependencies]
+# util:ServiceExt::oneshot 路由级测试
+tower = { workspace = true, features = ["util"] }

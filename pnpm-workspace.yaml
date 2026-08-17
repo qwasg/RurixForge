@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+  - "!apps/ide"
+allowBuilds:
+  electron: true
+  esbuild: true

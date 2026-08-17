@@ -1,0 +1,134 @@
+//! engine-host — Forge 引擎宿主进程。
+//!
+//! 控制通道:JSON-RPC 2.0 over TCP(4 字节小端长度前缀帧),绑定 127.0.0.1;
+//! 后台线程以真实时间 accumulator 驱动 rurix-physics 固定步(dt=1/60)空跑。
+
+mod frame;
+mod rpc;
+mod timeutil;
+
+use std::io::Write;
+use std::net::{TcpListener, TcpStream};
+use std::process;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use rpc::{HostState, DT_FIXED};
+
+fn main() {
+    let port = parse_port();
+    let state = Arc::new(Mutex::new(HostState::new()));
+    {
+        let st = rpc::lock(&state);
+        if st.physics.is_none() {
+            eprintln!("engine-host: 无可用物理后端(Jolt/Rapier 均未编译),退出");
+            process::exit(1);
+        }
+    }
+    spawn_physics_thread(Arc::clone(&state));
+
+    let listener = match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("engine-host: 绑定 127.0.0.1:{port} 失败:{e}");
+            process::exit(1);
+        }
+    };
+    let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
+    // 就绪行必须 stdout + flush(MCP autoStart 据此探测)。
+    println!("FORGE_HOST_LISTENING port={actual_port}");
+    let _ = std::io::stdout().flush();
+
+    for conn in listener.incoming() {
+        match conn {
+            Ok(stream) => {
+                let st = Arc::clone(&state);
+                thread::spawn(move || serve_conn(stream, st));
+            }
+            Err(_) => continue, // 单连接失败不影响主循环
+        }
+    }
+}
+
+/// 端口解析:CLI `--port N` / `--port=N` 优先,其次 env FORGE_HOST_PORT,缺省 17810。
+fn parse_port() -> u16 {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--port" {
+            if let Some(v) = args.next() {
+                return v.parse().unwrap_or_else(|_| {
+                    eprintln!("engine-host: 非法 --port 值:{v}");
+                    process::exit(2);
+                });
+            }
+            eprintln!("engine-host: --port 缺参数");
+            process::exit(2);
+        }
+        if let Some(v) = a.strip_prefix("--port=") {
+            return v.parse().unwrap_or_else(|_| {
+                eprintln!("engine-host: 非法 --port 值:{v}");
+                process::exit(2);
+            });
+        }
+    }
+    if let Ok(v) = std::env::var("FORGE_HOST_PORT") {
+        if let Ok(p) = v.parse() {
+            return p;
+        }
+        eprintln!("engine-host: 忽略非法 FORGE_HOST_PORT:{v}");
+    }
+    17810
+}
+
+/// 物理后台线程:真实时间 accumulator,固定步空跑;step 错误计数不 panic。
+fn spawn_physics_thread(state: Arc<Mutex<HostState>>) {
+    thread::spawn(move || {
+        let dt_secs = f64::from(DT_FIXED);
+        let mut last = Instant::now();
+        let mut acc = 0.0f64;
+        loop {
+            thread::sleep(Duration::from_millis(2));
+            let now = Instant::now();
+            acc += (now - last).as_secs_f64();
+            last = now;
+            if acc > 0.25 {
+                acc = 0.25; // 防死亡螺旋
+            }
+            if acc < dt_secs {
+                continue;
+            }
+            let mut st = rpc::lock(&state);
+            while acc >= dt_secs {
+                if let Some(world) = st.physics.as_mut() {
+                    match world.step(DT_FIXED) {
+                        Ok(_) => st.steps += 1,
+                        Err(_) => st.step_errors += 1,
+                    }
+                }
+                acc -= dt_secs;
+            }
+        }
+    });
+}
+
+/// 单连接服务循环:读帧 → 分派 → 写帧;坏 JSON 回 -32700 后继续服务。
+fn serve_conn(mut stream: TcpStream, state: Arc<Mutex<HostState>>) {
+    loop {
+        let raw = match frame::read_frame_raw(&mut stream) {
+            Ok(b) => b,
+            Err(_) => return, // 对端关闭或帧损坏 → 结束本连接
+        };
+        let resp = match serde_json::from_slice::<serde_json::Value>(&raw) {
+            Ok(req) => rpc::dispatch(&state, &req),
+            Err(e) => rpc::err(
+                serde_json::Value::Null,
+                -32700,
+                &format!("parse error: {e}"),
+            ),
+        };
+        if frame::write_frame(&mut stream, &resp).is_err() {
+            return;
+        }
+    }
+}

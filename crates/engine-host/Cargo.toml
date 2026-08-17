@@ -1,0 +1,12 @@
+[package]
+name = "engine-host"
+description = "Forge 引擎宿主:JSON-RPC 2.0 over TCP 控制通道 + rurix-physics 固定步后台线程 + soft-raster CPU 渲染"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+forge-scene = { path = "../forge-scene" }
+rurix-physics = { path = "H:/rurix/src/rurix-physics" }
+soft-raster = { path = "H:/rurix/src/soft-raster" }
+serde.workspace = true
+serde_json.workspace = true
