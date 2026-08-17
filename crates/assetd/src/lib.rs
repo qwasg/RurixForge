@@ -7,6 +7,7 @@
 //! 本库不暴露网络端口(02 §3),被 asset-pipeline-mcp 内嵌。
 
 pub mod build;
+pub mod cleanup;
 pub mod import;
 pub mod inspect;
 pub mod material;

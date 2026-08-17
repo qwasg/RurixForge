@@ -69,6 +69,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__asset-pipeline__material_create",
     "mcp__asset-pipeline__texture_process",
     "mcp__asset-pipeline__mesh_inspect",
+    // F2 wave.5:asset-cleanup dryRun 扫描
+    "mcp__asset-pipeline__asset_cleanup_scan",
 ];
 
 const SCENE_PREFIX: &str = "mcp__engine-scene__";

@@ -1,9 +1,9 @@
 ---
 contract: F2
 title: F2 素材管线
-status: active
+status: closed
 implementation_status: unlocked
-active_scope: wave.4
+active_scope: wave.5
 version: 0.1
 date: 2026-08-17
 timebox: 会话制推进,做不完转 deferred
@@ -187,3 +187,27 @@ deferred:
   1. 手编 1x1 PNG 字节数组 IHDR 合法但 IDAT 损坏:image::image_dimensions 只读头放过(import 过),image::open 全量解码才炸(texture_process 抓出)——测试/冒烟样本一律 image crate 现编,不硬编码字节。
   2. PS 5.1 Invoke-WebRequest 缺省按 ISO-8859-1 解码响应:edge_type "material→texture" 的 "→" 变乱码导致 -eq 比较永假;改 System.Net.WebClient 双向 UTF-8(请求体亦含非 ASCII 路径)。
   3. f2_thumb.rs 原 PNG_1X1 常量同坑 1,wave.4 一并改真编码。
+
+### wave.5 验收记录(2026-08-17)
+
+- 验收门:G-F2-5(asset-cleanup 门)
+- 结果:PASS
+- 证据:
+  - scripts/f2-w5-cleanup-smoke.ps1 PASS(全链经 gateway→agentd→双 MCP):造混乱 fixture(贴图错放 Meshes/ 且文件名 `my tex (final 2).png` 含空格+中英文括号)→ `asset_cleanup_scan` dryRun 提案 PASS(misplaced→Textures/、naming→my_tex_final_2.png、orphan=2 仅报告;impact 统计 misplaced=2 naming=1 orphan=2)→ POST /api/forge/proposals 创建 asset.cleanup Proposal(prop_1 pending)→ PATCH 批准 PASS、终态再 PATCH 返回 409(终态不可逆)→ asset_move 一步完成移动+改名(`Meshes/my tex (final 2).png` → `Textures/my_tex_final_2.png`)→ asset_fix_redirectors 收敛 + asset_refs 移动后引用查询 PASS(GUID 不变,引用不断链)→ 复扫 misplaced/naming 清零 PASS
+  - destructive 强制门(I-6)实测:`asset_delete force=true` 无批准被拦(409 GOV_PROPOSAL_REQUIRED 并自动创建 prop_2),批准 Proposal 后同一调用放行,fixture 删除确认
+  - cargo test --workspace 58/58 PASS(新增:f2_cleanup.rs 3——cleanup_detects_misplaced_naming_orphan / move_asset_with_rename_keeps_guid_and_refs / move_asset_without_rename_unchanged;forge-agentd 12——proposals_crud_and_terminal_state / asset_delete_force_gated_by_proposal / skills_list_discovers_frontmatter 等)
+  - client vitest 41/41 PASS(本波无 client 改动);pnpm -r typecheck + build 全绿;f2-w2-refs-smoke 回归 PASS(移动/redirector/fix/引用不断链不受 move_asset 改名扩展影响)
+- 交付:
+  - crates/assetd/src/cleanup.rs:scan_cleanup(纯 dryRun 不写盘)——misplaced(类型应有目录 ≠ 当前目录,expected_folder 映射)/ naming(空格、中英文括号 → sanitize_name)/ orphan(非场景资产且无入边;场景为入口根豁免)三类检测 + CleanupReport{scanned,proposals,impact}
+  - ops.rs move_asset 扩展 new_name 参数(移动+改名一步,GUID 不变)
+  - 新 MCP 工具 asset_cleanup_scan;agentd KNOWN_TOOLS 52→53(main.rs 断言同步)
+  - forge-agentd proposals.rs:ProposalStore(内存,id 单调 prop_N;create/list/patch;approve/reject 终态不可逆 409;has_approved_covering 按 impact.assets ⊇ 待删清单判定)
+  - 路由:GET/POST /api/forge/proposals、PATCH /api/forge/proposals/{id}、GET /api/forge/skills/list(扫描 skills/*/SKILL.md frontmatter,06 §2 发现机制)
+  - mcp_call destructive 强制门:asset_delete force=true 且无 approved Proposal 覆盖 → 409 GOV_PROPOSAL_REQUIRED + 自动创建 Proposal(两阶段:先提案后放行)
+  - skills/asset-cleanup/SKILL.md(06 §1 格式契约:frontmatter name+description / 分步骤执行流程 8 步 / 输出约束 / 失败回退策略;orphan 仅报告,删除须 asset_delete + Proposal 双门)
+  - scripts/f2-w5-cleanup-smoke.ps1 栈级冒烟
+- 踩坑:PS 脚本内 `$($scan.impact | ForEach-Object { ... })` 子表达式嵌套引号拼接语法报错;对策 = 变量赋值与日志输出拆分,`-join` 拼接。
+
+### close-out 终审(2026-08-17)
+
+F2 五波全绿:G-F2-1(导入与缓存)/ G-F2-2(引用防护)/ G-F2-3(Assets 面板)/ G-F2-4(材质与贴图)/ G-F2-5(asset-cleanup)全 PASS,证据如上各波记录。open deferred:RD-F2-001(fbx/obj 导入器,上游补面后回填)/ RD-F2-003(材质 closure id,F3 渲染波)/ RD-F2-004(materials 数组,F3+)——均有明确 refill 路径,不阻收官。**status flip**:active → closed。

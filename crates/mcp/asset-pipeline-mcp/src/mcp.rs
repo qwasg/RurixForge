@@ -74,12 +74,13 @@ fn tool_list() -> Value {
             },
             {
                 "name": "asset_move",
-                "description": "移动资产到新目录(自动留 redirector;GUID 引用不断链)",
+                "description": "移动资产到新目录(自动留 redirector;GUID 引用不断链);可选 newName 同步改名(清洗命名)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "assetPath": { "type": "string" },
-                        "destFolder": { "type": "string" }
+                        "destFolder": { "type": "string" },
+                        "newName": { "type": "string", "description": "新文件名(可选;清洗命名用)" }
                     },
                     "required": ["assetPath", "destFolder"]
                 }
@@ -163,6 +164,11 @@ fn tool_list() -> Value {
                     "properties": { "assetPath": { "type": "string" } },
                     "required": ["assetPath"]
                 }
+            },
+            {
+                "name": "asset_cleanup_scan",
+                "description": "asset-cleanup dryRun:扫描全项目,产出整理提案(misplaced 错放/naming 命名混乱/orphan 孤儿),不写任何文件;执行经 asset_move(移动/改名)或 asset_delete(孤儿,须 Proposal)",
+                "inputSchema": { "type": "object", "properties": {} }
             }
         ]
     })
@@ -310,8 +316,9 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
                 .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 assetPath"))?;
             let dest = args.get("destFolder").and_then(Value::as_str)
                 .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 destFolder"))?;
+            let new_name = args.get("newName").and_then(Value::as_str);
             let p = lock(proj);
-            match assetd::ops::move_asset(&p, asset_path, dest) {
+            match assetd::ops::move_asset(&p, asset_path, dest, new_name) {
                 Ok(out) => {
                     let red = out.redirector.map(|(g, old, new)| json!({
                         "guid": g, "oldPath": old, "newPath": new
@@ -400,6 +407,20 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
                     "materials": r.materials,
                     "bounds": r.bounds.map(|(mn, mx)| json!({ "min": mn, "max": mx })),
                     "artifact": r.artifact
+                })),
+                Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
+            }
+        }
+        "asset_cleanup_scan" => {
+            let p = lock(proj);
+            match assetd::cleanup::scan_cleanup(&p) {
+                Ok(r) => Ok(json!({
+                    "scanned": r.scanned,
+                    "proposals": r.proposals.iter().map(|p| json!({
+                        "assetPath": p.asset_path, "guid": p.guid, "issue": p.issue,
+                        "destFolder": p.dest_folder, "newName": p.new_name, "reason": p.reason
+                    })).collect::<Vec<_>>(),
+                    "impact": r.impact.iter().map(|(k, n)| json!({ "issue": k, "count": n })).collect::<Vec<_>>()
                 })),
                 Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
             }

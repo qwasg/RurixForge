@@ -72,7 +72,7 @@ fn move_writes_redirector_and_fix_clears() {
     let mesh_guid = out.imported[0].guid.clone();
 
     // 移动到 Prefabs。
-    let mv = move_asset(&project, &mesh_path, "Prefabs").unwrap();
+    let mv = move_asset(&project, &mesh_path, "Prefabs", None).unwrap();
     assert!(mv.moved);
     let (g, old, new) = mv.redirector.unwrap();
     assert_eq!(g, mesh_guid);

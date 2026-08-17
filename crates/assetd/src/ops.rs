@@ -62,10 +62,12 @@ pub fn delete_assets(
 }
 
 /// 移动资产到新目录(自动留 redirector;GUID 引用不断链)。
+/// `new_name` = Some 时同步改名(清洗命名;同目录改名 = dest_folder = 原目录)。
 pub fn move_asset(
     project: &ForgeProject,
     asset_path: &str,
     dest_folder: &str,
+    new_name: Option<&str>,
 ) -> Result<MoveOutcome> {
     let rel = normalize_rel(asset_path)?;
     let dest_rel = normalize_rel(dest_folder)?;
@@ -76,7 +78,15 @@ pub fn move_asset(
     }
     let meta = MetaDoc::load(&src_meta)?;
 
-    let file_name = Path::new(&rel).file_name().and_then(|n| n.to_str()).unwrap_or("unnamed");
+    let file_name = match new_name {
+        Some(n) => {
+            if n.is_empty() || n.contains('/') || n.contains('\\') {
+                return Err(AssetError::new("INVALID_OPS", format!("新文件名非法: {n}")));
+            }
+            n
+        }
+        None => Path::new(&rel).file_name().and_then(|n| n.to_str()).unwrap_or("unnamed"),
+    };
     let new_rel = format!("{}/{}", dest_rel, file_name);
     let src_abs = content_root.join(&rel);
     let dst_abs = content_root.join(&new_rel);
