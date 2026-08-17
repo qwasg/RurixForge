@@ -3,7 +3,7 @@ contract: F1
 title: F1 场景编辑闭环
 status: active
 implementation_status: unlocked
-active_scope: wave.3
+active_scope: wave.4
 version: 0.1
 date: 2026-08-16
 timebox: 会话制推进,做不完转 deferred
@@ -31,9 +31,9 @@ in_scope:
   - wave.3:上游 rurix-rt vulkan 档补 VK_KHR_external_memory_win32 import 面(纯 pNext 结构体注入,零新 FFI 函数;设备扩展启用)+ render_exec TextureDesc 外部纹理变体(经 RFC-0001 同配方:D3D12 committed resource NT handle + GetResourceAllocationInfo 尺寸)
   - wave.3:engine-host share.rs 共享纹理创建后导回 VK(方向 B:D3D12 建、VK import 直渲),帧源仍为 viewport::render_scene_frame;viewport.frame 响应带 frame_path=zero_copy|readback_upload 与 CPU upload 计数(机器可证零拷贝)
   - wave.3:同步 v1 = CPU 块(session 帧 fence 有界等待后 D3D12 queue.Signal),不引入 VK external semaphore(转 RD-F1-004)
+  - wave.4:H.264 流腿(RD-F1-003 残件):视口帧经 H.264 编码为 Annex B 流,供纯 web 等无法走共享内存的客户端消费
+  - RD-F1-004 方向裁决:no-go(F1 wave.4):VK_KHR_external_semaphore_win32 共享语义单向(D3D12 fence handle→VK import 可行,VK semaphore handle→D3D12 不可消费);当前帧流向 VK 渲染→D3D12 呈现与可行方向相反,external semaphore 无法消除 CPU 块;v1 CPU 块已达标,RD-F1-004 保持 open 待帧流向反转场景(如 D3D12 先算→VK 后渲)再评
 out_of_scope:
-  - H.264 流(RD-F1-003 残件承接)
-  - VK external semaphore 真 GPU 侧同步(RD-F1-004;v1 CPU 块已达标)
   - Assets 面板全功能(F2);NodeGraph 编辑(F4)
   - 真实 LLM 自然语言理解(mock provider seam;F3 移植后回填)
 deferred_refs: [RD-F0-001, RD-F0-002, RD-F0-003]
@@ -84,6 +84,9 @@ acceptance_gates:
   - id: G-F1-12
     name: 回退腿回归门
     check: share 未开时 readback→upload 路径行为 0-byte 回归(f1-w2-viewport-smoke 原样 PASS);cargo test --workspace / pnpm -r test / go test 全绿
+  - id: G-F1-13
+    name: H.264 流腿门
+    check: viewport.frame 请求 format=h264 时返回 Annex B 码流(起始码 00 00 00 01 + SPS/PPS/IDR),纯 web 客户端可经 WebCodecs VideoDecoder 解码;cargo:编码器初始化+单帧编码非空+码流起始码断言;栈级:经 gateway 取 h264 帧码流非空且解码后尺寸一致
 guardrails:
   - 诚实优先:任何门不过如实报 FAIL/DEV_ENV_DEGRADE,不回写 PASS
   - 数字必须来自命令输出
@@ -123,18 +126,21 @@ deferred:
     reason: 上游 rurix-rt vulkan 档无 external_memory_win32 面;共享纹理腿已达标,零拷贝为性能优化而非功能缺口
     refill: 上游面补齐后立项
     owner: F1 wave.3+
-    status: CLOSED(2026-08-17 wave.3 回填完毕,§8 验收记录;H.264 备选腿残件仍 open,非缺口,性能波再评)
+    status: CLOSED(2026-08-17 wave.3 回填完毕,§8 验收记录;H.264 备选腿残件 2026-08-17 wave.4 回填完毕,G-F1-13 PASS)
   - id: RD-F1-004
     content: VK external semaphore(VK_KHR_external_semaphore_win32)真 GPU 侧帧同步
     reason: wave.3 同步 v1 采 CPU 块(session 帧 fence 等待后 queue.Signal),已达标但有 CPU 往返延迟;GPU 侧信号量可消除
-    refill: 零拷贝帧率/延迟实测出现瓶颈后立项
-    owner: F1 wave.4+ 或 F2 性能波
+    refill: 帧流向反转为 D3D12→VK(如 D3D12 光栅→VK 后处理)或出现 CPU 块实测瓶颈时重评;当前 VK→D3D12 流向与扩展单向语义冲突,external semaphore 无收益
+    owner: 帧流向反转场景出现时
+    status: OPEN(2026-08-17 wave.4 方向裁决 no-go:单向语义与帧流向冲突)
 
 ## 5. 修订
 - 2026-08-16 立项:F0 全绿后用户指令开工。
 - 2026-08-17 wave.2 立项:用户拍板「直接攻共享纹理」。设备 spike  verdict=READY(RTX 4070 Ti 12GiB / Vulkan 1.4.351 / CUDA 13.3 / MSVC 17.14.37531.7;上游 d3d12_interop_smoke device 段真过 interop_ok=true;render_exec UBO+深度+Readback 面核验在位)——evidence/f1-w2-device-spike.json。RD-F1-001 启动回填(共享纹理主攻 + readback 回退双腿);VK 零拷贝上游无面转 wave.3 RD。
 - 2026-08-17 wave.3 立项:用户指令「继续执行 F1 wave.3,推进 VK→D3D12 零拷贝」。方向裁决:**B(D3D12 建共享纹理 → VK import 直渲)**,否决 A(VK 导出 → D3D12 置放资源):B 与上游 RFC-0001 D3D12→CUDA import 同配方(committed resource NT handle + GetResourceAllocationInfo),VK import 仅需 pNext 结构体注入零新 FFI 函数,且规避 VK OPTIMAL tiling 私有布局被 D3D12 误读的风险;A 保留为备胎。同步 v1 采 CPU 块(session 帧 fence 等待后 queue.Signal),VK external semaphore 转 RD-F1-004。RD-F1-003 启动回填。
 - 2026-08-17 wave.3 验收:G-F1-10/11/12 全 PASS(§8 验收记录)。实测捕获 committed resource 尺寸天花板:vk req > d3d12 committed alloc 时(960x540 等实尺)bind 静默失败→设备丢失;定案双腿架构(committed/共享堆+placed resource,probe_image_mem_req 先探后建)。RD-F1-003 CLOSED(H.264 残件仍 open)。
+- 2026-08-17 wave.4 立项:用户指令「继续执行 F1 wave.4,处理 H.264 流腿和 external semaphore」。H.264 流腿落地(openh264 0.6 纯 Rust CPU 编码,Annex B,viewport_frame format 参,编码器懒建+尺寸变化重建,每 60 帧一关键帧);external semaphore 方向裁决 **no-go**:VK_KHR_external_semaphore_win32 共享语义单向(D3D12 fence handle→VK import 可行,VK semaphore handle→D3D12 不可消费),与当前 VK 渲染→D3D12 呈现帧流向相反,无法消除 CPU 块——RD-F1-004 维持 OPEN 待帧流向反转场景再评,上游 patch8 基础面留档未集成。
+- 2026-08-17 wave.4 验收:G-F1-13 PASS(§8 验收记录)。RD-F1-003 H.264 残件回填完毕。
 
 ## 6. Close-out(只追加区)
 <!-- 禁止预填 PASS -->
@@ -199,3 +205,21 @@ deferred:
 **5. RD 处置**:**RD-F1-003 CLOSED**(VK→D3D12 零拷贝帧通道全链落地;H.264 备选腿残件仍 open,非缺口,性能波再评);RD-F1-004(external semaphore GPU 侧同步)open;RD-F1-002(真 LLM 工具循环)open。
 
 **6. 签署**:Assisted-by: TRAE:Kimi-K3 | 影响范围:上游 H:\rurix render_exec.rs(R4 守卫/R5 回滚/R6 探针/R7 堆句柄腿,补丁 scripts/_f1w3_upstream_patch4~7.ps1)、crates/engine-host(share.rs 堆腿、viewport.rs probe+import 键、rpc.rs handleKind)、crates/viewport-presenter(堆腿 bind + 6 段协议)、apps/desktop main.cjs(handleKind 透传)、tests/f1_zerocopy.rs(实尺腿+探针)、scripts/f1-w2-desktop-presenter-smoke.ps1(zero_copy 断言+重试硬化) | 验证方式:上述命令真实输出 + 探针实测数字 + 双冒烟日志 + OS 截屏锚点比对。
+
+### wave.4 验收记录(2026-08-17,host=Windows NT/cargo 1.93.1/Node v22.14.0/pnpm 11.5.0,GPU=RTX 4070 Ti 12GiB / Vulkan 1.4.351,Electron 41.10.3 Chromium WebCodecs)
+
+**1. 独立断言清单(逐门)**
+
+| 门 | 判定 | 证据 |
+|---|---|---|
+| G-F1-13 H.264 流腿 | PASS | cargo `f1_h264` 1/1:编码器初始化 + 单帧编码非空 + Annex B 起始码 00 00 00 01 + SPS(7)/PPS(8)/IDR(5) + 首帧关键帧、次帧非关键 + rgba8 回退;栈级 scripts/f1-w4-h264-smoke.ps1:经 gateway `viewport_frame format=h264` → nalBytes=753、nalTypes=7/8/5、keyframe=true(device=RTX 4070 Ti),次帧 keyframe=false,缺省 format rgba8 回退 pixelsB64 非空;**解码腿:Annex B 码流经 Electron Chromium WebCodecs VideoDecoder(`avc:{format:"annexb"}`,codec=avc1.42c015 直读 SPS profile/level 字节)解码 decoded=1,visibleRect 320x240 与编码请求尺寸一致**;SPS 独立解析(去 emulation prevention + exp-golomb):320x240、无裁剪、frame_mbs_only=1。证据:evidence/f1-w4-h264-smoke-*.log + f1-w4-frame-*.annexb + f1-w4-decode-*.json |
+
+**2. 波聚合**:`cargo test --workspace` 36/36 全绿(12 套件 0 失败,新增 f1_h264);`pnpm -r test` 52/52(protocol 5 + client 29 + host 18)0 回归;`pnpm -r typecheck / build` 全绿;`go test` forge-gateway ok。
+
+**3. 本波修复的实测缺陷/坑(留痕)**:① **WebCodecs 仅在安全上下文暴露**——data: URL 页 `VideoDecoder` undefined,解码 harness 改环回 http(127.0.0.1:0)供页后可用;② **Chromium VideoFrame codedHeight=258 ≠ 240**(coded 为内部分配对齐值,SPS 独立解析佐证码流声明 320x240 无裁剪,差值非码流缺陷)——尺寸判据改用 visibleRect;③ openh264 0.6 API 适配:YUVBuffer 在 formats 模块、`Encoder::with_api_config(OpenH264API::from_source(), config)`、尺寸从 YUVSource 读、config 仅调码率/帧率。
+
+**4. RD 处置**:**RD-F1-003 H.264 残件本波回填完毕**(RD 本体 wave.3 已 CLOSED);**RD-F1-004 方向裁决 no-go 维持 OPEN**:扩展单向语义与 VK→D3D12 帧流向冲突,external semaphore 无收益;v1 CPU 块已达标,待帧流向反转场景(如 D3D12 先算→VK 后渲)再评。RD-F1-002(真 LLM 工具循环)open。
+
+**5. not-triggered / deferred**:上游 scripts/_f1w4_upstream_patch8.ps1(external semaphore 基础面)按 no-go 裁决未集成,仅留档可重建;client 侧 H.264 播放接线(WebCodecs 消费进 ViewportCanvas,纯 web 无共享内存场景)非本波验收范围,F2+ 按需立项。
+
+**6. 签署**:Assisted-by: TRAE:Kimi-K3 | 影响范围:crates/engine-host(rpc.rs H264State+rgba_to_i420+encode_frame+viewport_frame format 分支、Cargo.toml openh264 0.6)、crates/mcp/engine-scene-mcp(mcp.rs viewport_frame format 参)、crates/engine-host/tests/f1_h264.rs(新增)、apps/desktop/scripts/h264-decode-main.cjs(新增,WebCodecs 解码证据腿)、scripts/f1-w4-h264-smoke.ps1(新增) | 验证方式:上述命令真实输出 + 冒烟日志 + SPS 独立解析 + WebCodecs 解码 JSON 证据。

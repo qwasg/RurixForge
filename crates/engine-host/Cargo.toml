@@ -13,6 +13,8 @@ soft-raster = { path = "H:/rurix/src/soft-raster" }
 rurix-rt = { path = "H:/rurix/src/rurix-rt", features = ["vulkan"] }
 # WGSL→SPIR-V 纯 Rust 编译(naga 缓存钉版;仅着色器翻译,不含 GPU 调用)。
 naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"] }
+# H.264 编码(F1 wave.4 流腿;Cisco OpenH264 纯 Rust/BSD,CPU 编码无原生依赖)。
+openh264 = "0.6"
 base64 = "0.22"
 serde.workspace = true
 serde_json.workspace = true

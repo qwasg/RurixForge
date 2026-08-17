@@ -263,13 +263,14 @@ fn tool_list() -> Value {
             // ---- viewport.*(F1 wave.2)----
             {
                 "name": "viewport_frame",
-                "description": "GPU 场景实渲染一帧并回读(rgba8 base64;无 vulkan 设备 → DEV_ENV_DEGRADE 工具级错误,不充绿)",
+                "description": "GPU 场景实渲染一帧并回读(rgba8 base64;format=h264 时返回 Annex B 码流;无 vulkan 设备 → DEV_ENV_DEGRADE 工具级错误,不充绿)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "width": { "type": "integer", "description": "帧宽(16..=1920,缺省 960)" },
                         "height": { "type": "integer", "description": "帧高(16..=1080,缺省 540)" },
-                        "selectedId": { "type": "integer", "description": "选中实体 id(高亮,可选)" }
+                        "selectedId": { "type": "integer", "description": "选中实体 id(高亮,可选)" },
+                        "format": { "type": "string", "enum": ["rgba8", "h264"], "description": "帧格式(F1 wave.4):rgba8(默认) | h264(Annex B 流腿)" }
                     }
                 }
             },

@@ -272,7 +272,72 @@ pub struct HostState {
     pub started: Instant,
     /// 编辑器相机(wave.2;视口状态,非场景状态——不入 .rxscene、不参与 undo)。
     pub camera: crate::viewport::EditorCamera,
+    /// H.264 编码器状态(F1 wave.4 流腿;懒加载,尺寸变化重建)。
+    pub h264: H264State,
 }
+
+/// H.264 编码器状态(F1 wave.4):懒加载 + 尺寸变化重建 + 帧计数。
+pub struct H264State {
+    encoder: Option<openh264::encoder::Encoder>,
+    width: u32,
+    height: u32,
+    /// 已编码帧数(关键帧周期判定:每 60 帧一 IDR)。
+    encoded: u64,
+}
+
+impl H264State {
+    pub fn new() -> Self {
+        H264State { encoder: None, width: 0, height: 0, encoded: 0 }
+    }
+
+    /// RGBA8 → I420(YUV420)转换(BT.601 有限范围;2x2 块采 U/V)。
+    fn rgba_to_i420(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
+        let (w, h) = (w as usize, h as usize);
+        let mut yuv = vec![0u8; w * h * 3 / 2];
+        let (ys, us, vs) = (0, w * h, w * h * 5 / 4);
+        for j in 0..h {
+            for i in 0..w {
+                let si = (j * w + i) * 4;
+                let (r, g, b) = (rgba[si] as f32, rgba[si + 1] as f32, rgba[si + 2] as f32);
+                yuv[ys + j * w + i] = (0.299 * r + 0.587 * g + 0.114 * b).clamp(0.0, 255.0) as u8;
+                if j % 2 == 0 && i % 2 == 0 {
+                    let ci = (j / 2) * (w / 2) + (i / 2);
+                    yuv[us + ci] = (-0.169 * r - 0.331 * g + 0.5 * b + 128.0).clamp(0.0, 255.0) as u8;
+                    yuv[vs + ci] = (0.5 * r - 0.419 * g - 0.081 * b + 128.0).clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+        yuv
+    }
+
+    /// 编码一帧 RGBA8 → Annex B H.264 码流;返回 (码流字节, 是否关键帧)。
+    pub fn encode_frame(&mut self, rgba: &[u8], w: u32, h: u32) -> Result<(Vec<u8>, bool), String> {
+        if self.encoder.is_none() || self.width != w || self.height != h {
+            // openh264 0.6:尺寸从 YUVSource 读(编码器自动重建),config 仅调码率/帧率。
+            let config = openh264::encoder::EncoderConfig::new()
+                .set_bitrate_bps(2_000_000)
+                .max_frame_rate(60.0);
+            self.encoder = Some(
+                openh264::encoder::Encoder::with_api_config(
+                    openh264::OpenH264API::from_source(),
+                    config,
+                )
+                .map_err(|e| format!("H.264 编码器创建失败({w}x{h}): {e:?}"))?,
+            );
+            self.width = w;
+            self.height = h;
+            self.encoded = 0;
+        }
+        let yuv = Self::rgba_to_i420(rgba, w, h);
+        let buf = openh264::formats::YUVBuffer::from_vec(yuv, w as usize, h as usize);
+        let enc = self.encoder.as_mut().expect("刚初始化");
+        let stream = enc.encode(&buf).map_err(|e| format!("H.264 编码失败: {e:?}"))?;
+        let keyframe = self.encoded % 60 == 0;
+        self.encoded += 1;
+        Ok((stream.to_vec(), keyframe))
+    }
+}
+
 
 impl HostState {
     /// 初始化:建物理世界(按 Jolt→Rapier 序取首个可构造后端;全失败则 None)。
@@ -299,6 +364,7 @@ impl HostState {
             last_tris: 0,
             last_nonzero: 0,
             cpu_uploads: 0,
+            h264: H264State::new(),
             events,
             started: Instant::now(),
             camera: crate::viewport::EditorCamera::default(),
@@ -723,8 +789,10 @@ fn viewport_size(params: &Value) -> Result<(u32, u32), (i64, String)> {
 }
 
 /// viewport.frame:GPU 场景实渲染 + 回读;无设备 → DEV_ENV_DEGRADE 结构化错误(不充绿)。
+/// `format` = "rgba8"(默认) | "h264"(F1 wave.4 流腿:Annex B 码流,供纯 web 客户端)。
 fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
     let (w, h) = viewport_size(params)?;
+    let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8");
     let selected = params.get("selectedId").and_then(Value::as_u64);
     let cam = st.camera;
     match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h) {
@@ -755,6 +823,26 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 "viewport.frame",
                 json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": f.nonzero, "framePath": frame_path }),
             );
+            if format == "h264" {
+                let (nal, keyframe) = st
+                    .h264
+                    .encode_frame(&f.rgba8, f.width, f.height)
+                    .map_err(|e| (-32000, format!("H.264 编码失败: {e}")))?;
+                return Ok(json!({
+                    "width": f.width,
+                    "height": f.height,
+                    "format": "h264",
+                    "nalB64": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &nal),
+                    "keyframe": keyframe,
+                    "deviceName": f.device_name,
+                    "draws": f.draws,
+                    "truncated": f.truncated,
+                    "frames": frames,
+                    "nonZeroPixels": f.nonzero,
+                    "framePath": frame_path,
+                    "cpuUploads": cpu_uploads,
+                }));
+            }
             Ok(json!({
                 "width": f.width,
                 "height": f.height,
