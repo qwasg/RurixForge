@@ -47,6 +47,62 @@ export type CenterTab = 'viewport' | 'nodegraph';
 export type WorkbenchTab = 'console' | 'problems' | 'output' | 'terminal' | 'logs' | 'metrics';
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
 
+/** 编辑器相机(与服务端 EditorCamera 字段一一对应) */
+export interface CameraData {
+  target: number[];
+  yaw: number;
+  pitch: number;
+  dist: number;
+  fovY: number;
+}
+
+/** viewport_frame 诊断面 */
+export interface ViewportInfo {
+  deviceName: string;
+  draws: number;
+  frames: number;
+  nonZeroPixels: number;
+  truncated: boolean;
+}
+
+export interface PickResult {
+  hit: boolean;
+  entityId?: number;
+  name?: string;
+  point?: number[];
+}
+
+/** 相机基(与服务端 viewport.rs EditorCamera 同公式:eye = target + dist·[cp·sy, sp, cp·cy]) */
+function cameraBasis(c: CameraData): { right: number[]; up: number[] } {
+  const yaw = (c.yaw * Math.PI) / 180;
+  const pitch = (c.pitch * Math.PI) / 180;
+  const [sp, cp] = [Math.sin(pitch), Math.cos(pitch)];
+  const [sy, cy] = [Math.sin(yaw), Math.cos(yaw)];
+  const eye = [c.target[0] + c.dist * cp * sy, c.target[1] + c.dist * sp, c.target[2] + c.dist * cp * cy];
+  const f0 = [c.target[0] - eye[0], c.target[1] - eye[1], c.target[2] - eye[2]];
+  const fl = Math.hypot(f0[0], f0[1], f0[2]) || 1;
+  const f = [f0[0] / fl, f0[1] / fl, f0[2] / fl];
+  // right = norm(cross(f, [0,1,0])) = norm([-f2, 0, f0])(与服务端 v3_cross(f, up) 逐字一致)
+  const rl = Math.hypot(f[2], f[0]) || 1;
+  const right = [-f[2] / rl, 0, f[0] / rl];
+  const up = [
+    right[1] * f[2] - right[2] * f[1],
+    right[2] * f[0] - right[0] * f[2],
+    right[0] * f[1] - right[1] * f[0],
+  ];
+  return { right, up };
+}
+
+/** 四元数乘法 a⊗b([x,y,z,w]) */
+function quatMul(a: number[], b: number[]): number[] {
+  return [
+    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+  ];
+}
+
 interface SceneSummary {
   name: string;
   entityCount: number;
@@ -71,6 +127,13 @@ interface EditorState {
   workbenchTab: WorkbenchTab;
   chatOpen: boolean;
   chatMessages: ChatMessage[];
+
+  /** 编辑器相机(null = 未拉取) */
+  camera: CameraData | null;
+  /** 视口降级原因(null = 正常;DEV_ENV_DEGRADE 等如实显示,不伪造帧) */
+  viewportDegraded: string | null;
+  /** 最近一次 viewport_frame 诊断 */
+  viewportInfo: ViewportInfo | null;
 
   loadEntities: () => Promise<void>;
   refreshSummary: () => Promise<void>;
@@ -104,6 +167,16 @@ interface EditorState {
   setCenterTab: (t: CenterTab) => void;
   setWorkbenchTab: (t: WorkbenchTab) => void;
   toggleChat: () => void;
+
+  loadCamera: () => Promise<void>;
+  updateCamera: (patch: Partial<CameraData>) => Promise<void>;
+  orbitCamera: (dxPx: number, dyPx: number) => Promise<void>;
+  zoomCamera: (wheelDeltaY: number) => Promise<void>;
+  focusSelected: () => Promise<void>;
+  pickAt: (x: number, y: number, w: number, h: number) => Promise<void>;
+  /** gizmo 拖拽提交(拖拽结束一次性 transform_set,可 undo) */
+  gizmoDragSelected: (dxPx: number, dyPx: number, viewH: number) => Promise<void>;
+  setViewportStatus: (degraded: string | null, info: ViewportInfo | null) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => {
@@ -139,6 +212,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
     workbenchTab: 'console',
     chatOpen: false,
     chatMessages: [],
+
+    camera: null,
+    viewportDegraded: null,
+    viewportInfo: null,
 
     loadEntities: () => run(reload),
 
@@ -320,5 +397,82 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setCenterTab: (t) => set({ centerTab: t }),
     setWorkbenchTab: (t) => set({ workbenchTab: t }),
     toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+
+    loadCamera: () =>
+      run(async () => {
+        const c = await callTool<CameraData>('viewport_get_camera');
+        set({ camera: c });
+      }),
+
+    updateCamera: (patch) =>
+      run(async () => {
+        const c = await callTool<CameraData>('viewport_set_camera', patch as Record<string, unknown>);
+        set({ camera: c });
+      }),
+
+    orbitCamera: async (dxPx, dyPx) => {
+      const c = get().camera;
+      if (!c) return;
+      // Alt+左键拖拽:右拖 → 方位角减(视线右移),下拖 → 俯仰角增(视线上移)
+      await get().updateCamera({ yaw: c.yaw - dxPx * 0.35, pitch: c.pitch + dyPx * 0.35 });
+    },
+
+    zoomCamera: async (wheelDeltaY) => {
+      const c = get().camera;
+      if (!c) return;
+      await get().updateCamera({ dist: c.dist * Math.pow(1.0015, wheelDeltaY) });
+    },
+
+    focusSelected: async () => {
+      const { selectedId, entities } = get();
+      const e = entities.find((x) => x.id === selectedId);
+      if (!e) return;
+      await get().updateCamera({ target: [...e.transform.translation] });
+    },
+
+    pickAt: (x, y, w, h) =>
+      run(async () => {
+        const r = await callTool<PickResult>('viewport_pick', { x, y, width: w, height: h });
+        set({ selectedId: r.hit ? (r.entityId ?? null) : null });
+      }),
+
+    gizmoDragSelected: (dxPx, dyPx, viewH) =>
+      run(async () => {
+        const { selectedId, gizmo, camera, entities } = get();
+        if (selectedId == null || !camera) return;
+        const e = entities.find((x) => x.id === selectedId);
+        if (!e) return;
+        const t = e.transform;
+        if (gizmo === 'translate') {
+          // 相机平面拖动:像素→世界 = 2·dist·tan(fovY/2)/视口高
+          const wpp = (2 * camera.dist * Math.tan((camera.fovY * Math.PI) / 360)) / Math.max(viewH, 1);
+          const { right, up } = cameraBasis(camera);
+          const t0 = t.translation;
+          await get().setTransform(selectedId, {
+            translation: [
+              t0[0] + right[0] * dxPx * wpp - up[0] * dyPx * wpp,
+              t0[1] + right[1] * dxPx * wpp - up[1] * dyPx * wpp,
+              t0[2] + right[2] * dxPx * wpp - up[2] * dyPx * wpp,
+            ],
+          });
+        } else if (gizmo === 'rotate') {
+          // 绕世界 Y 轴:dx 像素 → 0.5°/px
+          const rad = (dxPx * 0.5 * Math.PI) / 360;
+          const qYaw = [0, Math.sin(rad), 0, Math.cos(rad)];
+          await get().setTransform(selectedId, { rotation: quatMul(qYaw, t.rotation) });
+        } else {
+          // 均匀缩放:dx → 1.005^dx,钳 [0.01, 100]
+          const f = Math.pow(1.005, dxPx);
+          await get().setTransform(selectedId, {
+            scale: t.scale.map((v) => Math.min(100, Math.max(0.01, v * f))),
+          });
+        }
+      }),
+
+    setViewportStatus: (degraded, info) =>
+      set((s) => ({
+        viewportDegraded: degraded,
+        viewportInfo: info ?? s.viewportInfo,
+      })),
   };
 });

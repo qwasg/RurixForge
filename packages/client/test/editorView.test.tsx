@@ -32,6 +32,18 @@ describe('<EditorView />', () => {
         play_state: { state: 'edit' },
         host_events: [{ ts: '2026-08-17T00:00:00Z', event: 'host.started', backend: 'none' }],
         component_list_types: [{ name: 'Light', fields: [] }],
+        viewport_get_camera: { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 },
+        viewport_frame: {
+          width: 16,
+          height: 16,
+          format: 'rgba8',
+          pixelsB64: btoa(String.fromCharCode(...new Array(16 * 16 * 4).fill(0))),
+          deviceName: 'mock-gpu',
+          draws: 1,
+          frames: 1,
+          nonZeroPixels: 0,
+          truncated: false,
+        },
       }),
     );
   });
@@ -80,12 +92,12 @@ describe('<EditorView />', () => {
     expect(screen.getByTitle('Collapse Chat')).toBeInTheDocument();
   });
 
-  it('PIE 状态条与帧统计来自 scene_summary/play_state 实测', async () => {
+  it('PIE 状态条与视口帧统计来自 play_state/viewport_frame 实测(wave.2)', async () => {
     render(<EditorView />);
     expect(await screen.findByText('edit')).toBeInTheDocument();
-    // 帧统计:frames 3 · tris 1 · px 42
+    // 帧统计:mock-gpu · draws 1 · frames 1 · px 0(viewport_frame 轮询首帧后上屏)
     expect(
-      await screen.findByText((_, el) => el?.textContent === 'frames 3 · tris 1 · px 42'),
+      await screen.findByText((_, el) => el?.textContent === 'mock-gpu · draws 1 · frames 1 · px 0'),
     ).toBeInTheDocument();
   });
 });

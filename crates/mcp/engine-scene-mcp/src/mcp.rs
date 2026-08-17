@@ -259,6 +259,70 @@ fn tool_list() -> Value {
                 "name": "play_state",
                 "description": "PIE 状态:edit | play_running | play_paused",
                 "inputSchema": { "type": "object", "properties": {} }
+            },
+            // ---- viewport.*(F1 wave.2)----
+            {
+                "name": "viewport_frame",
+                "description": "GPU 场景实渲染一帧并回读(rgba8 base64;无 vulkan 设备 → DEV_ENV_DEGRADE 工具级错误,不充绿)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "width": { "type": "integer", "description": "帧宽(16..=1920,缺省 960)" },
+                        "height": { "type": "integer", "description": "帧高(16..=1080,缺省 540)" },
+                        "selectedId": { "type": "integer", "description": "选中实体 id(高亮,可选)" }
+                    }
+                }
+            },
+            {
+                "name": "viewport_pick",
+                "description": "视口点选:屏幕像素坐标(左上原点)→ 相机射线 → 最近命中实体",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "x": { "type": "number" },
+                        "y": { "type": "number" },
+                        "width": { "type": "integer", "description": "视口宽(缺省 960)" },
+                        "height": { "type": "integer", "description": "视口高(缺省 540)" }
+                    },
+                    "required": ["x", "y"]
+                }
+            },
+            {
+                "name": "viewport_set_camera",
+                "description": "编辑器相机子集更新(target/yaw/pitch/dist/fovY,未给沿用旧值),回显全量",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z] 环绕锚点" },
+                        "yaw": { "type": "number", "description": "方位角(度)" },
+                        "pitch": { "type": "number", "description": "俯仰角(度,钳 ±89)" },
+                        "dist": { "type": "number", "description": "距离(钳 0.2..500)" },
+                        "fovY": { "type": "number", "description": "垂直视场角(度,钳 10..120)" }
+                    }
+                }
+            },
+            {
+                "name": "viewport_get_camera",
+                "description": "取编辑器相机全量状态(target/yaw/pitch/dist/fovY)",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "viewport_share_open",
+                "description": "打开 D3D12 共享纹理并把句柄移交 pid 进程(viewport-presenter);返回 texHandle/fenceHandle/width/height",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "pid": { "type": "integer", "description": "目标进程 id(句柄接收方)" },
+                        "width": { "type": "integer", "description": "纹理宽(16..=1920,缺省 960)" },
+                        "height": { "type": "integer", "description": "纹理高(16..=1080,缺省 540)" }
+                    },
+                    "required": ["pid"]
+                }
+            },
+            {
+                "name": "viewport_share_close",
+                "description": "关闭共享纹理(幂等;句柄生命周期结束)",
+                "inputSchema": { "type": "object", "properties": {} }
             }
         ]
     })
@@ -331,6 +395,12 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "play_step" => "play.step",
         "play_exit" => "play.exit",
         "play_state" => "play.state",
+        "viewport_frame" => "viewport.frame",
+        "viewport_pick" => "viewport.pick",
+        "viewport_set_camera" => "viewport.setCamera",
+        "viewport_get_camera" => "viewport.getCamera",
+        "viewport_share_open" => "viewport.shareOpen",
+        "viewport_share_close" => "viewport.shareClose",
         _ => return None,
     })
 }

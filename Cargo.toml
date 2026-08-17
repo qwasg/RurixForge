@@ -4,6 +4,7 @@ members = [
   "crates/engine-host",
   "crates/forge-agentd",
   "crates/mcp/engine-scene-mcp",
+  "crates/viewport-presenter",
 ]
 resolver = "2"
 
@@ -18,3 +19,17 @@ serde_json = "1.0"
 tokio = { version = "1.44", features = ["rt-multi-thread", "net", "macros", "time", "process", "sync"] }
 axum = "0.8"
 tower = "0.5"
+# wave.2 D3D12 共享纹理(engine-host 生产者 / viewport-presenter 消费者;Windows only)。
+windows = { version = "=0.61.3", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Threading",
+  "Win32_System_LibraryLoader",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_HiDpi",
+] }

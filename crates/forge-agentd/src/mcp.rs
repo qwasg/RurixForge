@@ -13,7 +13,7 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::{Mutex, MutexGuard};
 
 /// 已挂载的 engine-scene 工具面(显式全量清单,与 engine-scene-mcp 工具表一一对应)
-pub const KNOWN_TOOLS: [&str; 32] = [
+pub const KNOWN_TOOLS: [&str; 38] = [
     "mcp__engine-scene__host_ping",
     "mcp__engine-scene__host_events",
     "mcp__engine-scene__scene_new",
@@ -46,6 +46,12 @@ pub const KNOWN_TOOLS: [&str; 32] = [
     "mcp__engine-scene__play_step",
     "mcp__engine-scene__play_exit",
     "mcp__engine-scene__play_state",
+    "mcp__engine-scene__viewport_frame",
+    "mcp__engine-scene__viewport_pick",
+    "mcp__engine-scene__viewport_set_camera",
+    "mcp__engine-scene__viewport_get_camera",
+    "mcp__engine-scene__viewport_share_open",
+    "mcp__engine-scene__viewport_share_close",
 ];
 
 const TOOL_PREFIX: &str = "mcp__engine-scene__";

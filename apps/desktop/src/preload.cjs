@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('forgeAPI', {
     },
   },
   getHealth: () => ipcRenderer.invoke('forge:health'),
+  // F1 wave.2 G-F1-9:视口容器 bounds 上报(CSS px + dpr),驱动 viewport-presenter
+  // 子窗口嵌入;visible=false 表示视口卸载(关闭原生呈现层)。
+  viewport: {
+    reportBounds: (b) => ipcRenderer.send('viewport:bounds', b),
+  },
   platform: process.platform,
   versions: {
     electron: process.versions.electron,

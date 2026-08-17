@@ -1,0 +1,18 @@
+{
+  "rect": {
+    "x": 1038,
+    "y": 382,
+    "w": 674,
+    "h": 540
+  },
+  "presented": 3,
+  "texW": 674,
+  "texH": 540,
+  "centerRgba": [
+    87,
+    109,
+    73,
+    255
+  ],
+  "deviceName": "NVIDIA GeForce RTX 4070 Ti"
+}

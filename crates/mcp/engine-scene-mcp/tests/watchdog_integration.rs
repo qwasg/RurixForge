@@ -111,7 +111,7 @@ fn watchdog_restarts_host_after_kill() {
     let init = mcp.request("initialize", json!({}));
     assert_eq!(init["serverInfo"]["name"], "engine-scene-mcp");
 
-    // tools/list:F0 5 个 + F1 27 个 = 32 个工具齐全
+    // tools/list:F0 5 个 + F1 27 个 + F1 wave.2 viewport 6 个 = 38 个工具齐全
     let tools = mcp.request("tools/list", json!({}));
     let names: Vec<&str> = tools["tools"]
         .as_array()
@@ -119,7 +119,7 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 32, "tools/list 须为 32 个工具:{names:?}");
+    assert_eq!(names.len(), 38, "tools/list 须为 38 个工具:{names:?}");
     for want in [
         "host_ping", "scene_new", "scene_summary", "render_once", "host_events",
         "entity_create", "entity_destroy", "entity_rename", "entity_get", "entity_list",
@@ -128,6 +128,8 @@ fn watchdog_restarts_host_after_kill() {
         "transform_batch_set", "scene_save", "scene_load", "scene_diff",
         "scene_checkpoint", "scene_rollback", "edit_undo", "edit_redo",
         "play_enter", "play_pause", "play_resume", "play_step", "play_exit", "play_state",
+        "viewport_frame", "viewport_pick", "viewport_set_camera", "viewport_get_camera",
+        "viewport_share_open", "viewport_share_close",
     ] {
         assert!(names.contains(&want), "tools/list 缺 {want}:{names:?}");
     }

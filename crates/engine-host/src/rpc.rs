@@ -268,6 +268,8 @@ pub struct HostState {
     pub events: VecDeque<Value>,
     /// 启动时刻(uptime 计算)。
     pub started: Instant,
+    /// 编辑器相机(wave.2;视口状态,非场景状态——不入 .rxscene、不参与 undo)。
+    pub camera: crate::viewport::EditorCamera,
 }
 
 impl HostState {
@@ -296,6 +298,7 @@ impl HostState {
             last_nonzero: 0,
             events,
             started: Instant::now(),
+            camera: crate::viewport::EditorCamera::default(),
         }
     }
 
@@ -626,6 +629,15 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "play.step" => play_step(st),
         "play.exit" => play_exit(st),
         "play.state" => Ok(json!({ "state": st.play.as_str() })),
+        "viewport.frame" => viewport_frame(st, params),
+        "viewport.setCamera" => viewport_set_camera(st, params),
+        "viewport.getCamera" => Ok(st.camera.to_json()),
+        "viewport.pick" => viewport_pick(st, params),
+        "viewport.shareOpen" => viewport_share_open(params),
+        "viewport.shareClose" => {
+            crate::share::close();
+            Ok(json!({ "closed": true }))
+        }
         _ => Err((-32601, format!("method not found: {method}"))),
     }
 }
@@ -692,6 +704,131 @@ fn render_once(st: &mut HostState) -> Value {
         json!({ "frames": st.frames, "tris": 1, "nonZeroPixels": nonzero }),
     );
     json!({ "frames": st.frames, "tris": 1, "nonZeroPixels": nonzero })
+}
+
+// ---------- F1 wave.2 Viewport ----------
+
+/// 取 width/height 参数(缺省 960×540;钳 16..=1920 / 16..=1080)。
+fn viewport_size(params: &Value) -> Result<(u32, u32), (i64, String)> {
+    let g = |k: &str, d: u32| params.get(k).and_then(Value::as_u64).map(|v| v as u32).unwrap_or(d);
+    if !params.is_null() && !params.is_object() {
+        return param_err("invalid params: 须为对象");
+    }
+    let w = g("width", 960).clamp(16, 1920);
+    let h = g("height", 540).clamp(16, 1080);
+    Ok((w, h))
+}
+
+/// viewport.frame:GPU 场景实渲染 + 回读;无设备 → DEV_ENV_DEGRADE 结构化错误(不充绿)。
+fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
+    let (w, h) = viewport_size(params)?;
+    let selected = params.get("selectedId").and_then(Value::as_u64);
+    let cam = st.camera;
+    match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h) {
+        Ok(f) => {
+            // 共享纹理腿(G-F1-9):帧源唯一,readback 帧同步写入 D3D12 共享纹理
+            if crate::share::is_open() {
+                crate::share::write_frame(&f.rgba8, f.width, f.height)
+                    .map_err(|e| (-32000, format!("共享纹理写入失败: {e}")))?;
+            }
+            st.frames += 1;
+            st.last_tris = f.draws * 12;
+            st.last_nonzero = f.nonzero;
+            let frames = st.frames;
+            push_event(
+                st,
+                "viewport.frame",
+                json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": f.nonzero }),
+            );
+            Ok(json!({
+                "width": f.width,
+                "height": f.height,
+                "format": "rgba8",
+                "pixelsB64": f.pixels_b64(),
+                "deviceName": f.device_name,
+                "draws": f.draws,
+                "truncated": f.truncated,
+                "frames": frames,
+                "nonZeroPixels": f.nonzero,
+            }))
+        }
+        Err(e) => Err((-32000, e)),
+    }
+}
+
+/// viewport.setCamera:子集更新(target/yaw/pitch/dist/fovY),回显全量。
+fn viewport_set_camera(st: &mut HostState, params: &Value) -> HResult {
+    if !params.is_object() {
+        return param_err("invalid params: 须为对象");
+    }
+    let mut cam = st.camera;
+    if let Some(t) = params.get("target") {
+        let a = t.as_array().ok_or((-32602, "invalid params: target 须为 [f32;3]".to_string()))?;
+        if a.len() != 3 || !a.iter().all(|v| v.is_number()) {
+            return param_err("invalid params: target 须为 3 数数组");
+        }
+        cam.target = [
+            a[0].as_f64().unwrap() as f32,
+            a[1].as_f64().unwrap() as f32,
+            a[2].as_f64().unwrap() as f32,
+        ];
+    }
+    let num = |k: &str| params.get(k).and_then(Value::as_f64).map(|v| v as f32);
+    if let Some(v) = num("yaw") {
+        cam.yaw_deg = v;
+    }
+    if let Some(v) = num("pitch") {
+        cam.pitch_deg = v.clamp(-89.0, 89.0);
+    }
+    if let Some(v) = num("dist") {
+        cam.dist = v.clamp(0.2, 500.0);
+    }
+    if let Some(v) = num("fovY") {
+        cam.fov_y_deg = v.clamp(10.0, 120.0);
+    }
+    st.camera = cam;
+    Ok(cam.to_json())
+}
+
+/// viewport.pick:屏幕像素坐标(左上原点) → 最近命中实体。
+fn viewport_pick(st: &mut HostState, params: &Value) -> HResult {
+    let (w, h) = viewport_size(params)?;
+    let x = params
+        .get("x")
+        .and_then(Value::as_f64)
+        .ok_or((-32602, "invalid params: 缺 x".to_string()))? as f32;
+    let y = params
+        .get("y")
+        .and_then(Value::as_f64)
+        .ok_or((-32602, "invalid params: 缺 y".to_string()))? as f32;
+    let scene = st.active();
+    match crate::viewport::pick_entity(scene, &st.camera, x, y, w, h) {
+        Some((id, p)) => {
+            let name = scene.entity(id).map(|e| e.name.clone()).unwrap_or_default();
+            Ok(json!({ "hit": true, "entityId": id, "name": name, "point": p }))
+        }
+        None => Ok(json!({ "hit": false })),
+    }
+}
+
+/// viewport.shareOpen:创建/重建 D3D12 共享纹理,句柄 DuplicateHandle 移交 pid 进程。
+fn viewport_share_open(params: &Value) -> HResult {
+    let pid = params
+        .get("pid")
+        .and_then(Value::as_u64)
+        .ok_or((-32602, "invalid params: 缺 pid".to_string()))? as u32;
+    let (w, h) = viewport_size(params)?;
+    crate::share::open(w, h, pid)
+        .map(|(tex, fence, w, h)| {
+            json!({
+                "texHandle": tex,
+                "fenceHandle": fence,
+                "width": w,
+                "height": h,
+                "format": "rgba8",
+            })
+        })
+        .map_err(|e| (-32000, format!("共享纹理打开失败: {e}")))
 }
 
 // ---------- entity.* ----------

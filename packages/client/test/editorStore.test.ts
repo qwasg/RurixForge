@@ -125,4 +125,88 @@ describe('editorStore', () => {
     await useEditorStore.getState().undo();
     expect(useEditorStore.getState().lastError).toContain('未 mock 的工具');
   });
+
+  // ---- F1 wave.2:viewport 相机 / 点选 / gizmo ----
+
+  const CAM = { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 };
+
+  it('pickAt:命中设置 selectedId,未命中清空', async () => {
+    fetchMock = mockForgeBackend({
+      viewport_pick: { hit: true, entityId: 7, name: 'Cube7', point: [0, 0.5, 0] },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useEditorStore.getState().pickAt(64, 48, 128, 96);
+    expect(useEditorStore.getState().selectedId).toBe(7);
+    expect(callBody(0).tool).toBe('mcp__engine-scene__viewport_pick');
+    expect(callBody(0).arguments).toEqual({ x: 64, y: 48, width: 128, height: 96 });
+
+    fetchMock = mockForgeBackend({ viewport_pick: { hit: false } });
+    vi.stubGlobal('fetch', fetchMock);
+    await useEditorStore.getState().pickAt(2, 2, 128, 96);
+    expect(useEditorStore.getState().selectedId).toBeNull();
+  });
+
+  it('orbitCamera / zoomCamera / focusSelected:相机子集更新回显全量', async () => {
+    const after = { ...CAM, yaw: 0, pitch: 33.5 };
+    fetchMock = mockForgeBackend({ viewport_set_camera: after });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ camera: CAM, entities: [CUBE], selectedId: 1 });
+
+    // orbit dx=100, dy=10 → yaw 35-35=0,pitch 28+3.5=31.5(断言以服务端回显为准)
+    await useEditorStore.getState().orbitCamera(100, 10);
+    expect(callBody(0).tool).toBe('mcp__engine-scene__viewport_set_camera');
+    expect(callBody(0).arguments).toEqual({ yaw: 0, pitch: 31.5 });
+    expect(useEditorStore.getState().camera).toEqual(after);
+
+    // 聚焦:target = 选中实体 translation
+    const focused = { ...CAM, target: [0, 0, 0] };
+    fetchMock = mockForgeBackend({ viewport_set_camera: focused });
+    vi.stubGlobal('fetch', fetchMock);
+    await useEditorStore.getState().focusSelected();
+    expect(callBody(0).arguments).toEqual({ target: [0, 0, 0] });
+  });
+
+  it('gizmoDragSelected translate:相机平面位移提交 transform_set(单次可 undo)', async () => {
+    const next = { translation: [0.1, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] };
+    fetchMock = mockForgeBackend({ transform_set: next });
+    vi.stubGlobal('fetch', fetchMock);
+    // 相机 yaw=90,pitch=0 → 眼在 +x 看向 -x;right = cross(f,up) 归一 = [0,0,-1]
+    useEditorStore.setState({
+      camera: { target: [0, 0, 0], yaw: 90, pitch: 0, dist: 10, fovY: 90 },
+      entities: [CUBE],
+      selectedId: 1,
+      gizmo: 'translate',
+    });
+
+    await useEditorStore.getState().gizmoDragSelected(100, 0, 500);
+    const args = callBody(0).arguments;
+    expect(callBody(0).tool).toBe('mcp__engine-scene__transform_set');
+    expect(args.id).toBe(1);
+    const t = args.translation as number[];
+    // wpp = 2·10·tan(45°)/500 = 0.04;dx=100 → 沿 right=[0,0,-1] 移 4.0
+    expect(t[0]).toBeCloseTo(0, 5);
+    expect(t[1]).toBeCloseTo(0, 5);
+    expect(t[2]).toBeCloseTo(-4.0, 5);
+  });
+
+  it('gizmoDragSelected rotate:绕世界 Y 轴四元数左乘', async () => {
+    const next = { translation: [0, 0, 0], rotation: [0, 0.7071, 0, 0.7071], scale: [1, 1, 1] };
+    fetchMock = mockForgeBackend({ transform_set: next });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({
+      camera: CAM,
+      entities: [CUBE],
+      selectedId: 1,
+      gizmo: 'rotate',
+    });
+
+    // dx=180 → 0.5°/px → 90° → qYaw=[0,sin45°,0,cos45°]
+    await useEditorStore.getState().gizmoDragSelected(180, 0, 500);
+    const rot = (callBody(0).arguments.rotation as number[]).map((v) => v as number);
+    expect(rot[0]).toBeCloseTo(0, 5);
+    expect(rot[1]).toBeCloseTo(Math.SQRT1_2, 3);
+    expect(rot[2]).toBeCloseTo(0, 5);
+    expect(rot[3]).toBeCloseTo(Math.SQRT1_2, 3);
+  });
 });

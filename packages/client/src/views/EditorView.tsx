@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
 import {
   useEditorStore,
   type EntityData,
@@ -243,7 +244,6 @@ function ViewportPanel() {
   const setGizmo = useEditorStore((s) => s.setGizmo);
   const playState = useEditorStore((s) => s.playState);
   const sceneName = useEditorStore((s) => s.sceneName);
-  const stats = useEditorStore((s) => s.stats);
   const chatOpen = useEditorStore((s) => s.chatOpen);
   const toggleChat = useEditorStore((s) => s.toggleChat);
 
@@ -295,19 +295,8 @@ function ViewportPanel() {
 
       {centerTab === 'viewport' ? (
         <div className="relative min-h-0 flex-1 bg-ink">
-          {/* 帧通道占位:共享纹理/H.264 由 RD-F1 承接 */}
-          <div className="flex h-full items-center justify-center">
-            <p className="text-center text-xs text-white/40">
-              Viewport 帧通道占位
-              <br />
-              (渲染帧经原生共享纹理接入,见 07 §2)
-            </p>
-          </div>
-          {/* 右上前角帧统计(scene_summary.render 实测) */}
-          <div className="absolute right-2 top-2 rounded-md bg-black/40 px-2 py-1 font-mono text-2xs text-white/70">
-            frames {stats?.frames ?? '—'} · tris {stats?.lastTris ?? '—'} · px{' '}
-            {stats?.lastNonZeroPixels ?? '—'}
-          </div>
+          {/* GPU 场景实渲染帧 + 点选/相机/gizmo(wave.2,RD-F1-001 回填) */}
+          <ViewportCanvas />
           {/* PIE 状态条(play_state 实测) */}
           <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-black/40 px-2 py-1">
             <span className={cn('h-1.5 w-1.5 rounded-full', PIE_DOT[playState])} />

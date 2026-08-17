@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "subject": "f1.wave2.device_spike",
+  "verdict": "READY",
+  "timestamp": "2026-08-17T19:05:00+08:00",
+  "host": "Windows NT / cargo 1.93.1 / Node v22.14.0 / pnpm 11.5.0",
+  "trigger": "F1 wave.2 立项前置(RD-F1-001 refill 第一步:rurix-render vulkan 档设备实测)",
+  "facts": [
+    {
+      "kind": "gpu",
+      "command": "nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv",
+      "output": "NVIDIA GeForce RTX 4070 Ti, 620.02, 12282 MiB"
+    },
+    {
+      "kind": "vulkan_device",
+      "command": "vulkaninfo --summary",
+      "output": "apiVersion 1.4.351 / driverVersion 620.2.0.0 / deviceName NVIDIA GeForce RTX 4070 Ti"
+    },
+    {
+      "kind": "cuda_toolchain",
+      "command": "nvcc --version",
+      "output": "Cuda compilation tools, release 13.3, V13.3.33"
+    },
+    {
+      "kind": "msvc_toolchain",
+      "command": "vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion",
+      "output": "17.14.37531.7 (cl.exe 不在 PATH,cc-rs 经 vswhere 探测可用)"
+    },
+    {
+      "kind": "d3d12_interop_device",
+      "command": "py -3 ci/d3d12_interop_smoke.py (cwd=H:\\rurix)",
+      "output": "host 段 ABI size const assert 104/88/96/144 + export 96 通过;三类 interop 错误 100% 编译期拦截 [cross_context, handle_lifetime, signal_timing];INTEROP_DEVICE: ok sample_rgb=1,0.5,0;device 段:import 共享 resource/fence→CUDA 写入→数值回读→D3D12 present 通过;PASS interop_ok=True",
+      "evidence": "H:\\rurix\\evidence\\d3d12_interop_smoke.json"
+    },
+    {
+      "kind": "upstream_render_surface",
+      "command": "源码核验 H:\\rurix",
+      "output": "rurix-rt render_exec:Bindings::uniform(UBO)+push_constants+TexFormat::Depth32Float+DepthAttachmentRef+Readback::Texture;M134 帧捕获门已证 GPU 渲三角形→Rgba16Float→回读逐像素位级相等;feature vulkan 经手写 vulkan-1.dll FFI loader;rurix-d3d12 real-shim 为「自建窗口 present」面,不含可嵌入纹理生产者;VK_KHR_external_memory_win32 上游无面(grep 零命中)"
+    },
+    {
+      "kind": "upstream_prebuilt",
+      "command": "Get-ChildItem H:\\rurix\\target\\debug\\*.exe",
+      "output": "rurixc.exe / vk_saxpy 系 vk_*.exe / g10_m134_frame_capture.exe / g9_m118_display_pipeline.exe 等预建产物在位"
+    }
+  ],
+  "conclusions": [
+    "vulkan 档设备面 READY:render_exec 可直接承担场景实渲染+回读",
+    "D3D12 共享纹理「生产者→Electron 消费者」面上游不存在,须自研 editor glue(engine-host 生产者 + viewport-presenter 进程),非渲染内核,不违勿自研约束",
+    "VK→D3D12 零拷贝路径(VK_KHR_external_memory_win32)上游无面,wave.2 不做,登记 RD",
+    "帧数据源 = Vulkan 渲染 → Readback(CPU)→ 写 D3D12 共享纹理 → presenter 呈现;readback 腿同时供 canvas 回退显示"
+  ]
+}

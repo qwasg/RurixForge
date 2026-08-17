@@ -11,6 +11,17 @@ export interface ForgeAPI {
     close: () => void;
     onMaximizedChanged: (cb: (maximized: boolean) => void) => () => void;
   };
+  /** F1 wave.2 G-F1-9:视口 bounds 上报(desktop preload 提供;web/测试环境缺省) */
+  viewport?: {
+    reportBounds?: (b: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      dpr: number;
+      visible: boolean;
+    }) => void;
+  };
   platform: string;
 }
 

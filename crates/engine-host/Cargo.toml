@@ -8,5 +8,14 @@ edition.workspace = true
 forge-scene = { path = "../forge-scene" }
 rurix-physics = { path = "H:/rurix/src/rurix-physics" }
 soft-raster = { path = "H:/rurix/src/soft-raster" }
+# wave.2 Viewport:rurix-rt vulkan 档 render_exec(场景实渲染 + Readback);loader 运行时
+# 动态装载 vulkan-1.dll,编译期零原生依赖,无设备环境可编译、运行期诚实 DEV_ENV_DEGRADE。
+rurix-rt = { path = "H:/rurix/src/rurix-rt", features = ["vulkan"] }
+# WGSL→SPIR-V 纯 Rust 编译(naga 缓存钉版;仅着色器翻译,不含 GPU 调用)。
+naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"] }
+base64 = "0.22"
 serde.workspace = true
 serde_json.workspace = true
+# D3D12 共享纹理生产者(wave.2 G-F1-9;仅 Windows 目标参与编译)。
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true

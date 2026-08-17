@@ -5,7 +5,9 @@
 
 mod frame;
 mod rpc;
+mod share;
 mod timeutil;
+mod viewport;
 
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
