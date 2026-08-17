@@ -234,6 +234,56 @@ mod tests {
         result.clone()
     }
 
+    /// 长连接持久性回归:同一会话内 create 后 list 必须可见(F1 实测缺陷修复门)。
+    #[tokio::test]
+    async fn mcp_call_entity_persists_across_calls() {
+        let bin = mcp::server_bin();
+        if !bin.exists() {
+            eprintln!("[SKIP] engine-scene-mcp 未构建: {},集成测试跳过", bin.display());
+            return;
+        }
+        let app = build_app();
+        // 独立场景,避免与其他测试互串
+        let _ = app
+            .clone()
+            .oneshot(
+                post_json(
+                    "/api/forge/mcp/call",
+                    r#"{"tool":"mcp__engine-scene__scene_new","arguments":{"name":"persist-check"}}"#,
+                ),
+            )
+            .await
+            .unwrap();
+        let created = app
+            .clone()
+            .oneshot(
+                post_json(
+                    "/api/forge/mcp/call",
+                    r#"{"tool":"mcp__engine-scene__entity_create","arguments":{"name":"cube-1"}}"#,
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::OK);
+        let listed = app
+            .oneshot(
+                post_json(
+                    "/api/forge/mcp/call",
+                    r#"{"tool":"mcp__engine-scene__entity_list"}"#,
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(listed.status(), StatusCode::OK);
+        let v = json_body(listed).await;
+        let list = extract_tool_json(&v);
+        let names = list.to_string();
+        assert!(
+            names.contains("cube-1"),
+            "跨调用实体未持久(长连接失效?): {names}"
+        );
+    }
+
     /// 真实 bind 127.0.0.1:0 的集成测试:原始 TCP 发 HTTP/1.1(避免新增 HTTP 客户端依赖)
     #[tokio::test]
     async fn real_bind_health() {

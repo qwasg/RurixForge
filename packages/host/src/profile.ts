@@ -3,6 +3,7 @@ import { configPlugin, type ConfigPatch } from './plugins/config.js';
 import { loggerPlugin } from './plugins/logger.js';
 import { eventlogPlugin } from './plugins/eventlog.js';
 import { sessionsPlugin } from './plugins/sessions.js';
+import { forgeProxyPlugin } from './plugins/forgeProxy.js';
 import { httpPlugin } from './plugins/http.js';
 
 /** bundle = 插件工厂数组 */
@@ -19,7 +20,8 @@ export interface LoadedProfile {
  */
 export function loadProfile(name = 'web', patch: ConfigPatch = {}): LoadedProfile {
   const baseBundle: Bundle = [configPlugin(patch), loggerPlugin, eventlogPlugin, sessionsPlugin];
-  const webBundle: Bundle = [httpPlugin];
+  // forgeProxy 须在 http 之前装载(http 初始化时读取该服务)
+  const webBundle: Bundle = [forgeProxyPlugin(), httpPlugin];
   const profiles: Record<string, Bundle[]> = {
     base: [baseBundle],
     web: [baseBundle, webBundle],

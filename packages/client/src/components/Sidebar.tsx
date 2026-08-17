@@ -10,6 +10,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Gamepad2,
   GitBranch,
   Home,
   ListFilter,
@@ -273,6 +274,7 @@ export default function Sidebar() {
   const goHome = useAppStore((s) => s.goHome);
   const openAutomations = useAppStore((s) => s.openAutomations);
   const openCustomize = useAppStore((s) => s.openCustomize);
+  const openEditor = useAppStore((s) => s.openEditor);
   const setPaletteOpen = useAppStore((s) => s.setPaletteOpen);
   const pinnedAgents = useAppStore((s) => s.pinnedAgents);
   const workspaces = useAppStore((s) => s.workspaces);
@@ -334,6 +336,12 @@ export default function Sidebar() {
           label="Customize"
           active={route === 'customize'}
           onClick={openCustomize}
+        />
+        <NavRow
+          icon={<Gamepad2 size={14} strokeWidth={1.8} />}
+          label="编辑器"
+          active={route === 'editor'}
+          onClick={openEditor}
         />
 
         {/* Pinned:整组悬停时标题右侧浮出 Archive 钮 */}

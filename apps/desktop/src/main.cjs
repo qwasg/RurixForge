@@ -15,6 +15,8 @@ const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const hostEntry = path.join(repoRoot, 'packages', 'host', 'dist', 'index.js');
 const evidenceDir = path.join(__dirname, '..', 'evidence');
 const isSmoke = process.env.FORGE_SMOKE === '1';
+// 冒烟场景:home(默认)| editor(进编辑器视图再截图)
+const smokeScenario = process.env.FORGE_SMOKE_SCENARIO || 'home';
 
 let mainWindow = null;
 let hostProcess = null;
@@ -175,9 +177,21 @@ async function captureSmokeEvidence() {
   const image = await mainWindow.webContents.capturePage();
   fs.mkdirSync(evidenceDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const file = path.join(evidenceDir, `desktop-smoke-${stamp}.png`);
+  const file = path.join(evidenceDir, `desktop-smoke-${smokeScenario}-${stamp}.png`);
   fs.writeFileSync(file, image.toPNG());
   smokeLog(`screenshot saved: ${file} (${image.toPNG().length} bytes)`);
+}
+
+/** 冒烟场景脚本:editor = 点击侧栏「编辑器」入口,等编辑器真实拉数后再截 */
+async function runSmokeScenario() {
+  if (smokeScenario !== 'editor') return;
+  const clicked = await mainWindow.webContents.executeJavaScript(
+    "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
+  );
+  smokeLog(`scenario=editor nav click: ${clicked}`);
+  if (!clicked) throw new Error('sidebar 未找到「编辑器」入口按钮');
+  // 编辑器挂载后有多轮 MCP 往返(实体/摘要/PIE/事件),留足窗口
+  await new Promise((resolve) => setTimeout(resolve, 4000));
 }
 
 function createWindow() {
@@ -210,17 +224,19 @@ function createWindow() {
         app.exit(1);
         return;
       }
-      captureSmokeEvidence().then(
-        () => {
-          killHost();
-          app.exit(0);
-        },
-        (captureErr) => {
-          smokeLog(`capturePage failed: ${captureErr}`);
-          killHost();
-          app.exit(1);
-        }
-      );
+      runSmokeScenario()
+        .then(() => captureSmokeEvidence())
+        .then(
+          () => {
+            killHost();
+            app.exit(0);
+          },
+          (captureErr) => {
+            smokeLog(`capturePage failed: ${captureErr}`);
+            killHost();
+            app.exit(1);
+          }
+        );
     };
     mainWindow.webContents.once('did-finish-load', () => settle(true));
     mainWindow.webContents.once('did-fail-load', (_e, code, desc) =>

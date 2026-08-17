@@ -1,40 +1,38 @@
-//! MCP stdio 客户端:每次调用独立 spawn engine-scene-mcp 子进程(F0 简单可靠,不追求长连)
-//! 协议:newline-delimited JSON-RPC(initialize → notifications/initialized → tools/call)
+//! MCP stdio 客户端:engine-scene-mcp 长连接单例(懒加载 + 断线重连)。
+//! 协议:newline-delimited JSON-RPC(initialize → notifications/initialized → tools/call)。
+//! 长连接是场景状态跨调用持久的前提(02 §3.2);每次独立 spawn 会让 engine-host 实体表丢状态(F1 实测缺陷)。
 
 use serde_json::{json, Value};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::{Mutex, MutexGuard};
 
-/// 已挂载的 engine-scene 工具面(声明式;与 engine-scene-mcp tools/list 一一对应)
+/// 已挂载的 engine-scene 工具面(显式全量清单,与 engine-scene-mcp 工具表一一对应)
 pub const KNOWN_TOOLS: [&str; 32] = [
-    // F0 既有
     "mcp__engine-scene__host_ping",
+    "mcp__engine-scene__host_events",
     "mcp__engine-scene__scene_new",
     "mcp__engine-scene__scene_summary",
     "mcp__engine-scene__render_once",
-    "mcp__engine-scene__host_events",
-    // F1 entity.*
     "mcp__engine-scene__entity_create",
     "mcp__engine-scene__entity_destroy",
     "mcp__engine-scene__entity_rename",
     "mcp__engine-scene__entity_get",
     "mcp__engine-scene__entity_list",
     "mcp__engine-scene__entity_batch_apply",
-    // F1 component.*
     "mcp__engine-scene__component_add",
     "mcp__engine-scene__component_remove",
     "mcp__engine-scene__component_set",
     "mcp__engine-scene__component_get",
     "mcp__engine-scene__component_list_types",
-    // F1 transform.*
     "mcp__engine-scene__transform_set",
     "mcp__engine-scene__transform_get",
     "mcp__engine-scene__transform_batch_set",
-    // F1 scene.* / edit.* / play.*
     "mcp__engine-scene__scene_save",
     "mcp__engine-scene__scene_load",
     "mcp__engine-scene__scene_diff",
@@ -67,7 +65,6 @@ impl std::error::Error for McpError {}
 
 /// engine-scene-mcp 二进制路径:env FORGE_ENGINE_SCENE_MCP_BIN 优先,
 /// 否则 <workspace_root>/target/debug/engine-scene-mcp.exe
-/// (workspace_root = CARGO_MANIFEST_DIR 上两级:crates/forge-agentd → 仓根)
 pub fn server_bin() -> PathBuf {
     if let Ok(p) = std::env::var("FORGE_ENGINE_SCENE_MCP_BIN") {
         return PathBuf::from(p);
@@ -80,11 +77,113 @@ pub fn server_bin() -> PathBuf {
     root.join("target").join("debug").join("engine-scene-mcp.exe")
 }
 
-/// 调用 engine-scene 工具:tool 为全名(mcp__engine-scene__X),内部映射为 X
-pub async fn call_tool(tool: &str, arguments: Option<Value>) -> Result<Value, McpError> {
-    let name = tool
-        .strip_prefix(TOOL_PREFIX)
-        .ok_or_else(|| McpError(format!("未知工具名: {tool}")))?;
+/// 长连接句柄:子进程 + stdin/stdout 行流 + 自增 id
+struct McpClient {
+    child: Child,
+    stdin: ChildStdin,
+    lines: Lines<BufReader<ChildStdout>>,
+    next_id: i64,
+}
+
+impl McpClient {
+    /// spawn + initialize 握手
+    async fn connect(bin: &Path) -> Result<Self, McpError> {
+        let mut child = Command::new(bin)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| McpError(format!("spawn {} 失败: {e}", bin.display())))?;
+        let stdin = child.stdin.take().ok_or_else(|| McpError("子进程无 stdin".into()))?;
+        let stdout = child.stdout.take().ok_or_else(|| McpError("子进程无 stdout".into()))?;
+        let mut client = Self {
+            child,
+            stdin,
+            lines: BufReader::new(stdout).lines(),
+            next_id: 0,
+        };
+        client
+            .request(
+                "initialize",
+                json!({
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": { "name": "forge-agentd", "version": "0.1.0" }
+                }),
+            )
+            .await?;
+        client
+            .notify("notifications/initialized", json!({}))
+            .await?;
+        Ok(client)
+    }
+
+    /// 发请求并按 id 配对读响应(跳过日志行与其他 id)
+    async fn request(&mut self, method: &str, params: Value) -> Result<Value, McpError> {
+        self.next_id += 1;
+        let id = self.next_id;
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))
+            .await?;
+        loop {
+            let line = self
+                .lines
+                .next_line()
+                .await
+                .map_err(|e| McpError(format!("读子进程 stdout 失败: {e}")))?
+                .ok_or_else(|| McpError("子进程 stdout 意外关闭(对端退出)".into()))?;
+            let Ok(msg) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if msg.get("id").and_then(Value::as_i64) == Some(id) {
+                if let Some(err) = msg.get("error") {
+                    return Err(McpError(format!("JSON-RPC 错误: {err}")));
+                }
+                return msg
+                    .get("result")
+                    .cloned()
+                    .ok_or_else(|| McpError("响应缺少 result".into()));
+            }
+        }
+    }
+
+    async fn notify(&mut self, method: &str, params: Value) -> Result<(), McpError> {
+        self.send(&json!({ "jsonrpc": "2.0", "method": method, "params": params }))
+            .await
+    }
+
+    async fn send(&mut self, msg: &Value) -> Result<(), McpError> {
+        let mut line =
+            serde_json::to_string(msg).map_err(|e| McpError(format!("序列化请求失败: {e}")))?;
+        line.push('\n');
+        self.stdin
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| McpError(format!("写子进程 stdin 失败: {e}")))?;
+        self.stdin
+            .flush()
+            .await
+            .map_err(|e| McpError(format!("flush stdin 失败: {e}")))
+    }
+}
+
+/// 全局长连接(OnceLock + Mutex;None = 未连接或已断线)
+static CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
+
+fn client_slot() -> &'static Mutex<Option<McpClient>> {
+    CLIENT.get_or_init(|| Mutex::new(None))
+}
+
+/// 取可用连接:无连接/已退出则重连
+async fn ensure_connected<'a>(
+    guard: &mut MutexGuard<'a, Option<McpClient>>,
+) -> Result<(), McpError> {
+    if let Some(c) = guard.as_mut() {
+        // try_wait 探活:已退出则丢弃重连
+        match c.child.try_wait() {
+            Ok(None) => return Ok(()), // 存活
+            _ => **guard = None,       // 已退出或不可查 → 重连
+        }
+    }
     let bin = server_bin();
     if !bin.exists() {
         return Err(McpError(format!(
@@ -92,102 +191,38 @@ pub async fn call_tool(tool: &str, arguments: Option<Value>) -> Result<Value, Mc
             bin.display()
         )));
     }
-    tokio::time::timeout(CALL_TIMEOUT, call_inner(&bin, name, arguments))
+    **guard = Some(McpClient::connect(&bin).await?);
+    Ok(())
+}
+
+/// 调用 engine-scene 工具:tool 为全名(mcp__engine-scene__X),内部映射为 X。
+/// 传输失败时丢弃连接并重试一次(长连接对端可能被看门狗换过)。
+pub async fn call_tool(tool: &str, arguments: Option<Value>) -> Result<Value, McpError> {
+    let name = tool
+        .strip_prefix(TOOL_PREFIX)
+        .ok_or_else(|| McpError(format!("未知工具名: {tool}")))?;
+    tokio::time::timeout(CALL_TIMEOUT, call_with_retry(name, arguments))
         .await
         .map_err(|_| McpError("MCP 调用超时(10s)".to_string()))?
 }
 
-async fn call_inner(bin: &Path, name: &str, arguments: Option<Value>) -> Result<Value, McpError> {
-    let mut child = Command::new(bin)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| McpError(format!("spawn {} 失败: {e}", bin.display())))?;
-    let result = exchange(&mut child, name, arguments).await;
-    // exchange 返回时 stdin 已 drop → 对端收到 EOF 走正常关停(其负责清理 engine-host)。
-    // 给 3s 优雅退出窗,超时兜底再 kill,避免 engine-host 成孤儿。
-    match tokio::time::timeout(Duration::from_secs(3), child.wait()).await {
-        Ok(_) => {}
-        Err(_) => {
-            let _ = child.kill().await;
-        }
-    }
-    result
-}
-
-/// initialize → initialized 通知 → tools/call,按 id 配对读响应
-async fn exchange(child: &mut Child, name: &str, arguments: Option<Value>) -> Result<Value, McpError> {
-    let mut stdin = child.stdin.take().ok_or_else(|| McpError("子进程无 stdin".into()))?;
-    let stdout = child.stdout.take().ok_or_else(|| McpError("子进程无 stdout".into()))?;
-    let mut lines = BufReader::new(stdout).lines();
-
-    send(
-        &mut stdin,
-        &json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": { "name": "forge-agentd", "version": "0.1.0" }
+async fn call_with_retry(name: &str, arguments: Option<Value>) -> Result<Value, McpError> {
+    let mut guard = client_slot().lock().await;
+    let mut last_err: Option<McpError> = None;
+    for attempt in 0..2 {
+        ensure_connected(&mut guard).await?;
+        let client = guard.as_mut().expect("ensure_connected 后必有连接");
+        let params = json!({ "name": name, "arguments": arguments.clone().unwrap_or_else(|| json!({})) });
+        match client.request("tools/call", params).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_err = Some(e);
+                *guard = None; // 断线,下一轮重连
+                if attempt == 1 {
+                    break;
+                }
             }
-        }),
-    )
-    .await?;
-    read_response(&mut lines, 1).await?;
-
-    send(&mut stdin, &json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await?;
-
-    send(
-        &mut stdin,
-        &json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": { "name": name, "arguments": arguments.unwrap_or_else(|| json!({})) }
-        }),
-    )
-    .await?;
-    let resp = read_response(&mut lines, 2).await?;
-
-    if let Some(err) = resp.get("error") {
-        return Err(McpError(format!("engine-scene-mcp 返回 JSON-RPC 错误: {err}")));
-    }
-    resp.get("result")
-        .cloned()
-        .ok_or_else(|| McpError("tools/call 响应缺少 result".into()))
-}
-
-/// 发送一行 newline-delimited JSON-RPC 消息
-async fn send(stdin: &mut ChildStdin, msg: &Value) -> Result<(), McpError> {
-    let mut line =
-        serde_json::to_string(msg).map_err(|e| McpError(format!("序列化请求失败: {e}")))?;
-    line.push('\n');
-    stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(|e| McpError(format!("写子进程 stdin 失败: {e}")))?;
-    stdin
-        .flush()
-        .await
-        .map_err(|e| McpError(format!("flush stdin 失败: {e}")))
-}
-
-/// 逐行读取,跳过非 JSON 行(如日志)与其他 id 的消息,直到匹配期望 id
-async fn read_response(lines: &mut Lines<BufReader<ChildStdout>>, id: i64) -> Result<Value, McpError> {
-    loop {
-        let line = lines
-            .next_line()
-            .await
-            .map_err(|e| McpError(format!("读子进程 stdout 失败: {e}")))?
-            .ok_or_else(|| McpError("子进程 stdout 意外关闭".into()))?;
-        let Ok(msg) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        if msg.get("id").and_then(Value::as_i64) == Some(id) {
-            return Ok(msg);
         }
     }
+    Err(last_err.unwrap_or_else(|| McpError("MCP 调用失败".into())))
 }

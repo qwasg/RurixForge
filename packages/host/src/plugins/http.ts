@@ -8,6 +8,7 @@ import type { HostConfig } from './config.js';
 import type { Logger } from './logger.js';
 import type { Sessions } from './sessions.js';
 import type { Eventlog } from './eventlog.js';
+import type { ForgeProxy } from './forgeProxy.js';
 
 export interface HttpService {
   server: http.Server;
@@ -42,6 +43,13 @@ export const httpPlugin: PluginFn = (ctx) => {
   const logger = ctx.get<Logger>('logger');
   const sessions = ctx.get<Sessions>('sessions');
   const eventlog = ctx.get<Eventlog>('eventlog');
+  // forgeProxy 为可选插件(web profile 默认装载,base profile 无)
+  let proxy: ForgeProxy | null = null;
+  try {
+    proxy = ctx.get<ForgeProxy>('forgeProxy');
+  } catch {
+    proxy = null;
+  }
 
   const startedAt = Date.now();
   let currentPort = config.port;
@@ -95,6 +103,9 @@ export const httpPlugin: PluginFn = (ctx) => {
   ): Promise<void> {
     const segs = pathname.split('/').filter(Boolean); // ['api','forge',...]
     const method = req.method ?? 'GET';
+
+    // 代理前缀(mcp/llm)与自有路由(health/sessions)不重叠,优先放行代理
+    if (proxy && (await proxy.handle(req, res, pathname))) return;
 
     if (method === 'GET' && pathname === '/api/forge/health') {
       sendJson(res, 200, {
