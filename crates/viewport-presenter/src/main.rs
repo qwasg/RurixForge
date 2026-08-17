@@ -45,6 +45,9 @@ struct Dx {
     rtv_heap: ID3D12DescriptorHeap,
     rtv_size: u32,
     shared: Option<ID3D12Resource>,
+    /// 加堆腿(F1 wave.3):bind 的句柄指向共享堆时,本字段持有堆引用并自建
+    /// placed resource(堆须活过纹理;字段序在 shared 之后,drop 同序)。
+    shared_heap: Option<ID3D12Heap>,
     fence: Option<ID3D12Fence>,
     fence_event: HANDLE,
     seen_fence: u64,
@@ -95,7 +98,8 @@ impl Dx {
                 rtv_heap,
                 rtv_size,
                 shared: None,
-                fence: None,
+            shared_heap: None,
+            fence: None,
                 fence_event,
                 seen_fence: 0,
                 width: 0,
@@ -106,17 +110,55 @@ impl Dx {
     }
 
     /// 绑定共享纹理 + fence(各仅一次;重复 bind 先释放旧引用)。
-    fn bind(&mut self, tex_raw: usize, fence_raw: usize, width: u32, height: u32) -> Result<(), String> {
+    /// `heap=true`(F1 wave.3 加堆腿):句柄指向共享堆,自建 placed resource
+    /// (desc 与 engine-host share.rs 生产者逐字一致,偏移 0,初态 COPY_SOURCE)。
+    fn bind(&mut self, tex_raw: usize, fence_raw: usize, width: u32, height: u32, heap: bool) -> Result<(), String> {
         unsafe {
             // SAFETY: tex_raw/fence_raw 为 engine-host 经 DuplicateHandle 复制给本进程的
             // 有效句柄;OpenSharedHandle 成功即取得 COM 引用,失败原样返回 HRESULT。
             let tex_h = HANDLE(tex_raw as *mut c_void);
             let fence_h = HANDLE(fence_raw as *mut c_void);
-            let mut shared: Option<ID3D12Resource> = None;
-            self.device
-                .OpenSharedHandle(tex_h, &mut shared)
-                .map_err(|e| format!("OpenSharedHandle(texture): {e}"))?;
-            let shared = shared.ok_or("OpenSharedHandle(texture) 返回空")?;
+            self.shared = None;
+            self.shared_heap = None;
+            let shared = if heap {
+                let mut sh: Option<ID3D12Heap> = None;
+                self.device
+                    .OpenSharedHandle(tex_h, &mut sh)
+                    .map_err(|e| format!("OpenSharedHandle(heap): {e}"))?;
+                let sh = sh.ok_or("OpenSharedHandle(heap) 返回空")?;
+                // desc 与 share.rs 生产者逐字一致(同驱动同 desc → 同布局)。
+                let desc = D3D12_RESOURCE_DESC {
+                    Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+                    Width: width as u64,
+                    Height: height,
+                    DepthOrArraySize: 1,
+                    MipLevels: 1,
+                    Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                    SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+                    Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
+                    Flags: D3D12_RESOURCE_FLAG_NONE,
+                    ..Default::default()
+                };
+                let mut res: Option<ID3D12Resource> = None;
+                self.device
+                    .CreatePlacedResource(
+                        &sh,
+                        0,
+                        &desc,
+                        D3D12_RESOURCE_STATE_COPY_SOURCE,
+                        None,
+                        &mut res,
+                    )
+                    .map_err(|e| format!("CreatePlacedResource(consumer): {e}"))?;
+                self.shared_heap = Some(sh);
+                res.ok_or("CreatePlacedResource(consumer) 返回空")?
+            } else {
+                let mut sh: Option<ID3D12Resource> = None;
+                self.device
+                    .OpenSharedHandle(tex_h, &mut sh)
+                    .map_err(|e| format!("OpenSharedHandle(texture): {e}"))?;
+                sh.ok_or("OpenSharedHandle(texture) 返回空")?
+            };
             let mut fence: Option<ID3D12Fence> = None;
             self.device
                 .OpenSharedHandle(fence_h, &mut fence)
@@ -235,7 +277,7 @@ impl Drop for Dx {
 // ─────────────────────────── 窗口线程 ───────────────────────────
 
 enum Cmd {
-    Bind { tex: usize, fence: usize, w: u32, h: u32 },
+    Bind { tex: usize, fence: usize, w: u32, h: u32, heap: bool },
     Move { x: i32, y: i32, w: u32, h: u32 },
     Close,
 }
@@ -333,9 +375,9 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
         // 命令队列优先
         while let Ok(cmd) = rx.try_recv() {
             match cmd {
-                Cmd::Bind { tex, fence, w, h } => {
+                Cmd::Bind { tex, fence, w, h, heap } => {
                     let recreate = dx.width != w || dx.height != h || dx.swapchain.is_none();
-                    if let Err(e) = dx.bind(tex, fence, w, h) {
+                    if let Err(e) = dx.bind(tex, fence, w, h, heap) {
                         eprintln!("[presenter] bind 失败: {e}");
                         break 'outer;
                     }
@@ -388,7 +430,8 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
 
 // ─────────────────────────── stdin 命令协议 ───────────────────────────
 
-/// 逐行读取:`bind <tex> <fence> <w> <h>` / `move <x> <y> <w> <h>` / `close`。
+/// 逐行读取:`bind [tex|heap] <tex> <fence> <w> <h>` / `move <x> <y> <w> <h>` / `close`。
+/// 5 段旧式 = committed resource 句柄;6 段新式带句柄种类(F1 wave.3 加堆腿)。
 /// 容忍 BOM(PowerShell 5.1 重定向 stdin 默认 UTF-8 带 BOM)。
 fn parse_cmd(line: &str) -> Option<Cmd> {
     let line = line.trim().trim_start_matches('\u{feff}');
@@ -399,6 +442,18 @@ fn parse_cmd(line: &str) -> Option<Cmd> {
             fence: parts[2].parse().ok()?,
             w: parts[3].parse().ok()?,
             h: parts[4].parse().ok()?,
+            heap: false,
+        }),
+        "bind" if parts.len() == 6 => Some(Cmd::Bind {
+            heap: match parts[1] {
+                "heap" => true,
+                "tex" => false,
+                _ => return None,
+            },
+            tex: parts[2].parse().ok()?,
+            fence: parts[3].parse().ok()?,
+            w: parts[4].parse().ok()?,
+            h: parts[5].parse().ok()?,
         }),
         "move" if parts.len() == 5 => Some(Cmd::Move {
             x: parts[1].parse().ok()?,

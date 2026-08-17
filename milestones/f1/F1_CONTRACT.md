@@ -3,7 +3,7 @@ contract: F1
 title: F1 场景编辑闭环
 status: active
 implementation_status: unlocked
-active_scope: wave.2
+active_scope: wave.3
 version: 0.1
 date: 2026-08-16
 timebox: 会话制推进,做不完转 deferred
@@ -28,8 +28,12 @@ in_scope:
   - wave.2:engine-host 接入 rurix-rt(vulkan)render_exec 场景实渲染(相机 UBO + 深度 + 逐实体色)+ Readback 回读;viewport.frame/set_camera/pick RPC
   - wave.2:D3D12 共享纹理生产者(engine-host 内 editor glue,NT handle)+ viewport-presenter 进程(Rust windows-rs,子窗口呈现)+ 帧协商(分辨率跟随面板)
   - wave.2:apps/desktop 视口 bounds 同步与 presenter 生命周期;packages/client Viewport 真实帧显示(canvas 回退腿)+ 点选同步 + Alt 环绕/滚轮缩放/F 聚焦 + gizmo 拖拽
+  - wave.3:上游 rurix-rt vulkan 档补 VK_KHR_external_memory_win32 import 面(纯 pNext 结构体注入,零新 FFI 函数;设备扩展启用)+ render_exec TextureDesc 外部纹理变体(经 RFC-0001 同配方:D3D12 committed resource NT handle + GetResourceAllocationInfo 尺寸)
+  - wave.3:engine-host share.rs 共享纹理创建后导回 VK(方向 B:D3D12 建、VK import 直渲),帧源仍为 viewport::render_scene_frame;viewport.frame 响应带 frame_path=zero_copy|readback_upload 与 CPU upload 计数(机器可证零拷贝)
+  - wave.3:同步 v1 = CPU 块(session 帧 fence 有界等待后 D3D12 queue.Signal),不引入 VK external semaphore(转 RD-F1-004)
 out_of_scope:
-  - H.264 流与 VK→D3D12 零拷贝(VK_KHR_external_memory_win32 上游无面;RD-F1-### 承接)
+  - H.264 流(RD-F1-003 残件承接)
+  - VK external semaphore 真 GPU 侧同步(RD-F1-004;v1 CPU 块已达标)
   - Assets 面板全功能(F2);NodeGraph 编辑(F4)
   - 真实 LLM 自然语言理解(mock provider seam;F3 移植后回填)
 deferred_refs: [RD-F0-001, RD-F0-002, RD-F0-003]
@@ -71,6 +75,15 @@ acceptance_gates:
   - id: G-F1-9
     name: 共享纹理门
     check: viewport-presenter 进程经 NT handle 打开 D3D12 共享纹理并呈现至 Electron 视口区;截图非占位且锚点像素与 readback 帧一致;handle 生命周期关闭无泄漏;三态(PASS/SKIP/DEV_ENV_DEGRADE)诚实
+  - id: G-F1-10
+    name: 零拷贝生产门
+    check: share 开启时 viewport.frame 帧内容经 VK→D3D12 import 纹理产出(D3D12 建、VK 直渲):响应 frame_path=zero_copy 且 cpu_uploads 计数零增量;锚点像素与 readback 腿一致;同场景两帧逐字节一致 + 移动实体帧变仍成立(同一帧源);无 vulkan 设备如实 DEV_ENV_DEGRADE
+  - id: G-F1-11
+    name: 零拷贝呈现门
+    check: 零拷贝档下 presenter 呈现 presented>=3 且 OS 级截屏锚点像素与引擎帧一致(复用 f1-w2-desktop-presenter-smoke 判定面);面板 resize→共享纹理/import 重建无错;share_close 幂等;无句柄泄漏(open/close ×10 循环无错)
+  - id: G-F1-12
+    name: 回退腿回归门
+    check: share 未开时 readback→upload 路径行为 0-byte 回归(f1-w2-viewport-smoke 原样 PASS);cargo test --workspace / pnpm -r test / go test 全绿
 guardrails:
   - 诚实优先:任何门不过如实报 FAIL/DEV_ENV_DEGRADE,不回写 PASS
   - 数字必须来自命令输出
@@ -110,10 +123,18 @@ deferred:
     reason: 上游 rurix-rt vulkan 档无 external_memory_win32 面;共享纹理腿已达标,零拷贝为性能优化而非功能缺口
     refill: 上游面补齐后立项
     owner: F1 wave.3+
+    status: CLOSED(2026-08-17 wave.3 回填完毕,§8 验收记录;H.264 备选腿残件仍 open,非缺口,性能波再评)
+  - id: RD-F1-004
+    content: VK external semaphore(VK_KHR_external_semaphore_win32)真 GPU 侧帧同步
+    reason: wave.3 同步 v1 采 CPU 块(session 帧 fence 等待后 queue.Signal),已达标但有 CPU 往返延迟;GPU 侧信号量可消除
+    refill: 零拷贝帧率/延迟实测出现瓶颈后立项
+    owner: F1 wave.4+ 或 F2 性能波
 
 ## 5. 修订
 - 2026-08-16 立项:F0 全绿后用户指令开工。
 - 2026-08-17 wave.2 立项:用户拍板「直接攻共享纹理」。设备 spike  verdict=READY(RTX 4070 Ti 12GiB / Vulkan 1.4.351 / CUDA 13.3 / MSVC 17.14.37531.7;上游 d3d12_interop_smoke device 段真过 interop_ok=true;render_exec UBO+深度+Readback 面核验在位)——evidence/f1-w2-device-spike.json。RD-F1-001 启动回填(共享纹理主攻 + readback 回退双腿);VK 零拷贝上游无面转 wave.3 RD。
+- 2026-08-17 wave.3 立项:用户指令「继续执行 F1 wave.3,推进 VK→D3D12 零拷贝」。方向裁决:**B(D3D12 建共享纹理 → VK import 直渲)**,否决 A(VK 导出 → D3D12 置放资源):B 与上游 RFC-0001 D3D12→CUDA import 同配方(committed resource NT handle + GetResourceAllocationInfo),VK import 仅需 pNext 结构体注入零新 FFI 函数,且规避 VK OPTIMAL tiling 私有布局被 D3D12 误读的风险;A 保留为备胎。同步 v1 采 CPU 块(session 帧 fence 等待后 queue.Signal),VK external semaphore 转 RD-F1-004。RD-F1-003 启动回填。
+- 2026-08-17 wave.3 验收:G-F1-10/11/12 全 PASS(§8 验收记录)。实测捕获 committed resource 尺寸天花板:vk req > d3d12 committed alloc 时(960x540 等实尺)bind 静默失败→设备丢失;定案双腿架构(committed/共享堆+placed resource,probe_image_mem_req 先探后建)。RD-F1-003 CLOSED(H.264 残件仍 open)。
 
 ## 6. Close-out(只追加区)
 <!-- 禁止预填 PASS -->
@@ -158,3 +179,23 @@ deferred:
 **5. not-triggered / deferred**:VK→D3D12 零拷贝(上游无 external_memory_win32 面)→ RD-F1-003(wave.3+);RD-F1-002(真 LLM 工具循环)仍 open;**RD-F1-001 本波回填完毕,CLOSED**。
 
 **6. 签署**:Assisted-by: TRAE:Kimi-K3 | 影响范围:crates/engine-host(viewport.rs/share.rs/rpc.rs 新增)、crates/viewport-presenter(新 crate)、apps/desktop(presenter 生命周期 + 可见冒烟)、packages/client(ViewportCanvas 物理像素帧 + bounds 上报、editorStore、bridge)、scripts/f1-w2-viewport-smoke.ps1 + f1-w2-desktop-presenter-smoke.ps1 | 验证方式:上述命令真实输出 + 双冒烟日志 + OS 截屏锚点逐字节比对。
+
+### wave.3 验收记录(2026-08-17,host=Windows NT/cargo 1.93.1/Node v22.14.0/pnpm 11.5.0,GPU=RTX 4070 Ti 12GiB / Vulkan 1.4.351)
+
+**1. 独立断言清单(逐门)**
+
+| 门 | 判定 | 证据 |
+|---|---|---|
+| G-F1-10 零拷贝生产 | PASS | cargo `f1_zerocopy` 3/3:①小尺寸腿(128x96)framePath=zero_copy、cpuUploads=0、同场景两帧逐字节一致、移动实体帧变、中心立方体像素非底色;②**实尺腿(960x540,编辑器视口实尺)zero_copy PASS**(堆腿);③尺寸变化 share 重建(64x64)后仍 zero_copy + share_close 幂等 ×2 + open/close ×10 循环无错 |
+| G-F1-11 零拷贝呈现 | PASS | scripts/f1-w2-desktop-presenter-smoke.ps1 **连跑 3/3 PASS**:presented=3、framePath=zero_copy、handleKind=heap(674x540 与 960x540 均走堆腿)、**OS 截屏锚点 R87G109B73 与引擎 readback (87,109,73,255) 零偏差一致**;resize 重建(scripts/_f1w3_repro.ps1:960→674 全帧 zero_copy,错配窗口期诚实报「尺寸不符」不渲错帧)。如实留痕:首轮曾 1 次 flake(DWM 对新嵌入子窗口首帧合成滞后,截到 web 底色 247,247,247),冒烟截屏断言加 4 次×800ms 重试硬化(判据 ±3 不放宽,逐次留痕)后 3/3 |
+| G-F1-12 回退腿回归 | PASS | scripts/f1-w2-viewport-smoke.ps1 PASS(canvas 回退腿 0-byte 回归,draws/nonzero/两帧一致/移动帧变);f1-scene-smoke PASS;cargo test --workspace 全绿;pnpm 52/52;go ok |
+
+**2. 波聚合**:`cargo test --workspace` 34/34(f1_zerocopy 新增 3 组:小尺寸全链/实尺腿/探针对账);`pnpm -r test` 52/52(protocol 5 + client 29 + host 18)0 回归;`pnpm -r typecheck / build` 全绿;`go test` forge-gateway ok。
+
+**3. 本波修复的实测缺陷(留痕)**:① **960x540 首帧 import 渲染 VK_ERROR_DEVICE_LOST,设备永久丢失**——根因双叠:vkBindImageMemory 返回值被丢弃 + vk req.size=2,457,600 > d3d12 committed alloc=2,228,224(同 pitch 4096,行补齐 600 vs 544),未绑定图像参与渲染致 GPU fault;128x96 因双双 64KiB 对齐幸存,故小尺寸测试全绿而实尺必崩。修复链:上游 R4(bind 检查 + req>alloc 诚实报错)→ R6(probe_image_mem_req 探针)→ R7(D3D12_HEAP 句柄类型 + heap 档免 dedicated);② 诊断中误读换行断裂数字(2,457,600 误读为 24,576,000)——以探针地图对账为准纠正;③ main.cjs IDE 脏缓冲坑再现(Edit 报成功磁盘未变)——终端 WriteAllText 落盘 + Select-String 核验;④ 桌面冒烟 flake(DWM 合成滞后)→ 重试硬化。
+
+**4. 零拷贝架构定案(方向 B 双腿)**:`viewport.shareOpen` 先经上游 `probe_image_mem_req`(同设备同扩展,VK_KHR_external_memory_win32)实测图像内存需求:**≤ committed alloc → committed resource 腿**(D3D12_RESOURCE import);**> → 共享堆腿**(CreateHeap 64KiB 对齐 + CreatePlacedResource 偏移 0,CreateSharedHandle 作用于堆,D3D12_HEAP import)。VK 直渲共享内存,signal_frame 推共享 fence;presenter 堆/纹理双腿消费(堆腿 OpenSharedHandle→Heap→CreatePlacedResource,desc 与生产者逐字一致)。**探针对账数字(RTX 4070 Ti 实测)**:64x64=16,384 / 128x96=65,536 / 512x288=786,432 / 960x540=2,457,600 / 1024x540=2,621,440 / 1920x1080=8,847,360;**external 旗标零膨胀(plain==external 全尺寸)**;d3d12 committed alloc(960x540)=2,228,224。
+
+**5. RD 处置**:**RD-F1-003 CLOSED**(VK→D3D12 零拷贝帧通道全链落地;H.264 备选腿残件仍 open,非缺口,性能波再评);RD-F1-004(external semaphore GPU 侧同步)open;RD-F1-002(真 LLM 工具循环)open。
+
+**6. 签署**:Assisted-by: TRAE:Kimi-K3 | 影响范围:上游 H:\rurix render_exec.rs(R4 守卫/R5 回滚/R6 探针/R7 堆句柄腿,补丁 scripts/_f1w3_upstream_patch4~7.ps1)、crates/engine-host(share.rs 堆腿、viewport.rs probe+import 键、rpc.rs handleKind)、crates/viewport-presenter(堆腿 bind + 6 段协议)、apps/desktop main.cjs(handleKind 透传)、tests/f1_zerocopy.rs(实尺腿+探针)、scripts/f1-w2-desktop-presenter-smoke.ps1(zero_copy 断言+重试硬化) | 验证方式:上述命令真实输出 + 探针实测数字 + 双冒烟日志 + OS 截屏锚点比对。

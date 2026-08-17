@@ -434,6 +434,9 @@ struct ViewportRenderer {
     height: u32,
     session: rex::DeviceFrameSession<'static>,
     device_name: String,
+    /// 本会话 import 的共享纹理键(nt_handle, alloc_size);None = 纯 readback 腿。
+    /// share 重建(尺寸协商)后键值变化 → 会话重建。
+    import_key: Option<(u64, u64)>,
 }
 
 // SAFETY:`DeviceFrameSession` 内含 *mut c_void(VkDevice 等原生句柄)被保守标 !Send。
@@ -447,8 +450,64 @@ fn renderer_slot() -> &'static Mutex<RendererState> {
     RENDERER.get_or_init(|| Mutex::new(RendererState::Uninit))
 }
 
+/// 当前应 import 的共享纹理键(F1 wave.3 方向 B):share 已开且尺寸与本帧一致时返回
+/// (nt_handle, alloc_size, is_heap);否则 None(纯 readback 腿)。非 Windows 恒 None。
+fn current_import(width: u32, height: u32) -> Option<(u64, u64, bool)> {
+    #[cfg(windows)]
+    {
+        crate::share::vk_import_info()
+            .filter(|&(_, _, sw, sh, _)| sw == width && sh == height)
+            .map(|(h, sz, _, _, heap)| (h, sz, heap))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (width, height);
+        None
+    }
+}
+
+/// share_open 前的 VK import 需求探针(F1 wave.3 加堆腿判定):同设备同扩展实测
+/// 图像内存需求 size。无 vulkan / 无扩展 / 探测失败 → None(share 走 committed 腿,
+/// import 会话失败时回退 readback,全程诚实不报绿)。
+#[cfg(windows)]
+pub fn probe_import_min_alloc(width: u32, height: u32) -> Option<u64> {
+    if !vk::vulkan_available() {
+        return None;
+    }
+    rex::probe_image_mem_req(
+        width,
+        height,
+        rex::TexFormat::Rgba8Unorm,
+        rex::TextureUsage {
+            color: true,
+            ..Default::default()
+        },
+        true,
+    )
+    .map(|(size, _align)| size)
+    .ok()
+}
+
 /// 建固定 pass 图会话(资源:0=网格 VB,1=相机 UBO,2=色 attachment,3=深度)。
+/// 零拷贝优先:有共享纹理可 import 时先建 import 会话;失败(如无 external memory
+/// 扩展)如实 eprintln 并回退纯 readback 腿(G-F1-10 证据面能区分两档)。
 fn build_session(width: u32, height: u32) -> Result<ViewportRenderer, String> {
+    let import = current_import(width, height);
+    match build_session_with(width, height, import) {
+        Ok(r) => Ok(r),
+        Err(e) if import.is_some() => {
+            eprintln!("[viewport] 零拷贝 import 会话创建失败,回退 readback 上传腿: {e}");
+            build_session_with(width, height, None)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn build_session_with(
+    width: u32,
+    height: u32,
+    import: Option<(u64, u64, bool)>,
+) -> Result<ViewportRenderer, String> {
     if !vk::vulkan_available() {
         return Err("DEV_ENV_DEGRADE: vulkan loader 不可用(无 GPU/驱动)".to_owned());
     }
@@ -488,6 +547,12 @@ fn build_session(width: u32, height: u32) -> Result<ViewportRenderer, String> {
                 ..Default::default()
             },
             data: None,
+            // F1 wave.3 方向 B:共享纹理/堆 import 时,色目标直渲进 D3D12 共享内存。
+            external_import: import.map(|(h, sz, heap)| rex::ExternalTextureImport {
+                nt_handle: h,
+                allocation_size: sz,
+                heap,
+            }),
         }),
         rex::ResourceDesc::Texture(rex::TextureDesc {
             width,
@@ -498,6 +563,7 @@ fn build_session(width: u32, height: u32) -> Result<ViewportRenderer, String> {
                 ..Default::default()
             },
             data: None,
+            external_import: None,
         }),
     ];
 
@@ -574,6 +640,7 @@ fn build_session(width: u32, height: u32) -> Result<ViewportRenderer, String> {
         height,
         session,
         device_name: caps.device_name,
+        import_key: import.map(|(h, sz, _)| (h, sz)),
     })
 }
 
@@ -605,6 +672,8 @@ pub struct FramePixels {
     pub draws: usize,
     pub truncated: bool,
     pub nonzero: usize,
+    /// 本帧会话是否直渲进 D3D12 共享纹理(F1 wave.3 零拷贝档证据面)。
+    pub imported: bool,
 }
 
 impl FramePixels {
@@ -623,7 +692,8 @@ pub fn render_scene_frame(
 ) -> Result<FramePixels, String> {
     let slot = renderer_slot();
     let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-    // 懒初始化 / 改尺寸重建(降级态一经判定即缓存,不重试——loader 缺失不会自愈)。
+    // 懒初始化 / 改尺寸或共享纹理 import 键变化时重建(降级态一经判定即缓存,不重试)。
+    let want_import = current_import(width, height);
     match &*guard {
         RendererState::Uninit => {
             *guard = match build_session(width, height) {
@@ -631,7 +701,11 @@ pub fn render_scene_frame(
                 Err(e) => RendererState::Degraded(e),
             };
         }
-        RendererState::Ready(r) if r.width != width || r.height != height => {
+        RendererState::Ready(r)
+            if r.width != width
+                || r.height != height
+                || r.import_key != want_import.map(|(h, sz, _)| (h, sz)) =>
+        {
             *guard = match build_session(width, height) {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
@@ -715,6 +789,7 @@ pub fn render_scene_frame(
         draws,
         truncated: scene.entities.iter().filter(|e| is_renderable(e)).count() > MAX_DRAW_SLOTS,
         nonzero,
+        imported: r.import_key.is_some(),
     })
 }
 

@@ -264,6 +264,8 @@ pub struct HostState {
     pub last_tris: usize,
     /// 最近一帧非零像素数。
     pub last_nonzero: usize,
+    /// CPU 上传帧计数(F1 wave.3 零拷贝证据面:zero_copy 档恒 0 增量)。
+    pub cpu_uploads: u64,
     /// 事件 ring(cap 1024)。
     pub events: VecDeque<Value>,
     /// 启动时刻(uptime 计算)。
@@ -296,6 +298,7 @@ impl HostState {
             frames: 0,
             last_tris: 0,
             last_nonzero: 0,
+            cpu_uploads: 0,
             events,
             started: Instant::now(),
             camera: crate::viewport::EditorCamera::default(),
@@ -726,19 +729,31 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
     let cam = st.camera;
     match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h) {
         Ok(f) => {
-            // 共享纹理腿(G-F1-9):帧源唯一,readback 帧同步写入 D3D12 共享纹理
+            // 帧通道(F1 wave.2/3):帧源唯一 = render_scene_frame。共享纹理开启时:
+            // - 会话已 import(零拷贝档):VK 直渲进共享纹理,仅推进共享 fence;
+            // - 未 import(readback 上传档):CPU 拷贝进共享纹理,cpu_uploads 计数。
+            let mut frame_path = "no_share";
             if crate::share::is_open() {
-                crate::share::write_frame(&f.rgba8, f.width, f.height)
-                    .map_err(|e| (-32000, format!("共享纹理写入失败: {e}")))?;
+                if f.imported {
+                    crate::share::signal_frame()
+                        .map_err(|e| (-32000, format!("共享 fence 信号失败: {e}")))?;
+                    frame_path = "zero_copy";
+                } else {
+                    crate::share::write_frame(&f.rgba8, f.width, f.height)
+                        .map_err(|e| (-32000, format!("共享纹理写入失败: {e}")))?;
+                    st.cpu_uploads += 1;
+                    frame_path = "readback_upload";
+                }
             }
             st.frames += 1;
             st.last_tris = f.draws * 12;
             st.last_nonzero = f.nonzero;
             let frames = st.frames;
+            let cpu_uploads = st.cpu_uploads;
             push_event(
                 st,
                 "viewport.frame",
-                json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": f.nonzero }),
+                json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": f.nonzero, "framePath": frame_path }),
             );
             Ok(json!({
                 "width": f.width,
@@ -750,6 +765,8 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 "truncated": f.truncated,
                 "frames": frames,
                 "nonZeroPixels": f.nonzero,
+                "framePath": frame_path,
+                "cpuUploads": cpu_uploads,
             }))
         }
         Err(e) => Err((-32000, e)),
@@ -812,20 +829,23 @@ fn viewport_pick(st: &mut HostState, params: &Value) -> HResult {
 }
 
 /// viewport.shareOpen:创建/重建 D3D12 共享纹理,句柄 DuplicateHandle 移交 pid 进程。
+/// F1 wave.3 加堆腿:先探 VK import 内存需求,> committed 分配时共享堆 + placed resource。
 fn viewport_share_open(params: &Value) -> HResult {
     let pid = params
         .get("pid")
         .and_then(Value::as_u64)
         .ok_or((-32602, "invalid params: 缺 pid".to_string()))? as u32;
     let (w, h) = viewport_size(params)?;
-    crate::share::open(w, h, pid)
-        .map(|(tex, fence, w, h)| {
+    let min_alloc = crate::viewport::probe_import_min_alloc(w, h).unwrap_or(0);
+    crate::share::open(w, h, pid, min_alloc)
+        .map(|(tex, fence, w, h, is_heap)| {
             json!({
                 "texHandle": tex,
                 "fenceHandle": fence,
                 "width": w,
                 "height": h,
                 "format": "rgba8",
+                "handleKind": if is_heap { "heap" } else { "resource" },
             })
         })
         .map_err(|e| (-32000, format!("共享纹理打开失败: {e}")))

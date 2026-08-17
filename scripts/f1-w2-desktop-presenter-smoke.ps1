@@ -71,8 +71,10 @@ try {
     Start-Sleep -Milliseconds 500
   }
   $ev = Get-Content $rectJson -Raw | ConvertFrom-Json
-  Log "evidence => rect=$($ev.rect.x),$($ev.rect.y) $($ev.rect.w)x$($ev.rect.h) presented=$($ev.presented) centerRgba=$($ev.centerRgba -join ',') device=$($ev.deviceName)"
+  Log "evidence => rect=$($ev.rect.x),$($ev.rect.y) $($ev.rect.w)x$($ev.rect.h) presented=$($ev.presented) centerRgba=$($ev.centerRgba -join ',') framePath=$($ev.framePath) device=$($ev.deviceName)"
   if ($ev.presented -lt 3) { throw "presented=$($ev.presented) < 3" }
+  # G-F1-11:桌面腿必须跑零拷贝档(VK import 直渲共享纹理),readback_upload 如实 FAIL
+  if ($ev.framePath -ne "zero_copy") { throw "framePath=$($ev.framePath) ≠ zero_copy(零拷贝未生效)" }
 
   # 非占位断言:锚点像素 ≠ 视口底色(23,24,29) —— 中心应真命中立方体
   $bg = @(23, 24, 29)
@@ -83,16 +85,24 @@ try {
   Add-Type -AssemblyName System.Drawing
   $capX = $ev.rect.x + [int]($ev.rect.w / 2)
   $capY = $ev.rect.y + [int]($ev.rect.h / 2)
-  Start-Sleep -Milliseconds 500  # 等一帧呈现稳定
-  $bmp = New-Object System.Drawing.Bitmap 16, 16
-  $g = [System.Drawing.Graphics]::FromImage($bmp)
-  $g.CopyFromScreen($capX - 8, $capY - 8, 0, 0, (New-Object System.Drawing.Size 16, 16))
-  $px = $bmp.GetPixel(8, 8)
-  $g.Dispose(); $bmp.Dispose()
-  Log "screen px@($capX,$capY) = R$($px.R) G$($px.G) B$($px.B) vs readback R$($cr[0]) G$($cr[1]) B$($cr[2])"
+  # DWM 对新嵌入子窗口首帧合成存在实测滞后(2026-08-17 首跑 500ms 截到 web 底色 flake);
+  # 有限重试消化合成延迟,判据本身不放宽(±3),每次尝试如实留痕。
   $tol = 3
-  if ([Math]::Abs($px.R - $cr[0]) -gt $tol -or [Math]::Abs($px.G - $cr[1]) -gt $tol -or [Math]::Abs($px.B - $cr[2]) -gt $tol) {
-    throw "OS 截屏锚点像素与 readback 帧不一致(容差 ±$tol)——presenter 呈现内容非引擎帧"
+  $matched = $false
+  foreach ($attempt in 1..4) {
+    Start-Sleep -Milliseconds 800
+    $bmp = New-Object System.Drawing.Bitmap 16, 16
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($capX - 8, $capY - 8, 0, 0, (New-Object System.Drawing.Size 16, 16))
+    $px = $bmp.GetPixel(8, 8)
+    $g.Dispose(); $bmp.Dispose()
+    Log "screen px@($capX,$capY) attempt#$attempt = R$($px.R) G$($px.G) B$($px.B) vs readback R$($cr[0]) G$($cr[1]) B$($cr[2])"
+    if ([Math]::Abs($px.R - $cr[0]) -le $tol -and [Math]::Abs($px.G - $cr[1]) -le $tol -and [Math]::Abs($px.B - $cr[2]) -le $tol) {
+      $matched = $true; break
+    }
+  }
+  if (-not $matched) {
+    throw "OS 截屏锚点像素与 readback 帧不一致(容差 ±$tol,4 次尝试)——presenter 呈现内容非引擎帧"
   }
   Log "锚点像素一致(±$tol)PASS:presenter 呈现 = 引擎 readback 帧"
 
@@ -105,6 +115,17 @@ try {
   exit 0
 } catch {
   Log "FAIL: $_"
+  try {
+    Add-Type -AssemblyName System.Drawing
+    $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    $bmp = New-Object System.Drawing.Bitmap $vs.Width, $vs.Height
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($vs.Left, $vs.Top, 0, 0, $bmp.Size)
+    $dbg = "evidence\f1-w2-desktop-fail-$ts.png"
+    $bmp.Save($dbg, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+    Log "失败全屏截图: $dbg"
+  } catch { Log "失败截图异常: $_" }
   New-Item -ItemType File -Force $doneFlag -ErrorAction SilentlyContinue | Out-Null
   exit 1
 } finally {

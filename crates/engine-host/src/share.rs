@@ -29,6 +29,11 @@ const GENERIC_ALL_ACCESS: u32 = 0x1000_0000;
 
 struct SharedTex {
     texture: ID3D12Resource,
+    /// 加堆腿(F1 wave.3):vk req > committed alloc 时,纹理为堆内 placed resource,
+    /// 堆对象须活过纹理(字段序:先 texture 后 heap,drop 同序)。
+    heap: Option<ID3D12Heap>,
+    /// local_tex_handle 指向堆(true,D3D12_HEAP import)还是纹理本身(false,D3D12_RESOURCE)。
+    is_heap_handle: bool,
     upload: ID3D12Resource,
     upload_ptr: *mut u8,
     row_pitch: usize,
@@ -38,6 +43,24 @@ struct SharedTex {
     fence_value: u64,
     fence_event: HANDLE,
     in_copy_dest: bool,
+    /// 本进程持有的纹理 NT handle(F1 wave.3:VK import 用;Drop 关闭)。
+    local_tex_handle: HANDLE,
+    /// `GetResourceAllocationInfo` 实测分配字节数(VK import `allocationSize` 用)。
+    alloc_size: u64,
+    /// 零拷贝档首帧是否已把纹理一次性迁移到 COPY_SOURCE。
+    zc_transitioned: bool,
+}
+
+impl Drop for SharedTex {
+    fn drop(&mut self) {
+        unsafe {
+            // SAFETY: fence_event/local_tex_handle 为本进程持有的内核句柄;COM 引用随 drop。
+            let _ = CloseHandle(self.fence_event);
+            if !self.local_tex_handle.is_invalid() {
+                let _ = CloseHandle(self.local_tex_handle);
+            }
+        }
+    }
 }
 
 struct Producer {
@@ -108,8 +131,16 @@ impl Producer {
         }
     }
 
-    /// 创建/重建共享纹理 + upload 堆 + 共享 fence;返回待移交句柄值。
-    fn open(&mut self, width: u32, height: u32, target_pid: u32) -> Result<(u64, u64), String> {
+    /// 创建/重建共享纹理 + upload 堆 + 共享 fence;返回 (dup_tex, dup_fence, is_heap)。
+    /// `min_alloc` = VK import 端图像内存需求(probe 实测,0 = 未知/无 vulkan);
+    /// `min_alloc > committed alloc` 时走共享堆 + placed resource 腿(committed 无法超尺寸)。
+    fn open(
+        &mut self,
+        width: u32,
+        height: u32,
+        target_pid: u32,
+        min_alloc: u64,
+    ) -> Result<(u64, u64, bool), String> {
         self.shared = None; // 释放旧资源(GPU 已闲:调用方保证帧间)
         unsafe {
             // SAFETY: desc/heap 常量字段合法;CreateCommittedResource 出参经 Option 校验。
@@ -129,18 +160,51 @@ impl Producer {
                 Type: D3D12_HEAP_TYPE_DEFAULT,
                 ..Default::default()
             };
-            let mut texture: Option<ID3D12Resource> = None;
-            self.device
-                .CreateCommittedResource(
-                    &default_heap,
-                    D3D12_HEAP_FLAG_SHARED,
-                    &tex_desc,
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                    None,
-                    &mut texture,
-                )
-                .map_err(|e| format!("CreateCommittedResource(texture): {e}"))?;
-            let texture = texture.ok_or("texture 为空")?;
+            // VK import 需要 D3D12 分配字节数(RFC-0001 §4.2.2 同配方)。
+            let committed_alloc = self.device.GetResourceAllocationInfo(0, &[tex_desc]).SizeInBytes;
+            // 加堆腿判定:VK 需求(同 pitch 行补齐差异,960x540 实测 2,457,600 vs 2,228,224)
+            // 超过 committed 分配 → 共享堆尺寸 = max 并 64KiB 对齐,placed resource 在偏移 0。
+            let use_heap = min_alloc > committed_alloc;
+            let (texture, heap, alloc_size): (ID3D12Resource, Option<ID3D12Heap>, u64) = if use_heap {
+                let heap_size = min_alloc.next_multiple_of(65_536);
+                let heap_desc = D3D12_HEAP_DESC {
+                    SizeInBytes: heap_size,
+                    Properties: default_heap.clone(),
+                    Alignment: 0,
+                    Flags: D3D12_HEAP_FLAG_SHARED,
+                };
+                let mut heap: Option<ID3D12Heap> = None;
+                self.device
+                    .CreateHeap(&heap_desc, &mut heap)
+                    .map_err(|e| format!("CreateHeap({heap_size}): {e}"))?;
+                let heap = heap.ok_or("heap 为空")?;
+                let mut texture: Option<ID3D12Resource> = None;
+                self.device
+                    .CreatePlacedResource(
+                        &heap,
+                        0,
+                        &tex_desc,
+                        D3D12_RESOURCE_STATE_COPY_DEST,
+                        None,
+                        &mut texture,
+                    )
+                    .map_err(|e| format!("CreatePlacedResource: {e}"))?;
+                let texture = texture.ok_or("placed texture 为空")?;
+                (texture, Some(heap), heap_size)
+            } else {
+                let mut texture: Option<ID3D12Resource> = None;
+                self.device
+                    .CreateCommittedResource(
+                        &default_heap,
+                        D3D12_HEAP_FLAG_SHARED,
+                        &tex_desc,
+                        D3D12_RESOURCE_STATE_COPY_DEST,
+                        None,
+                        &mut texture,
+                    )
+                    .map_err(|e| format!("CreateCommittedResource(texture): {e}"))?;
+                (texture.ok_or("texture 为空")?, None, committed_alloc)
+            };
 
             let row_pitch = ((width as usize) * 4).div_ceil(256) * 256;
             let upload_size = (row_pitch * height as usize) as u64;
@@ -187,12 +251,19 @@ impl Producer {
             let fence_event =
                 CreateEventW(None, false, false, None).map_err(|e| format!("CreateEventW: {e}"))?;
 
-            // 句柄移交:legacy KMT handle + DuplicateHandle 到目标进程。
-            // SAFETY: texture/fence 存活;GENERIC_ALL 访问;DuplicateHandle 参数合法。
-            let tex_handle = self
-                .device
-                .CreateSharedHandle(&texture, None, GENERIC_ALL_ACCESS, PCWSTR::null())
-                .map_err(|e| format!("CreateSharedHandle(texture): {e}"))?;
+            // 句柄移交:CreateSharedHandle 产 NT handle(可 DuplicateHandle);
+            // 本进程副本保留在 SharedTex(F1 wave.3 VK import 用),Drop 关闭。
+            // 加堆腿时句柄指向堆(D3D12_HEAP import;presenter 端自建 placed resource)。
+            // SAFETY: texture/heap/fence 存活;GENERIC_ALL 访问;DuplicateHandle 参数合法。
+            let tex_handle = if let Some(h) = &heap {
+                self.device
+                    .CreateSharedHandle(h, None, GENERIC_ALL_ACCESS, PCWSTR::null())
+                    .map_err(|e| format!("CreateSharedHandle(heap): {e}"))?
+            } else {
+                self.device
+                    .CreateSharedHandle(&texture, None, GENERIC_ALL_ACCESS, PCWSTR::null())
+                    .map_err(|e| format!("CreateSharedHandle(texture): {e}"))?
+            };
             let fence_handle = self
                 .device
                 .CreateSharedHandle(&fence, None, GENERIC_ALL_ACCESS, PCWSTR::null())
@@ -221,8 +292,7 @@ impl Producer {
                 false,
                 DUPLICATE_SAME_ACCESS,
             );
-            // 本进程侧原始句柄即刻关闭(资源本体由 COM 引用持有)。
-            let _ = CloseHandle(tex_handle);
+            // fence 本进程句柄即刻关闭(COM 引用持有本体);tex_handle 保留(VK import)。
             let _ = CloseHandle(fence_handle);
             let _ = CloseHandle(target);
             ok1.map_err(|e| format!("DuplicateHandle(texture): {e}"))?;
@@ -230,6 +300,8 @@ impl Producer {
 
             self.shared = Some(SharedTex {
                 texture,
+                heap,
+                is_heap_handle: use_heap,
                 upload,
                 upload_ptr: upload_ptr as *mut u8,
                 row_pitch,
@@ -239,8 +311,11 @@ impl Producer {
                 fence_value: 0,
                 fence_event,
                 in_copy_dest: true,
+                local_tex_handle: tex_handle,
+                alloc_size,
+                zc_transitioned: false,
             });
-            Ok((dup_tex.0 as u64, dup_fence.0 as u64))
+            Ok((dup_tex.0 as u64, dup_fence.0 as u64, use_heap))
         }
     }
 
@@ -331,13 +406,48 @@ impl Producer {
         }
     }
 
-    fn close(&mut self) {
-        if let Some(s) = self.shared.take() {
-            unsafe {
-                // SAFETY: 事件句柄为本进程持有;纹理/fence COM 引用随 drop 释放。
-                let _ = CloseHandle(s.fence_event);
+    /// 零拷贝帧信号(F1 wave.3 方向 B):VK 已直渲进共享纹理(session 帧 fence 完成
+    /// 由 CPU 侧知悉),此处仅推进共享 fence 通知消费者;首次调用把纹理一次性迁移
+    /// 到 COPY_SOURCE(与 signal 同队列顺序提交,消费者见 fence ≥ v 时迁移已完成)。
+    /// 返回本帧 fence 值。
+    fn signal(&mut self) -> Result<u64, String> {
+        let Some(shared) = &mut self.shared else {
+            return Err("共享纹理未打开".into());
+        };
+        unsafe {
+            // SAFETY: 全部对象存活于 self;命令对按序配对;同队列序保证迁移先于信号。
+            if !shared.zc_transitioned {
+                self.allocator.Reset().map_err(|e| format!("allocator.Reset: {e}"))?;
+                self.list
+                    .Reset(&self.allocator, None)
+                    .map_err(|e| format!("list.Reset: {e}"))?;
+                if shared.in_copy_dest {
+                    self.list.ResourceBarrier(&[barrier_transition(
+                        &shared.texture,
+                        D3D12_RESOURCE_STATE_COPY_DEST,
+                        D3D12_RESOURCE_STATE_COPY_SOURCE,
+                    )]);
+                    shared.in_copy_dest = false;
+                }
+                self.list.Close().map_err(|e| format!("list.Close: {e}"))?;
+                let cmd: ID3D12CommandList =
+                    self.list.cast().map_err(|e| format!("list cast: {e}"))?;
+                self.queue.ExecuteCommandLists(&[Some(cmd)]);
+                shared.zc_transitioned = true;
             }
+            shared.fence_value += 1;
+            let v = shared.fence_value;
+            self.queue
+                .Signal(&shared.fence, v)
+                .map_err(|e| format!("queue.Signal: {e}"))?;
+            Ok(v)
         }
+    }
+
+    fn close(&mut self) {
+        // SharedTex::Drop 统一关闭 fence_event/local_tex_handle;重建(open 内 `= None`)
+        // 与显式 close 同路,杜绝 wave.2 遗留的 fence_event 重建泄漏。
+        self.shared = None;
     }
 }
 
@@ -347,15 +457,21 @@ impl Drop for Producer {
     }
 }
 
-/// 打开/重建共享纹理并把句柄移交 target_pid;返回 (texHandle, fenceHandle, width, height)。
-pub fn open(width: u32, height: u32, target_pid: u32) -> Result<(u64, u64, u32, u32), String> {
+/// 打开/重建共享纹理并把句柄移交 target_pid;`min_alloc` = VK import 端需求(probe 实测,
+/// 0 = 未知)。返回 (texHandle, fenceHandle, width, height, isHeapHandle)。
+pub fn open(
+    width: u32,
+    height: u32,
+    target_pid: u32,
+    min_alloc: u64,
+) -> Result<(u64, u64, u32, u32, bool), String> {
     let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
     if g.is_none() {
         *g = Some(Producer::new()?);
     }
     let p = g.as_mut().expect("producer 刚初始化");
-    let (t, f) = p.open(width, height, target_pid)?;
-    Ok((t, f, width, height))
+    let (t, f, heap) = p.open(width, height, target_pid, min_alloc)?;
+    Ok((t, f, width, height, heap))
 }
 
 /// 写一帧;返回 fence 值。共享未打开 = Ok(None)(不视为错误,canvas 腿照常)。
@@ -372,6 +488,33 @@ pub fn write_frame(rgba8: &[u8], width: u32, height: u32) -> Result<Option<u64>,
 pub fn is_open() -> bool {
     let g = slot().lock().unwrap_or_else(|e| e.into_inner());
     g.as_ref().is_some_and(|p| p.shared.is_some())
+}
+
+/// VK import 面(F1 wave.3 方向 B):(本进程 NT handle, allocation_size, width, height,
+/// is_heap)。未打开 = None。handle 生命周期随 SharedTex(close/重建即失效),调用方须
+/// 即取即用。is_heap=true 时句柄指向共享堆(D3D12_HEAP import,placed resource 偏移 0)。
+pub fn vk_import_info() -> Option<(u64, u64, u32, u32, bool)> {
+    let g = slot().lock().unwrap_or_else(|e| e.into_inner());
+    let p = g.as_ref()?;
+    let s = p.shared.as_ref()?;
+    Some((
+        s.local_tex_handle.0 as u64,
+        s.alloc_size,
+        s.width,
+        s.height,
+        s.is_heap_handle,
+    ))
+}
+
+/// 零拷贝帧信号:仅推进共享 fence(首调用一次性迁移纹理到 COPY_SOURCE)。
+/// 共享未打开 = Ok(None)。
+pub fn signal_frame() -> Result<Option<u64>, String> {
+    let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(p) = g.as_mut() else { return Ok(None) };
+    if p.shared.is_none() {
+        return Ok(None);
+    }
+    p.signal().map(Some)
 }
 
 /// 关闭共享纹理(幂等)。

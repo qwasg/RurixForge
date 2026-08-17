@@ -280,6 +280,7 @@ async function maybeWriteRectEvidence() {
       texW: presenter.texW,
       texH: presenter.texH,
       centerRgba: [bin[i], bin[i + 1], bin[i + 2], bin[i + 3]],
+      framePath: f.framePath || '',
       deviceName: f.deviceName || '',
     };
     fs.mkdirSync(evidenceDir, { recursive: true });
@@ -351,12 +352,12 @@ async function syncPresenterInner(b) {
       width: w,
       height: h,
     });
-    presenterWrite(`bind ${share.texHandle} ${share.fenceHandle} ${w} ${h}`);
+    presenterWrite(`bind ${share.handleKind === 'heap' ? 'heap' : 'tex'} ${share.texHandle} ${share.fenceHandle} ${w} ${h}`);
     presenter.texW = w;
     presenter.texH = h;
     presenter.x = x;
     presenter.y = y;
-    smokeLog(`presenter embedded: pid=${proc.pid} ${w}x${h} tex=${share.texHandle}`);
+    smokeLog(`presenter embedded: pid=${proc.pid} ${w}x${h} tex=${share.texHandle} kind=${share.handleKind || '?'}`);
     // 可见冒烟:轮询 stat 直至 presented>=3 写证据
     if (isSmokeVisible && !presenter.statTimer) {
       presenter.statTimer = setInterval(() => presenterWrite('stat'), 500);
@@ -373,7 +374,7 @@ async function syncPresenterInner(b) {
       width: w,
       height: h,
     });
-    presenterWrite(`bind ${share.texHandle} ${share.fenceHandle} ${w} ${h}`);
+    presenterWrite(`bind ${share.handleKind === 'heap' ? 'heap' : 'tex'} ${share.texHandle} ${share.fenceHandle} ${w} ${h}`);
     presenter.texW = w;
     presenter.texH = h;
   }
