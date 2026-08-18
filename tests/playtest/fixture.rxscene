@@ -1,0 +1,23 @@
+{
+  "name": "playtest-fixture",
+  "next_id": 3,
+  "entities": [
+    {
+      "id": 1,
+      "name": "Player",
+      "transform": { "translation": [0.0, 0.5, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] },
+      "components": [
+        { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } },
+        { "type": "Script", "enabled": true, "props": { "module": "", "graphRef": "Content/Graphs/door_opener.rxgraph", "props": { "speed": 2.5, "keys": 1 } } }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Goal",
+      "transform": { "translation": [3.0, 0.5, 3.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] },
+      "components": [
+        { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }
+      ]
+    }
+  ]
+}

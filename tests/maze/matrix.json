@@ -1,0 +1,43 @@
+{
+  "scene": "projects/demo/Content/Scenes/maze.rxscene",
+  "enterPlay": true,
+  "inputs": [
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "-1", "value": -1, "settle": 12 },
+    { "action": "-1", "value": -1, "settle": 12 },
+    { "action": "-10", "value": -10, "settle": 12 },
+    { "action": "-10", "value": -10, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "-1", "value": -1, "settle": 12 },
+    { "action": "-1", "value": -1, "settle": 12 },
+    { "action": "-1", "value": -1, "settle": 12 },
+    { "action": "-1", "value": -1, "settle": 12 },
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 },
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "10", "value": 10, "settle": 12 },
+    { "action": "1", "value": 1, "settle": 12 }
+  ],
+  "settleFrames": 45,
+  "cases": [
+    { "name": "实体计数=36", "assert": { "kind": "entity_count", "expected": 36 } },
+    { "name": "玩家抵达终点", "assert": { "kind": "transform_near", "entity": "Player", "translation": [10.0, 0.4, 10.0], "tolerance": 0.3 } },
+    { "name": "钥匙拾取下沉", "assert": { "kind": "transform_near", "entity": "Key", "translation": [2.0, -9.5, 10.0], "tolerance": 0.3 } },
+    { "name": "门开启下沉", "assert": { "kind": "transform_near", "entity": "Door", "translation": [6.0, -2.0, 8.0], "tolerance": 0.3 } },
+    { "name": "终点庆祝升起", "assert": { "kind": "transform_near", "entity": "Goal", "translation": [10.0, 2.5, 10.0], "tolerance": 0.3 } },
+    { "name": "玩家挂winner标签", "assert": { "kind": "component_field", "entity": "Player", "type": "Tag", "field": "props.tag", "expected": "winner" } }
+  ]
+}

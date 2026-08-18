@@ -4,6 +4,7 @@
 
 mod llm;
 mod mcp;
+mod playtest;
 mod proposals;
 mod subagents;
 mod swarm;
@@ -54,6 +55,7 @@ fn build_app() -> Router {
         .route("/api/forge/mcp/call", post(mcp_call))
         .route("/api/forge/llm/complete", get(llm_complete))
         .route("/api/forge/llm/chat", post(llm::chat))
+        .route("/api/forge/playtest/run", post(playtest_run))
         .route(
             "/api/forge/proposals",
             get(proposals_list).post(proposals_create),
@@ -437,6 +439,53 @@ async fn llm_complete() -> Json<Value> {
     Json(json!({ "provider": "mock", "text": "mock completion" }))
 }
 
+// ---------- F6 wave.1:playtest 矩阵执行器(D-F6-A) ----------
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaytestRunRequest {
+    /// 断言矩阵路径(workspace 相对或绝对)。
+    matrix_ref: String,
+}
+
+/// POST /api/forge/playtest/run:读矩阵 → playtest::run_matrix(mcp 工具面)→ 结构化报告。
+/// 报告即诚实工件:红矩阵(ok=false)同样 200 返回;矩阵级错误(读/解析/scene_load)才非 2xx。
+async fn playtest_run(Json(req): Json<PlaytestRunRequest>) -> Response {
+    let path = playtest::resolve_workspace_path(&req.matrix_ref);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": { "code": "MATRIX_NOT_FOUND", "message": format!("矩阵读取失败 {}: {e}", path.display()) } })),
+            )
+                .into_response();
+        }
+    };
+    let matrix: playtest::Matrix = match serde_json::from_str(&text) {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": { "code": "MATRIX_INVALID", "message": format!("矩阵解析失败: {e}") } })),
+            )
+                .into_response();
+        }
+    };
+    let mut caller = |tool: String, args: Value| async move {
+        let r = mcp::call_tool(&tool, Some(args)).await.map_err(|e| e.to_string())?;
+        playtest::unwrap_envelope(&r)
+    };
+    match playtest::run_matrix(&matrix, &mut caller).await {
+        Ok(report) => Json(report.to_json()).into_response(),
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": { "code": "PLAYTEST_TOOL_ERROR", "message": e } })),
+        )
+            .into_response(),
+    }
+}
+
 // ---------- F3 wave.1:swarm 集群(04 §5 / 11 §2.2)+ multitask 确定性执行器(D-F3-E) ----------
 
 /// GET /api/forge/swarm/state:节点 + 分片状态快照。
@@ -509,10 +558,147 @@ fn operation_call(shard_type: &str, operation: &Value, item: &str) -> Result<(St
             "mcp__asset-pipeline__asset_reimport".to_string(),
             json!({ "assetPath": item }),
         )),
-        ("code-module", _) | ("test-matrix", _) => Err(format!(
-            "{shard_type} 域 operation 未落地(F4 code-forge / F6 playtest 承接,seam)"
+        // F6 wave.2:test-matrix 每分片整体执行(非逐 item 工具映射);此处仅预检 operation 形态。
+        ("test-matrix", "test_run") => {
+            if operation.get("matrixRef").and_then(Value::as_str).is_none() {
+                return Err("test_run operation 缺 matrixRef".to_string());
+            }
+            Ok(("__test_matrix_shard__".to_string(), json!({})))
+        }
+        ("code-module", _) => Err(format!(
+            "{shard_type} 域 operation 未落地(F4 code-forge 承接,seam)"
+        )),
+        ("test-matrix", _) => Err(format!(
+            "{shard_type} 仅支持 operation.kind=test_run(matrixRef)"
         )),
         _ => Err(format!("shardType {shard_type} 不支持 operation.kind {kind}")),
+    }
+}
+
+/// F6 wave.2(D-F6-B):test-matrix 并发守卫——FreshSession 全局信号量(显存预算,默认 2)。
+static TEST_MATRIX_SEM: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+
+/// test-matrix 分片执行:FreshSession 独立 engine-host 跑子矩阵(items = case 名过滤)。
+/// 返回 (ok_items, errors, 证据 report:pid/时间窗/聚合),失败 case 如实进 errors 不遮蔽。
+async fn test_matrix_shard_run(
+    items: &[String],
+    operation: &Value,
+) -> (Vec<String>, Vec<Value>, Value) {
+    let matrix_ref = operation
+        .get("matrixRef")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let path = playtest::resolve_workspace_path(&matrix_ref);
+    let matrix: playtest::Matrix = match std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+    {
+        Some(m) => m,
+        None => {
+            let errors: Vec<Value> = items
+                .iter()
+                .map(|i| json!({ "item": i, "error": format!("矩阵读取/解析失败 {}", path.display()) }))
+                .collect();
+            return (Vec::new(), errors, json!({ "matrixRef": matrix_ref, "fatal": "matrix_unreadable" }));
+        }
+    };
+    // case 过滤:items 逐个匹配;无名匹配 = 如实 error item。
+    let mut sub_cases: Vec<playtest::Case> = Vec::new();
+    let mut ok_items: Vec<String> = Vec::new();
+    let mut errors: Vec<Value> = Vec::new();
+    for item in items {
+        match matrix.cases.iter().find(|c| c.name == *item) {
+            Some(c) => sub_cases.push(playtest::Case {
+                name: c.name.clone(),
+                assert_: c.assert_.clone(),
+            }),
+            None => errors.push(json!({ "item": item, "error": "矩阵中无此 case 名" })),
+        }
+    }
+    // 并发守卫:信号量上限 = operation.maxConcurrent(缺省 2)。
+    let max_conc = operation
+        .get("maxConcurrent")
+        .and_then(Value::as_u64)
+        .unwrap_or(2) as usize;
+    let sem = TEST_MATRIX_SEM.get_or_init(|| tokio::sync::Semaphore::new(max_conc.max(1)));
+    let _permit = match sem.acquire().await {
+        Ok(p) => p,
+        Err(_) => {
+            errors.push(json!({ "item": "*", "error": "并发信号量已关闭" }));
+            return (ok_items, errors, json!({ "matrixRef": matrix_ref, "fatal": "semaphore_closed" }));
+        }
+    };
+    let mut session = match mcp::FreshSession::spawn(mcp::ServerKind::EngineScene).await {
+        Ok(s) => s,
+        Err(e) => {
+            errors.push(json!({ "item": "*", "error": format!("FreshSession spawn 失败: {e}") }));
+            return (ok_items, errors, json!({ "matrixRef": matrix_ref, "fatal": "spawn_failed" }));
+        }
+    };
+    let pid = session.pid();
+    // 绝对纪元毫秒时间窗:跨分片可比,重叠即真并发证据(G-F6-2)。
+    let epoch_ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    };
+    let started_ms = epoch_ms();
+    let session = std::sync::Arc::new(tokio::sync::Mutex::new(session));
+    let s2 = session.clone();
+    let mut caller = move |tool: String, args: Value| {
+        let s = s2.clone();
+        async move {
+            let name = tool
+                .strip_prefix("mcp__engine-scene__")
+                .unwrap_or(&tool)
+                .to_string();
+            let mut g = s.lock().await;
+            let r = g.call(&name, Some(args)).await.map_err(|e| e.to_string())?;
+            playtest::unwrap_envelope(&r)
+        }
+    };
+    let sub = playtest::Matrix {
+        scene: matrix.scene.clone(),
+        camera: matrix.camera.clone(),
+        enter_play: matrix.enter_play,
+        inputs: matrix.inputs.clone(),
+        settle_frames: matrix.settle_frames,
+        cases: sub_cases,
+    };
+    match playtest::run_matrix(&sub, &mut caller).await {
+        Ok(report) => {
+            for c in &report.cases {
+                if c.pass {
+                    ok_items.push(c.name.clone());
+                } else {
+                    errors.push(json!({
+                        "item": c.name,
+                        "error": format!("断言失败({}): actual={} expected={} {}", c.kind, c.actual, c.expected, c.detail),
+                    }));
+                }
+            }
+            let finished_ms = epoch_ms();
+            session.lock().await.shutdown().await;
+            (
+                ok_items,
+                errors,
+                json!({
+                    "matrixRef": matrix_ref,
+                    "pid": pid,
+                    "windowMs": [started_ms, finished_ms],
+                    "passed": report.passed,
+                    "failed": report.failed,
+                    "durationMs": report.duration_ms,
+                }),
+            )
+        }
+        Err(e) => {
+            errors.push(json!({ "item": "*", "error": e }));
+            session.lock().await.shutdown().await;
+            (ok_items, errors, json!({ "matrixRef": matrix_ref, "pid": pid, "fatal": "matrix_aborted" }))
+        }
     }
 }
 
@@ -578,6 +764,12 @@ async fn swarm_execute(
         let operation = req.operation.clone();
         let id = id.clone();
         handles.push(tokio::spawn(async move {
+            // F6 wave.2:test-matrix 分片整体执行腿(FreshSession 独立 engine-host + 信号量守卫)。
+            if shard_type == "test-matrix" {
+                let (ok_items, errors, evidence) =
+                    test_matrix_shard_run(&shard.items, &operation).await;
+                return (id, ok_items, errors, evidence);
+            }
             let mut ok_items: Vec<String> = Vec::new();
             let mut errors: Vec<Value> = Vec::new();
             for item in &shard.items {
@@ -605,7 +797,7 @@ async fn swarm_execute(
                     Err(e) => errors.push(json!({ "item": item, "error": e.to_string() })),
                 }
             }
-            (id, ok_items, errors)
+            (id, ok_items, errors, Value::Null)
         }));
     }
 
@@ -613,7 +805,7 @@ async fn swarm_execute(
     let mut total_ok = 0usize;
     let mut total_err = 0usize;
     for h in handles {
-        let (id, ok_items, errors) = h.await.expect("worker task join 失败");
+        let (id, ok_items, errors, evidence) = h.await.expect("worker task join 失败");
         total_ok += ok_items.len();
         total_err += errors.len();
         let shard_ok = errors.is_empty();
@@ -622,6 +814,7 @@ async fn swarm_execute(
             "ok": ok_items,
             "okCount": ok_items.len(),
             "errors": errors,
+            "evidence": evidence,
         });
         state.swarm.complete_shard(&id, report.clone(), shard_ok);
         shard_reports.push(json!({
@@ -630,6 +823,7 @@ async fn swarm_execute(
             "okCount": report["okCount"],
             "errorCount": report["errors"].as_array().map(Vec::len).unwrap_or(0),
             "errors": report["errors"],
+            "evidence": evidence,
         }));
     }
 
@@ -847,7 +1041,10 @@ mod tests {
     #[tokio::test]
     async fn llm_chat_mock_provider_when_no_key() {
         // 无密钥环境(env 清空 + keystore 指空目录)→ provider=mock 恒绿,不触网不触 MCP。
-        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // 双锁:GEN_REST_LOCK(gen 测试组亦读写 FORGE_GEN_DATA_DIR)与 llm::TEST_ENV_LOCK,
+        // 防跨锁竞态(真实 data/keystore.json 存在后,gen 测试 remove_var 会致本测试串扰解析到真 key)。
+        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("FORGE_LLM_API_KEY");
         std::env::remove_var("FORGE_GEN_API_KEY");
         let dir = std::env::temp_dir().join(format!("agentd-chat-test-{}", std::process::id()));
@@ -873,6 +1070,40 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         assert_eq!(json_body(resp).await["error"]["code"], "EMPTY_TEXT");
+    }
+
+    // ---------- F6 wave.1:/api/forge/playtest/run ----------
+
+    #[tokio::test]
+    async fn playtest_run_matrix_not_found_404() {
+        let resp = build_app()
+            .oneshot(post_json(
+                "/api/forge/playtest/run",
+                r#"{"matrixRef":"tests/playtest/no-such-matrix.json"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(resp).await["error"]["code"], "MATRIX_NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn playtest_run_matrix_invalid_400() {
+        // 写一份坏 JSON 到临时文件(绝对路径),解析失败 → 400。
+        let dir = std::env::temp_dir().join(format!("agentd-pt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("bad.json");
+        std::fs::write(&p, "{ not json").unwrap();
+        let resp = build_app()
+            .oneshot(post_json(
+                "/api/forge/playtest/run",
+                &format!(r#"{{"matrixRef":"{}"}}"#, p.to_string_lossy().replace('\\', "/")),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(resp).await["error"]["code"], "MATRIX_INVALID");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]

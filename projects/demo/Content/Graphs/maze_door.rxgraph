@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "g_maze_door",
+  "name": "MazeDoor",
+  "exposedProps": [],
+  "nodes": [
+    { "id": "ms", "type": "event.on_message", "pos": [0, 0] },
+    { "id": "cf", "type": "call.call_function", "pos": [1, 0], "inputs": { "module": { "const": "Content/Scripts/maze.rx" }, "fn": { "const": "door_open_angle" }, "args": { "const": [] } } },
+    { "id": "rt", "type": "transform.rotate_tween", "pos": [2, 0], "inputs": { "target": { "const": "$self" }, "angle": { "node": "cf", "pin": "result" }, "duration": { "const": 0.5 } } },
+    { "id": "mv", "type": "transform.move_tween", "pos": [3, 0], "inputs": { "target": { "const": "$self" }, "offset": { "const": [0, -3, 0] }, "duration": { "const": 0.5 } } },
+    { "id": "lg", "type": "debug.log", "pos": [4, 0], "inputs": { "message": { "const": "door opened" } } }
+  ],
+  "edges": [
+    { "from": ["ms", "exec"], "to": ["cf", "exec"] },
+    { "from": ["cf", "exec"], "to": ["rt", "exec"] },
+    { "from": ["rt", "exec"], "to": ["mv", "exec"] },
+    { "from": ["mv", "exec"], "to": ["lg", "exec"] }
+  ]
+}

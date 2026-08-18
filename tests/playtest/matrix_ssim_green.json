@@ -1,0 +1,8 @@
+{
+  "scene": "tests/playtest/fixture.rxscene",
+  "camera": { "target": [1.5, 0.5, 1.5], "yaw": 45.0, "pitch": -20.0, "dist": 10.0, "fovY": 60.0 },
+  "enterPlay": false,
+  "cases": [
+    { "name": "fixture 视图 SSIM≥0.999", "assert": { "kind": "screenshot_ssim", "golden": "tests/playtest/golden/fixture.png", "threshold": 0.999, "width": 960, "height": 540 } }
+  ]
+}

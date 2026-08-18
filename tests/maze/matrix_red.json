@@ -1,0 +1,12 @@
+{
+  "scene": "projects/demo/Content/Scenes/maze.rxscene",
+  "enterPlay": true,
+  "inputs": [
+    { "action": "1", "value": 1, "settle": 12 }
+  ],
+  "settleFrames": 5,
+  "cases": [
+    { "name": "必红-玩家错位", "assert": { "kind": "transform_near", "entity": "Player", "translation": [0.0, 0.4, 0.0], "tolerance": 0.3 } },
+    { "name": "必红-门已开(未拿钥匙)", "assert": { "kind": "transform_near", "entity": "Door", "translation": [6.0, -2.0, 8.0], "tolerance": 0.3 } }
+  ]
+}

@@ -113,7 +113,7 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// MCP 服务标识(五工:engine-scene + asset-pipeline + code-forge + gen-image + gen-model)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ServerKind {
+pub enum ServerKind {
     EngineScene,
     AssetPipeline,
     CodeForge,
@@ -367,7 +367,21 @@ async fn ensure_connected<'a>(
             _ => **guard = None,
         }
     }
-    let (bin, args) = match kind {
+    let (bin, args) = spawn_spec(kind);
+    if !bin.exists() {
+        return Err(McpError(format!(
+            "{:?} 二进制不存在: {}",
+            kind,
+            bin.display()
+        )));
+    }
+    **guard = Some(McpClient::connect(&bin, &args).await?);
+    Ok(())
+}
+
+/// 各 server spawn 规格(二进制 + 启动参数;单例与 FreshSession 共用)。
+fn spawn_spec(kind: ServerKind) -> (PathBuf, Vec<String>) {
+    match kind {
         ServerKind::EngineScene => (server_bin(), vec![]),
         ServerKind::AssetPipeline => (
             asset_server_bin(),
@@ -382,16 +396,54 @@ async fn ensure_connected<'a>(
             gen_model_server_bin(),
             vec!["--project".to_string(), asset_project_root().to_string_lossy().into_owned()],
         ),
-    };
-    if !bin.exists() {
-        return Err(McpError(format!(
-            "{:?} 二进制不存在: {}",
-            kind,
-            bin.display()
-        )));
     }
-    **guard = Some(McpClient::connect(&bin, &args).await?);
-    Ok(())
+}
+
+/// F6 wave.2(D-F6-B):非单例短连接——test-matrix 每 shard 独立 spawn
+/// (独立 engine-scene-mcp 子进程 → 独立 engine-host 看门狗实例,场景态互不影响)。
+/// 用毕须 shutdown(显式 kill;Drop 兜底,防孤儿继承 stdout 句柄挂管道——实测坑)。
+pub struct FreshSession {
+    client: McpClient,
+}
+
+impl FreshSession {
+    /// spawn 新实例(二进制缺失如实 Err)。
+    pub async fn spawn(kind: ServerKind) -> Result<Self, McpError> {
+        let (bin, args) = spawn_spec(kind);
+        if !bin.exists() {
+            return Err(McpError(format!(
+                "{:?} 二进制不存在: {}",
+                kind,
+                bin.display()
+            )));
+        }
+        let client = McpClient::connect(&bin, &args).await?;
+        Ok(Self { client })
+    }
+
+    /// 调用工具(name 不带前缀;本腿首发仅 EngineScene 用,调用方负责全名剥离)。
+    pub async fn call(&mut self, name: &str, arguments: Option<Value>) -> Result<Value, McpError> {
+        let params = json!({ "name": name, "arguments": arguments.unwrap_or_else(|| json!({})) });
+        self.client.request("tools/call", params).await
+    }
+
+    /// 显式关停子进程(kill + wait 收尸)。
+    pub async fn shutdown(&mut self) {
+        let _ = self.client.child.kill().await;
+        let _ = self.client.child.wait().await;
+    }
+
+    /// 子进程(engine-scene-mcp)PID——并发证据(每 shard 独立实例,PID 互异即非单例)。
+    pub fn pid(&self) -> Option<u32> {
+        self.client.child.id()
+    }
+}
+
+impl Drop for FreshSession {
+    fn drop(&mut self) {
+        // 兜底:异步 kill 不可用时至少发起 kill(tokio Child::start_kill 同步可调用)。
+        let _ = self.client.child.start_kill();
+    }
 }
 
 /// 调用 MCP 工具:tool 为全名(带前缀),按前缀路由到对应服务。

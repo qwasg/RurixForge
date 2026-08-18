@@ -1,0 +1,57 @@
+{
+  "name": "maze",
+  "next_id": 37,
+  "entities": [
+    { "id": 1, "name": "Wall_0_0", "transform": { "translation": [0.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 2, "name": "Wall_0_1", "transform": { "translation": [0.0, 1.0, 2.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 3, "name": "Wall_0_2", "transform": { "translation": [0.0, 1.0, 4.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 4, "name": "Wall_0_3", "transform": { "translation": [0.0, 1.0, 6.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 5, "name": "Wall_0_4", "transform": { "translation": [0.0, 1.0, 8.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 6, "name": "Wall_0_5", "transform": { "translation": [0.0, 1.0, 10.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 7, "name": "Wall_0_6", "transform": { "translation": [0.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 8, "name": "Wall_6_0", "transform": { "translation": [12.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 9, "name": "Wall_6_1", "transform": { "translation": [12.0, 1.0, 2.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 10, "name": "Wall_6_2", "transform": { "translation": [12.0, 1.0, 4.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 11, "name": "Wall_6_3", "transform": { "translation": [12.0, 1.0, 6.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 12, "name": "Wall_6_4", "transform": { "translation": [12.0, 1.0, 8.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 13, "name": "Wall_6_5", "transform": { "translation": [12.0, 1.0, 10.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 14, "name": "Wall_6_6", "transform": { "translation": [12.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 15, "name": "Wall_1_0", "transform": { "translation": [2.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 16, "name": "Wall_2_0", "transform": { "translation": [4.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 17, "name": "Wall_3_0", "transform": { "translation": [6.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 18, "name": "Wall_4_0", "transform": { "translation": [8.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 19, "name": "Wall_5_0", "transform": { "translation": [10.0, 1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 20, "name": "Wall_1_6", "transform": { "translation": [2.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 21, "name": "Wall_2_6", "transform": { "translation": [4.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 22, "name": "Wall_3_6", "transform": { "translation": [6.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 23, "name": "Wall_4_6", "transform": { "translation": [8.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 24, "name": "Wall_5_6", "transform": { "translation": [10.0, 1.0, 12.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 25, "name": "Wall_2_2", "transform": { "translation": [4.0, 1.0, 4.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 26, "name": "Wall_4_2", "transform": { "translation": [8.0, 1.0, 4.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 27, "name": "Wall_2_3", "transform": { "translation": [4.0, 1.0, 6.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 28, "name": "Wall_2_4", "transform": { "translation": [4.0, 1.0, 8.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 29, "name": "Wall_4_4", "transform": { "translation": [8.0, 1.0, 8.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 30, "name": "Wall_5_4", "transform": { "translation": [10.0, 1.0, 8.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 31, "name": "Wall_2_5", "transform": { "translation": [4.0, 1.0, 10.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 2.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 32, "name": "Floor", "transform": { "translation": [6.0, -0.1, 6.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [14.0, 0.2, 14.0] }, "components": [{ "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } }] },
+    { "id": 33, "name": "Player", "transform": { "translation": [2.0, 0.4, 2.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.8, 0.8, 0.8] }, "components": [
+      { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } },
+      { "type": "Tag", "enabled": true, "props": { "tag": "player" } },
+      { "type": "Script", "enabled": true, "props": { "module": "", "graphRef": "Content/Graphs/maze_player.rxgraph", "props": {} } }
+    ] },
+    { "id": 34, "name": "Key", "transform": { "translation": [2.0, 0.5, 10.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.5, 0.5, 0.5] }, "components": [
+      { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } },
+      { "type": "Trigger", "enabled": true, "props": { "kind": "box", "extents": [1.6, 1.6, 1.6] } },
+      { "type": "Script", "enabled": true, "props": { "module": "", "graphRef": "Content/Graphs/maze_key.rxgraph", "props": {} } }
+    ] },
+    { "id": 35, "name": "Door", "transform": { "translation": [6.0, 1.0, 8.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.0, 2.0, 0.4] }, "components": [
+      { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } },
+      { "type": "Script", "enabled": true, "props": { "module": "", "graphRef": "Content/Graphs/maze_door.rxgraph", "props": {} } }
+    ] },
+    { "id": 36, "name": "Goal", "transform": { "translation": [10.0, 0.5, 10.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] }, "components": [
+      { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube" } },
+      { "type": "Trigger", "enabled": true, "props": { "kind": "box", "extents": [1.6, 1.6, 1.6] } },
+      { "type": "Script", "enabled": true, "props": { "module": "", "graphRef": "Content/Graphs/maze_goal.rxgraph", "props": {} } }
+    ] }
+  ]
+}

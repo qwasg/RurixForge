@@ -745,15 +745,17 @@ fn exec_node(
             let module = as_string(&eval_pin(inst, eid, &nid, "module", ev, scene, log));
             let fn_name = as_string(&eval_pin(inst, eid, &nid, "fn", ev, scene, log));
             let args_v = eval_pin(inst, eid, &nid, "args", ev, scene, log);
-            let args_r: Result<Vec<Value>, String> = match args_v {
-                Value::Array(a) => Ok(a),
-                Value::Null => Ok(Vec::new()),
-                other => Err(format!("args 须数组,实际 {other}")),
+            // args:数组直用;Null = 无参;标量自动包一元数组(F6 wave.2 动态单参链,
+            // 黑板/var.get 单值直喂 .rx 单参函数;类型/arity 由 callruntime 复核如实报错)。
+            let args: Vec<Value> = match args_v {
+                Value::Array(a) => a,
+                Value::Null => Vec::new(),
+                other => vec![other],
             };
-            let invoked = args_r.and_then(|args| match call_rt.as_mut() {
+            let invoked = match call_rt.as_mut() {
                 Some(rt) => rt.invoke(&module, &fn_name, &args).map_err(|e| e.to_string()),
                 None => Err("CallRuntime 未配置(project_root 未挂)".to_string()),
-            });
+            };
             match invoked {
                 Ok(v) => {
                     inst.node_outputs.insert(format!("{nid}.result"), v.clone());
@@ -785,6 +787,16 @@ fn exec_node(
     };
     for n in nexts {
         exec_node(inst, eid, &n, ev, scene, mq, call_rt, log, depth + 1);
+    }
+}
+
+/// call_function args 归一:数组直用;Null = 无参;标量自动包一元数组(F6 wave.2 动态单参链,
+/// 黑板/var.get 单值直喂 .rx 单参函数;类型/arity 由 callruntime 复核如实报错)。
+fn normalize_call_args(v: Value) -> Vec<Value> {
+    match v {
+        Value::Array(a) => a,
+        Value::Null => Vec::new(),
+        other => vec![other],
     }
 }
 
@@ -1319,5 +1331,14 @@ mod tests {
         }
         let t = scene.entity(1).unwrap().transform.translation;
         assert!((t[1] - 3.0).abs() < 1e-4, "30 帧(0.5s)后 y 须恰为 3,实际 {t:?}");
+    }
+
+    /// call_function args 归一(F6 wave.2):数组直用 / Null 空 / 标量包一元 / 对象亦包一元(类型由 callruntime 复核)。
+    #[test]
+    fn call_args_scalar_autowrap() {
+        assert_eq!(normalize_call_args(json!([2, 3.5])), vec![json!(2), json!(3.5)]);
+        assert!(normalize_call_args(Value::Null).is_empty());
+        assert_eq!(normalize_call_args(json!(34)), vec![json!(34)]);
+        assert_eq!(normalize_call_args(json!(true)), vec![json!(true)]);
     }
 }

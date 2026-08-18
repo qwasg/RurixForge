@@ -14,6 +14,9 @@ gend = { path = "../gend" }
 tokio = { workspace = true, features = ["io-util"] }
 # RD-F1-002:DeepSeek 官方 API HTTPS 调用(rustls 纯 Rust TLS,与 gend 同 feature 面;body 自序列化)。
 ureq = { version = "2", default-features = false, features = ["tls"] }
+# F6 wave.1:playtest SSIM 断言——golden PNG 解码 + viewport_frame pixelsB64 解码(与 assetd/gend 同版本面)。
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
 
 [dev-dependencies]
 # util:ServiceExt::oneshot 路由级测试
