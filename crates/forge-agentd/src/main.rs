@@ -61,6 +61,11 @@ fn build_app() -> Router {
         .route("/api/forge/skills/{name}", get(skills_read))
         .route("/api/forge/skills/config/write", post(skills_config_write))
         .route("/api/forge/subagents", get(subagents_list))
+        .route("/api/forge/gen/backends", get(gen_backends_list))
+        .route(
+            "/api/forge/gen/backends/configure",
+            post(gen_backends_configure),
+        )
         .route("/api/forge/swarm/state", get(swarm_state))
         .route("/api/forge/swarm/seed-demo", post(swarm_seed_demo))
         .route("/api/forge/swarm/execute", post(swarm_execute))
@@ -641,6 +646,101 @@ async fn swarm_execute(
     .into_response()
 }
 
+// ---------- F5 wave.3:gen 配置 REST 面(08 §6.2;R-5 密钥值永不出) ----------
+
+/// GET /api/forge/gen/backends:注册表全量 + 真实 configured 判定;
+/// 只回 endpointSet 布尔,密钥值/endpoint 值不出(endpoint 属配置面,按契约只回布尔)。
+async fn gen_backends_list() -> Json<Value> {
+    let cfg = gend::config::GenConfig::load();
+    let keys = gend::keystore::Keystore::load();
+    let list: Vec<Value> = gend::backends::registry()
+        .iter()
+        .map(|b| {
+            let endpoint_set = cfg
+                .entry(b.id())
+                .and_then(|e| e.endpoint.as_deref())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            json!({
+                "id": b.id(),
+                "kind": b.kind(),
+                "configured": b.configured(&cfg, &keys),
+                "endpointSet": endpoint_set,
+                "capabilities": b.capabilities(),
+            })
+        })
+        .collect();
+    Json(json!({ "backends": list }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenConfigureRequest {
+    id: String,
+    kind: String,
+    enabled: bool,
+    #[serde(default)]
+    endpoint: Option<String>,
+    /// 密钥:非空才写 data/keystore.json;永不进 gen-backends.json,永不在响应回显(R-5)。
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+/// POST /api/forge/gen/backends/configure:写 gen-backends.json 条目(读-改-写,保留其他
+/// 条目与 model 字段);apiKey 非空 → 写 keystore.json(读-改-写)。响应 {ok, configured}
+/// 不含 apiKey;非法 id → 400 GEN_UNKNOWN_BACKEND;kind 与注册表不符 → 400 GEN_BAD_PARAMS。
+async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Response {
+    let Some(backend) = gend::backends::find(&req.id) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": { "code": "GEN_UNKNOWN_BACKEND", "message": format!("未知后端 id: {}", req.id) } })),
+        )
+            .into_response();
+    };
+    if req.kind != backend.kind() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": { "code": "GEN_BAD_PARAMS", "message": format!("后端 {} kind 须为 {},实: {}", req.id, backend.kind(), req.kind) } })),
+        )
+            .into_response();
+    }
+    // endpoint:Some(非空) 覆盖;缺省保留既有条目值。
+    let endpoint = req
+        .endpoint
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut cfg = gend::config::GenConfig::load();
+    cfg.upsert_entry(gend::config::BackendEntry {
+        id: req.id.clone(),
+        kind: req.kind.clone(),
+        enabled: req.enabled,
+        endpoint,
+        model: None,
+    });
+    if let Err(e) = cfg.save() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
+        )
+            .into_response();
+    }
+    // 密钥只进 keystore.json;失败如实 500,错误信息不带 key 值。
+    if let Some(key) = req.api_key.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        if let Err(e) = gend::keystore::set_key(&req.id, &key) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
+            )
+                .into_response();
+        }
+    }
+    // 回读真实 configured(写盘后重载,不回显任何密钥)。
+    let cfg2 = gend::config::GenConfig::load();
+    let keys2 = gend::keystore::Keystore::load();
+    let configured = backend.configured(&cfg2, &keys2);
+    Json(json!({ "ok": true, "id": req.id, "configured": configured })).into_response()
+}
+
 async fn unknown_route() -> Response {
     (
         StatusCode::NOT_FOUND,
@@ -706,7 +806,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let tools = v["tools"].as_array().expect("tools 应为数组");
-        assert_eq!(tools.len(), 67);
+        assert_eq!(tools.len(), 75);
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__scene_summary"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__entity_batch_apply"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
@@ -718,6 +818,14 @@ mod tests {
         assert!(tools.iter().any(|t| t == "mcp__code-forge__code_symbol_search"));
         assert!(tools.iter().any(|t| t == "mcp__code-forge__code_references"));
         assert!(tools.iter().any(|t| t == "mcp__code-forge__code_structured_edit"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_backends_list"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_image"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_texture_set"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_accept"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_variations"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh_refine"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_accept"));
     }
 
     #[tokio::test]
@@ -1204,6 +1312,133 @@ mod tests {
                 std::fs::remove_file(&cfg_path).ok();
             }
         }
+    }
+
+    // ---------- F5 wave.3:gen 配置 REST 面 ----------
+
+    /// FORGE_GEN_DATA_DIR / FORGE_GEN_API_KEY 进程级,gen REST 测试串行。
+    static GEN_REST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn gen_temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("agentd-gen-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn gen_backends_list_unconfigured_default() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("list");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let resp = build_app()
+            .oneshot(get("/api/forge/gen/backends"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = json_body(resp).await;
+        let bs = v["backends"].as_array().unwrap();
+        assert_eq!(bs.len(), 2, "注册表两条目: {bs:?}");
+        for id in ["local-mock", "remote-openai-compatible"] {
+            let b = bs.iter().find(|b| b["id"] == id).unwrap_or_else(|| panic!("缺 {id}"));
+            assert_eq!(b["configured"], false);
+            assert_eq!(b["endpointSet"], false);
+            assert!(b["capabilities"].is_object());
+            // 响应面无任何密钥/endpoint 值字段。
+            assert!(b.get("apiKey").is_none());
+            assert!(b.get("endpoint").is_none());
+        }
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_configure_writes_config_and_keystore_redline() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("cfg");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let app = build_app();
+
+        // 1) local-mock enabled → ok+configured;gen-backends.json 写盘可回读。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                r#"{"id":"local-mock","kind":"local","enabled":true}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["configured"], true);
+        let cfg_text = std::fs::read_to_string(data.join("gen-backends.json")).unwrap();
+        let cfg: Value = serde_json::from_str(&cfg_text).unwrap();
+        assert_eq!(cfg["backends"][0]["id"], "local-mock");
+        assert_eq!(cfg["backends"][0]["enabled"], true);
+
+        // GET 回读 configured=true。
+        let listed = app
+            .clone()
+            .oneshot(get("/api/forge/gen/backends"))
+            .await
+            .unwrap();
+        let lv = json_body(listed).await;
+        let lm = lv["backends"].as_array().unwrap().iter().find(|b| b["id"] == "local-mock").unwrap();
+        assert_eq!(lm["configured"], true);
+
+        // 2) remote + apiKey:configured=true(endpoint+key 齐);密钥只进 keystore.json。
+        let secret = "sk-test-REDLINE-9f8e7d";
+        let r2 = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                &format!(r#"{{"id":"remote-openai-compatible","kind":"remote","enabled":true,"endpoint":"https://api.example.com","apiKey":"{secret}"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), StatusCode::OK);
+        let v2 = json_body(r2).await;
+        assert_eq!(v2["ok"], true);
+        assert_eq!(v2["configured"], true);
+        assert!(!v2.to_string().contains(secret), "响应回显密钥(R-5): {v2}");
+
+        // keystore.json 含 key;gen-backends.json 不含 key。
+        let ks_text = std::fs::read_to_string(data.join("keystore.json")).unwrap();
+        assert!(ks_text.contains(secret), "keystore.json 应含密钥");
+        let cfg_text2 = std::fs::read_to_string(data.join("gen-backends.json")).unwrap();
+        assert!(!cfg_text2.contains(secret), "gen-backends.json 泄漏密钥(R-5): {cfg_text2}");
+        let cfg2: Value = serde_json::from_str(&cfg_text2).unwrap();
+        // 读-改-写保留 local-mock 条目。
+        assert!(cfg2["backends"].as_array().unwrap().iter().any(|b| b["id"] == "local-mock"));
+        let remote = cfg2["backends"].as_array().unwrap().iter().find(|b| b["id"] == "remote-openai-compatible").unwrap();
+        assert_eq!(remote["endpoint"], "https://api.example.com");
+        assert!(remote.get("apiKey").is_none());
+
+        // 3) 非法 id → 400 GEN_UNKNOWN_BACKEND;kind 不符 → 400 GEN_BAD_PARAMS。
+        let bad = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                r#"{"id":"no-such-backend","kind":"local","enabled":true}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(bad).await["error"]["code"], "GEN_UNKNOWN_BACKEND");
+        let bad_kind = app
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                r#"{"id":"local-mock","kind":"remote","enabled":true}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(bad_kind.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(bad_kind).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
     }
 
     /// 从 MCP tools/call result 提取工具返回 JSON

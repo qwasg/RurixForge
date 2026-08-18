@@ -19,14 +19,14 @@ export interface AssetBuildStatus {
 export type AssetViewMode = 'grid' | 'list';
 export type AssetTypeFilter = 'all' | 'mesh' | 'texture' | 'material' | 'prefab' | 'scene' | 'script' | 'audio';
 
-/** 右键菜单动作(六菜单,07 §4)。 */
+/** 右键菜单动作(六菜单,07 §4;F5 wave.3:gen-chat seam → gen-dialog 真实对话框)。 */
 export type AssetMenuAction =
   | 'import-here'
   | 'reimport'
   | 'show-in-folder'
   | 'find-refs'
   | 'delete-proposal'
-  | 'gen-chat';
+  | 'gen-dialog';
 
 /** 引用查询结果(GUID 已尽量解析为路径;未知 GUID 原样显示)。 */
 export interface RefsResult {

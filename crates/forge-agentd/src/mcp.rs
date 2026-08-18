@@ -91,19 +91,34 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__code-forge__code_symbol_search",
     "mcp__code-forge__code_references",
     "mcp__code-forge__code_structured_edit",
+    // F5 wave.1:gen-image 五工具(05 §7;GEN_BACKEND_NOT_CONFIGURED 门 + keystore R-5)
+    "mcp__gen-image__gen_backends_list",
+    "mcp__gen-image__gen_image",
+    "mcp__gen-image__gen_texture_set",
+    "mcp__gen-image__gen_accept",
+    "mcp__gen-image__gen_variations",
+    // F5 wave.2:gen-model 三工具(05 §8;text2mesh/refine 无后端显式 NOT_CONFIGURED,
+    // gen_accept 走 asset_import 同一构建链)
+    "mcp__gen-model__gen_mesh",
+    "mcp__gen-model__gen_mesh_refine",
+    "mcp__gen-model__gen_accept",
 ];
 
 const SCENE_PREFIX: &str = "mcp__engine-scene__";
 const ASSET_PREFIX: &str = "mcp__asset-pipeline__";
 const CODE_PREFIX: &str = "mcp__code-forge__";
+const GEN_IMAGE_PREFIX: &str = "mcp__gen-image__";
+const GEN_MODEL_PREFIX: &str = "mcp__gen-model__";
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// MCP 服务标识(三工:engine-scene + asset-pipeline + code-forge)。
+/// MCP 服务标识(五工:engine-scene + asset-pipeline + code-forge + gen-image + gen-model)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServerKind {
     EngineScene,
     AssetPipeline,
     CodeForge,
+    GenImage,
+    GenModel,
 }
 
 impl ServerKind {
@@ -114,6 +129,10 @@ impl ServerKind {
             Some(ServerKind::AssetPipeline)
         } else if tool.starts_with(CODE_PREFIX) {
             Some(ServerKind::CodeForge)
+        } else if tool.starts_with(GEN_IMAGE_PREFIX) {
+            Some(ServerKind::GenImage)
+        } else if tool.starts_with(GEN_MODEL_PREFIX) {
+            Some(ServerKind::GenModel)
         } else {
             None
         }
@@ -124,6 +143,8 @@ impl ServerKind {
             ServerKind::EngineScene => SCENE_PREFIX,
             ServerKind::AssetPipeline => ASSET_PREFIX,
             ServerKind::CodeForge => CODE_PREFIX,
+            ServerKind::GenImage => GEN_IMAGE_PREFIX,
+            ServerKind::GenModel => GEN_MODEL_PREFIX,
         }
     }
 }
@@ -178,6 +199,32 @@ fn code_forge_server_bin() -> PathBuf {
         .nth(2)
         .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
     root.join("target").join("debug").join("code-forge-mcp.exe")
+}
+
+/// gen-image-mcp 二进制路径:env FORGE_GEN_IMAGE_MCP_BIN 优先。
+fn gen_image_server_bin() -> PathBuf {
+    if let Ok(p) = std::env::var("FORGE_GEN_IMAGE_MCP_BIN") {
+        return PathBuf::from(p);
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir
+        .ancestors()
+        .nth(2)
+        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
+    root.join("target").join("debug").join("gen-image-mcp.exe")
+}
+
+/// gen-model-mcp 二进制路径:env FORGE_GEN_MODEL_MCP_BIN 优先。
+fn gen_model_server_bin() -> PathBuf {
+    if let Ok(p) = std::env::var("FORGE_GEN_MODEL_MCP_BIN") {
+        return PathBuf::from(p);
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir
+        .ancestors()
+        .nth(2)
+        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
+    root.join("target").join("debug").join("gen-model-mcp.exe")
 }
 
 /// 资产项目根 = <workspace>/projects/demo(05 §1.2 mcp.json 示例对齐)。
@@ -287,12 +334,16 @@ impl McpClient {
 static SCENE_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
 static ASSET_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
 static CODE_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
+static GEN_IMAGE_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
+static GEN_MODEL_CLIENT: OnceLock<Mutex<Option<McpClient>>> = OnceLock::new();
 
 fn client_slot(kind: ServerKind) -> &'static Mutex<Option<McpClient>> {
     match kind {
         ServerKind::EngineScene => SCENE_CLIENT.get_or_init(|| Mutex::new(None)),
         ServerKind::AssetPipeline => ASSET_CLIENT.get_or_init(|| Mutex::new(None)),
         ServerKind::CodeForge => CODE_CLIENT.get_or_init(|| Mutex::new(None)),
+        ServerKind::GenImage => GEN_IMAGE_CLIENT.get_or_init(|| Mutex::new(None)),
+        ServerKind::GenModel => GEN_MODEL_CLIENT.get_or_init(|| Mutex::new(None)),
     }
 }
 
@@ -314,6 +365,14 @@ async fn ensure_connected<'a>(
             vec!["--project".to_string(), asset_project_root().to_string_lossy().into_owned()],
         ),
         ServerKind::CodeForge => (code_forge_server_bin(), vec![]),
+        ServerKind::GenImage => (
+            gen_image_server_bin(),
+            vec!["--project".to_string(), asset_project_root().to_string_lossy().into_owned()],
+        ),
+        ServerKind::GenModel => (
+            gen_model_server_bin(),
+            vec!["--project".to_string(), asset_project_root().to_string_lossy().into_owned()],
+        ),
     };
     if !bin.exists() {
         return Err(McpError(format!(

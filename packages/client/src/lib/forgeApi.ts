@@ -6,6 +6,7 @@
 const TOOL_PREFIX = 'mcp__engine-scene__';
 const ASSET_TOOL_PREFIX = 'mcp__asset-pipeline__';
 const CODE_TOOL_PREFIX = 'mcp__code-forge__';
+const GEN_TOOL_PREFIX = 'mcp__gen-image__';
 
 /** 结构化 API 错误(code 来自 host/agentd,或 TOOL_ERROR / BAD_RESPONSE) */
 export class ForgeApiError extends Error {
@@ -89,7 +90,12 @@ export async function callToolWithPrefix<T = unknown>(
       typeof value === 'object' && value !== null && 'message' in value
         ? String((value as { message: unknown }).message)
         : JSON.stringify(value);
-    throw new ForgeApiError('TOOL_ERROR', msg, res.status);
+    // F5:工具级结构化 {error: <GEN_* code>} 如实提升为 ForgeApiError.code(无 error 字段退 TOOL_ERROR)。
+    const code =
+      typeof value === 'object' && value !== null && 'error' in value
+        ? String((value as { error: unknown }).error)
+        : 'TOOL_ERROR';
+    throw new ForgeApiError(code, msg, res.status);
   }
   return value as T;
 }
@@ -118,6 +124,14 @@ export async function callCodeTool<T = unknown>(
   args: Record<string, unknown> = {},
 ): Promise<T> {
   return callToolWithPrefix(CODE_TOOL_PREFIX, name, args);
+}
+
+/** 调用 gen-image 工具(name 不带前缀,内部补 mcp__gen-image__;F5 生成链)。 */
+export async function callGenTool<T = unknown>(
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  return callToolWithPrefix(GEN_TOOL_PREFIX, name, args);
 }
 
 /** 非 MCP 的 agentd REST GET(/api/forge/*  plain JSON,非信封)。 */

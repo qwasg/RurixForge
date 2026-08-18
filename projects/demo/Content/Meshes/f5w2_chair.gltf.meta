@@ -1,0 +1,15 @@
+guid: ce11778e-b5fe-4e6a-b7fb-fe3d1e4b0a13
+type: mesh
+importer: gltf
+import_settings:
+  generateLods:
+  - 0.5
+provenance:
+  origin: gen-model
+  detail:
+    backendId: user-provided
+    generatedAt: 2026-08-18T02:16:02Z
+    note: 用户自备产物(.forge/tmp/gen/ 预放),非真实生成后端
+    sourceRefs:
+    - .forge/tmp/gen/f5w2-gen-chair.gltf
+build_state: current

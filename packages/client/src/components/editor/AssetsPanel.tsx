@@ -16,8 +16,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { bridge } from '@/lib/bridge';
-import { useEditorStore } from '@/lib/editorStore';
 import { useAssetStore, type AssetItem, type AssetMenuAction, type AssetTypeFilter } from '@/lib/assetStore';
+import { useGenStore } from '@/lib/genStore';
+import GenerateDialog from './GenerateDialog';
+import CandidatesModal from './CandidatesModal';
 
 const TYPE_FILTERS: Array<{ key: AssetTypeFilter; label: string }> = [
   { key: 'all', label: 'All' },
@@ -173,7 +175,7 @@ export default function AssetsPanel() {
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const prefillChat = useEditorStore((s) => s.prefillChat);
+  const openGenDialog = useGenStore((s) => s.openDialog);
   // 桌面能力:web 端缺省 → 对应菜单项如实禁用(不伪造不可用功能)。
   const pickImport = bridge().assets?.pickImport;
   const showInFolder = bridge().assets?.showInFolder;
@@ -239,9 +241,11 @@ export default function AssetsPanel() {
       case 'delete-proposal':
         store.requestDelete(item.path);
         break;
-      case 'gen-chat':
-        // F3 seam:预填 Chat(F3 接 gen-image/gen-model 后端,本波仅跳 Chat 预填)。
-        prefillChat(`基于资产 ${item.path} (GUID ${item.guid}) 生成变体:`);
+      case 'gen-dialog':
+        // F5 wave.3:直开生成对话框(destFolder = 当前 Assets 文件夹,全部 → Textures)。
+        // 07 §4「生成(图像/模型,跳 Chat 预填)」契约更新为真实对话框;prefillChat seam
+        // 仍保留在 editorStore(Chat 生成路径不受影响)。
+        openGenDialog(currentFolder || 'Textures');
         break;
     }
   };
@@ -262,7 +266,7 @@ export default function AssetsPanel() {
     },
     { label: 'Find refs', action: 'find-refs' },
     { label: 'Delete (Proposal)', action: 'delete-proposal' },
-    { label: 'Generate...', action: 'gen-chat' },
+    { label: 'Generate...', action: 'gen-dialog' },
   ];
 
   const refsResult = store.refsResult;
@@ -442,6 +446,10 @@ export default function AssetsPanel() {
           </div>
         </div>
       )}
+
+      {/* F5 wave.3:生成对话框 + 候选挑拣 modal(右键「Generate...」链路) */}
+      <GenerateDialog />
+      <CandidatesModal />
 
       {/* 右键菜单(固定六项,07 §4) */}
       {menu && (

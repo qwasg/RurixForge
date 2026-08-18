@@ -8,6 +8,8 @@ rust-version.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# F5 wave.3:gen 配置 REST 面(gen-backends.json / keystore.json 读写,R-5 密钥不出)。
+gend = { path = "../gend" }
 # io-util:stdin/stdout 异步读写(MCP stdio 客户端与测试所需)
 tokio = { workspace = true, features = ["io-util"] }
 

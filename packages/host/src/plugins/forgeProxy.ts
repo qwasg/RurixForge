@@ -23,6 +23,8 @@ const PROXY_PREFIXES = [
   '/api/forge/subagents',
   '/api/forge/swarm',
   '/api/forge/proposals',
+  // F5 wave.3:gen 配置 REST 面(backends 清单 / configure;密钥经此面写 keystore,不出)
+  '/api/forge/gen',
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 

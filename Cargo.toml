@@ -5,9 +5,12 @@ members = [
   "crates/engine-host",
   "crates/forge-agentd",
   "crates/assetd",
+  "crates/gend",
   "crates/mcp/engine-scene-mcp",
   "crates/mcp/asset-pipeline-mcp",
   "crates/mcp/code-forge-mcp",
+  "crates/mcp/gen-image-mcp",
+  "crates/mcp/gen-model-mcp",
   "crates/viewport-presenter",
 ]
 resolver = "2"

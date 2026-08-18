@@ -1,0 +1,13 @@
+guid: 148635a8-6185-45ca-96dc-badecaebd62f
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: local-mock
+    generatedAt: 2026-08-18T02:16:01Z
+    map: normal
+    prompt: wood 木纹
+    seed: 9559346105442846883
+    sourceRefs: []
+build_state: current

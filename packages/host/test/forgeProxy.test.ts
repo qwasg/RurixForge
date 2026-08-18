@@ -86,6 +86,26 @@ describe('forgeProxy', () => {
     expect(hit!.body).toBe('');
   });
 
+  it('F5 wave.3:/api/forge/gen/* 透传(GET backends + POST configure)', async () => {
+    const res = await fetch(`${base}/api/forge/gen/backends`);
+    expect(res.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/gen/backends' && r.method === 'GET')).toBe(
+      true,
+    );
+
+    const payload = JSON.stringify({ id: 'local-mock', kind: 'local', enabled: true });
+    const res2 = await fetch(`${base}/api/forge/gen/backends/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(res2.status).toBe(200);
+    const hit = recorded.find((r) => r.url === '/api/forge/gen/backends/configure');
+    expect(hit).toBeDefined();
+    expect(hit!.method).toBe('POST');
+    expect(hit!.body).toBe(payload);
+  });
+
   it('自有路由不被代理遮蔽:/api/forge/health 仍由 host 应答', async () => {
     const res = await fetch(`${base}/api/forge/health`);
     expect(res.status).toBe(200);

@@ -536,6 +536,69 @@ async function runSmokeScenario() {
     if (count < 4) throw new Error(`NodeGraph 节点卡片不足(count=${count} < 4)`);
     return;
   }
+  // F5 wave.3 G-F5-3:gen 场景 = editor 导航 → Assets 右键「Generate...」→ 对话框填
+  // prompt「wood 木纹」→ 生成候选 → 断言候选卡 >=4 → Accept 第一张 → 断言 Assets 列表
+  // 出现新资产(wood-<seed>)。前置:agentd 侧 gen-backends.json 已配 local-mock(脚本写)。
+  if (smokeScenario === 'gen') {
+    const nav = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=gen nav click: ${nav}`);
+    if (!nav) throw new Error('sidebar 未找到「编辑器」入口按钮');
+    // 等 Assets 面板 load() 完成(asset_list + asset_build_status 两往返)。
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    const assetCount = await mainWindow.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-asset-guid]').length"
+    );
+    smokeLog(`scenario=gen asset items: ${assetCount}`);
+    if (assetCount < 1) throw new Error(`Assets 面板无资产条目(count=${assetCount})`);
+    // 右键首个资产(分两次 executeJavaScript:先开菜单,React 消化后再点菜单项)。
+    const ctx = await mainWindow.webContents.executeJavaScript(
+      "(() => { const el=document.querySelector('[data-asset-guid]'); if(!el) return false; el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:120,clientY:120})); return true; })()"
+    );
+    smokeLog(`scenario=gen contextmenu dispatch: ${ctx}`);
+    if (!ctx) throw new Error('Assets 面板无可右键资产条目');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const menuOpened = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='Generate...'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=gen Generate menu click: ${menuOpened}`);
+    if (!menuOpened) throw new Error('右键菜单「Generate...」不可点');
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    // 填 prompt(React 受控 textarea 须走原生 setter + input 事件)。
+    const filled = await mainWindow.webContents.executeJavaScript(
+      "(() => { const i=document.querySelector('[data-gen-prompt]'); if(!i) return false; const s=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set; s.call(i,'wood 木纹'); i.dispatchEvent(new Event('input',{bubbles:true})); return i.value; })()"
+    );
+    smokeLog(`scenario=gen prompt filled: ${filled}`);
+    if (!filled) throw new Error('未找到 prompt 输入框(data-gen-prompt)');
+    // 等后端清单加载(GET /api/forge/gen/backends 经 host 代理)+ React 消化 input。
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    const submitted = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=document.querySelector('[data-gen-submit]'); if(b && !b.disabled){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=gen submit click: ${submitted}`);
+    if (!submitted) throw new Error('「生成候选」按钮不可点(后端未配置或 prompt 空)');
+    // 等 gen_image 往返 + 候选渲染。
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const candCount = await mainWindow.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-gen-candidate]').length"
+    );
+    smokeLog(`scenario=gen candidates: ${candCount}`);
+    if (candCount < 4) throw new Error(`生成候选不足(count=${candCount} < 4)`);
+    // Accept 第一张 → gen_accept 入管线 → 资产刷新。
+    const accepted = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=document.querySelector('[data-gen-accept]'); if(b && !b.disabled){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=gen accept click: ${accepted}`);
+    if (!accepted) throw new Error('首张候选 Accept 不可点');
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const newAssets = await mainWindow.webContents.executeJavaScript(
+      "document.querySelectorAll('[data-asset-path*=\"wood-\"]').length"
+    );
+    smokeLog(`scenario=gen accepted assets: ${newAssets}`);
+    if (newAssets < 1) throw new Error('Accept 后 Assets 列表未见新资产(wood-<seed>)');
+    return;
+  }
   if (smokeScenario !== 'editor') return;
   const clicked = await mainWindow.webContents.executeJavaScript(
     "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
@@ -561,6 +624,13 @@ function createWindow() {
       offscreen: useOffscreen,
     },
   });
+
+  // 冒烟期渲染进程 console 透传(定位 UI 黑盒故障;仅 isSmoke)
+  if (isSmoke) {
+    mainWindow.webContents.on('console-message', (_e, level, message) => {
+      if (level >= 2) smokeLog(`[renderer:${level}] ${String(message).slice(0, 300)}`);
+    });
+  }
 
   // 窗口控制 IPC(对齐旧 apps/ide preload 契约 win.*)
   mainWindow.on('maximize', () => mainWindow.webContents.send('win:maximized-changed', true));

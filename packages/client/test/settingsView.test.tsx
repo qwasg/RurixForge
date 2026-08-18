@@ -110,3 +110,105 @@ describe('<SettingsView />', () => {
     expect(await screen.findByText('asset-cleanup')).toBeInTheDocument();
   });
 });
+
+/** F5 wave.3:generation tab 真实功能(generation 已是 F5 landed)。 */
+describe('<SettingsView /> generation tab', () => {
+  const GEN_BACKENDS = {
+    backends: [
+      { id: 'local-mock', kind: 'local', configured: true, endpointSet: false, capabilities: {} },
+      {
+        id: 'remote-openai-compatible',
+        kind: 'remote',
+        configured: false,
+        endpointSet: false,
+        capabilities: {},
+      },
+    ],
+  };
+
+  it('渲染 mock GET backends:清单徽标 + configured 如实', async () => {
+    setUrl('?tab=generation');
+    vi.stubGlobal('fetch', mockForgeBackend({}, { '/api/forge/gen/backends': GEN_BACKENDS }));
+
+    render(<SettingsView />);
+    // 'local-mock' 同时见于清单行与表单 select option —— 用行选择器锚定。
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-gen-backend-row]')).toHaveLength(2),
+    );
+    // local-mock configured 徽标;remote 未配置徽标。
+    const lm = document.querySelector('[data-gen-backend-row="local-mock"]')!;
+    expect(lm.textContent).toContain('configured');
+    const rm = document.querySelector('[data-gen-backend-row="remote-openai-compatible"]')!;
+    expect(rm.textContent).toContain('未配置');
+    // 密钥如实文案。
+    expect(screen.getByText(/密钥写入本地 keystore/)).toBeInTheDocument();
+  });
+
+  it('configure 提交:POST body 含 apiKey,表单不回显 key,响应后重拉', async () => {
+    setUrl('?tab=generation');
+    const postBodies: Array<Record<string, unknown>> = [];
+    let configured = false;
+    vi.stubGlobal(
+      'fetch',
+      mockForgeBackend(
+        {},
+        {
+          '/api/forge/gen/backends': () => ({
+            backends: GEN_BACKENDS.backends.map((b) =>
+              b.id === 'remote-openai-compatible' ? { ...b, configured, endpointSet: configured } : b,
+            ),
+          }),
+          '/api/forge/gen/backends/configure': (init?: { body?: string }) => {
+            const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
+            postBodies.push(body);
+            configured = true;
+            return { ok: true, configured: true };
+          },
+        },
+      ),
+    );
+
+    render(<SettingsView />);
+    // 选 remote 后端(等清单行渲染)。
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-gen-backend-row]')).toHaveLength(2),
+    );
+    fireEvent.change(document.querySelector('[data-gen-select]')!, {
+      target: { value: 'remote-openai-compatible' },
+    });
+    // endpoint + apiKey 填写(remote 才显示 endpoint 输入)。
+    await waitFor(() =>
+      expect(document.querySelector('[data-gen-endpoint]')).not.toBeNull(),
+    );
+    fireEvent.change(document.querySelector('[data-gen-endpoint]')!, {
+      target: { value: 'https://api.example.com' },
+    });
+    fireEvent.change(document.querySelector('[data-gen-apikey]')!, {
+      target: { value: 'sk-SECRET-redline' },
+    });
+    fireEvent.click(document.querySelector('[data-gen-save]')!);
+
+    // POST body 断言:apiKey 进 body(密钥只经请求体写 keystore)。
+    await waitFor(() => expect(postBodies).toHaveLength(1));
+    expect(postBodies[0]).toEqual({
+      id: 'remote-openai-compatible',
+      kind: 'remote',
+      enabled: false,
+      endpoint: 'https://api.example.com',
+      apiKey: 'sk-SECRET-redline',
+    });
+    // 响应 configured 回显 + 表单 apiKey 清空(不回显 key,R-5)。
+    expect(await screen.findByText(/configured=true/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect((document.querySelector('[data-gen-apikey]') as HTMLInputElement).value).toBe(''),
+    );
+    // 重拉后 remote 徽标翻转为 configured。
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-gen-backend-row="remote-openai-compatible"]')!.textContent,
+      ).toContain('configured'),
+    );
+    // 页面任何角落不得回显密钥值(R-5 红线)。
+    expect(document.body.textContent).not.toContain('sk-SECRET-redline');
+  });
+});

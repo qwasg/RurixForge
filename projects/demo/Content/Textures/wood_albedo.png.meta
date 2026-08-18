@@ -1,0 +1,13 @@
+guid: 5c0d0186-9be0-4b08-8544-dd88e54b5845
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: local-mock
+    generatedAt: 2026-08-18T02:16:01Z
+    map: albedo
+    prompt: wood 木纹
+    seed: 8844719688817715237
+    sourceRefs: []
+build_state: current

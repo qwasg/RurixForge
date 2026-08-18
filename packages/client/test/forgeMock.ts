@@ -23,7 +23,8 @@ export function mockForgeBackend(
     const name = tool
       .replace('mcp__engine-scene__', '')
       .replace('mcp__asset-pipeline__', '')
-      .replace('mcp__code-forge__', '');
+      .replace('mcp__code-forge__', '')
+      .replace('mcp__gen-image__', '');
     if (!(name in map)) throw new Error(`未 mock 的工具: ${name}(full=${tool})`);
     return {
       ok: true,
@@ -43,7 +44,8 @@ export class ForgeMock {
     const name = tool
       .replace('mcp__engine-scene__', '')
       .replace('mcp__asset-pipeline__', '')
-      .replace('mcp__code-forge__', '');
+      .replace('mcp__code-forge__', '')
+      .replace('mcp__gen-image__', '');
     if (!(name in this._map)) throw new Error(`未 mock 的工具: ${name}(full=${tool})`);
     return {
       ok: true,

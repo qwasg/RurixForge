@@ -21,6 +21,15 @@ interface SkillItem {
   enabled: boolean;
 }
 
+/** gen 后端清单条目(GET /api/forge/gen/backends;密钥值永不在此面,R-5)。 */
+interface GenBackendItem {
+  id: string;
+  kind: string;
+  configured: boolean;
+  endpointSet: boolean;
+  capabilities?: Record<string, unknown>;
+}
+
 /** 从 URL 读 ?tab=(深链直达;非法值回落 DEFAULT_TAB) */
 function tabFromLocation(): SettingsTab {
   const q = new URLSearchParams(window.location.search).get('tab');
@@ -105,6 +114,173 @@ function SkillsSection() {
   );
 }
 
+/** generation tab(F5 wave.3):gen 后端清单 + 配置表单。
+ * 数据源:GET /api/forge/gen/backends;配置:POST /api/forge/gen/backends/configure。
+ * R-5:apiKey 只进请求体写本地 keystore,任何响应/回显不含密钥值。 */
+function GenerationSection() {
+  const [backends, setBackends] = useState<GenBackendItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [enabled, setEnabled] = useState(false);
+  const [endpoint, setEndpoint] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiGet<{ backends: GenBackendItem[] }>('/api/forge/gen/backends');
+      setBackends(r.backends);
+      setError(null);
+      setSelectedId((cur) => cur || r.backends[0]?.id || '');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selected = backends.find((b) => b.id === selectedId) ?? null;
+  // 选中切换时表单基线 = 该后端当前配置面(enabled 真实;endpoint 值不出,只按 endpointSet 提示)。
+  useEffect(() => {
+    setEnabled(selected?.configured ?? false);
+    setEndpoint('');
+    setApiKey('');
+  }, [selectedId, selected?.configured]);
+
+  const submit = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const payload: Record<string, unknown> = {
+        id: selected.id,
+        kind: selected.kind,
+        enabled,
+      };
+      if (endpoint.trim()) payload.endpoint = endpoint.trim();
+      if (apiKey.trim()) payload.apiKey = apiKey.trim();
+      const r = await apiPost<{ ok: boolean; configured: boolean }>(
+        '/api/forge/gen/backends/configure',
+        payload,
+      );
+      setNotice(`已保存:${selected.id} configured=${r.configured}`);
+      setApiKey('');
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section aria-label="generation-settings" className="space-y-3">
+      <h2 className="text-sm font-medium text-ink">Generation</h2>
+      <p className="text-xs text-muted">
+        生成后端清单来自 /api/forge/gen/backends 真实判定(configured = 配置完备可用)。
+        密钥写入本地 keystore(data/keystore.json),不在此回显,也不进 gen-backends.json。
+      </p>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {notice && <p className="text-xs text-accent-green">{notice}</p>}
+
+      <ul className="divide-y divide-line-soft rounded-xl border border-line-soft bg-white">
+        {backends.map((b) => (
+          <li key={b.id} data-gen-backend-row={b.id} className="flex items-center gap-3 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm text-ink">{b.id}</div>
+              <div className="truncate text-xs text-muted-faint">
+                kind={b.kind} · endpointSet={b.endpointSet ? 'true' : 'false'}
+              </div>
+            </div>
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-2xs',
+                b.configured ? 'bg-accent-green text-white' : 'bg-panel text-muted',
+              )}
+            >
+              {b.configured ? 'configured' : '未配置'}
+            </span>
+          </li>
+        ))}
+        {backends.length === 0 && !error && (
+          <li className="px-3 py-2 text-xs text-muted-faint">加载中…</li>
+        )}
+      </ul>
+
+      {selected && (
+        <div className="space-y-2 rounded-xl border border-line-soft bg-white p-3" data-gen-config-form>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted">后端</label>
+            <select
+              data-gen-select
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+              className="rounded-md border border-line bg-white px-1.5 py-1 text-xs text-ink outline-none"
+            >
+              {backends.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.id}
+                </option>
+              ))}
+            </select>
+            <label className="ml-2 flex items-center gap-1 text-xs text-muted">
+              <input
+                type="checkbox"
+                data-gen-enabled
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              enabled
+            </label>
+          </div>
+          {selected.kind === 'remote' && (
+            <div>
+              <label className="block text-2xs text-muted">
+                endpoint{selected.endpointSet ? '(已设置,留空保持不变)' : '(remote 必填)'}
+              </label>
+              <input
+                data-gen-endpoint
+                value={endpoint}
+                onChange={(e) => setEndpoint(e.target.value)}
+                placeholder="https://api.example.com"
+                className="mt-0.5 w-full rounded-md border border-line bg-white px-2 py-1 text-xs text-ink outline-none placeholder:text-muted-faint"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-2xs text-muted">apiKey(remote 需要)</label>
+            <input
+              type="password"
+              data-gen-apikey
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="留空保持不变"
+              className="mt-0.5 w-full rounded-md border border-line bg-white px-2 py-1 text-xs text-ink outline-none placeholder:text-muted-faint"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              data-gen-save
+              disabled={busy}
+              onClick={() => void submit()}
+              className={cn(
+                'rounded-md px-3 py-1 text-xs text-white',
+                busy ? 'cursor-not-allowed bg-muted-faint' : 'bg-ink',
+              )}
+            >
+              {busy ? '保存中…' : '保存配置'}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsView() {
   const [tab, setTab] = useState<SettingsTab>(tabFromLocation);
 
@@ -147,6 +323,8 @@ export default function SettingsView() {
       <main className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
         {tab === 'skills' ? (
           <SkillsSection />
+        ) : tab === 'generation' ? (
+          <GenerationSection />
         ) : (
           <section className="space-y-2">
             <h2 className="text-sm font-medium text-ink">{TAB_LABELS[tab]}</h2>
