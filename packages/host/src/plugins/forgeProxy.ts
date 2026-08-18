@@ -25,6 +25,8 @@ const PROXY_PREFIXES = [
   '/api/forge/proposals',
   // F5 wave.3:gen 配置 REST 面(backends 清单 / configure;密钥经此面写 keystore,不出)
   '/api/forge/gen',
+  // F6:playtest 矩阵执行器(Console 报告行注入链)
+  '/api/forge/playtest',
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 

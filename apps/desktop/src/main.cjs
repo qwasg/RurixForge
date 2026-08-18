@@ -599,6 +599,74 @@ async function runSmokeScenario() {
     if (newAssets < 1) throw new Error('Accept 后 Assets 列表未见新资产(wood-<seed>)');
     return;
   }
+  // F6 wave.3 G-F6-3:console-metrics 场景 = metrics tab 采样实测变化(PIE 运行中)
+  // + Console playtest 报告注入 / 类型过滤 / 清空。
+  if (smokeScenario === 'console-metrics') {
+    const navEd = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=console-metrics nav click: ${navEd}`);
+    if (!navEd) throw new Error('sidebar 未找到「编辑器」入口按钮');
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    const mt = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='metrics'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=console-metrics metrics tab: ${mt}`);
+    if (!mt) throw new Error('未找到 metrics tab');
+    await mainWindow.webContents.executeJavaScript(
+      "fetch('/api/forge/mcp/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:'mcp__engine-scene__play_enter',arguments:{}})}).then(r=>r.json())"
+    );
+    await new Promise((resolve) => setTimeout(resolve, 4500));
+    const framesText = await mainWindow.webContents.executeJavaScript(
+      "(() => { const rows=[...document.querySelectorAll('div')].filter((d)=>d.firstElementChild&&d.firstElementChild.textContent==='frames'); if(!rows.length) return ''; return rows[0].lastElementChild.textContent; })()"
+    );
+    smokeLog(`scenario=console-metrics frames recent: ${framesText}`);
+    const vals = String(framesText).trim().split(/\s+/).map(Number).filter((n) => !Number.isNaN(n));
+    if (vals.length < 2) throw new Error(`metrics 采样不足(<2): ${framesText}`);
+    if (new Set(vals).size < 2) throw new Error(`PIE 运行中采样未变化: ${framesText}`);
+    // metrics 腿 play_enter 后单例 host 处于 play_running:先 play_exit 再跑矩阵(scene.load 禁 play 态)。
+    const pexit = await mainWindow.webContents.executeJavaScript(
+      "fetch('/api/forge/mcp/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:'mcp__engine-scene__play_exit',arguments:{}})}).then(r=>r.json())"
+    );
+    smokeLog(`scenario=console-metrics play_exit: ${JSON.stringify(pexit).slice(0, 80)}`);
+    const ct = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='console'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=console-metrics console tab: ${ct}`);
+    const rp = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button[title]')].find((x)=>x.title.startsWith('Run maze playtest')); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=console-metrics run playtest: ${rp}`);
+    if (!rp) throw new Error('未找到 Run playtest 按钮');
+    await new Promise((resolve) => setTimeout(resolve, 12000));
+    const reportCount = await mainWindow.webContents.executeJavaScript(
+      "[...document.querySelectorAll('p')].filter((p)=>p.textContent.includes('playtest.report')).length"
+    );
+    smokeLog(`scenario=console-metrics playtest.report rows: ${reportCount}`);
+    if (reportCount < 1) throw new Error('Console 未见 playtest.report 注入行');
+    const chip = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim().startsWith('playtest.case')); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=console-metrics filter chip playtest.case: ${chip}`);
+    if (!chip) throw new Error('未找到 playtest.case 过滤 chip');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const caseVisible = await mainWindow.webContents.executeJavaScript(
+      "[...document.querySelectorAll('p')].filter((p)=>p.textContent.includes('playtest.case')).length"
+    );
+    smokeLog(`scenario=console-metrics filtered playtest.case rows: ${caseVisible}`);
+    if (caseVisible !== 0) throw new Error(`过滤后仍见 playtest.case 行: ${caseVisible}`);
+    const cleared = await mainWindow.webContents.executeJavaScript(
+      "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='清空'); if(b){b.click();return true;} return false; })()"
+    );
+    smokeLog(`scenario=console-metrics clear click: ${cleared}`);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const left = await mainWindow.webContents.executeJavaScript(
+      "[...document.querySelectorAll('p')].filter((p)=>p.textContent.includes('playtest.report')).length"
+    );
+    smokeLog(`scenario=console-metrics rows after clear: ${left}`);
+    if (left !== 0) throw new Error(`清空后仍见报告行: ${left}`);
+    return;
+  }
   if (smokeScenario !== 'editor') return;
   const clicked = await mainWindow.webContents.executeJavaScript(
     "(() => { const b=[...document.querySelectorAll('button')].find((x)=>x.textContent.trim()==='编辑器'); if(b){b.click();return true;} return false; })()"

@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { consoleLevel, filterEvents, typeCounts } from '@/lib/consoleUtils';
 import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
 import AssetsPanel from '@/components/editor/AssetsPanel';
 import NodeGraphView from '@/components/editor/NodeGraphView';
@@ -308,20 +309,120 @@ const WORKBENCH_TABS: WorkbenchTab[] = ['console', 'problems', 'output', 'termin
 function ConsoleBody() {
   const events = useEditorStore((s) => s.events);
   const lastError = useEditorStore((s) => s.lastError);
+  // 过滤/清空为本地视图态(F6 wave.3 D-F6-F;不动 host 事件环)。
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const [clearedBefore, setClearedBefore] = useState(0);
+  const counts = typeCounts(events);
+  const shown = filterEvents(events, hidden, clearedBefore);
+  const toggle = (t: string) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line-soft px-2 py-1">
+        {counts.map(({ type, count }) => (
+          <button
+            key={type}
+            type="button"
+            title={hidden.has(type) ? '显示该类型' : '隐藏该类型'}
+            onClick={() => toggle(type)}
+            className={cn(
+              'rounded-full border px-1.5 py-px text-2xs transition-colors',
+              hidden.has(type)
+                ? 'border-line text-muted-faint line-through'
+                : 'border-line-soft text-muted hover:text-ink-soft',
+            )}
+          >
+            {type} ×{count}
+          </button>
+        ))}
+        <span className="flex-1" />
+        <button
+          type="button"
+          title="清空(本地视图,不动 host 事件环)"
+          onClick={() => setClearedBefore(events.length)}
+          className="rounded border border-line-soft px-1.5 py-px text-2xs text-muted hover:text-ink-soft"
+        >
+          清空
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 font-mono text-2xs text-ink-soft">
+        {lastError && <p className="py-0.5 text-accent-blue">[client] {lastError}</p>}
+        {shown.length === 0 && <p className="py-1 text-muted-faint">暂无 host 事件</p>}
+        {shown.map((e, i) => {
+          const { ts, event, role, summary, ...rest } = e as Record<string, unknown>;
+          const lv = consoleLevel(e as Record<string, unknown>);
+          return (
+            <p key={i} className="truncate py-px" title={JSON.stringify(e)}>
+              <span className="text-muted-faint">{typeof ts === 'string' ? ts : ''}</span>{' '}
+              <span
+                className={cn(
+                  lv === 'error' && 'font-semibold text-red-600',
+                  lv === 'playtest' && 'text-accent-blue',
+                )}
+              >
+                {typeof event === 'string' ? event : 'event'}
+              </span>{' '}
+              <span className="text-muted">
+                {typeof summary === 'string' ? summary : JSON.stringify(rest)}
+              </span>
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Metrics tab(F6 wave.3 D-F6-F):scene_summary 帧统计轮询 + 60 采样环(文本表 + 迷你条形,不引图表库)。 */
+function MetricsBody() {
+  const stats = useEditorStore((s) => s.stats);
+  const playState = useEditorStore((s) => s.playState);
+  const history = useEditorStore((s) => s.metricsHistory);
+  const refreshSummary = useEditorStore((s) => s.refreshSummary);
+  useEffect(() => {
+    void refreshSummary();
+    const t = setInterval(() => void refreshSummary(), 1000);
+    return () => clearInterval(t);
+  }, [refreshSummary]);
+  const series: Array<{ label: string; values: number[] }> = [
+    { label: 'frames', values: history.frames },
+    { label: 'lastTris', values: history.tris },
+    { label: 'nonZeroPixels', values: history.nonZero },
+  ];
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 font-mono text-2xs text-ink-soft">
-      {lastError && <p className="py-0.5 text-accent-blue">[client] {lastError}</p>}
-      {events.length === 0 && <p className="py-1 text-muted-faint">暂无 host 事件</p>}
-      {events.map((e, i) => {
-        const { ts, event, ...rest } = e;
+      <p className="py-0.5">
+        <span className="text-muted">playState:</span> {playState}
+        <span className="ml-3 text-muted">当前:</span>{' '}
+        {stats ? `frames=${stats.frames} tris=${stats.lastTris} nonZero=${stats.lastNonZeroPixels}` : '—'}
+      </p>
+      {series.map(({ label, values }) => {
+        const max = Math.max(1, ...values);
+        const recent = values.slice(-8);
         return (
-          <p key={i} className="truncate py-px" title={JSON.stringify(e)}>
-            <span className="text-muted-faint">{typeof ts === 'string' ? ts : ''}</span>{' '}
-            <span>{typeof event === 'string' ? event : 'event'}</span>{' '}
-            <span className="text-muted">{JSON.stringify(rest)}</span>
-          </p>
+          <div key={label} className="flex items-center gap-2 py-0.5">
+            <span className="w-20 shrink-0 text-muted">{label}</span>
+            <span className="flex h-4 flex-1 items-end gap-px" title={JSON.stringify(values.slice(-20))}>
+              {values.map((v, i) => (
+                <span
+                  key={i}
+                  className="w-1 bg-accent-blue/70"
+                  style={{ height: `${Math.max(2, Math.round((v / max) * 16))}px` }}
+                />
+              ))}
+            </span>
+            <span className="w-40 shrink-0 truncate text-right text-muted">
+              {recent.length > 0 ? recent.join(' ') : '—'}
+            </span>
+          </div>
         );
       })}
+      {history.frames.length === 0 && <p className="py-1 text-muted-faint">采样中…</p>}
     </div>
   );
 }
@@ -372,6 +473,15 @@ function WorkbenchPanel() {
           <FolderOpen size={13} strokeWidth={1.8} />
         </button>
         {workbenchTab === 'console' && (
+          <>
+          <button
+            type="button"
+            title="Run maze playtest(报告行注入 Console)"
+            className={iconBtn}
+            onClick={() => void useEditorStore.getState().runPlaytest('tests/maze/matrix.json')}
+          >
+            <Play size={12} strokeWidth={1.8} />
+          </button>
           <button
             type="button"
             title="Refresh events"
@@ -380,10 +490,13 @@ function WorkbenchPanel() {
           >
             <RefreshCw size={12} strokeWidth={1.8} />
           </button>
+          </>
         )}
       </div>
       {workbenchTab === 'console' ? (
         <ConsoleBody />
+      ) : workbenchTab === 'metrics' ? (
+        <MetricsBody />
       ) : (
         <div className="flex flex-1 items-center justify-center">
           <p className="text-xs text-muted-faint">{workbenchTab} 占位(F 后续里程碑承接)</p>

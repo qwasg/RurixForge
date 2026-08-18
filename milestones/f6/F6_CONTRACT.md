@@ -3,7 +3,7 @@ contract: F6
 title: F6 试玩回归与打包(13_ROADMAP 最终里程碑)
 status: active
 implementation_status: unlocked
-active_scope: wave.3
+active_scope: wave.4
 version: 0.1
 date: 2026-08-18
 rfc_required: []
@@ -111,3 +111,8 @@ guardrails:
 - 踩坑留痕:①**RD-F6-001**——rurixc --emit=dll 同模块跨函数调用符号未链接(RX7001 @rx_wall_at_8 undefined),规避 = 导出函数自包含内联;②初版路线自相抵消(相对输入回程反向等长,碰撞失效不可见)→ 重写为门撞阻+终点后不可抵消边界撞阻;③初版 fail-open(call_error → else → 穿透)→ 语义反转为 fail-closed;④IDE 脏缓冲坑×2(main.rs/冒烟脚本编辑不落盘,终端 WriteAllText 修复)。
 - 测试数字:cargo test --workspace 全绿(211:agentd 53 / forge-logic 41[含 call_args_scalar_autowrap 新测] / 其余 crate 117)。
 - 冒烟(evidence/f6-w2-maze-matrix-smoke-*.log):绿全矩阵 **6/6**(实体计数/玩家终点/钥匙下沉/门开下沉/终点升起/winner 标签,270ms);swarm 绿 2 分片聚合 **6/0**,pid 互异(52776/63188),时间窗重叠(True),**engine-host 进程峰值=3**(单例+2 FreshSession ≥2 实测);swarm 红子矩阵 errors=2 如实标红(错位 maxDeviation=4.0/门未开 3.0);SKILL 声明 12 引擎工具在 mcp/tools(75)全部存在。**G-F6-2 PASS**。
+
+### wave.3 验收记录(2026-08-18,Console/Metrics 面板)→ G-F6-3 PASS
+- 交付:client consoleUtils.ts(consoleLevel/filterEvents/typeCounts/ringPush 纯函数);editorStore metricsHistory 三序列采样环(refreshSummary 追加 cap 60)+ runPlaytest(apiPost /api/forge/playtest/run → 报告行注入 events,role=playtest);EditorView ConsoleBody(类型过滤 chips 带计数/清空本地视图态/级别着色 error 红 + playtest 蓝)+ MetricsBody(1s 轮询 + 当前值 + 60 采样迷你条形 + 近 8 值文本表);host forgeProxy + '/api/forge/playtest' 前缀;desktop main.cjs console-metrics 冒烟场景;scripts/f6-w3-console-metrics-smoke.ps1。
+- 测试数字:client vitest **82/82**(新增 consoleMetrics.test.ts×7——级别/过滤/清空下标/计数/环 cap×2/报告注入红绿);host vitest 19/19;`pnpm -r typecheck` 全绿。
+- 冒烟(evidence/f6-w3-console-metrics-smoke-*.log + desktop-smoke-console-metrics-*.png 106KB):metrics tab **frames 采样 PIE 运行中实测变化**(recent: 1 10 13 16 19 22,play_enter 驱动);Console playtest.report 注入行=1;类型过滤 chip 点击后 playtest.case 行=0;清空后报告行=0。踩坑:metrics 腿 play_enter 后单例 host 滞留 play_running,矩阵 scene_load 被拒 → 场景内补 play_exit(留痕)。**G-F6-3 PASS**。

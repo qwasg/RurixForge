@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { apiPost, callTool } from './forgeApi';
+import { ringPush } from './consoleUtils';
 
 /** composer 五模式(04 §3 / 07 §5) */
 export type ComposerMode = 'build' | 'plan' | 'debug' | 'ask' | 'multitask';
@@ -46,8 +47,25 @@ export interface ComponentTypeInfo {
   fields: Array<{ name: string; type: string }>;
 }
 
-/** host_events 返回的 jsonl 行(字段随事件类型变化) */
-export type HostEvent = Record<string, unknown>;
+/** host_events 返回的 jsonl 行(字段随事件类型变化;role=playtest 为本地报告注入行) */
+export type HostEvent = Record<string, unknown> & { role?: string };
+
+/** Metrics 采样环(F6 wave.3;三序列定长 60,refreshSummary 轮询追加) */
+export interface MetricsHistory {
+  frames: number[];
+  tris: number[];
+  nonZero: number[];
+}
+
+/** playtest 矩阵报告(/api/forge/playtest/run 响应面;Console 注入用) */
+export interface PlaytestReport {
+  scene: string;
+  ok: boolean;
+  passed: number;
+  failed: number;
+  durationMs: number;
+  cases: Array<{ name: string; kind: string; pass: boolean; actual: unknown; expected: unknown; detail: string }>;
+}
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
@@ -179,6 +197,8 @@ interface EditorState {
   scenePath: string | null;
   componentTypes: ComponentTypeInfo[];
   lastError: string | null;
+  /** Metrics 采样环(refreshSummary 每次成功追加,cap 60) */
+  metricsHistory: MetricsHistory;
 
   gizmo: GizmoMode;
   centerTab: CenterTab;
@@ -200,6 +220,8 @@ interface EditorState {
   refreshPlayState: () => Promise<void>;
   loadComponentTypes: () => Promise<void>;
   loadEvents: () => Promise<void>;
+  /** F6 wave.3:跑 playtest 矩阵并把报告行注入 Console(role=playtest;红绿如实) */
+  runPlaytest: (matrixRef: string) => Promise<void>;
 
   selectEntity: (id: number | null) => void;
   createEntity: (name?: string) => Promise<void>;
@@ -270,6 +292,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     scenePath: null,
     componentTypes: [],
     lastError: null,
+    metricsHistory: { frames: [], tris: [], nonZero: [] },
 
     gizmo: 'translate',
     centerTab: 'viewport',
@@ -287,7 +310,16 @@ export const useEditorStore = create<EditorState>((set, get) => {
     refreshSummary: () =>
       run(async () => {
         const s = await callTool<SceneSummary>('scene_summary');
-        set({ stats: s.render, sceneName: s.name, playState: s.playState });
+        set((st) => ({
+          stats: s.render,
+          sceneName: s.name,
+          playState: s.playState,
+          metricsHistory: {
+            frames: ringPush(st.metricsHistory.frames, s.render.frames),
+            tris: ringPush(st.metricsHistory.tris, s.render.lastTris),
+            nonZero: ringPush(st.metricsHistory.nonZero, s.render.lastNonZeroPixels),
+          },
+        }));
       }),
 
     refreshPlayState: () =>
@@ -306,6 +338,29 @@ export const useEditorStore = create<EditorState>((set, get) => {
       run(async () => {
         const list = await callTool<HostEvent[]>('host_events');
         set({ events: list });
+      }),
+
+    runPlaytest: (matrixRef) =>
+      run(async () => {
+        const r = await apiPost<PlaytestReport>('/api/forge/playtest/run', { matrixRef });
+        const ts = new Date().toISOString();
+        const rows: HostEvent[] = [
+          {
+            ts,
+            role: 'playtest',
+            event: 'playtest.report',
+            ok: r.ok,
+            summary: `${matrixRef} — ${r.ok ? 'PASS' : 'FAIL'} ${r.passed}/${r.passed + r.failed} (${r.durationMs}ms)`,
+          },
+          ...r.cases.map((c) => ({
+            ts,
+            role: 'playtest',
+            event: 'playtest.case',
+            ok: c.pass,
+            summary: `${c.pass ? '✓' : '✗'} ${c.name} [${c.kind}] ${c.detail}`,
+          })),
+        ];
+        set((st) => ({ events: [...st.events, ...rows] }));
       }),
 
     selectEntity: (id) => set({ selectedId: id }),
