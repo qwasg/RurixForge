@@ -995,7 +995,9 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
     let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8");
     let selected = params.get("selectedId").and_then(Value::as_u64);
     let cam = st.camera;
-    match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h) {
+    // F6 wave.5:format=none 性能测量档不回读(渲染+提交产能口径);rgba8/h264 档帧通道端到端口径。
+    let want_readback = format != "none";
+    match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h, want_readback) {
         Ok(f) => {
             // 帧通道(F1 wave.2/3):帧源唯一 = render_scene_frame。共享纹理开启时:
             // - 会话已 import(零拷贝档):VK 直渲进共享纹理,仅推进共享 fence;
@@ -1023,6 +1025,22 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 "viewport.frame",
                 json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": f.nonzero, "framePath": frame_path }),
             );
+            if format == "none" {
+                // F6 wave.5 性能测量档:渲染+统计照常,跳过像素编码/回传
+                // (1080p rgba8 pixelsB64 ≈11MB/帧,传输开销会污染渲染 fps 测量)。
+                return Ok(json!({
+                    "width": f.width,
+                    "height": f.height,
+                    "format": "none",
+                    "deviceName": f.device_name,
+                    "draws": f.draws,
+                    "truncated": f.truncated,
+                    "frames": frames,
+                    "nonZeroPixels": f.nonzero,
+                    "framePath": frame_path,
+                    "cpuUploads": cpu_uploads,
+                }));
+            }
             if format == "h264" {
                 let (nal, keyframe) = st
                     .h264

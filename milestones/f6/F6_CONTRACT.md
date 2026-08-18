@@ -1,9 +1,9 @@
 ---
 contract: F6
 title: F6 试玩回归与打包(13_ROADMAP 最终里程碑)
-status: active
+status: closed
 implementation_status: unlocked
-active_scope: wave.5
+active_scope: closed
 version: 0.1
 date: 2026-08-18
 rfc_required: []
@@ -94,6 +94,7 @@ guardrails:
 本波新增 deferred 追加于下方。
 
 - **RD-F6-001(上游 rurixc --emit=dll 同模块跨函数调用符号未链接,OPEN→上游)**:wave.2 实测 maze.rx `wall_at_cell`/`solvable` 内部调用 `wall_at` 时 dll 构建失败(RX7001 clang: `use of undefined value '@rx_wall_at_8'`,同模块调用点符号名与定义符号不链接)。规避 = 导出函数全部自包含(规则内联单函数化),maze.rx 头部注释留痕;上游 H:\rurix rurixc codegen 修同模块调用链接后摘除规避。不阻塞 F6。
+- **RD-F6-002(pixelsB64 RPC 回退腿 1080p 6.5fps,OPEN→可选优化)**:wave.5 性能三层分解实测——①渲染+提交 0.5ms/帧(**2124fps**,性能门判门口径);②+引擎内 readback+nonzero 统计 22ms/帧(46fps 等效);③+pixelsB64 编码/11MB 传输/PS ConvertFrom-Json 解析 **153ms/帧(6.5fps)**——回退腿端到端瓶颈 85% 在像素编码传输解析链路,非引擎。**真实编辑器视口走 D3D12 共享纹理零拷贝(F1 wave.3)与 H.264 流腿(F1 wave.4),不经过 pixelsB64 回退腿,故不构成产品路径瓶颈**。优化方向(后续可选):回退腿接 H.264/缩采样;不阻塞 F6。
 
 ## 5. 修订
 - 2026-08-18 立项:RD-DIGEST closed(c6fcfb7)后用户拍板 W3~W7 = F6。勘探实测:swarm.rs test-matrix shardType 已注册(F3);engine-host 仅解析 --port;Script 组件 graphRef 腿已挂接 collect_script_graphs(module 腿 seam);Console tab 已有 ConsoleBody(host events 渲染),metrics 等 5 tab 占位;MCP 面无 test_run/assert 工具;demo 资产无迷宫;08 §7 打包本期最小原文在库;SSIM 断言 F4 逐字 deferred 至 F6。

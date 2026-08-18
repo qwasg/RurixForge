@@ -12,7 +12,7 @@
 //! - 诚实三态:vulkan loader/能力缺失 → `DEV_ENV_DEGRADE:` 前缀错误,绝不伪造帧。
 //!
 //! 会话描述块(resources/passes/barriers/readbacks)借给 `DeviceFrameSession<'static>`,
-//! 经 `Box::leak` 提升;重建仅发生在视口改尺寸(前端拖拽结束去抖后),代价有界。
+//! 经 `Box::leak` 提升;重建发生在视口改尺寸或实体数超档升档(F6 wave.5,只升不降),代价有界。
 
 use std::sync::{Mutex, OnceLock};
 
@@ -414,8 +414,21 @@ fn shader_bytes() -> Result<(&'static [u8], &'static [u8]), String> {
 
 // ─────────────────────────── 渲染会话(DeviceFrameSession) ───────────────────────────
 
-/// 固定 draw pass 槽数(实体上限;超出截断并如实报 truncated)。
+/// 固定 draw pass 槽数上限(实体上限;超出截断并如实报 truncated)。
 const MAX_DRAW_SLOTS: usize = 128;
+
+/// F6 wave.5 动态档位:pass 图槽数按可渲染实体数取档(48/96/128),
+/// 避免小场景为空槽 pass 付全量重录/draw 代价(128 空槽实测 1080p ~22ms/帧大头)。
+/// 档位只升不降(滞后:实体数回落不重建,避免抖动);超 128 仍截断。
+fn slot_tier(renderable: usize) -> usize {
+    if renderable <= 48 {
+        48
+    } else if renderable <= 96 {
+        96
+    } else {
+        MAX_DRAW_SLOTS
+    }
+}
 /// 清屏底色(cursor+Claude 系深色;RGBA8 ≈ [23,24,29,255])。
 const CLEAR_RGBA: [f32; 4] = [0.090, 0.094, 0.114, 1.0];
 const R32G32B32_SFLOAT: u32 = 109;
@@ -432,6 +445,8 @@ enum RendererState {
 struct ViewportRenderer {
     width: u32,
     height: u32,
+    /// 本会话 pass 图槽数(F6 wave.5 动态档;升档触发重建)。
+    slots: usize,
     session: rex::DeviceFrameSession<'static>,
     device_name: String,
     /// 本会话 import 的共享纹理键(nt_handle, alloc_size);None = 纯 readback 腿。
@@ -491,13 +506,13 @@ pub fn probe_import_min_alloc(width: u32, height: u32) -> Option<u64> {
 /// 建固定 pass 图会话(资源:0=网格 VB,1=相机 UBO,2=色 attachment,3=深度)。
 /// 零拷贝优先:有共享纹理可 import 时先建 import 会话;失败(如无 external memory
 /// 扩展)如实 eprintln 并回退纯 readback 腿(G-F1-10 证据面能区分两档)。
-fn build_session(width: u32, height: u32) -> Result<ViewportRenderer, String> {
+fn build_session(width: u32, height: u32, slots: usize) -> Result<ViewportRenderer, String> {
     let import = current_import(width, height);
-    match build_session_with(width, height, import) {
+    match build_session_with(width, height, import, slots) {
         Ok(r) => Ok(r),
         Err(e) if import.is_some() => {
             eprintln!("[viewport] 零拷贝 import 会话创建失败,回退 readback 上传腿: {e}");
-            build_session_with(width, height, None)
+            build_session_with(width, height, None, slots)
         }
         Err(e) => Err(e),
     }
@@ -507,6 +522,7 @@ fn build_session_with(
     width: u32,
     height: u32,
     import: Option<(u64, u64, bool)>,
+    slots: usize,
 ) -> Result<ViewportRenderer, String> {
     if !vk::vulkan_available() {
         return Err("DEV_ENV_DEGRADE: vulkan loader 不可用(无 GPU/驱动)".to_owned());
@@ -577,9 +593,9 @@ fn build_session_with(
     hidden_pc.extend_from_slice(&m4_col_bytes(hidden_model));
     hidden_pc.extend_from_slice(&[0u8; 16]);
 
-    let mut passes: Vec<rex::Pass> = Vec::with_capacity(MAX_DRAW_SLOTS);
-    let mut barrier_plan: Vec<Vec<(u32, rex::TargetState)>> = Vec::with_capacity(MAX_DRAW_SLOTS);
-    for k in 0..MAX_DRAW_SLOTS {
+    let mut passes: Vec<rex::Pass> = Vec::with_capacity(slots);
+    let mut barrier_plan: Vec<Vec<(u32, rex::TargetState)>> = Vec::with_capacity(slots);
+    for k in 0..slots {
         let first = k == 0;
         passes.push(rex::Pass::Raster(rex::RasterPass {
             name: "forge_viewport_entity",
@@ -638,6 +654,7 @@ fn build_session_with(
     Ok(ViewportRenderer {
         width,
         height,
+        slots,
         session,
         device_name: caps.device_name,
         import_key: import.map(|(h, sz, _)| (h, sz)),
@@ -689,14 +706,18 @@ pub fn render_scene_frame(
     selected: Option<u64>,
     width: u32,
     height: u32,
+    want_readback: bool,
 ) -> Result<FramePixels, String> {
     let slot = renderer_slot();
     let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
     // 懒初始化 / 改尺寸或共享纹理 import 键变化时重建(降级态一经判定即缓存,不重试)。
+    // F6 wave.5:实体数超当前 pass 档 → 升档重建(只升不降,滞后防抖)。
+    let renderable_n = scene.entities.iter().filter(|e| is_renderable(e)).count();
+    let want_slots = slot_tier(renderable_n);
     let want_import = current_import(width, height);
     match &*guard {
         RendererState::Uninit => {
-            *guard = match build_session(width, height) {
+            *guard = match build_session(width, height, want_slots) {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
             };
@@ -704,9 +725,10 @@ pub fn render_scene_frame(
         RendererState::Ready(r)
             if r.width != width
                 || r.height != height
-                || r.import_key != want_import.map(|(h, sz, _)| (h, sz)) =>
+                || r.import_key != want_import.map(|(h, sz, _)| (h, sz))
+                || r.slots < want_slots =>
         {
-            *guard = match build_session(width, height) {
+            *guard = match build_session(width, height, want_slots) {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
             };
@@ -718,6 +740,7 @@ pub fn render_scene_frame(
         RendererState::Degraded(e) => return Err(e.clone()),
         RendererState::Uninit => unreachable!("上分支已初始化"),
     };
+    let slots = r.slots;
 
     let aspect = width as f32 / height as f32;
     let vp_bytes = m4_col_bytes(cam.view_proj(aspect));
@@ -728,7 +751,7 @@ pub fn render_scene_frame(
     };
     let mut draws = 0usize;
     for (k, e) in scene.entities.iter().filter(|e| is_renderable(e)).enumerate() {
-        if k >= MAX_DRAW_SLOTS {
+        if k >= slots {
             break;
         }
         let model = trs_model(&e.transform);
@@ -747,13 +770,15 @@ pub fn render_scene_frame(
         rotation: [0.0, 0.0, 0.0, 1.0],
         scale: [1e-6, 1e-6, 1e-6],
     });
-    for k in draws..MAX_DRAW_SLOTS {
+    for k in draws..slots {
         let mut pc = Vec::with_capacity(80);
         pc.extend_from_slice(&m4_col_bytes(hidden_model));
         pc.extend_from_slice(&[0u8; 16]);
         update.push_constant_overrides.push((k as u32, pc));
     }
-    update.readback_subset = Some(vec![0]);
+    // F6 wave.5 瓶颈分解:format=none 性能测量档不回读(跳过 submit→wait 同步
+    // 阻塞 + 8MB 拷贝 + 2M 像素统计),纯渲染+提交产能与帧通道端到端成本可拆分留档。
+    update.readback_subset = if want_readback { Some(vec![0]) } else { None };
 
     let provenance = r
         .session
@@ -763,31 +788,36 @@ pub fn render_scene_frame(
         .session
         .execute_with_frame_update(&provenance, &update)
         .map_err(|e| format!("帧执行失败: {e}"))?;
-    let rgba8 = out
-        .readbacks
-        .into_iter()
-        .next()
-        .ok_or_else(|| "readback 缺失".to_owned())?;
-    let expect = (width * height * 4) as usize;
-    if rgba8.len() != expect {
-        return Err(format!("回读字节数不符:{} ≠ {expect}", rgba8.len()));
-    }
-    let bg = [
-        (CLEAR_RGBA[0] * 255.0 + 0.5).floor() as u8,
-        (CLEAR_RGBA[1] * 255.0 + 0.5).floor() as u8,
-        (CLEAR_RGBA[2] * 255.0 + 0.5).floor() as u8,
-    ];
-    let nonzero = rgba8
-        .chunks_exact(4)
-        .filter(|p| p[0] != bg[0] || p[1] != bg[1] || p[2] != bg[2])
-        .count();
+    let (rgba8, nonzero) = if want_readback {
+        let rgba8 = out
+            .readbacks
+            .into_iter()
+            .next()
+            .ok_or_else(|| "readback 缺失".to_owned())?;
+        let expect = (width * height * 4) as usize;
+        if rgba8.len() != expect {
+            return Err(format!("回读字节数不符:{} ≠ {expect}", rgba8.len()));
+        }
+        let bg = [
+            (CLEAR_RGBA[0] * 255.0 + 0.5).floor() as u8,
+            (CLEAR_RGBA[1] * 255.0 + 0.5).floor() as u8,
+            (CLEAR_RGBA[2] * 255.0 + 0.5).floor() as u8,
+        ];
+        let nonzero = rgba8
+            .chunks_exact(4)
+            .filter(|p| p[0] != bg[0] || p[1] != bg[1] || p[2] != bg[2])
+            .count();
+        (rgba8, nonzero)
+    } else {
+        (Vec::new(), 0)
+    };
     Ok(FramePixels {
         width,
         height,
         rgba8,
         device_name: r.device_name.clone(),
         draws,
-        truncated: scene.entities.iter().filter(|e| is_renderable(e)).count() > MAX_DRAW_SLOTS,
+        truncated: renderable_n > slots,
         nonzero,
         imported: r.import_key.is_some(),
     })
