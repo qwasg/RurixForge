@@ -4,7 +4,7 @@
 //!
 //! 语义裁决(10 §3.1):on_start 在 load 时立即执行(=「PIE 进入/实体激活」)。
 //! 未实现节点(physics.*/audio.*/entity.spawn/entity.destroy/transform.look_at/transform.lerp/
-//! flow.for_each/flow.gate/debug.draw_debug_line/call.call_function)如实 log
+//! flow.for_each/flow.gate/debug.draw_debug_line)如实 log(RD-F4-004:call.call_function 已摘 unsupported → callruntime dll 腿)
 //! `logic.unsupported` 后继续执行链,不静默不伪造。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -87,6 +87,8 @@ pub struct GraphInstance {
     timers: BTreeMap<String, f64>,
     /// 执行边邻接:(节点 id, 执行出口 pin)→ [目标节点 id](edges 声明序)。
     exec_adj: BTreeMap<(String, String), Vec<String>>,
+    /// 动作节点输出暂存(RD-F4-004:call_function result;key = "{nodeId}.{pin}")。
+    node_outputs: BTreeMap<String, Value>,
 }
 
 impl GraphInstance {
@@ -114,6 +116,7 @@ impl GraphInstance {
             delays: Vec::new(),
             timers: BTreeMap::new(),
             exec_adj,
+            node_outputs: BTreeMap::new(),
         }
     }
 
@@ -160,11 +163,18 @@ pub struct LogicRuntime {
     graphs: Vec<(u64, GraphInstance)>,
     prev_trigger_overlap: BTreeSet<(u64, u64)>,
     message_queue: Vec<(String, Value)>,
+    /// call_function dll 运行时(RD-F4-004;None = 未挂项目根,调用如实 logic.call_error)。
+    call_rt: Option<crate::callruntime::CallRuntime>,
 }
 
 impl LogicRuntime {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 挂 call_function 项目根(engine-host play_enter 接线;rd-f4-004)。
+    pub fn set_project_root(&mut self, root: std::path::PathBuf) {
+        self.call_rt = Some(crate::callruntime::CallRuntime::new(root));
     }
 
     pub fn clear(&mut self) {
@@ -248,13 +258,13 @@ impl LogicRuntime {
         scene: &mut Scene,
         log: &mut Vec<(String, Value)>,
     ) {
-        let Self { graphs, message_queue, .. } = self;
+        let Self { graphs, message_queue, call_rt, .. } = self;
         let (eid, inst) = &mut graphs[gi];
         let Some(node) = inst.event_node(event_type) else { return };
         let starts = inst.exec_targets(&node.id, "exec");
         let ev = EventCtx { node: node.id.clone(), pins: binds };
         for t in starts {
-            exec_node(inst, *eid, &t, &ev, scene, message_queue, log, 0);
+            exec_node(inst, *eid, &t, &ev, scene, message_queue, call_rt, log, 0);
         }
     }
 
@@ -393,11 +403,11 @@ impl LogicRuntime {
                 let _ = eid;
             }
             for conts in resumed {
-                let Self { graphs, message_queue, .. } = self;
+                let Self { graphs, message_queue, call_rt, .. } = self;
                 let (eid, inst) = &mut graphs[gi];
                 let ev = EventCtx::empty();
                 for node_id in conts {
-                    exec_node(inst, *eid, &node_id, &ev, scene, message_queue, log, 0);
+                    exec_node(inst, *eid, &node_id, &ev, scene, message_queue, call_rt, log, 0);
                 }
             }
             if self.has_event(gi, "event.on_update") {
@@ -506,6 +516,10 @@ fn eval_pin(
             if let Some(v) = ev.bound(src_node, out) {
                 return v.clone();
             }
+            // 动作节点输出暂存命中(call_function result 等,RD-F4-004)。
+            if let Some(v) = inst.node_outputs.get(&format!("{src_node}.{out}")) {
+                return v.clone();
+            }
             eval_pure(inst, eid, src_node, out, ev, scene, log)
         }
     }
@@ -572,6 +586,7 @@ fn exec_node(
     ev: &EventCtx,
     scene: &mut Scene,
     mq: &mut Vec<(String, Value)>,
+    call_rt: &mut Option<crate::callruntime::CallRuntime>,
     log: &mut Vec<(String, Value)>,
     depth: usize,
 ) {
@@ -724,10 +739,42 @@ fn exec_node(
             ));
             next_exec(inst)
         }
+        // call.call_function(RD-F4-004):dll 运行时调用 → result 写 node_outputs;
+        // 失败如实 logic.call_error 续链(D-RD4-E,不静默不伪造返回值)。
+        "call.call_function" => {
+            let module = as_string(&eval_pin(inst, eid, &nid, "module", ev, scene, log));
+            let fn_name = as_string(&eval_pin(inst, eid, &nid, "fn", ev, scene, log));
+            let args_v = eval_pin(inst, eid, &nid, "args", ev, scene, log);
+            let args_r: Result<Vec<Value>, String> = match args_v {
+                Value::Array(a) => Ok(a),
+                Value::Null => Ok(Vec::new()),
+                other => Err(format!("args 须数组,实际 {other}")),
+            };
+            let invoked = args_r.and_then(|args| match call_rt.as_mut() {
+                Some(rt) => rt.invoke(&module, &fn_name, &args).map_err(|e| e.to_string()),
+                None => Err("CallRuntime 未配置(project_root 未挂)".to_string()),
+            });
+            match invoked {
+                Ok(v) => {
+                    inst.node_outputs.insert(format!("{nid}.result"), v.clone());
+                    log.push((
+                        "logic.call".to_string(),
+                        json!({ "entityId": eid, "graphId": inst.graph_id(), "nodeId": nid, "module": module, "fn": fn_name, "result": v }),
+                    ));
+                }
+                Err(reason) => {
+                    log.push((
+                        "logic.call_error".to_string(),
+                        json!({ "entityId": eid, "graphId": inst.graph_id(), "nodeId": nid, "module": module, "fn": fn_name, "reason": reason }),
+                    ));
+                }
+            }
+            next_exec(inst)
+        }
         // 未实现节点:如实 log 后续链(不静默不伪造)。
         "flow.for_each" | "flow.gate" | "entity.spawn" | "entity.destroy" | "transform.look_at"
         | "transform.lerp" | "physics.cast_ray" | "physics.apply_impulse" | "physics.overlap"
-        | "audio.play" | "audio.stop" | "call.call_function" | "debug.draw_debug_line" => {
+        | "audio.play" | "audio.stop" | "debug.draw_debug_line" => {
             log.push((
                 "logic.unsupported".to_string(),
                 json!({ "entityId": eid, "graphId": inst.graph_id(), "nodeId": nid, "nodeType": ntype }),
@@ -737,7 +784,7 @@ fn exec_node(
         _ => Vec::new(), // 事件/纯节点不作为链目标(校验器已挡);到达即终止。
     };
     for n in nexts {
-        exec_node(inst, eid, &n, ev, scene, mq, log, depth + 1);
+        exec_node(inst, eid, &n, ev, scene, mq, call_rt, log, depth + 1);
     }
 }
 

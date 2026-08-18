@@ -504,7 +504,7 @@ fn load_graph_doc(graph_ref: &str) -> Result<forge_logic::graph::GraphDoc, Strin
         .map_err(|e| format!("图读取失败 {}: {e}", path.display()))?;
     let doc = forge_logic::graph::GraphDoc::from_json(&text)
         .map_err(|e| format!("图解析失败 {graph_ref}: {e}"))?;
-    let errs = forge_logic::validate::validate_graph(&doc);
+    let errs = forge_logic::validate::validate_graph_with_project(&doc, &project_root());
     if !errs.is_empty() {
         let summary = errs
             .iter()
@@ -1515,6 +1515,8 @@ fn play_enter(st: &mut HostState) -> HResult {
     // F4 wave.3 ②:Script 实体读 graphRef → 校验 → load(on_start 即 load 时执行,
     // 10 §3.1);读取/解析/校验失败 → 清理 body 后如实报错,不进 play。
     let mut rt = LogicRuntime::new();
+    // RD-F4-004:call_function dll 运行时挂项目根(构建/加载失败在调用点如实 logic.call_error)。
+    rt.set_project_root(project_root());
     let mut logs: Vec<(String, Value)> = Vec::new();
     let scripts = collect_script_graphs(st.run_scene.as_ref().expect("刚设置"));
     for (eid, gref, props) in scripts {

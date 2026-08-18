@@ -8,7 +8,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use forge_logic::graph::GraphDoc;
-use forge_logic::validate::{validate_graph, GRAPH_SCHEMA};
+use forge_logic::validate::{validate_graph_with_project, GRAPH_SCHEMA};
 
 use crate::rxtool::{TResult, ToolError};
 
@@ -26,8 +26,9 @@ fn parse_doc(v: &Value) -> Result<GraphDoc, Value> {
     })
 }
 
-fn validate_result(doc: &GraphDoc) -> Value {
-    let errors = validate_graph(doc);
+fn validate_result(doc: &GraphDoc, root: &Path) -> Value {
+    // RD-F4-004:项目感校验(八臂 + call_function 第九臂,module 文件经 root 解析)。
+    let errors = validate_graph_with_project(doc, root);
     json!({ "ok": errors.is_empty(), "errors": errors })
 }
 
@@ -56,7 +57,7 @@ pub fn validate(args: &Value, root: &Path) -> TResult<Value> {
             Err(rej) => return Ok(rej),
         }
     };
-    Ok(validate_result(&doc))
+    Ok(validate_result(&doc, root))
 }
 
 /// graph_create {name, graph} → 校验通过落 <root>/Content/Graphs/<name>.rxgraph
@@ -74,7 +75,7 @@ pub fn create(args: &Value, root: &Path) -> TResult<Value> {
     let g = args.get("graph").ok_or_else(|| terr("USAGE", "缺 graph"))?;
     let doc: GraphDoc = serde_json::from_value(g.clone())
         .map_err(|e| terr("GRAPH_BAD_GRAPH", format!("图 JSON 结构不合法: {e}")))?;
-    let errors = validate_graph(&doc);
+    let errors = validate_graph_with_project(&doc, root);
     if !errors.is_empty() {
         return Ok(json!({ "ok": false, "errors": errors }));
     }

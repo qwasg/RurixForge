@@ -35,6 +35,10 @@ pub const GRAPH_BAD_SOURCE: &str = "GRAPH_BAD_SOURCE";
 pub const GRAPH_TYPE_MISMATCH: &str = "GRAPH_TYPE_MISMATCH";
 pub const GRAPH_EXEC_CYCLE: &str = "GRAPH_EXEC_CYCLE";
 pub const GRAPH_DATA_CYCLE: &str = "GRAPH_DATA_CYCLE";
+// RD-F4-004 第九校验臂(call_function 互绑,10 §4.3)。
+pub const GRAPH_CALL_MODULE_NOT_FOUND: &str = "GRAPH_CALL_MODULE_NOT_FOUND";
+pub const GRAPH_CALL_FN_NOT_EXPORTED: &str = "GRAPH_CALL_FN_NOT_EXPORTED";
+pub const GRAPH_CALL_SIG_MISMATCH: &str = "GRAPH_CALL_SIG_MISMATCH";
 
 /// const 字面量与 pin 类型匹配:number → F32/I32 皆可(integer 字面量进 F32 允许);
 /// string → String / Entity($self/$parent 及实体名皆为字符串形态);bool → Bool;
@@ -274,6 +278,149 @@ pub fn validate_graph(doc: &GraphDoc) -> Vec<GraphError> {
     errs
 }
 
+// ── RD-F4-004 第九校验臂:call_function 互绑(10 §4.3)────────────────────────
+//
+// 首发标量子集(D-RD4-C):参数/返回仅 f32/f64/i32/bool + void;其余 C 子集 v1 类型
+// (i8/i16/i64/u*/指针/String/Vec3/数组)如实 GRAPH_CALL_SIG_MISMATCH 拒绝,不静默截断。
+
+/// 项目感校验:纯校验八臂 + call_function 第九臂(读 module 文件,root = 项目根)。
+pub fn validate_graph_with_project(doc: &GraphDoc, root: &std::path::Path) -> Vec<GraphError> {
+    let mut errs = validate_graph(doc);
+    // 扫描器缓存:同 module 文件只读一次(文本级,D-RD4-A)。
+    let mut export_cache: HashMap<String, Option<Vec<crate::rxexport::ExportedFn>>> = HashMap::new();
+    for n in &doc.nodes {
+        if n.ntype != "call.call_function" {
+            continue;
+        }
+        // module/fn 缺失/悬空已被八臂 GRAPH_DANGLING_INPUT 报过,跳过不级联。
+        let (Some(module_src), Some(fn_src)) = (n.inputs.get("module"), n.inputs.get("fn")) else {
+            continue;
+        };
+        // module/fn 须为 const 字符串(校验期静态解析;动态来源如实拒)。
+        let module = match const_str(module_src) {
+            Some(m) => m,
+            None => {
+                errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH, &n.id, "call_function.module 须为 const 字符串(校验期静态解析;动态 module 来源登记 deferred)"));
+                continue;
+            }
+        };
+        let fn_name = match const_str(fn_src) {
+            Some(f) => f,
+            None => {
+                errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH, &n.id, "call_function.fn 须为 const 字符串(校验期静态解析)"));
+                continue;
+            }
+        };
+        // module 路径安全:相对项目根,拒绝对路径与 .. 越界(I-5 同源纪律)。
+        let mpath = std::path::Path::new(&module);
+        let rel_ok = mpath.is_relative() && !mpath.components().any(|c| matches!(c, std::path::Component::ParentDir));
+        let exports = if rel_ok {
+            export_cache
+                .entry(module.clone())
+                .or_insert_with(|| {
+                    let p = root.join(&module);
+                    std::fs::read_to_string(p)
+                        .ok()
+                        .map(|text| crate::rxexport::scan_export_c_fns(&text))
+                })
+                .clone()
+        } else {
+            None
+        };
+        let Some(exports) = exports else {
+            errs.push(GraphError::at(
+                GRAPH_CALL_MODULE_NOT_FOUND,
+                &n.id,
+                format!("call_function module 不可解析: {module}(须项目根相对路径,不越界,文件存在)"),
+            ));
+            continue;
+        };
+        let Some(efn) = exports.iter().find(|e| e.name == fn_name) else {
+            errs.push(GraphError::at(
+                GRAPH_CALL_FN_NOT_EXPORTED,
+                &n.id,
+                format!("{module} 无 #[export(c)] pub fn {fn_name}(文本级扫描;导出表: [{}])", exports.iter().map(|e| e.name.as_str()).collect::<Vec<_>>().join(", ")),
+            ));
+            continue;
+        };
+        // 返回类型子集门(result 编组面)。
+        if !matches!(efn.ret.as_str(), "void" | "f32" | "f64" | "i32" | "bool") {
+            errs.push(GraphError::at(
+                GRAPH_CALL_SIG_MISMATCH,
+                &n.id,
+                format!("{fn_name} 返回类型 {} 超首发标量子集(void/f32/f64/i32/bool)", efn.ret),
+            ));
+            continue;
+        }
+        // 同构性门(D-RD4-C:运行时无混合类型蹦床,校验期如实拒)。
+        if let Some(t0) = efn.params.first().map(|(_, t)| t.as_str()) {
+            if efn.params.iter().any(|(_, t)| t != t0) {
+                errs.push(GraphError::at(
+                    GRAPH_CALL_SIG_MISMATCH,
+                    &n.id,
+                    format!("{fn_name} 混合参数类型超首发编组面(运行时同构限定;须全部同型)"),
+                ));
+                continue;
+            }
+        }
+        // args:const 数组 → 全静态检查;NodePin/Ref → 运行时检查(D-RD4-E),校验期放行。
+        if let Some(args_src) = n.inputs.get("args") {
+            if let ValueSource::Const { konst } = args_src {
+                let Some(args) = konst.as_array() else {
+                    errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH, &n.id, "call_function.args const 须为数组"));
+                    continue;
+                };
+                if args.len() != efn.params.len() {
+                    errs.push(GraphError::at(
+                        GRAPH_CALL_SIG_MISMATCH,
+                        &n.id,
+                        format!("{fn_name} 参数个数不匹配:签名 {},args {}", efn.params.len(), args.len()),
+                    ));
+                    continue;
+                }
+                for (i, ((pname, pty), arg)) in efn.params.iter().zip(args.iter()).enumerate() {
+                    match scalar_const_ok(pty, arg) {
+                        Some(true) => {}
+                        Some(false) => {
+                            errs.push(GraphError::at(
+                                GRAPH_CALL_SIG_MISMATCH,
+                                &n.id,
+                                format!("{fn_name} 第 {} 参 {pname}: {pty} 与 const {arg} 类型不匹配", i + 1),
+                            ));
+                            break;
+                        }
+                        None => {
+                            errs.push(GraphError::at(
+                                GRAPH_CALL_SIG_MISMATCH,
+                                &n.id,
+                                format!("{fn_name} 第 {} 参 {pname} 类型 {pty} 超首发标量子集(f32/f64/i32/bool)", i + 1),
+                            ));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    errs
+}
+
+fn const_str(src: &ValueSource) -> Option<String> {
+    match src {
+        ValueSource::Const { konst } => konst.as_str().map(str::to_string),
+        _ => None,
+    }
+}
+
+/// 首发标量子集类型 × const 字面量:Some(true/false) = 子集内匹配判定;None = 超子集。
+fn scalar_const_ok(rx_ty: &str, v: &Value) -> Option<bool> {
+    match rx_ty {
+        "f32" | "f64" | "i32" => Some(v.is_number()),
+        "bool" => Some(v.is_boolean()),
+        _ => None,
+    }
+}
+
 /// DFS 三色找环:返回任一环节点 id(无环 → None)。重复 id 去重按首现。
 fn find_cycle(nodes: &[&str], edges: &[(String, String)]) -> Option<String> {
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -503,5 +650,101 @@ mod tests {
             "edges": [ { "from": ["a", "exec"], "to": ["b", "exec"] } ]
         })).unwrap();
         assert!(validate_graph(&d).is_empty(), "{:?}", validate_graph(&d));
+    }
+
+    // ── RD-F4-004 第九校验臂 ──
+
+    fn tmp_project(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge_logic_call_{}_{}_{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("Content/Scripts")).unwrap();
+        std::fs::write(
+            dir.join("Content/Scripts/math.rx"),
+            "#[export(c)]\npub fn add(a: f32, b: f32) -> f32 { a + b }\n\
+             #[export(c)]\npub fn is_ready(flag: bool) -> bool { flag }\n\
+             #[export(c)]\npub fn wide(x: i64) -> i64 { x }\n\
+             pub fn helper(x: i32) -> i32 { x }\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    fn call_graph(module: &str, fn_name: &str, args: serde_json::Value) -> GraphDoc {
+        serde_json::from_value(json!({
+            "version": 1, "id": "g_call", "name": "CallProbe",
+            "nodes": [
+                { "id": "a", "type": "event.on_start", "pos": [0, 0] },
+                { "id": "c", "type": "call.call_function", "pos": [1, 0],
+                  "inputs": { "module": { "const": module }, "fn": { "const": fn_name }, "args": { "const": args } } },
+                { "id": "s", "type": "var.set", "pos": [2, 0],
+                  "inputs": { "name": { "const": "r" }, "value": { "node": "c", "pin": "result" } } }
+            ],
+            "edges": [ { "from": ["a", "exec"], "to": ["c", "exec"] }, { "from": ["c", "exec"], "to": ["s", "exec"] } ]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn call_arm_good_graph_passes() {
+        let root = tmp_project("good");
+        let d = call_graph("Content/Scripts/math.rx", "add", json!([2, 3.5]));
+        let errs = validate_graph_with_project(&d, &root);
+        assert!(errs.is_empty(), "{errs:?}");
+        // bool 参数 + bool 返回。
+        let d2 = call_graph("Content/Scripts/math.rx", "is_ready", json!([true]));
+        assert!(validate_graph_with_project(&d2, &root).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn call_arm_module_not_found() {
+        let root = tmp_project("mnf");
+        let d = call_graph("Content/Scripts/ghost.rx", "add", json!([1, 2]));
+        let errs = validate_graph_with_project(&d, &root);
+        assert!(errs.iter().any(|e| e.code == GRAPH_CALL_MODULE_NOT_FOUND && e.node_id.as_deref() == Some("c")), "{errs:?}");
+        // 越界路径同码拒。
+        let d2 = call_graph("../outside.rx", "add", json!([1, 2]));
+        assert!(validate_graph_with_project(&d2, &root).iter().any(|e| e.code == GRAPH_CALL_MODULE_NOT_FOUND));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn call_arm_fn_not_exported() {
+        let root = tmp_project("fne");
+        // helper 无 #[export(c)]。
+        let d = call_graph("Content/Scripts/math.rx", "helper", json!([1]));
+        let errs = validate_graph_with_project(&d, &root);
+        assert!(errs.iter().any(|e| e.code == GRAPH_CALL_FN_NOT_EXPORTED), "{errs:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn call_arm_sig_mismatch() {
+        let root = tmp_project("sig");
+        // 个数不匹配。
+        let d = call_graph("Content/Scripts/math.rx", "add", json!([1]));
+        assert!(validate_graph_with_project(&d, &root).iter().any(|e| e.code == GRAPH_CALL_SIG_MISMATCH));
+        // 类型不匹配(bool 进 f32)。
+        let d2 = call_graph("Content/Scripts/math.rx", "add", json!([1, true]));
+        assert!(validate_graph_with_project(&d2, &root).iter().any(|e| e.code == GRAPH_CALL_SIG_MISMATCH));
+        // 超首发子集(i64 参数与返回)。
+        let d3 = call_graph("Content/Scripts/math.rx", "wide", json!([1]));
+        let errs3 = validate_graph_with_project(&d3, &root);
+        assert!(errs3.iter().any(|e| e.code == GRAPH_CALL_SIG_MISMATCH), "{errs3:?}");
+        // args 非数组。
+        let d4 = call_graph("Content/Scripts/math.rx", "add", json!(3.5));
+        assert!(validate_graph_with_project(&d4, &root).iter().any(|e| e.code == GRAPH_CALL_SIG_MISMATCH));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn call_arm_pure_validate_untouched() {
+        // 纯 validate_graph 不含第九臂(无 root 不炸,保持八臂语义)。
+        let d = call_graph("Content/Scripts/ghost.rx", "nope", json!([]));
+        assert!(validate_graph(&d).is_empty(), "纯校验不查 module/fn: {:?}", validate_graph(&d));
     }
 }

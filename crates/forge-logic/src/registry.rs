@@ -115,8 +115,8 @@ pub const REGISTRY: &[NodeSpec] = &[
     NodeSpec { ntype: "var.get", kind: NodeKind::Pure, exec_in: false, exec_out: &[], inputs: &[inp("name", PinType::String)], outputs: &[out("out", PinType::Any)] },
     NodeSpec { ntype: "var.set", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("name", PinType::String), inp("value", PinType::Any)], outputs: &[] },
     NodeSpec { ntype: "var.add", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("name", PinType::String), inp("value", PinType::F32)], outputs: &[] },
-    // ---- call.*(§4.3 与 .rx 互绑)----
-    NodeSpec { ntype: "call.call_function", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("module", PinType::String), inp("fn", PinType::String), inp("args", PinType::Any)], outputs: &[] },
+    // ---- call.*(§4.3 与 .rx 互绑;RD-F4-004:call_function result pin 加性扩展 D-RD4-D,40 节点集不变)----
+    NodeSpec { ntype: "call.call_function", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("module", PinType::String), inp("fn", PinType::String), inp("args", PinType::Any)], outputs: &[out("result", PinType::Any)] },
     NodeSpec { ntype: "call.send_message", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("name", PinType::String), inp("payload", PinType::Any)], outputs: &[] },
     // ---- debug.*(编辑态)----
     NodeSpec { ntype: "debug.log", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("message", PinType::String)], outputs: &[] },
