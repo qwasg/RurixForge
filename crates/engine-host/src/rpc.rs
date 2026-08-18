@@ -284,6 +284,8 @@ pub struct HostState {
     pub camera: crate::viewport::EditorCamera,
     /// H.264 编码器状态(F1 wave.4 流腿;懒加载,尺寸变化重建)。
     pub h264: H264State,
+    /// --game 模式(F6 wave.4 D-F6-D):RPC 裁剪为只读+input 子集,禁编辑面。
+    pub game_mode: bool,
 }
 
 /// H.264 编码器状态(F1 wave.4):懒加载 + 尺寸变化重建 + 帧计数。
@@ -381,6 +383,7 @@ impl HostState {
             input_queue: Vec::new(),
             started: Instant::now(),
             camera: crate::viewport::EditorCamera::default(),
+            game_mode: false,
         }
     }
 
@@ -805,8 +808,40 @@ pub fn dispatch(state: &Mutex<HostState>, req: &Value) -> Value {
     }
 }
 
+/// game 模式允许面(F6 wave.4 D-F6-D:只读 + input 子集;编辑类/生命周期/play 控制一律拒)。
+const GAME_ALLOWED: &[&str] = &[
+    "host.ping",
+    "scene.summary",
+    "events.drain",
+    "entity.get",
+    "entity.list",
+    "component.get",
+    "component.listTypes",
+    "transform.get",
+    "play.state",
+    "logic.inject_input",
+    "viewport.frame",
+    "viewport.setCamera",
+    "viewport.getCamera",
+    "viewport.pick",
+];
+
+/// --game 启动(F6 wave.4):项目根相对场景 → scene_load → play_enter;失败如实 Err(main 退出)。
+pub(crate) fn game_boot(st: &mut HostState, scene_rel: &str) -> Result<(), String> {
+    let path = project_root().join(scene_rel);
+    scene_load(st, &json!({ "path": path.to_string_lossy() }))
+        .map_err(|(c, m)| format!("scene_load({c}): {m}"))?;
+    play_enter(st).map_err(|(c, m)| format!("play_enter({c}): {m}"))?;
+    st.game_mode = true;
+    push_event(st, "game.boot", json!({ "scene": scene_rel }));
+    Ok(())
+}
+
 /// 方法分派(持锁内)。
 fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
+    if st.game_mode && !GAME_ALLOWED.contains(&method) {
+        return Err((-32601, format!("game 模式禁编辑面: {method}")));
+    }
     match method {
         "host.ping" => Ok(json!({
             "pong": true,
@@ -1951,5 +1986,31 @@ mod tests {
         let st = host();
         let (code, _) = call_err(&st, "logic.inject_input", json!({ "action": "jump", "value": 1.0 }));
         assert_eq!(code, -32000, "edit 态注入须拒");
+    }
+
+    /// F6 wave.4:game 模式 RPC 裁剪——编辑面一律 -32601,只读+input 子集放行。
+    #[test]
+    fn game_mode_rejects_edit_surface() {
+        let st = host();
+        lock(&st).game_mode = true;
+        for m in [
+            "entity.create",
+            "component.add",
+            "transform.set",
+            "scene.new",
+            "scene.load",
+            "edit.undo",
+            "play.enter",
+            "play.exit",
+            "viewport.shareOpen",
+        ] {
+            let (code, msg) = call_err(&st, m, json!({}));
+            assert_eq!(code, -32601, "{m} 须拒");
+            assert!(msg.contains("game 模式禁编辑面"), "{m}: {msg}");
+        }
+        // 只读 + input 子集放行。
+        for m in ["host.ping", "play.state", "scene.summary", "entity.list", "component.listTypes"] {
+            call(&st, m, json!({}));
+        }
     }
 }

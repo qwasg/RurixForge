@@ -3,7 +3,7 @@ contract: F6
 title: F6 试玩回归与打包(13_ROADMAP 最终里程碑)
 status: active
 implementation_status: unlocked
-active_scope: wave.4
+active_scope: wave.5
 version: 0.1
 date: 2026-08-18
 rfc_required: []
@@ -116,3 +116,9 @@ guardrails:
 - 交付:client consoleUtils.ts(consoleLevel/filterEvents/typeCounts/ringPush 纯函数);editorStore metricsHistory 三序列采样环(refreshSummary 追加 cap 60)+ runPlaytest(apiPost /api/forge/playtest/run → 报告行注入 events,role=playtest);EditorView ConsoleBody(类型过滤 chips 带计数/清空本地视图态/级别着色 error 红 + playtest 蓝)+ MetricsBody(1s 轮询 + 当前值 + 60 采样迷你条形 + 近 8 值文本表);host forgeProxy + '/api/forge/playtest' 前缀;desktop main.cjs console-metrics 冒烟场景;scripts/f6-w3-console-metrics-smoke.ps1。
 - 测试数字:client vitest **82/82**(新增 consoleMetrics.test.ts×7——级别/过滤/清空下标/计数/环 cap×2/报告注入红绿);host vitest 19/19;`pnpm -r typecheck` 全绿。
 - 冒烟(evidence/f6-w3-console-metrics-smoke-*.log + desktop-smoke-console-metrics-*.png 106KB):metrics tab **frames 采样 PIE 运行中实测变化**(recent: 1 10 13 16 19 22,play_enter 驱动);Console playtest.report 注入行=1;类型过滤 chip 点击后 playtest.case 行=0;清空后报告行=0。踩坑:metrics 腿 play_enter 后单例 host 滞留 play_running,矩阵 scene_load 被拒 → 场景内补 play_exit(留痕)。**G-F6-3 PASS**。
+
+### wave.4 验收记录(2026-08-18,project-pack + engine-host --game)→ G-F6-4 PASS
+- 交付:crates/forge-agentd/src/pack.rs(collect_closure BFS:scene → graphRef 等 Content/ 引用 → .rxgraph → call_function module 链;**先读后收**——不可读引用 warning 如实且不入闭包;仅 .rxscene/.rxgraph/.json 递归扫,.rx 等文本为叶子;.meta 存在才收;collect_rxdll 收集 {stem}-*.dll 缺则 warning;build_pack 校验 PACK_SCENE_NOT_FOUND/PACK_ENGINE_MISSING/PACK_OUTDIR_CONFLICT/PACK_SCENE_OUTSIDE_CONTENT);POST /api/forge/project/pack(项目根 = 场景向上首个含 Content/ 祖先;engine_bin = target\debug\engine-host.exe 如实 debugEngine=true);engine-host --game(main.rs parse_game[--game/--game=/FORGE_GAME_SCENE 兜底] + 绑定后 game_boot = scene_load→play_enter→game_mode=true→FORGE_HOST_GAME_BOOTED;rpc.rs GAME_ALLOWED 14 方法只读+input 子集,编辑面一律 -32601「game 模式禁编辑面」;game_mode_rejects_edit_surface 单测 9 拒 5 放);scripts/f6-w4-pack-smoke.ps1。
+- 踩坑留痕:①main() 内 --game 调用块两次 IDE 脏缓冲未落盘(parse_game 函数在但从未被调,干净目录只 LISTENING 不 GAME_BOOTED)→ 终端 WriteAllText 修复 + Select-String 核验;②collect_closure 初版 insert 先于 read(缺失引用误入闭包)+ .rx 非 JSON 误警告 → 修为先读后收 + jsonish 叶子判定(pack 单测×3:bfs 链/缺失警告/布局排除);③PS foreach 语句缺括号解析错;④PS 5.1 2>&1+Stop stderr 误抛 → 构建段切 Continue 按 exit code 判定(复用既有坑对策)。
+- 测试数字:cargo test engine-host **24/24** + forge-agentd **56/56**(pack::tests×3 新增)。
+- 冒烟(evidence/f6-w4-pack-smoke-*.log 实测):pack 报告**闭包 11 项无缺**(maze 场景+4 图+全量 .meta+maze.rx);闭包外 8 抽样(Main/call_probe/door_opener/f4w3_probe/callprobe.rx/wood_albedo/w4_mat/f5w2_chair)未入包;产物含 bin/engine-host.exe + pack-run.ps1 + .forge/cache/rxdll/maze-6838b13c60161d39.dll;**totalBytes=12,837,054** warnings=0。**拷贝至干净目录($env:TEMP,脱离 workspace)经 pack-run.ps1 启动**:LISTENING port=17890 + GAME_BOOTED;scene.summary **36 实体 + play_running**;viewport.frame 960×540 **nonZeroPixels=72,517** draws=36(RTX 4070 Ti)出帧实证;entity.create **-32601 拒**(编辑面裁剪)。**G-F6-4 PASS**。

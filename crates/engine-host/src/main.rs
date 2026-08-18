@@ -20,6 +20,7 @@ use rpc::{HostState, DT_FIXED};
 
 fn main() {
     let port = parse_port();
+    let game_scene = parse_game();
     let state = Arc::new(Mutex::new(HostState::new()));
     {
         let st = rpc::lock(&state);
@@ -41,6 +42,18 @@ fn main() {
     // 就绪行必须 stdout + flush(MCP autoStart 据此探测)。
     println!("FORGE_HOST_LISTENING port={actual_port}");
     let _ = std::io::stdout().flush();
+
+    // F6 wave.4:--game <场景(项目根相对)> → 绑定后即 scene_load + play_enter;
+    // 失败如实退出(出不了帧就是失败,不静默退化)。
+    if let Some(scene) = &game_scene {
+        let mut st = rpc::lock(&state);
+        if let Err(e) = rpc::game_boot(&mut st, scene) {
+            eprintln!("engine-host: --game 启动失败: {e}");
+            process::exit(1);
+        }
+        println!("FORGE_HOST_GAME_BOOTED scene={scene}");
+        let _ = std::io::stdout().flush();
+    }
 
     for conn in listener.incoming() {
         match conn {
@@ -81,6 +94,24 @@ fn parse_port() -> u16 {
         eprintln!("engine-host: 忽略非法 FORGE_HOST_PORT:{v}");
     }
     17810
+}
+
+/// --game 场景解析(F6 wave.4):`--game <项目根相对路径>` / `--game=<路径>`;env FORGE_GAME_SCENE 兜底。
+fn parse_game() -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--game" {
+            if let Some(v) = args.next() {
+                return Some(v);
+            }
+            eprintln!("engine-host: --game 缺参数");
+            process::exit(2);
+        }
+        if let Some(v) = a.strip_prefix("--game=") {
+            return Some(v.to_string());
+        }
+    }
+    std::env::var("FORGE_GAME_SCENE").ok().filter(|v| !v.is_empty())
 }
 
 /// 物理后台线程:真实时间 accumulator 驱动固定步。

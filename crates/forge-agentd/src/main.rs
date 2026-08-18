@@ -5,6 +5,7 @@
 mod llm;
 mod mcp;
 mod playtest;
+mod pack;
 mod proposals;
 mod subagents;
 mod swarm;
@@ -56,6 +57,7 @@ fn build_app() -> Router {
         .route("/api/forge/llm/complete", get(llm_complete))
         .route("/api/forge/llm/chat", post(llm::chat))
         .route("/api/forge/playtest/run", post(playtest_run))
+        .route("/api/forge/project/pack", post(project_pack))
         .route(
             "/api/forge/proposals",
             get(proposals_list).post(proposals_create),
@@ -483,6 +485,52 @@ async fn playtest_run(Json(req): Json<PlaytestRunRequest>) -> Response {
             Json(json!({ "error": { "code": "PLAYTEST_TOOL_ERROR", "message": e } })),
         )
             .into_response(),
+    }
+}
+
+// ---------- F6 wave.4:project-pack 最小打包(D-F6-D) ----------
+
+/// POST /api/forge/project/pack:引用闭包 → Content 源 + 缓存 + 引擎二进制 + 启动脚本。
+async fn project_pack(Json(req): Json<pack::PackRequest>) -> Response {
+    let scene_abs = playtest::resolve_workspace_path(&req.scene_ref);
+    // 项目根推导:自场景向上首个含 Content/ 子目录的祖先。
+    let Some(project_root) = scene_abs
+        .ancestors()
+        .find(|a| a.join("Content").is_dir())
+        .map(|p| p.to_path_buf())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": { "code": "PACK_PROJECT_ROOT_UNRESOLVED", "message": format!("场景路径无法推导项目根: {}", scene_abs.display()) } })),
+        )
+            .into_response();
+    };
+    let out_dir = playtest::resolve_workspace_path(&req.out_dir);
+    let engine_bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace 根")
+        .join("target")
+        .join("debug")
+        .join("engine-host.exe");
+    match pack::build_pack(&scene_abs, &project_root, &out_dir, &engine_bin, 17890) {
+        Ok(report) => Json(report).into_response(),
+        Err(msg) => {
+            let (code, status) = if msg.starts_with("PACK_SCENE_NOT_FOUND") {
+                ("PACK_SCENE_NOT_FOUND", StatusCode::NOT_FOUND)
+            } else if msg.starts_with("PACK_OUTDIR_CONFLICT") {
+                ("PACK_OUTDIR_CONFLICT", StatusCode::CONFLICT)
+            } else if msg.starts_with("PACK_ENGINE_MISSING") {
+                ("PACK_ENGINE_MISSING", StatusCode::INTERNAL_SERVER_ERROR)
+            } else {
+                ("PACK_ERROR", StatusCode::INTERNAL_SERVER_ERROR)
+            };
+            (
+                status,
+                Json(json!({ "error": { "code": code, "message": msg } })),
+            )
+                .into_response()
+        }
     }
 }
 
