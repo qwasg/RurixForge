@@ -178,3 +178,9 @@ deferred:
 - 结论:**F5 三门全绿,里程碑 close-out。status: active → closed。**
 - open RD 不阻收官(均有 refill 路径):RD-F5-001(keystore 权限加固 DPAPI/0600 + OS keychain)/ RD-F5-002(local-diffusers 本地推理适配器 + img2img/styleRef 消费);承前 deferred:RD-F4-004(call_function 互绑——下一 code-forge 波第一优先)/ RD-F1-002(真 LLM 工具循环)。
 - 下一里程碑可选:**F6 试玩回归与打包**(13_ROADMAP F6)或 RD-F4-004 回填波或消化 open RD。
+
+### deferred 终态同步(2026-08-18,RD 消化波;只追加)
+
+- **RD-F5-001 → CLOSED(Windows 腿)**:gend keystore DPAPI 加固落地(RD-DIGEST 波 wave.2)——落盘形态 {"v":1,"dpapi":"<base64(CryptProtectData 密文)>"}(每用户熵);旧明文读回兼容 + 透明迁移;实测 data/keystore.json(deepseek key)自动迁移后 RD-F1-002 live 冒烟复跑 PASS;cargo test -p gend 25/25(密文文件无明文子串断言)。**macOS Keychain / Linux secret-service 子项维持 OPEN**(编译期明文 fallback,平台适配待安全加固波)。
+- **RD-F5-002 → OPEN(重锚)**:2026-08-18 实测 H:\rurix 与本仓无 diffusers/stable-diffusion/sd.cpp 任何接入痕迹——从零接入本地推理为大型工作量项(模型分发/推理运行时/显存预算/候选管理全套),维持 OPEN,生成扩展波专项立项。
+- 承前同步:RD-F4-004 已 CLOSED(回填波 ca2061f);RD-F1-002 已 CLOSED(本波 wave.1 DeepSeek live 闭环)。

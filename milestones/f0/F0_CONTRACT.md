@@ -196,3 +196,10 @@ deferred:
 **status flip**:active → closed。独立 commit + f0-closed tag 随本次终审落地(git 首提交,本仓此前无版本控制——留痕:git 于本终审引入)。
 
 **签署**:Assisted-by: TRAE:Kimi-K3 | 验证方式:soak 脚本实测输出 + evidence 文件。
+
+### deferred 终态同步(2026-08-18,RD 消化波;只追加)
+
+- **RD-F0-001 → CLOSED**:apps/ide 残余目录复核——LS apps/ 仅 desktop/(磁盘已不存在,前会话 Trae 重启解锁后补删成功);git status/ls-files 无残余。
+- **RD-F0-002 → CLOSED**:终审裁决 D-016(path 依赖为 F0–F6 开发期常态;D-003 tag 锚定推迟至打包期)。实测上游 29 tag = 25 里程碑闭合 + 4 版本 tag,HEAD 8c5dc5ee(2026-08-18)。
+- **RD-F0-003 → CLOSED**:终审裁决 D-017(superseded)——agentd 五 ServerKind/75 工具/REST 面需求驱动自成,七 crate 全量移植作废;剩余 04 功能面项(plan/todo DAG 等)转路线图里程碑按需立项。
+- 至此 F0 deferred 三项全部终态,无 open 残留。

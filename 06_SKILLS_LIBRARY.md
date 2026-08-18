@@ -55,3 +55,7 @@ description: 白盒搭建关卡空间。当任务涉及「搭关卡 / 摆白盒 
 - **dryRun 优先**:批量操作必须先 `dryRun: true` 拿 preview,数量超阈值(默认 >50 实体或 >20 资产)必须升 Proposal(`12 §3`)。
 - **可验证收尾**:每个修改型 skill 的最后一步 = 验证(截图对比 / `rx_check` 无新诊断 / playtest 断言),验证失败 = 报告而非掩盖。
 - **不越域**:skill 声明的工具域之外的操作,必须返回用户/agent 主循环处理,skill 内不得「顺手做」。
+
+## Errata(只追加区)
+
+- **E-06-001(2026-08-18,RD-F3-001)**:§3 标题「首发 12 个」为笔误——§3 表实列 13 行(skill-creator / scene-greybox / scene-dressing / prefab-workflow / material-tuning / asset-import-batch / asset-cleanup / gen-asset-fill / logic-blueprint-gen / code-rx-migration / playtest-regression / debug-scene-issue / perf-budget-check),与仓内 `skills/` 目录 13 个 SKILL.md 实测一致。正确表述应为「首发 13 个」。标题原文不改(冻结纪律),以本条为准。

@@ -237,4 +237,11 @@ deferred:
   - G-F4-4 前端/LSP 门:PASS(wave.4 §6)——NodeGraph 真实渲染 + 常量编辑 + 保存校验红框;code_* 三工具栈级(LSP 常驻会话);KNOWN_TOOLS 64→67
 - 结论:**F4 四门全绿,里程碑 close-out。status: active → closed。**
 - open RD 不阻收官(均有 refill 路径):RD-F4-001(rx_doc/fix|watch)/ RD-F4-002(跨文件 references)/ RD-F4-003(trigger sensor 物理腿)/ RD-F4-004(call_function 互绑——**下一 code-forge 波第一优先**)。
-- 下一里程碑可选:**F5 生成接入**(gen-image/gen-model 适配层 + Assets 右键生成 + generation 设置页 + gen-asset-fill skill)或 RD-F4-004 回填波(call_function 互绑)或先消化 open RD。
+- 下一里程碑可选:**F5 生成接入**(gen-image/gen-model 适配层 + Assets 右键生成 + generation 设置页 + gen-asset-fill skill)或 RD-F4-004 回填波或先消化 open RD。
+
+### deferred 终态同步(2026-08-18,RD 消化波;只追加)
+
+- **RD-F4-004 → CLOSED**(2026-08-18 回填波,commit ca2061f;RD-F4-004_CONTRACT 闭环):call_function 互绑落地(导出表文本扫描 + graph_validate 第九校验臂 + dll 运行时编组),本表登记于此,源契约为准。
+- **RD-F4-001 → OPEN(重锚)**:2026-08-18 实测上游 rx 子命令 = build/check/run/fmt/bench/vendor/test/**doc**(doc 已自 M8.6 落地,doc::run;H:\rurix\src\rx\src\main.rs L53)——原「rx_doc 未落地」语义过时:上游 doc 站生成器存在,本仓 rx_doc MCP 工具仍按需立项;**fix|watch 仍 seam**(main.rs L55–58 usage_error「尚未实现(后续小里程碑承接)」)。
+- **RD-F4-002 → OPEN(重锚)**:2026-08-18 实测 rurixc --tooling-server LSP capabilities = completion/definition/references/documentHighlight/rename,textDocumentSync=1 全文档同步;references_at 以 session 单文档 file_id 求值(lsp.rs L120/L146/L435)——单文档会话语义不变,跨文件 references 仍待上游多文档图。
+- **RD-F4-003 → OPEN(重锚)**:2026-08-18 实测 rurix-physics 全 crate grep sensor|trigger 仅命中注释(not-triggered 登记),BodyDesc 无 is_sensor——逻辑层 AABB 沿检测维持(D-F4-G),物理腿待上游 sensor。

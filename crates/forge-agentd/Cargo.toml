@@ -12,6 +12,8 @@ serde_json.workspace = true
 gend = { path = "../gend" }
 # io-util:stdin/stdout 异步读写(MCP stdio 客户端与测试所需)
 tokio = { workspace = true, features = ["io-util"] }
+# RD-F1-002:DeepSeek 官方 API HTTPS 调用(rustls 纯 Rust TLS,与 gend 同 feature 面;body 自序列化)。
+ureq = { version = "2", default-features = false, features = ["tls"] }
 
 [dev-dependencies]
 # util:ServiceExt::oneshot 路由级测试

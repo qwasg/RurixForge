@@ -15,3 +15,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 base64 = "0.22"
 # 真实 HTTP 适配面(rustls 纯 Rust TLS;json 特性不用——body 由 serde_json 自序列化,send_string 发送)。
 ureq = { version = "2", default-features = false, features = ["tls"] }
+
+# RD-F5-001:keystore DPAPI 加固(Windows 腿;CryptProtectData 每用户熵)。
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Security_Cryptography"] }

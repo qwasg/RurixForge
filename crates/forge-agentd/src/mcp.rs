@@ -122,6 +122,15 @@ enum ServerKind {
 }
 
 impl ServerKind {
+    /// 五工全量(tools/list 遍历用)
+    const ALL: [ServerKind; 5] = [
+        ServerKind::EngineScene,
+        ServerKind::AssetPipeline,
+        ServerKind::CodeForge,
+        ServerKind::GenImage,
+        ServerKind::GenModel,
+    ];
+
     fn from_tool(tool: &str) -> Option<Self> {
         if tool.starts_with(SCENE_PREFIX) {
             Some(ServerKind::EngineScene)
@@ -417,3 +426,50 @@ async fn call_with_retry(kind: ServerKind, name: &str, arguments: Option<Value>)
     }
     Err(last_err.unwrap_or_else(|| McpError("MCP 调用失败".into())))
 }
+
+/// RD-F1-002:五 server tools/list 实测拉取(懒加载 + 进程内缓存)。
+/// 返回 [{ name(带前缀), description, inputSchema }],供 LLM provider 转 OpenAI tools 格式。
+/// 分页:各 server 工具量远小于单页,若响应带 nextCursor 如实报错(不静默截断)。
+pub async fn list_all_tools() -> Result<Vec<Value>, McpError> {
+    let cache = TOOLS_CACHE.get_or_init(|| Mutex::new(None));
+    {
+        let guard = cache.lock().await;
+        if let Some(tools) = guard.as_ref() {
+            return Ok(tools.clone());
+        }
+    }
+    let mut out: Vec<Value> = Vec::new();
+    for kind in ServerKind::ALL {
+        let mut guard = client_slot(kind).lock().await;
+        ensure_connected(kind, &mut guard).await?;
+        let client = guard.as_mut().expect("ensure_connected 后必有连接");
+        let result = client.request("tools/list", json!({})).await?;
+        if result.get("nextCursor").and_then(Value::as_str).is_some() {
+            return Err(McpError(format!(
+                "{:?} tools/list 分页未支持(nextCursor 存在)",
+                kind
+            )));
+        }
+        let tools = result
+            .get("tools")
+            .and_then(Value::as_array)
+            .ok_or_else(|| McpError(format!("{:?} tools/list 响应缺 tools 数组", kind)))?;
+        for t in tools {
+            let name = t
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| McpError(format!("{:?} tools/list 条目缺 name", kind)))?;
+            out.push(json!({
+                "name": format!("{}{}", kind.prefix(), name),
+                "description": t.get("description").cloned().unwrap_or(Value::Null),
+                "inputSchema": t.get("inputSchema").cloned().unwrap_or_else(|| json!({ "type": "object" })),
+            }));
+        }
+    }
+    let mut guard = cache.lock().await;
+    *guard = Some(out.clone());
+    Ok(out)
+}
+
+/// tools/list 进程内缓存(server schema 运行期不变;spawn 失败重连不影响 schema 正确性)
+static TOOLS_CACHE: OnceLock<Mutex<Option<Vec<Value>>>> = OnceLock::new();

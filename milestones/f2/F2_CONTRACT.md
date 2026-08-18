@@ -211,3 +211,9 @@ deferred:
 ### close-out 终审(2026-08-17)
 
 F2 五波全绿:G-F2-1(导入与缓存)/ G-F2-2(引用防护)/ G-F2-3(Assets 面板)/ G-F2-4(材质与贴图)/ G-F2-5(asset-cleanup)全 PASS,证据如上各波记录。open deferred:RD-F2-001(fbx/obj 导入器,上游补面后回填)/ RD-F2-003(材质 closure id,F3 渲染波)/ RD-F2-004(materials 数组,F3+)——均有明确 refill 路径,不阻收官。**status flip**:active → closed。
+
+### deferred 终态同步(2026-08-18,RD 消化波;只追加)
+
+- **RD-F2-001 → OPEN(重锚)**:2026-08-18 实测 H:\rurix rurix-asset 网格导入链 = gltf 唯一(cook.rs TOOL_GLTF_IMPORT / gltf::import_path;纹理侧 bcdec.rs BC1/3/4/5/7 + DDS 解码在库,但网格格式无 fbx/obj 导入器)。维持 OPEN,待上游补面。
+- **RD-F2-003 → OPEN(重锚,阻塞解除)**:2026-08-18 实测上游 rurix-render 已补公开 material closure 面(material/mod.rs `pub mod closure` + `pub use closure::{MaterialParams, unpack, ...}`;MaterialTable::closures();graph::types::MaterialClosure 32B 冻结面;side_table closure_32b_layout_digest,G9.5 RFC-0025 §4.L)——原 reason「上游无公开面」不再成立。refill 转可执行:材质构建器增补 closure id 字段进 .rxmat 与缓存键;owner 维持下一材质/渲染波。
+- **RD-F2-004 → CLOSED**:终审裁决 D-019(需求驱动:F2–F5 无多 slot 网格需求出现;materials[] 字面分歧登记即终态;需求出现时按 refill 重新立项)。

@@ -155,6 +155,19 @@ interface SceneSummary {
   render: RenderStats;
 }
 
+/** RD-F1-002:/api/forge/llm/chat 响应面(agentd llm.rs;provider=deepseek|mock) */
+export interface LlmToolCall {
+  name: string;
+  ok: boolean;
+  summary: string;
+}
+export interface LlmChatResponse {
+  provider: string;
+  text: string;
+  toolCalls: LlmToolCall[];
+  iters: number;
+}
+
 interface EditorState {
   entities: EntityData[];
   selectedId: number | null;
@@ -443,17 +456,31 @@ export const useEditorStore = create<EditorState>((set, get) => {
             await reload();
             return;
           }
-          // F1 seam:无 LLM,以 scene_summary 实测全链路回显
-          const r = await callTool<SceneSummary>('scene_summary');
+          // RD-F1-002:真 LLM 工具循环(agentd provider=deepseek|mock;F1 scene_summary 回显 seam 退役)。
+          const r = await apiPost<LlmChatResponse>('/api/forge/llm/chat', { text, mode });
+          const calls = r.toolCalls ?? [];
+          const lines: string[] = [];
+          if (r.provider === 'mock') {
+            lines.push(`[mock] ${r.text}`);
+          } else {
+            lines.push(r.text);
+            if (calls.length > 0) {
+              lines.push(
+                '',
+                `工具调用 ${calls.length} 次(成功 ${calls.filter((c) => c.ok).length}):`,
+                ...calls.map((c) => `${c.ok ? '✓' : '✗'} ${c.name} — ${c.summary}`),
+              );
+            }
+          }
           set((s) => ({
-            stats: r.render,
-            sceneName: r.name,
-            playState: r.playState,
-            chatMessages: [
-              ...s.chatMessages,
-              { role: 'assistant', text: JSON.stringify(r, null, 2) },
-            ],
+            chatMessages: [...s.chatMessages, { role: 'assistant', text: lines.join('\n') }],
           }));
+          // 工具实际改了场景:刷新实体与帧统计(与 reload/refreshSummary 同链)。
+          if (calls.some((c) => c.ok)) {
+            await reload();
+            const sum = await callTool<SceneSummary>('scene_summary');
+            set({ stats: sum.render, sceneName: sum.name, playState: sum.playState });
+          }
         } catch (err) {
           set((s) => ({
             chatMessages: [...s.chatMessages, { role: 'error', text: (err as Error).message }],

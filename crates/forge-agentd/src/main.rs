@@ -2,6 +2,7 @@
 //! 路由:/health、sessions stub、MCP 工具面声明与 stdio 透传调用、mock LLM provider(恒绿 seam)
 //! F2 wave.5:Proposal 确认单(12 §3)+ destructive 强制门(asset_delete force)+ skills 发现。
 
+mod llm;
 mod mcp;
 mod proposals;
 mod subagents;
@@ -52,6 +53,7 @@ fn build_app() -> Router {
         .route("/api/forge/mcp/tools", get(mcp_tools))
         .route("/api/forge/mcp/call", post(mcp_call))
         .route("/api/forge/llm/complete", get(llm_complete))
+        .route("/api/forge/llm/chat", post(llm::chat))
         .route(
             "/api/forge/proposals",
             get(proposals_list).post(proposals_create),
@@ -840,6 +842,39 @@ mod tests {
         assert_eq!(v["text"], "mock completion");
     }
 
+    // ---------- RD-F1-002:/api/forge/llm/chat ----------
+
+    #[tokio::test]
+    async fn llm_chat_mock_provider_when_no_key() {
+        // 无密钥环境(env 清空 + keystore 指空目录)→ provider=mock 恒绿,不触网不触 MCP。
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let dir = std::env::temp_dir().join(format!("agentd-chat-test-{}", std::process::id()));
+        std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
+        let resp = build_app()
+            .oneshot(post_json("/api/forge/llm/chat", r#"{"text":"你好","mode":"build"}"#))
+            .await
+            .unwrap();
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let v = json_body(resp).await;
+        assert_eq!(v["provider"], "mock");
+        assert!(v["text"].as_str().expect("text 应为字符串").contains("mock"));
+        assert_eq!(v["toolCalls"], json!([]));
+        assert_eq!(v["iters"], 0);
+    }
+
+    #[tokio::test]
+    async fn llm_chat_empty_text_400() {
+        let resp = build_app()
+            .oneshot(post_json("/api/forge/llm/chat", r#"{"text":"  "}"#))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(resp).await["error"]["code"], "EMPTY_TEXT");
+    }
+
     #[tokio::test]
     async fn unknown_route_404() {
         let resp = build_app()
@@ -1404,9 +1439,21 @@ mod tests {
         assert_eq!(v2["configured"], true);
         assert!(!v2.to_string().contains(secret), "响应回显密钥(R-5): {v2}");
 
-        // keystore.json 含 key;gen-backends.json 不含 key。
-        let ks_text = std::fs::read_to_string(data.join("keystore.json")).unwrap();
-        assert!(ks_text.contains(secret), "keystore.json 应含密钥");
+        // keystore.json 可取回 key;gen-backends.json 不含 key。
+        // RD-F5-001:Windows 为 DPAPI 加密形态(文件无明文,经 Keystore 解密读回);非 Windows 明文 fallback。
+        let ks_path = data.join("keystore.json");
+        let ks_text = std::fs::read_to_string(&ks_path).unwrap();
+        #[cfg(windows)]
+        {
+            assert!(ks_text.contains("\"dpapi\""), "Windows 应为 DPAPI 加密形态: {ks_text}");
+            assert!(!ks_text.contains(secret), "DPAPI 密文文件含明文密钥(RD-F5-001): {ks_text}");
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(ks_text.contains(secret), "keystore.json 应含密钥(非 Windows 明文 fallback)");
+        }
+        let ks = gend::keystore::Keystore::load_from(&ks_path);
+        assert_eq!(ks.key_for("remote-openai-compatible").as_deref(), Some(secret));
         let cfg_text2 = std::fs::read_to_string(data.join("gen-backends.json")).unwrap();
         assert!(!cfg_text2.contains(secret), "gen-backends.json 泄漏密钥(R-5): {cfg_text2}");
         let cfg2: Value = serde_json::from_str(&cfg_text2).unwrap();

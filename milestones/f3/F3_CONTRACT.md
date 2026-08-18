@@ -197,3 +197,7 @@ deferred:
 - 结论:**F3 四门全绿,里程碑 close-out。status: active → closed。**
 - open RD 不阻收官(均有 refill 路径):RD-F3-001(06 §3 标题 12 vs 表 13 行笔误,待 errata 窗口)。
 - 下一里程碑可选:**F4 code-forge**(rx 脚本编译/热重载/蓝图,承接 logic-blueprint-gen/code-rx-migration 两篇 seam skill)或先消化 open RD(RD-F1-002 真 LLM 工具循环为 agent 集群真核)。
+
+### deferred 终态同步(2026-08-18,RD 消化波;只追加)
+
+- **RD-F3-001 → CLOSED**:errata 流程执行完毕——06_SKILLS_LIBRARY.md Errata(只追加区)E-06-001 追加:§3 标题「首发 12 个」为笔误,表实列 13 行与仓内 skills/ 目录 13 个 SKILL.md 实测一致,正确表述「首发 13 个」。

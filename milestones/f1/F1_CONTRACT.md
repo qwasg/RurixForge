@@ -223,3 +223,9 @@ deferred:
 **5. not-triggered / deferred**:上游 scripts/_f1w4_upstream_patch8.ps1(external semaphore 基础面)按 no-go 裁决未集成,仅留档可重建;client 侧 H.264 播放接线(WebCodecs 消费进 ViewportCanvas,纯 web 无共享内存场景)非本波验收范围,F2+ 按需立项。
 
 **6. 签署**:Assisted-by: TRAE:Kimi-K3 | 影响范围:crates/engine-host(rpc.rs H264State+rgba_to_i420+encode_frame+viewport_frame format 分支、Cargo.toml openh264 0.6)、crates/mcp/engine-scene-mcp(mcp.rs viewport_frame format 参)、crates/engine-host/tests/f1_h264.rs(新增)、apps/desktop/scripts/h264-decode-main.cjs(新增,WebCodecs 解码证据腿)、scripts/f1-w4-h264-smoke.ps1(新增) | 验证方式:上述命令真实输出 + 冒烟日志 + SPS 独立解析 + WebCodecs 解码 JSON 证据。
+
+### deferred 终态同步(2026-08-18,RD 消化波;只追加)
+
+- **RD-F1-002 → CLOSED**:真 LLM 工具循环以 DeepSeek 官方 API 真实闭环(RD-DIGEST 波 wave.1)——agentd llm.rs(provider 抽象 mock|deepseek;POST /api/forge/llm/chat;tools/list 五 server → OpenAI tools → 工具循环 max_iters=16 → role:tool 回注);client sendChat 非 multitask 四模式换 seam(F1 期 scene_summary 回显 seam 退役);live 冒烟 provider=deepseek、iters=4、toolCalls=10、实体 0→3 实增,R-5 密钥红线扫描 PASS(证据:scripts/rd-f1-002-llm-loop-smoke.ps1 + evidence/rd-f1-002-*.log)。原 refill 预期「RD-F0-003 七 crate 移植带回真 providers」被 D-017 取代——本仓原生 llm.rs 直接落地,未依赖移植。
+- **RD-F1-004 → CLOSED**:终审裁决 D-018(external semaphore no-go 终局;重开条件 = 帧流向反转场景登记)。
+- 至此 F1 deferred 全部终态(RD-F1-003 此前已 CLOSED)。
