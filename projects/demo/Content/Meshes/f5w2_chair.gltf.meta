@@ -8,7 +8,7 @@ provenance:
   origin: gen-model
   detail:
     backendId: user-provided
-    generatedAt: 2026-08-18T02:16:02Z
+    generatedAt: 2026-08-19T08:50:53Z
     note: 用户自备产物(.forge/tmp/gen/ 预放),非真实生成后端
     sourceRefs:
     - .forge/tmp/gen/f5w2-gen-chair.gltf

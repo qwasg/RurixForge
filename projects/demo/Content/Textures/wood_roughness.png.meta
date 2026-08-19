@@ -5,7 +5,7 @@ provenance:
   origin: gen-image
   detail:
     backendId: local-mock
-    generatedAt: 2026-08-18T02:16:01Z
+    generatedAt: 2026-08-19T08:50:53Z
     map: roughness
     prompt: wood 木纹
     seed: 2304293062055812692

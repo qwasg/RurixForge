@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "codec": "avc1.42c015",
+  "nalCount": 3,
+  "nalTypes": [
+    7,
+    8,
+    5
+  ],
+  "decoded": 1,
+  "frames": [
+    {
+      "w": 320,
+      "h": 240,
+      "codedW": 320,
+      "codedH": 258
+    }
+  ],
+  "expectW": 320,
+  "expectH": 240,
+  "sizeMatch": true
+}

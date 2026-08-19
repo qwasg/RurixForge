@@ -556,6 +556,17 @@ async function runSmokeScenario() {
     const evalJs = (code) => mainWindow.webContents.executeJavaScript(code);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await sleep(2500);
+    // 状态复位(F8 wave.5 回归修复):共享 electron profile 的 localStorage forge:bottomPanel 跨运行持久化,
+    //   前次终态 bottomOpen=true 会让本次 toggleBottom() 翻成「关」致底部面板断言失败。
+    //   先写 open:false 归零再 reload,使 loadBottom() 读到关闭态 → toggleBottom() 恒为「关→开」,任意前态确定性通过。
+    await evalJs("try { localStorage.setItem('forge:bottomPanel', JSON.stringify({ open: false, tab: 'logs' })); true } catch (e) { false }");
+    mainWindow.webContents.reload();
+    // reload 后等 __forgeShell 就绪(React 首挂 + App.tsx 挂 window.__forgeShell;轮询防时序抖动)。
+    for (let i = 0; i < 40; i++) {
+      const ready = await evalJs("!!(window.__forgeShell && typeof window.__forgeShell.createSession === 'function')").catch(() => false);
+      if (ready) break;
+      await sleep(250);
+    }
     await evalJs("window.__forgeShell.setThemeMode('light')");
     // 建会话(触发 selectSession 快照回放 + SSE 订阅)
     const sid = await evalJs(

@@ -21,11 +21,27 @@ const CORS_ORIGIN = 'http://localhost:5173';
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  // F8 wave.3 浏览器直开兼容:字体/图片/媒体/wasm/sourcemap 补齐
+  // (vite 构建产物含 woff2 字体等,缺省 application/octet-stream 会被浏览器拒用)
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.webp': 'image/webp',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.wasm': 'application/wasm',
+  '.map': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -54,12 +70,15 @@ export const httpPlugin: PluginFn = (ctx) => {
   const startedAt = Date.now();
   let currentPort = config.port;
 
-  // 静态目录候选:规格路径 <repo>/client/dist,回退 monorepo 内 packages/client/dist
+  // 静态目录:config.staticDir 注入优先(F8 wave.3 测试 seam);
+  // 缺省候选——规格路径 <repo>/client/dist,回退 monorepo 内 packages/client/dist
   const hostRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const staticDir = [
-    path.resolve(hostRoot, '..', '..', 'client', 'dist'),
-    path.resolve(hostRoot, '..', 'client', 'dist'),
-  ].find((p) => fs.existsSync(p));
+  const staticDir =
+    config.staticDir ??
+    [
+      path.resolve(hostRoot, '..', '..', 'client', 'dist'),
+      path.resolve(hostRoot, '..', 'client', 'dist'),
+    ].find((p) => fs.existsSync(p));
 
   function setCors(res: http.ServerResponse): void {
     res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
@@ -92,7 +111,17 @@ export const httpPlugin: PluginFn = (ctx) => {
       sendError(res, 404, 'NOT_FOUND', `route not found: ${pathname}`);
       return;
     }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream' });
+    const headers: Record<string, string> = {
+      'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream',
+    };
+    // F8 wave.3 浏览器直开缓存默认:index.html(含 SPA 回退)no-cache 防陈旧壳;
+    // vite 指纹资产(assets/ 目录,文件名含内容 hash)长缓存 immutable。
+    if (path.basename(file) === 'index.html') {
+      headers['Cache-Control'] = 'no-cache';
+    } else if (path.relative(staticDir, file).split(path.sep)[0] === 'assets') {
+      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+    }
+    res.writeHead(200, headers);
     fs.createReadStream(file).pipe(res);
   }
 

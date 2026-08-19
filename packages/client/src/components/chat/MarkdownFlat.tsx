@@ -7,8 +7,8 @@ import { parseMarkdownBlocks, stripInline, visibleBlocks, type MdBlock } from '@
  * 列表 • 前缀;表格等宽 12px flex 行;围栏代码 bg_sunk 圆角 6 mono;
  * 行内剥除 ** 与反引号。流式 text_2 / 非流式 text。
  *
- * 差异留痕:参考非流式代码块接自研 syntax 高亮;本波不接高亮库(契约允许 shiki,
- * wave.5 再评),纯样式渲染。
+ * 差异留痕:参考非流式代码块接自研 syntax 高亮;本仓不接高亮库(纯样式渲染,
+ * 需求驱动再评,不伪造)。
  */
 function Block({ block, streaming }: { block: MdBlock; streaming: boolean }) {
   switch (block.kind) {

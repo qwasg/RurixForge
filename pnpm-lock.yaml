@@ -160,6 +160,12 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7(@types/node@24.13.3)(jiti@1.21.7)(jsdom@26.0.0)
 
+  tools/e2e:
+    devDependencies:
+      playwright-core:
+        specifier: ^1.53.0
+        version: 1.62.1
+
 packages:
 
   '@adobe/css-tools@4.5.0':
@@ -1758,6 +1764,11 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
+
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   postcss-import@15.1.0:
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
@@ -3758,6 +3769,8 @@ snapshots:
   pify@2.3.0: {}
 
   pirates@4.0.7: {}
+
+  playwright-core@1.62.1: {}
 
   postcss-import@15.1.0(postcss@8.5.26):
     dependencies:

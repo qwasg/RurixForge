@@ -37,19 +37,39 @@ declare global {
 }
 
 /**
- * 纯 web 环境下的 window.forgeAPI 桩:窗口控制全部 no-op,
- * onMaximizedChanged 返回 no-op 取消订阅函数,platform 标记为 'web'。
+ * 纯 web 环境下的 window.forgeAPI 桩:各面诚实禁用态。
+ * - win.*: no-op + console.info(不抛异常)
+ * - viewport.reportBounds: no-op(让 ViewportCanvas 走回退腿)
+ * - assets.pickImport: rejected promise + console.info
+ * - assets.showInFolder: no-op + console.info
  * (F7 wave.3:自 lib/mock.ts 迁入本文件——mock.ts 假数据体系随旧面下线。)
  */
-const MOCK_FORGE_API: ForgeAPI = {
+export const MOCK_FORGE_API: ForgeAPI = {
   win: {
-    minimize: () => {},
-    toggleMaximize: () => {},
-    close: () => {},
+    minimize: () => { console.info('[bridge] minimize 不可用(仅桌面端)'); },
+    toggleMaximize: () => { console.info('[bridge] toggleMaximize 不可用(仅桌面端)'); },
+    close: () => { console.info('[bridge] close 不可用(仅桌面端)'); },
     onMaximizedChanged: () => () => {},
+  },
+  viewport: {
+    reportBounds: () => {},
+  },
+  assets: {
+    pickImport: () => {
+      console.info('[bridge] pickImport 不可用(仅桌面端)');
+      return Promise.reject(new Error('仅桌面端可用'));
+    },
+    showInFolder: () => {
+      console.info('[bridge] showInFolder 不可用(仅桌面端)');
+    },
   },
   platform: 'web',
 };
+
+/** 判断当前是否在桌面 Electron 环境(有 preload 注入的 forgeAPI)。 */
+export function isDesktopBridge(): boolean {
+  return typeof window !== 'undefined' && !!window.forgeAPI;
+}
 
 /**
  * Electron 环境使用 preload 注入的 window.forgeAPI;

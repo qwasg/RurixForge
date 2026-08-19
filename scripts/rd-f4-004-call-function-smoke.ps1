@@ -192,7 +192,15 @@ try {
   Log "drain3 原文: $($evs3 | ConvertTo-Json -Compress -Depth 8)"
   $errEv = @(@($evs3) | Where-Object { $_.event -eq 'logic.call_error' } | Select-Object -First 1)[0]
   if (-not $errEv) { throw "事件环须含 logic.call_error(args 非数组): $($evs3 | ConvertTo-Json -Compress -Depth 6)" }
-  if ($errEv.reason -notmatch 'args') { throw "call_error reason 须含 args 语义: $($errEv.reason)" }
+  # F6 wave.2 语义演进:interp.rs 标量自动包一元数组,bool true 被打包成 [true] 后报
+  # 「签名不符: add 参数个数:签名 2,实参 1」——仍是诚实的 logic.call_error(不静默不伪造)。
+  # 断言同步为:error 终态 + reason 匹配「参数个数|签名不符|args」任一。
+  # 兼容:中文经 MCP JSON 链(PS5.1 Invoke-WebRequest 缺省 Latin-1 解码)呈 mojibake 形态,
+  #   直中文/拉丁字节形态(ç­¾å=签名/åæ°ä¸ªæ°=参数个数)/英文 args 任一即命中。
+  $mojiSig = [Text.Encoding]::GetEncoding('ISO-8859-1').GetString([Text.Encoding]::UTF8.GetBytes('签名'))
+  $mojiCnt = [Text.Encoding]::GetEncoding('ISO-8859-1').GetString([Text.Encoding]::UTF8.GetBytes('参数个数'))
+  $hit = ($errEv.reason -match 'args') -or ($errEv.reason -match '签名不符|参数个数') -or ($errEv.reason.Contains($mojiSig)) -or ($errEv.reason.Contains($mojiCnt))
+  if (-not $hit) { throw "call_error reason 须含 参数个数/签名不符/args 任一: $($errEv.reason)" }
   Log "logic.call_error PASS(reason=$($errEv.reason);不静默不伪造)"
   McpCall "mcp__engine-scene__play_exit" @{} | Out-Null
   Log "RD-F4-004 call_function 运行时门冒烟 PASS(G-RD4-2)"

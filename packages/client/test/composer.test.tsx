@@ -140,6 +140,13 @@ describe('<Composer /> 模式与技能', () => {
     fireEvent.click(screen.getByTestId('model-item-mock'));
     expect(pickModel).toHaveBeenCalledWith('mock');
   });
+
+  it('F8 wave.1:联网开关=诚实禁用态(disabled + tooltip,不可开关)', () => {
+    render(<Composer />);
+    const ws = screen.getByTestId('composer-websearch');
+    expect(ws).toBeDisabled();
+    expect(ws).toHaveAttribute('title', '联网搜索后端未接入');
+  });
 });
 
 describe('<Composer /> TodoStrip', () => {

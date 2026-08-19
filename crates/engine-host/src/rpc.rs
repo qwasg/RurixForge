@@ -1442,6 +1442,16 @@ fn resolve_scene_path(s: &str) -> PathBuf {
             .expect("workspace 根")
             .join(p);
     }
+    // F8 wave.5 回归修复(f6-w1):workspace 相对路径(tests/...等,playtest 矩阵契约
+    // 「workspace 相对或绝对」)在 workspace 根下存在时按 workspace 根解析;否则按项目根。
+    let ws = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace 根")
+        .join(&p);
+    if ws.exists() {
+        return ws;
+    }
     project_root().join(p)
 }
 

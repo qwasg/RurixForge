@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Minus, Search, Square, SquareSquare, X } from 'lucide-react';
-import { bridge } from '@/lib/bridge';
+import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { cn } from '@/lib/cn';
 import { runCommand } from '@/lib/commands';
 import { Kbd, MenuItem, MenuSep } from './primitives';
@@ -20,6 +20,8 @@ interface MenuRow {
   command?: string;
   action?: () => void;
   sep?: boolean;
+  /** F8 wave.3:仅桌面端呈现的菜单项(纯浏览器环境隐藏,不伪造不可用入口) */
+  desktopOnly?: boolean;
 }
 
 function execCmd(name: string): void {
@@ -36,7 +38,7 @@ const MENUS: Record<MenuKey, { label: string; rows: MenuRow[] }> = {
       { sep: true, label: '' },
       { label: '设置', command: 'settings.open' },
       { sep: true, label: '' },
-      { label: '退出', action: () => bridge().win.close() },
+      { label: '退出', action: () => bridge().win.close(), desktopOnly: true },
     ],
   },
   edit: {
@@ -72,10 +74,21 @@ const MENUS: Record<MenuKey, { label: string; rows: MenuRow[] }> = {
 
 const MENU_KEYS: MenuKey[] = ['file', 'edit', 'view', 'help'];
 
+/** F8 wave.3:过滤桌面专有菜单项,并裁掉过滤后悬空的首尾分隔线(浏览器环境不留孤儿分隔线)。 */
+function visibleRows(rows: MenuRow[], desktop: boolean): MenuRow[] {
+  const filtered = rows.filter((r) => desktop || !r.desktopOnly);
+  let start = 0;
+  let end = filtered.length;
+  while (start < end && filtered[start].sep) start++;
+  while (end > start && filtered[end - 1].sep) end--;
+  return filtered.slice(start, end);
+}
+
 export default function TitleBar() {
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const [maximized, setMaximized] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
+  const desktop = isDesktopBridge();
 
   useEffect(() => {
     const off = bridge().win.onMaximizedChanged(setMaximized);
@@ -136,7 +149,7 @@ export default function TitleBar() {
                   className="absolute left-0 top-full z-50 min-w-[240px] rounded-b-lg rounded-t-none border border-t-0 border-edge-strong p-1 pb-1 shadow-float backdrop-blur"
                   style={{ background: 'var(--menu-glass)' }}
                 >
-                  {MENUS[key].rows.map((row, i) =>
+                  {visibleRows(MENUS[key].rows, desktop).map((row, i) =>
                     row.sep ? (
                       <MenuSep key={i} />
                     ) : (
@@ -173,40 +186,42 @@ export default function TitleBar() {
         </button>
       </div>
 
-      {/* 右:Windows 窗口三钮 */}
-      <div className="flex items-stretch self-stretch [-webkit-app-region:no-drag]">
-        <button
-          type="button"
-          title="Minimize"
-          aria-label="Minimize"
-          onClick={() => bridge().win.minimize()}
-          className="flex w-[46px] items-center justify-center text-fg-2 transition-colors hover:bg-shell-hover"
-        >
-          <Minus size={13} strokeWidth={1.5} />
-        </button>
-        <button
-          type="button"
-          title={maximized ? 'Restore' : 'Maximize'}
-          aria-label={maximized ? 'Restore' : 'Maximize'}
-          onClick={() => bridge().win.toggleMaximize()}
-          className="flex w-[46px] items-center justify-center text-fg-2 transition-colors hover:bg-shell-hover"
-        >
-          {maximized ? (
-            <SquareSquare size={12} strokeWidth={1.5} />
-          ) : (
-            <Square size={12} strokeWidth={1.5} />
-          )}
-        </button>
-        <button
-          type="button"
-          title="Close"
-          aria-label="Close"
-          onClick={() => bridge().win.close()}
-          className="flex w-[46px] items-center justify-center text-fg-2 transition-colors hover:bg-danger hover:text-fg-inv"
-        >
-          <X size={14} strokeWidth={1.5} />
-        </button>
-      </div>
+      {/* 右:Windows 窗口三钮(仅桌面端渲染;浏览器环境隐藏,不伪造) */}
+      {desktop && (
+        <div className="flex items-stretch self-stretch [-webkit-app-region:no-drag]">
+          <button
+            type="button"
+            title="Minimize"
+            aria-label="Minimize"
+            onClick={() => bridge().win.minimize()}
+            className="flex w-[46px] items-center justify-center text-fg-2 transition-colors hover:bg-shell-hover"
+          >
+            <Minus size={13} strokeWidth={1.5} />
+          </button>
+          <button
+            type="button"
+            title={maximized ? 'Restore' : 'Maximize'}
+            aria-label={maximized ? 'Restore' : 'Maximize'}
+            onClick={() => bridge().win.toggleMaximize()}
+            className="flex w-[46px] items-center justify-center text-fg-2 transition-colors hover:bg-shell-hover"
+          >
+            {maximized ? (
+              <SquareSquare size={12} strokeWidth={1.5} />
+            ) : (
+              <Square size={12} strokeWidth={1.5} />
+            )}
+          </button>
+          <button
+            type="button"
+            title="Close"
+            aria-label="Close"
+            onClick={() => bridge().win.close()}
+            className="flex w-[46px] items-center justify-center text-fg-2 transition-colors hover:bg-danger hover:text-fg-inv"
+          >
+            <X size={14} strokeWidth={1.5} />
+          </button>
+        </div>
+      )}
     </header>
   );
 }

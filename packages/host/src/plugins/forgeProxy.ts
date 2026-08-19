@@ -104,9 +104,17 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
             headers,
           },
           (up) => {
-            res.writeHead(up.statusCode ?? 502, {
-              'Content-Type': up.headers['content-type'] ?? 'application/json; charset=utf-8',
-            });
+            const contentType = up.headers['content-type'] ?? 'application/json; charset=utf-8';
+            const headers: Record<string, string> = { 'Content-Type': contentType };
+            // F8 wave.3 浏览器 SSE 兼容:text/event-stream 透传禁缓冲语义——
+            // Cache-Control 透传(上游缺省则 no-cache)+ X-Accel-Buffering: no。
+            // host 自身为 node:http 裸管,无 gzip/压缩中间件,SSE 流不被压缩破坏。
+            if (contentType.includes('text/event-stream')) {
+              const cc = up.headers['cache-control'];
+              headers['Cache-Control'] = typeof cc === 'string' ? cc : 'no-cache';
+              headers['X-Accel-Buffering'] = 'no';
+            }
+            res.writeHead(up.statusCode ?? 502, headers);
             up.pipe(res);
             res.on('finish', () => resolve());
           },
@@ -134,6 +142,11 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
         } else {
           out.setTimeout(0);
         }
+        // F8 wave.3:浏览器断开(SSE 关闭/页面卸载/网络中断)→ 同步销毁上游请求,
+        // 不留 agentd 侧孤儿长连接;正常 finish 后 writableEnded=true 不误伤。
+        res.on('close', () => {
+          if (!res.writableEnded) out.destroy();
+        });
         out.end(body);
       });
       return true;

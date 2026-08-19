@@ -1,4 +1,6 @@
 # F7 wave.5 workbench 与设置冒烟(G-F7-5):desktop settings + workbench 双场景。
+# F8 wave.5 回归修复:workbench 场景底部面板 localStorage(forge:bottomPanel)跨运行持久化致复位不确定,
+#   已在 apps\desktop\src\main.cjs workbench 场景断言区开始前加状态复位(写 open:false + reload),任意前态确定性通过。
 # 场景断言(main.cjs 内逐条 throw 把关):
 #   settings  = 开设置(外观页 overlay+五页导航)→ 预设 github 亮表 --accent 实测 rgb(9,105,218)
 #               → 模式三卡切深色实测 rgb(68,147,248) → 技能页禁用 asset-cleanup 写回

@@ -1,1 +1,38 @@
-{"entities":[{"components":[{"props":{"mesh":"3a736f0a-f084-4d5a-9e6e-f83af31db7b6"},"type":"MeshRenderer"}]}]}
+{
+  "entities": [
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "2a1004f5-6469-437f-84d4-04b3482df41c",
+            "mesh": "ce11778e-b5fe-4e6a-b7fb-fe3d1e4b0a13"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 1,
+      "name": "W4Tri",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "name": "Untitled",
+  "next_id": 2
+}

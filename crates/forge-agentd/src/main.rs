@@ -140,6 +140,11 @@ fn build_app() -> Router {
         .route("/api/forge/llm/key", post(llm::set_llm_key))
         // F7 wave.5:工作区文件树只读面(Inspector 树;confined + 单层 + 截断如实)
         .route("/api/forge/workspace/tree", get(workspace::workspace_tree))
+        // F8 wave.1:工作区文件只读文本端点(文件预览;confined + 尺寸上限 + 二进制拒绝)
+        .route("/api/forge/workspace/file", get(workspace::workspace_file))
+        // F8 wave.2:openai-compatible 通用渠道配置与状态
+        .route("/api/forge/llm/openai-compat/config", post(llm::set_openai_compat_config))
+        .route("/api/forge/llm/openai-compat/status", get(llm::openai_compat_status_handler))
         .route("/api/forge/playtest/run", post(playtest_run))
         .route("/api/forge/project/pack", post(project_pack))
         .route(
@@ -1549,7 +1554,10 @@ mod tests {
         assert_eq!(v["run"], Value::Null);
         assert_eq!(v["latestSeq"], 0);
         let models = v["models"]["models"].as_array().unwrap();
-        assert_eq!(models.len(), 2);
+        assert_eq!(models.len(), 3);
+        assert_eq!(models[2]["id"], "openai-compat");
+        assert_eq!(models[2]["provider"], "openai-compat");
+        assert_eq!(models[2]["availability"], "needs-key");
         assert_eq!(models[0]["id"], "deepseek-chat");
         assert_eq!(models[0]["provider"], "deepseek");
         assert_eq!(models[0]["availability"], "needs-key");

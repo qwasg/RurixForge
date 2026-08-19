@@ -45,21 +45,35 @@ $script:startTime = Get-Date
 $ksFile = "$root\data\keystore.json"
 try {
   # ── 0. 密钥面探测(只判存在性,密钥本体永不进日志)──
-  $key = $null
-  if ($env:FORGE_LLM_API_KEY) { $key = $env:FORGE_LLM_API_KEY }
-  elseif (Test-Path $ksFile) {
+  # F8 wave.2:keystore 已迁 DPAPI 加密形态(顶层仅 dpapi,v 域,无 keys.* 明文)。
+  #   脚本侧不再直读明文:env 命中 = 明确有 key;keystore 识别到 DPAPI 形态 = 「可能已配置」。
+  #   权威判定后置到 agentd 就绪后 —— 以 /api/forge/design-snapshot models[0].availability 为准
+  #   (available=agentd 侧 Keystore::load() 能解密出 deepseek key → 走 live;否则如实 mock)。
+  $envKey = $null
+  if ($env:FORGE_LLM_API_KEY) { $envKey = $env:FORGE_LLM_API_KEY }
+  $ksMaybe = $false
+  if (Test-Path $ksFile) {
     try {
       $ks = Get-Content $ksFile -Raw -Encoding UTF8 | ConvertFrom-Json
-      if ($ks.keys -and $ks.keys.deepseek) { $key = [string]$ks.keys.deepseek }
+      if ($ks.dpapi) { $ksMaybe = $true } # DPAPI 加密形态:密钥密文不出,仅标记「可能已配置」
+      elseif ($ks.keys -and $ks.keys.deepseek) { $ksMaybe = $true } # 旧明文形态兼容(值不读本脚本日志)
     } catch { Log "keystore 解析失败(按无 key 走 mock): $_" }
   }
-  $hasKey = -not [string]::IsNullOrEmpty($key)
-  Log ("密钥面: " + $(if ($hasKey) { "检测到(env FORGE_LLM_API_KEY 或 keystore[deepseek]),走 deepseek live" } else { "未检测到,走 mock(如实 SKIP live 段)" }))
+  $keyPossible = (-not [string]::IsNullOrEmpty($envKey)) -or $ksMaybe
+  Log ("密钥面预探测: " + $(if (-not [string]::IsNullOrEmpty($envKey)) { "env FORGE_LLM_API_KEY 命中" } elseif ($ksMaybe) { "keystore 存在(DPAPI 加密形态,脚本不直读明文),availability 待 agentd 权威判定" } else { "未检测到,预期走 mock" }))
 
   $procs += Start-Process -FilePath "target\debug\forge-agentd.exe" -PassThru -WindowStyle Hidden
   $ok = $false; foreach ($i in 1..40) { try { $r = Invoke-WebRequest -Uri "http://127.0.0.1:8103/health" -UseBasicParsing -TimeoutSec 2; if ($r.StatusCode -eq 200) { $ok = $true; break } } catch {}; Start-Sleep -Milliseconds 250 }
   if (-not $ok) { throw "agentd 就绪超时" }
   Log "agentd 就绪(127.0.0.1:8103)"
+
+  # ── 0b. 权威判定:design-snapshot models[0](deepseek) availability ──
+  # available = agentd 侧 Keystore::load() 成功解密出 deepseek key → live 腿;
+  # needs-key/其他 = 无 key 如实 → mock 腿。availability 为布尔语义面,密钥本体不出(R-5)。
+  $ds = Invoke-RestMethod -Uri "http://127.0.0.1:8103/api/forge/design-snapshot" -TimeoutSec 5
+  $availability = [string]$ds.models.models[0].availability
+  $hasKey = ($availability -eq 'available')
+  Log ("availability 权威判定: models[0].availability=$availability → " + $(if ($hasKey) { "走 deepseek live" } else { "走 mock(如实 SKIP live 段)" }) + $(if ($keyPossible -and -not $hasKey) { "(预探测可能已配置,但 agentd 判 needs-key,以权威为准)" } else { "" }))
 
   # ── 1. 场景基线 ──
   McpCall "mcp__engine-scene__scene_new" @{} | Out-Null
@@ -97,9 +111,10 @@ try {
   Log "实体数实增 PASS($base → $after,+($after-$base);成功 entity_create ×$($created.Count))"
 
   # ── 4. R-5 红线全文扫描(响应 + 日志)──
-  foreach ($c in $calls) { if ($key -and ($c.summary -and $c.summary.Contains($key))) { throw "R-5 红线:toolCalls.summary 含密钥子串" } }
+  # 密钥明文仅 envKey 路径在脚本内(keystore 走 DPAPI 密文不直读);有 envKey 才做子串比对,否则扫描面由 agentd 响应/日志天然无明文覆盖。
+  foreach ($c in $calls) { if ($envKey -and ($c.summary -and $c.summary.Contains($envKey))) { throw "R-5 红线:toolCalls.summary 含密钥子串" } }
   $logText = [IO.File]::ReadAllText($logFile, [Text.Encoding]::UTF8)
-  if ($key -and $logText.Contains($key)) { throw "R-5 红线:冒烟日志含密钥子串" }
+  if ($envKey -and $logText.Contains($envKey)) { throw "R-5 红线:冒烟日志含密钥子串" }
   Log "R-5 红线扫描 PASS(响应/日志均无密钥子串)"
 
   Log "RD-F1-002 真 LLM 工具循环冒烟 PASS(G-RDG-1 live 轨)"

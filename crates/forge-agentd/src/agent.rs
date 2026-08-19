@@ -768,10 +768,20 @@ fn bad_request(code: &str, message: &str) -> Response {
 }
 
 /// F7 wave.4:provider 选择——会话显式选 "mock" 模型 → 强制 Mock(有 key 也如实走 mock);
+/// 选 "openai-compat" → 走 resolve_openai_compat 配置面(已配齐返回 OpenAiCompat,缺一返回
+/// OpenAiCompatNotConfigured 显式错误态,不静默回落 deepseek/mock);
 /// 其余(未选/选 deepseek-chat 等)走 resolve_provider 现状逻辑。抽出以便确定单测。
 fn provider_for_session(session: &DebugSession) -> llm::Provider {
     match session.selected_model_id.as_deref() {
         Some("mock") => llm::Provider::Mock,
+        Some("openai-compat") => match llm::resolve_openai_compat() {
+            Some((base_url, model, key)) => llm::Provider::OpenAiCompat {
+                base_url,
+                model,
+                key,
+            },
+            None => llm::Provider::OpenAiCompatNotConfigured,
+        },
         _ => llm::resolve_provider(),
     }
 }
@@ -813,22 +823,37 @@ pub async fn ask_execute(
     }
 
     // F7 wave.4:会话显式选 "mock" 模型 → 强制 Mock provider(有 key 也如实走 mock);
+    // F8 wave.2:选 "openai-compat" → 配置面解析(未配齐 = 显式 NOT_CONFIGURED 步进);
     // 其余(未选/选 deepseek-chat)走 resolve_provider 现状逻辑。
     let provider = provider_for_session(&session);
     let (provider_label, model_label) = match &provider {
         llm::Provider::Mock => ("mock", "mock"),
         llm::Provider::Deepseek(_) => ("deepseek", "deepseek-chat"),
+        // openai-compat:model 标签 = 配置的模型名(usage/started 事件如实)。
+        llm::Provider::OpenAiCompat { model, .. } => ("openai-compat", model.as_str()),
+        llm::Provider::OpenAiCompatNotConfigured => ("openai-compat", "openai-compat"),
     };
     let mut step: Box<StepFn> = match &provider {
         llm::Provider::Mock => llm::mock_step(),
         llm::Provider::Deepseek(k) => llm::deepseek_step(k),
+        llm::Provider::OpenAiCompat {
+            base_url,
+            model,
+            key,
+        } => llm::openai_compat_step(base_url, model, key),
+        // 选中未配齐:显式 NOT_CONFIGURED 错误(首轮即败,run failed 如实;不静默回落)。
+        llm::Provider::OpenAiCompatNotConfigured => llm::openai_compat_not_configured_step(),
     };
     // tools:ask/multitask 或 mock provider → 空(mock 不触网不触 MCP,恒绿 seam);
-    // deepseek build/debug/plan → MCP 工具面实测拉取(失败 = step 即错,走 agent.failed 链,
-    // 与 llm/chat 502 形态差异留痕:agent 语义 HTTP 200 + run failed)。
+    // deepseek/openai-compat build/debug/plan → MCP 工具面实测拉取(失败 = step 即错,走 agent.failed 链,
+    // 与 llm/chat 502 形态差异留痕:agent 语义 HTTP 200 + run failed);
+    // 未配齐 openai-compat 不拉工具面(步进首轮即显式错)。
     let mut tools: Vec<Value> = Vec::new();
     if matches!(mode.as_str(), "build" | "debug" | "plan") {
-        if let llm::Provider::Deepseek(_) = provider {
+        if matches!(
+            provider,
+            llm::Provider::Deepseek(_) | llm::Provider::OpenAiCompat { .. }
+        ) {
             match crate::mcp::list_all_tools().await {
                 Ok(t) => tools = llm::to_openai_tools(&t),
                 Err(e) => {
@@ -1090,6 +1115,112 @@ mod tests {
             "显式 mock 须强制 Mock provider"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// F8 wave.2:openai-compat 选模解析(两腿);env 操作走 llm::TEST_ENV_LOCK 同源纪律。
+    #[test]
+    fn provider_for_session_openai_compat_two_legs() {
+        let _g = crate::llm::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let dir = std::env::temp_dir().join(format!(
+            "agentd-agent-oaiprov-{}-{}",
+            std::process::id(),
+            new_id("t")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
+        let (state, state_dir) = test_state("oaiprov");
+        let s = state
+            .sessions
+            .create("t", "coding", Some("openai-compat".to_string()), true);
+        // 未配置腿:显式 NotConfigured(不静默回落 deepseek/mock)。
+        assert!(
+            matches!(provider_for_session(&s), llm::Provider::OpenAiCompatNotConfigured),
+            "未配齐须显式 NotConfigured"
+        );
+        // 配齐腿:config JSON + keystore → OpenAiCompat 三联。
+        std::fs::write(
+            dir.join("llm-openai-compat.json"),
+            r#"{"base_url":"http://127.0.0.1:1","model":"qwen2.5-7b"}"#,
+        )
+        .unwrap();
+        gend::keystore::set_key("openai-compat", "sk-test-oai-agent-leg").unwrap();
+        match provider_for_session(&s) {
+            llm::Provider::OpenAiCompat {
+                base_url,
+                model,
+                key,
+            } => {
+                assert_eq!(base_url, "http://127.0.0.1:1");
+                assert_eq!(model, "qwen2.5-7b");
+                assert_eq!(key, "sk-test-oai-agent-leg");
+            }
+            other => panic!("已配齐应 OpenAiCompat: {other:?}"),
+        }
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&state_dir).ok();
+    }
+
+    /// F8 wave.2:选 openai-compat 未配置 → ask:execute 首轮显式败(agent.failed,错误码面)。
+    #[tokio::test]
+    async fn ask_execute_openai_compat_not_configured_explicit_failure() {
+        let _g = crate::llm::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let dir = std::env::temp_dir().join(format!(
+            "agentd-agent-oainc-{}-{}",
+            std::process::id(),
+            new_id("t")
+        ));
+        std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
+        let (state, state_dir) = test_state("oainc");
+        let session = state
+            .sessions
+            .create("t", "coding", Some("openai-compat".to_string()), true);
+        // ask 模式(不拉 MCP 工具面);handler 级端到端。
+        let resp = ask_execute(
+            State(state.clone()),
+            Path(session.id.clone()),
+            Json(AskExecuteRequest {
+                user_input: "你好".to_string(),
+                mode: Some("ask".to_string()),
+            }),
+        )
+        .await;
+        let (parts, body) = resp.into_parts();
+        assert_eq!(parts.status, StatusCode::OK, "agent 语义三态均 200");
+        let bytes = axum::body::to_bytes(body, 1 << 20).await.unwrap();
+        let v: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["run"]["status"], "failed", "{v}");
+        let err = v["error"].as_str().unwrap();
+        assert!(
+            err.starts_with("OPENAI_COMPAT_NOT_CONFIGURED"),
+            "显式 NOT_CONFIGURED 同族: {err}"
+        );
+        assert!(!err.contains("sk-"), "错误面含 sk- 串(R-5): {err}");
+        // 持久事件:agent.failed 带同码;无 agent.completed。
+        let types = event_types(&state, &session.id);
+        assert_eq!(types.last().unwrap(), "agent.failed", "{types:?}");
+        let failed = state
+            .events
+            .persisted(&session.id)
+            .into_iter()
+            .find(|e| e.event_type == "agent.failed")
+            .unwrap();
+        assert!(failed.payload["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("OPENAI_COMPAT_NOT_CONFIGURED"));
+        assert_eq!(state.runs.get(v["run"]["id"].as_str().unwrap()).unwrap().status, "failed");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&state_dir).ok();
     }
 
     #[tokio::test]

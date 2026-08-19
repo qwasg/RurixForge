@@ -114,3 +114,14 @@ F0 地基 → F1 场景编辑闭环 → F2 素材管线 → F3 agent 集群与 s
 3. React 壳全量重设计对齐 Moonlit Agent IDE(I:\agent-debug-frontend-backend-copy-20260530):主题系统(明暗+预设+派色算法)、三栏壳、聊天时间线、Composer、workbench tabs、设置体系;游戏编辑器嵌入为壳内视图(游戏原生区零改动);技术栈不变。
 
 验收门:见 `milestones/f7/F7_CONTRACT.md`(G-F7-1~5)。
+
+## F8 · IDE 商用化(功能补全 + 浏览器真实任务测试,2026-08-19 立项 D-021)
+
+交付:
+
+1. 对话核心补全:Composer 诚实占位清零;Inspector 文件预览(agentd confined 只读端点)。
+2. 模型与设置商用面:openai-compatible 通用渠道;ModelsPage 全链闭环;auth/多 provider 正式裁决留档。
+3. 浏览器通路:bridge 浏览器禁用态审计;Viewport 浏览器回退腿定型;host 兼容核验。
+4. 浏览器真实任务矩阵:Playwright 落仓八任务 E2E(会话/消息/编辑器/场景编辑/multitask/提案/设置/会话管理)。
+
+验收门:见 `milestones/f8/F8_CONTRACT.md`(G-F8-1~5)。

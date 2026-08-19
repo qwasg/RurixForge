@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiGet, apiPost } from '@/lib/forgeApi';
+import { apiGet, apiPost, getOpenAiCompatStatus, postOpenAiCompatConfig, type OpenAiCompatStatus } from '@/lib/forgeApi';
 import { useToastStore } from '@/lib/toastStore';
 import { SetCard, SetH1, SetInput, SetRow, SetSectionLabel, SetToggle, SmBtn } from './controls';
 
@@ -8,11 +8,14 @@ import { SetCard, SetH1, SetInput, SetRow, SetSectionLabel, SetToggle, SmBtn } f
  * - LLM 渠道:deepseek 卡(design-snapshot availability 实测)+「配置 API Key」展开
  *   (password 输入 + 保存 → POST /api/forge/llm/key;R-5:密钥永不回显,响应只 {ok,configured});
  *   Mock provider 信息行(恒 available,无 key 时恒绿 seam)。
+ * - F8 wave.2:OpenAI-Compatible 通用渠道卡(GET status 实测 configured/baseUrl/model/keyConfigured,
+ *   配置展开 baseUrl+model+key → POST /api/forge/llm/openai-compat/config;key 永不回显);
+ *   模型菜单经 design-snapshot models 数据面自动纳入 openai-compat 条目(未配 needs-key 禁用)。
  * - 生成后端(F5 gen backends 平移):清单 + 配置表单(enabled toggle/endpoint/apiKey password,
  *   POST /api/forge/gen/backends/configure;密钥不回显,configured/endpointSet 布尔面)。
  *
  * 差异留痕:参考为 11 家渠道框架(自定义模型清单/编辑/删除);本仓 deepseek+mock 先行,
- * 渠道 seam 留 RD-F7-003,不造多渠道空壳。
+ * F8 落地 openai-compat 一家通用面,渠道 seam 留 RD-F7-003,不造多渠道空壳。
  */
 
 interface SnapshotModel {
@@ -113,6 +116,136 @@ function DeepseekCard() {
             onClick={() => void save()}
           />
           <span className="text-[10.5px] text-fg-4">密钥仅写入本地 keystore,不回显</span>
+        </div>
+      )}
+    </SetCard>
+  );
+}
+
+// ---------- F8 wave.2:OpenAI-Compatible 通用渠道卡 ----------
+
+const OAI_STATUS_EMPTY: OpenAiCompatStatus = {
+  configured: false,
+  baseUrl: '',
+  model: '',
+  keyConfigured: false,
+};
+
+function OpenAiCompatCard() {
+  const [status, setStatus] = useState<OpenAiCompatStatus>(OAI_STATUS_EMPTY);
+  const [expanded, setExpanded] = useState(false);
+  const [baseUrl, setBaseUrl] = useState('');
+  const [model, setModel] = useState('');
+  const [key, setKey] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await getOpenAiCompatStatus());
+    } catch {
+      // status 拉取失败保持现状(状态栏健康面已如实呈现离线)
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const openForm = () => {
+    // 展开时预填已配置 baseUrl/model(key 永不回显,留空 = 保留既有)。
+    setBaseUrl(status.baseUrl);
+    setModel(status.model);
+    setKey('');
+    setExpanded((v) => !v);
+  };
+
+  const save = async () => {
+    const bu = baseUrl.trim();
+    const m = model.trim();
+    if (bu === '' || m === '' || saving) return;
+    setSaving(true);
+    try {
+      const payload: { baseUrl: string; model: string; key?: string } = { baseUrl: bu, model: m };
+      if (key.trim() !== '') payload.key = key.trim();
+      const r = await postOpenAiCompatConfig(payload);
+      setKey('');
+      setExpanded(false);
+      useToastStore
+        .getState()
+        .push('success', r.configured ? 'OpenAI-Compatible 已配置' : '已保存,key 未配置(如实)');
+      await refresh();
+    } catch (err) {
+      useToastStore.getState().push('error', `保存失败:${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SetCard testId="channel-openai-compat">
+      <SetRow
+        title="OpenAI-Compatible"
+        desc="通用 OpenAI 兼容端点(openai/vllm/ollama 等)· chat-completions 同形态"
+        last={!expanded}
+        testId="channel-openai-compat-row"
+        control={
+          <span className="flex items-center gap-2">
+            <span
+              data-testid="oai-availability"
+              className={
+                status.configured
+                  ? 'flex h-[18px] items-center rounded-full bg-sage-bg px-1.5 text-[10px] text-sage'
+                  : 'flex h-[18px] items-center rounded-full bg-warn-bg px-1.5 text-[10px] text-warn'
+              }
+            >
+              {status.configured ? 'available' : 'needs-key'}
+            </span>
+            <SmBtn label="配置" testId="oai-config-toggle" onClick={openForm} />
+          </span>
+        }
+      />
+      {!expanded && (status.baseUrl !== '' || status.model !== '' || status.keyConfigured) && (
+        <SetRow
+          title="当前配置"
+          desc={`${status.baseUrl || '(未配置 baseUrl)'} · ${status.model || '(未配置 model)'} · key ${status.keyConfigured ? '已配置' : '未配置'}`}
+          last
+          testId="oai-status-line"
+        />
+      )}
+      {expanded && (
+        <div className="flex flex-col gap-2 border-t border-edge px-4 py-3" data-testid="oai-config-form">
+          <SetInput
+            value={baseUrl}
+            onChange={setBaseUrl}
+            placeholder="baseUrl(如 http://127.0.0.1:8000;调用时拼 /v1/chat/completions)"
+            width={360}
+            testId="oai-baseurl-input"
+          />
+          <SetInput
+            value={model}
+            onChange={setModel}
+            placeholder="model(如 qwen2.5-7b / gpt-4o-mini)"
+            width={360}
+            testId="oai-model-input"
+          />
+          <SetInput
+            type="password"
+            value={key}
+            onChange={setKey}
+            placeholder="apiKey(留空保留既有;只写 keystore,永不回显)"
+            width={360}
+            testId="oai-key-input"
+          />
+          <div className="flex items-center gap-2">
+            <SmBtn
+              label={saving ? '保存中…' : '保存'}
+              accent
+              disabled={baseUrl.trim() === '' || model.trim() === '' || saving}
+              testId="oai-config-save"
+              onClick={() => void save()}
+            />
+            <span className="text-[10.5px] text-fg-4">baseUrl/model 落本地配置;密钥仅写入本地 keystore,不回显</span>
+          </div>
         </div>
       )}
     </SetCard>
@@ -233,6 +366,7 @@ export default function ModelsPage() {
       <SetSectionLabel>LLM 渠道</SetSectionLabel>
       <div className="flex flex-col gap-3">
         <DeepseekCard />
+        <OpenAiCompatCard />
         <SetCard>
           <SetRow
             title="Mock provider"

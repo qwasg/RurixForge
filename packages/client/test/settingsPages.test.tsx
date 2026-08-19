@@ -167,6 +167,117 @@ describe('模型页', () => {
   });
 });
 
+describe('模型页 · OpenAI-Compatible 渠道卡(F8 wave.2)', () => {
+  /** 三端点公共 mock 面(design-snapshot=deepseek 卡;status=本卡;gen/backends=生成后端区)。 */
+  function stubBase(statusBody: unknown, posts: Array<{ url: string; body: string }>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
+        const u = String(url);
+        if (u === '/api/forge/design-snapshot') {
+          return { ok: true, status: 200, json: async () => ({ models: { models: [] } }) } as Response;
+        }
+        if (u === '/api/forge/llm/openai-compat/status') {
+          return { ok: true, status: 200, json: async () => statusBody } as Response;
+        }
+        if (u === '/api/forge/llm/openai-compat/config' && init?.method === 'POST') {
+          posts.push({ url: u, body: init.body ?? '' });
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, configured: true, baseUrl: 'http://127.0.0.1:8000', model: 'qwen2.5-7b', keyConfigured: true }),
+          } as Response;
+        }
+        if (u === '/api/forge/gen/backends') {
+          return { ok: true, status: 200, json: async () => ({ backends: [] }) } as Response;
+        }
+        throw new Error(`未 mock: ${u}`);
+      }),
+    );
+  }
+
+  it('未配置腿:needs-key 徽标 + 无配置行', async () => {
+    stubBase({ configured: false, baseUrl: '', model: '', keyConfigured: false }, []);
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    expect(await screen.findByTestId('channel-openai-compat')).toBeInTheDocument();
+    expect(screen.getByTestId('oai-availability')).toHaveTextContent('needs-key');
+    expect(screen.queryByTestId('oai-status-line')).not.toBeInTheDocument();
+  });
+
+  it('已配置腿:available 徽标 + 状态行显示 baseUrl/model/key 已配置(无 key 串)', async () => {
+    stubBase(
+      { configured: true, baseUrl: 'http://127.0.0.1:8000', model: 'qwen2.5-7b', keyConfigured: true },
+      [],
+    );
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    expect(await screen.findByTestId('oai-availability')).toHaveTextContent('available');
+    const line = await screen.findByTestId('oai-status-line');
+    expect(line).toHaveTextContent('http://127.0.0.1:8000');
+    expect(line).toHaveTextContent('qwen2.5-7b');
+    expect(line).toHaveTextContent('key 已配置');
+    // R-5:整卡无 sk- 串。
+    expect(screen.getByTestId('channel-openai-compat').textContent ?? '').not.toContain('sk-');
+  });
+
+  it('配置展开:预填 baseUrl/model + 保存 POST(key 进 body 不回显;key 留空则省略)', async () => {
+    const posts: Array<{ url: string; body: string }> = [];
+    stubBase(
+      { configured: true, baseUrl: 'http://127.0.0.1:8000', model: 'qwen2.5-7b', keyConfigured: true },
+      posts,
+    );
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    // 展开:预填已配置 baseUrl/model,key 空(password 不回显)。
+    fireEvent.click(await screen.findByTestId('oai-config-toggle'));
+    const buInput = await screen.findByTestId('oai-baseurl-input');
+    expect(buInput).toHaveValue('http://127.0.0.1:8000');
+    expect(screen.getByTestId('oai-model-input')).toHaveValue('qwen2.5-7b');
+    const keyInput = screen.getByTestId('oai-key-input');
+    expect(keyInput).toHaveAttribute('type', 'password');
+    expect(keyInput).toHaveValue('');
+    // 改 model + 填 key → 保存 → POST 全量三联。
+    fireEvent.change(screen.getByTestId('oai-model-input'), { target: { value: 'glm-4-air' } });
+    fireEvent.change(keyInput, { target: { value: 'sk-test-oai-card' } });
+    fireEvent.click(screen.getByTestId('oai-config-save'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(posts.length).toBe(1);
+    expect(JSON.parse(posts[0].body)).toEqual({
+      baseUrl: 'http://127.0.0.1:8000',
+      model: 'glm-4-air',
+      key: 'sk-test-oai-card',
+    });
+    // 保存后收起 + 状态刷新(第二轮 status 仍为 stub 值)。
+    expect(screen.queryByTestId('oai-config-form')).not.toBeInTheDocument();
+    // key 留空保存 → body 省略 key 域(只改 baseUrl/model)。
+    fireEvent.click(screen.getByTestId('oai-config-toggle'));
+    fireEvent.click(await screen.findByTestId('oai-config-save'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(posts.length).toBe(2);
+    const body2 = JSON.parse(posts[1].body) as Record<string, unknown>;
+    expect(body2.baseUrl).toBe('http://127.0.0.1:8000');
+    expect(body2.model).toBe('qwen2.5-7b');
+    expect('key' in body2).toBe(false);
+  });
+
+  it('空 baseUrl/model 保存钮禁用(400 防线前置)', async () => {
+    stubBase({ configured: false, baseUrl: '', model: '', keyConfigured: false }, []);
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    fireEvent.click(await screen.findByTestId('oai-config-toggle'));
+    expect(await screen.findByTestId('oai-config-save')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('oai-baseurl-input'), { target: { value: 'http://x' } });
+    expect(screen.getByTestId('oai-config-save')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('oai-model-input'), { target: { value: 'm' } });
+    expect(screen.getByTestId('oai-config-save')).toBeEnabled();
+  });
+});
+
 describe('技能页', () => {
   it('清单渲染 + toggle → config/write {disabled} 全量写回', async () => {
     const writes: string[] = [];

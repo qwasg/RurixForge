@@ -145,6 +145,20 @@ export async function apiGet<T = unknown>(path: string): Promise<T> {
   return body as T;
 }
 
+/** F8 wave.1:workspace/file 只读文本预览响应(agentd 端点同形)。 */
+export interface WorkspaceFileResp {
+  path: string;
+  name: string;
+  size: number;
+  content: string;
+  truncated: boolean;
+}
+
+/** F8 wave.1:GET /api/forge/workspace/file?path=(窄封装;错误码 ForgeApiError.code 如实)。 */
+export async function apiWorkspaceFile(path: string): Promise<WorkspaceFileResp> {
+  return apiGet<WorkspaceFileResp>(`/api/forge/workspace/file?path=${encodeURIComponent(path)}`);
+}
+
 /** 非 MCP 的 agentd REST POST(plain JSON)。 */
 export async function apiPost<T = unknown>(path: string, payload: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -192,4 +206,26 @@ export async function apiDelete<T = unknown>(path: string): Promise<T> {
     throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
   }
   return body as T;
+}
+
+/** F8 wave.2:openai-compat 渠道状态面(GET status / POST config 响应同源;绝无 key,R-5)。 */
+export interface OpenAiCompatStatus {
+  configured: boolean;
+  baseUrl: string;
+  model: string;
+  keyConfigured: boolean;
+}
+
+/** GET /api/forge/llm/openai-compat/status(响应面无 key)。 */
+export async function getOpenAiCompatStatus(): Promise<OpenAiCompatStatus> {
+  return apiGet<OpenAiCompatStatus>('/api/forge/llm/openai-compat/status');
+}
+
+/** POST /api/forge/llm/openai-compat/config {baseUrl, model, key?}(key 省略 = 只改 baseUrl/model)。 */
+export async function postOpenAiCompatConfig(payload: {
+  baseUrl: string;
+  model: string;
+  key?: string;
+}): Promise<OpenAiCompatStatus & { ok: boolean }> {
+  return apiPost<OpenAiCompatStatus & { ok: boolean }>('/api/forge/llm/openai-compat/config', payload);
 }

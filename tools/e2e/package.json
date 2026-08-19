@@ -1,0 +1,12 @@
+{
+  "name": "@forge/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "f8:w4": "node f8-w4-browser-matrix.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.53.0"
+  }
+}

@@ -5,6 +5,13 @@
 //! - entries[{name,kind:dir|file,relPath,size,modifiedAt,hidden}],目录优先 + 名称(小写)排序;
 //! - 单层超 500 项截断,truncated:true 如实标记(不伪造完整)。
 //! 只读:无任何写面;hidden = 名称 . 前缀(与参考 inspector 同口径,跨平台一致)。
+//!
+//! F8 wave.1:GET /api/forge/workspace/file?path= → 只读文本文件:
+//! - confined 同 tree 纪律(canonicalize+starts_with):越界 400 PATH_OUTSIDE_ROOT,
+//!   不存在/目录当文件 404 PATH_NOT_FOUND;
+//! - 尺寸上限 256KB,超限 413 FILE_TOO_LARGE(拒绝,不截断伪造);
+//! - 二进制检测(前 8KB 含 NUL)或非 UTF-8 → 415 BINARY_FILE;
+//! - 返回 {path,name,size,content,truncated}(truncated 恒 false:超限即拒)。
 
 use axum::{
     extract::Query,
@@ -20,9 +27,22 @@ use crate::events::now_rfc3339;
 /// 单层条目上限(超出截断 + truncated 标记)。
 const MAX_ENTRIES: usize = 500;
 
+/// F8 wave.1:只读文本文件上限 256KB(超限 413 FILE_TOO_LARGE 拒绝,不截断伪造)。
+const MAX_FILE_BYTES: u64 = 256 * 1024;
+
+/// 二进制嗅探窗口(前 8KB 含 NUL → 415 BINARY_FILE)。
+const SNIFF_BYTES: usize = 8 * 1024;
+
 #[derive(Deserialize)]
 pub struct TreeQuery {
     /// 仓根相对路径(缺省/空 = 根)。越界(含 .. 逃逸或绝对路径出根)拒绝。
+    #[serde(default)]
+    path: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct FileQuery {
+    /// 仓根相对路径(必填,须为根内已存在文件)。
     #[serde(default)]
     path: Option<String>,
 }
@@ -65,6 +85,88 @@ fn resolve_confined(rel: &str) -> Result<std::path::PathBuf, (StatusCode, &'stat
         return Err((StatusCode::NOT_FOUND, "PATH_NOT_FOUND"));
     }
     Ok(canon)
+}
+
+/// F8 wave.1:文件版 confined 解析(显式 root 入参,测试直测免 env 串扰)。
+/// 同 tree 纪律:canonicalize + starts_with;越界 400 / 不存在 404;目录当文件 404。
+fn resolve_confined_file_in(
+    root_canon: &std::path::Path,
+    rel: &str,
+) -> Result<std::path::PathBuf, (StatusCode, &'static str)> {
+    let rel = rel.trim();
+    let candidate = if rel.is_empty() {
+        root_canon.to_path_buf()
+    } else {
+        root_canon.join(rel)
+    };
+    let canon = candidate
+        .canonicalize()
+        .map_err(|_| (StatusCode::NOT_FOUND, "PATH_NOT_FOUND"))?;
+    if !canon.starts_with(root_canon) {
+        return Err((StatusCode::BAD_REQUEST, "PATH_OUTSIDE_ROOT"));
+    }
+    if !canon.is_file() {
+        return Err((StatusCode::NOT_FOUND, "PATH_NOT_FOUND"));
+    }
+    Ok(canon)
+}
+
+/// F8 wave.1:只读文本文件加载(显式 root 入参)。
+/// Ok({path,name,size,content,truncated}) / Err((status, code)):
+/// 越界 400 PATH_OUTSIDE_ROOT;不存在/目录 404 PATH_NOT_FOUND;
+/// 超 256KB 413 FILE_TOO_LARGE(拒绝,不截断伪造);
+/// 前 8KB 含 NUL 或非 UTF-8 415 BINARY_FILE;IO 失败 500 FORGE_IO。
+fn load_file_in(
+    root_canon: &std::path::Path,
+    rel: &str,
+) -> Result<Value, (StatusCode, &'static str)> {
+    let canon = resolve_confined_file_in(root_canon, rel)?;
+    let meta = std::fs::metadata(&canon).map_err(|_| (StatusCode::NOT_FOUND, "PATH_NOT_FOUND"))?;
+    let size = meta.len();
+    if size > MAX_FILE_BYTES {
+        return Err((StatusCode::PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE"));
+    }
+    let bytes = std::fs::read(&canon).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "FORGE_IO"))?;
+    let sniff = &bytes[..bytes.len().min(SNIFF_BYTES)];
+    if sniff.contains(&0) {
+        return Err((StatusCode::UNSUPPORTED_MEDIA_TYPE, "BINARY_FILE"));
+    }
+    let content = String::from_utf8(bytes)
+        .map_err(|_| (StatusCode::UNSUPPORTED_MEDIA_TYPE, "BINARY_FILE"))?;
+    let name = canon
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(json!({
+        "path": rel_path(root_canon, &canon),
+        "name": name,
+        "size": size,
+        "content": content,
+        "truncated": false,
+    }))
+}
+
+/// F8 wave.1:GET /api/forge/workspace/file?path= → 只读文本文件(纪律见 load_file_in)。
+pub async fn workspace_file(Query(q): Query<FileQuery>) -> Response {
+    let rel = q.path.unwrap_or_default();
+    let root = match root().canonicalize() {
+        Ok(r) => r,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": { "code": "WORKSPACE_ROOT_UNREADABLE", "message": "workspace 根不可读" } })),
+            )
+                .into_response();
+        }
+    };
+    match load_file_in(&root, &rel) {
+        Ok(v) => Json(v).into_response(),
+        Err((status, code)) => (
+            status,
+            Json(json!({ "error": { "code": code, "message": format!("path 须为根内 ≤256KB 文本文件(实: {rel})") } })),
+        )
+            .into_response(),
+    }
 }
 
 /// 绝对路径 → 仓根相对(正斜杠分隔;根本身 → "")。
@@ -180,4 +282,95 @@ pub async fn workspace_tree(Query(q): Query<TreeQuery>) -> Response {
         "truncated": truncated,
     }))
     .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    //! F8 wave.1:workspace/file 纯函数测试(load_file_in 显式 root 入参,
+    //! 不触 FORGE_AGENTD_WORKSPACE_ROOT env,免与 main.rs tree 测试互踩)。
+    use super::*;
+
+    /// 独立 workspace 根(返回路径;调用方收尾 remove_dir_all)。
+    fn temp_root(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "agentd-f8w1-wsfile-{tag}-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn f8w1_file_ok_text_read() {
+        let root = temp_root("ok");
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub").join("hello.txt"), "你好,世界\n第二行").unwrap();
+        let v = load_file_in(&root, "sub/hello.txt").expect("正常文本应读取成功");
+        assert_eq!(v["path"], "sub/hello.txt");
+        assert_eq!(v["name"], "hello.txt");
+        assert_eq!(v["size"], "你好,世界\n第二行".len() as u64);
+        assert_eq!(v["content"], "你好,世界\n第二行");
+        assert_eq!(v["truncated"], false);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn f8w1_file_confined_outside_root_400() {
+        let root = temp_root("confined");
+        std::fs::write(root.join("f.txt"), "x").unwrap();
+        // .. 逃逸 → 400 PATH_OUTSIDE_ROOT(temp 根的父目录恒存在,canonicalize 后出根)。
+        let err = load_file_in(&root, "..").unwrap_err();
+        assert_eq!(err, (StatusCode::BAD_REQUEST, "PATH_OUTSIDE_ROOT"));
+        // 绝对出根路径 → 400(join 整体替换后出根)。
+        #[cfg(windows)]
+        let abs = "C:/Windows/notepad.exe";
+        #[cfg(not(windows))]
+        let abs = "/etc/hostname";
+        let err2 = load_file_in(&root, abs).unwrap_err();
+        assert_eq!(
+            err2,
+            (StatusCode::BAD_REQUEST, "PATH_OUTSIDE_ROOT"),
+            "绝对出根路径须 400"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn f8w1_file_not_found_and_dir_404() {
+        let root = temp_root("nf");
+        std::fs::create_dir_all(root.join("adir")).unwrap();
+        let e1 = load_file_in(&root, "no_such.txt").unwrap_err();
+        assert_eq!(e1, (StatusCode::NOT_FOUND, "PATH_NOT_FOUND"));
+        // 目录当文件 → 404。
+        let e2 = load_file_in(&root, "adir").unwrap_err();
+        assert_eq!(e2, (StatusCode::NOT_FOUND, "PATH_NOT_FOUND"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn f8w1_file_too_large_413() {
+        let root = temp_root("large");
+        let big = "a".repeat((MAX_FILE_BYTES + 1) as usize);
+        std::fs::write(root.join("big.txt"), big).unwrap();
+        let e = load_file_in(&root, "big.txt").unwrap_err();
+        assert_eq!(e, (StatusCode::PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn f8w1_file_binary_rejected_415() {
+        let root = temp_root("bin");
+        // 前 8KB 含 NUL → 415。
+        let mut bytes = b"PNG-like header".to_vec();
+        bytes.push(0);
+        bytes.extend_from_slice(b"trail");
+        std::fs::write(root.join("bin.dat"), &bytes).unwrap();
+        let e = load_file_in(&root, "bin.dat").unwrap_err();
+        assert_eq!(e, (StatusCode::UNSUPPORTED_MEDIA_TYPE, "BINARY_FILE"));
+        // 非 UTF-8(无 NUL 但非法 UTF-8 序列)→ 415。
+        std::fs::write(root.join("gbk.txt"), [0xC4u8, 0xE3, 0xBA, 0xC3]).unwrap();
+        let e2 = load_file_in(&root, "gbk.txt").unwrap_err();
+        assert_eq!(e2, (StatusCode::UNSUPPORTED_MEDIA_TYPE, "BINARY_FILE"));
+        std::fs::remove_dir_all(&root).ok();
+    }
 }

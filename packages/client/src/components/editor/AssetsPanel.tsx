@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { bridge } from '@/lib/bridge';
+import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { useAssetStore, type AssetItem, type AssetMenuAction, type AssetTypeFilter } from '@/lib/assetStore';
 import { useGenStore } from '@/lib/genStore';
 import GenerateDialog from './GenerateDialog';
@@ -176,9 +176,12 @@ export default function AssetsPanel() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const openGenDialog = useGenStore((s) => s.openDialog);
-  // 桌面能力:web 端缺省 → 对应菜单项如实禁用(不伪造不可用功能)。
-  const pickImport = bridge().assets?.pickImport;
-  const showInFolder = bridge().assets?.showInFolder;
+  // 桌面能力:纯浏览器环境(无 Electron preload)→ 对应菜单项如实禁用(不伪造不可用功能)。
+  // F8 wave.3:MOCK_FORGE_API 现提供诚实禁用实现(仍可调用、不抛异常),因此禁用判定
+  // 以 isDesktopBridge() 为准——浏览器下两项菜单保持 disabled + 「仅桌面端可用」tooltip。
+  const desktop = isDesktopBridge();
+  const pickImport = desktop ? bridge().assets?.pickImport : undefined;
+  const showInFolder = desktop ? bridge().assets?.showInFolder : undefined;
 
   useEffect(() => {
     load();

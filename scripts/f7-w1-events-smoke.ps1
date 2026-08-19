@@ -204,8 +204,9 @@ try {
   Check (@($ds.json.events).Count -eq 3 -and $ds.json.latestSeq -eq 3) "events 全量回放 3 条 + latestSeq=3"
   Check (@($ds.json.todos).Count -eq 0 -and $null -eq $ds.json.run) "todos=[] run=null 占位"
   $m = $ds.json.models
-  Check (@($m.models).Count -eq 2 -and $m.models[0].id -eq 'deepseek-chat' -and $m.models[1].id -eq 'mock' -and $m.defaultModelId -eq 'deepseek-chat') "models 双档(deepseek-chat/mock)"
-  Check (@('available','needs-key') -contains $m.models[0].availability -and $m.models[1].availability -eq 'available') "availability 两态合法(deepseek=$($m.models[0].availability))"
+  # F8 wave.2:models 面增至三档(deepseek-chat/mock/openai-compat;第三档为通用 openai-compat 渠道,id/provider 固定)。
+  Check (@($m.models).Count -eq 3 -and $m.models[0].id -eq 'deepseek-chat' -and $m.models[1].id -eq 'mock' -and $m.models[2].id -eq 'openai-compat' -and $m.models[2].provider -eq 'openai-compat' -and $m.defaultModelId -eq 'deepseek-chat') "models 三档(deepseek-chat/mock/openai-compat)"
+  Check (@('available','needs-key') -contains $m.models[0].availability -and $m.models[1].availability -eq 'available' -and @('available','needs-key') -contains $m.models[2].availability) "availability 两态合法(deepseek=$($m.models[0].availability) openai-compat=$($m.models[2].availability))"
   Check ($ds.text -notmatch 'sk-') "响应面无密钥串(R-5)"
   $ds0 = Invoke-Json GET "$H/api/forge/design-snapshot"
   Check ($null -eq $ds0.json.activeSession -and @($ds0.json.events).Count -eq 0 -and $ds0.json.latestSeq -eq 0) "空 sessionId → null/[]/0 三态"

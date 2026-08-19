@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Globe,
   ListTodo,
   Plus,
   Sparkles,
@@ -34,10 +35,15 @@ import { COMPOSER_MODES, composerModeMeta } from './composerModes';
  * 「未配置 Key」,选中 PATCH selectedModelId)/发送区(running=26px danger 圆方块 cancelRun;
  * 可发送=accent 圆 arrow-up;有文本无会话=灰禁用+warn 胶囊「先选择会话」;空文本=禁用态)。
  *
- * 差异留痕:①参考 add menu 含代理类型(AgentKind)三节与「添加上下文/Image/Models/MCP」
- * 占位项——本仓后端 agentKind 恒 coding(全模式可用),上下文抽屉 wave.5 评,故 add menu
- * 只落五模式;②联网开关(globe)参考有,本仓 webSearchEnabled 无双写面(wave.5 设置体系统一);
- * ③「执行计划/打开看板」依赖 workbench(wave.5),TodoStrip 只落进度+折叠列表。
+ * F8 wave.1 占位清零裁决(D-007 / D-F8-D):
+ * ① AgentKind:参考 add menu 有代理类型三节——D-007 裁决本仓后端 agentKind 恒 coding,
+ *   不新增 kind,UI 不落任何 kind 选择面(单态呈现:模式即全部可选语义),无「看起来能选
+ *   其实没接」;②联网开关(globe):本仓无 web 搜索后端(sessionStore.webSearchEnabled
+ *   恒 true 无消费面)→ 诚实禁用态(globe 钮 disabled + tooltip「联网搜索后端未接入」),
+ *   不可开关;③执行计划/打开看板:F7 wave.5 已真实接线(PlanTab「开始 Build」→
+ *   composerStore 预填 seam;TodoStrip「打开看板 ↗」→ workbench openTab('todo')),
+ *   本波核验保留(composerW5.test.tsx 双断言)。参考「添加上下文/Image/Models/MCP」
+ *   占位项:无后端语义,不落。
  */
 
 interface SkillItem {
@@ -260,6 +266,17 @@ export default function Composer() {
             )}
           >
             <BookOpen size={11} className={selectedSkills.length > 0 ? 'text-acc' : 'text-fg-3'} />
+          </button>
+          {/* F8 wave.1:联网搜索诚实禁用态(本仓无 web 搜索后端,不可开关) */}
+          <button
+            type="button"
+            aria-label="联网搜索(未接入)"
+            data-testid="composer-websearch"
+            disabled
+            title="联网搜索后端未接入"
+            className="flex h-[22px] cursor-not-allowed items-center rounded-md border border-transparent px-1.5 opacity-40"
+          >
+            <Globe size={11} className="text-fg-3" />
           </button>
           <button
             type="button"

@@ -50,6 +50,9 @@ export function ViewportCanvas() {
     gy: number;
   }>({ downX: 0, downY: 0, x: 0, y: 0, mode: null, gx: 0, gy: 0 });
 
+  /** F8 wave.3:最近一次帧通道错误原因(同因去重,150ms 轮询不重复 setState 刷屏) */
+  const lastFrameErr = useRef<string | null>(null);
+
   // 容器尺寸测量(拖拽过程中去抖,结束后才改会话分辨率——帧协商)
   useEffect(() => {
     const el = containerRef.current;
@@ -128,6 +131,7 @@ export function ViewportCanvas() {
           for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
           ctx.putImageData(new ImageData(bytes, f.width, f.height), 0, 0);
         }
+        lastFrameErr.current = null;
         useEditorStore.getState().setViewportStatus(null, {
           deviceName: f.deviceName,
           draws: f.draws,
@@ -137,8 +141,17 @@ export function ViewportCanvas() {
         });
       } catch (err) {
         if (!alive) return;
-        const msg = err instanceof ForgeApiError ? err.message : (err as Error).message;
-        if (msg.includes('DEV_ENV_DEGRADE')) {
+        // F8 wave.3 浏览器回退腿诚实化:纯浏览器无 presenter 腿,canvas readback
+        // 是唯一帧通路;其任何错误(DEV_ENV_DEGRADE / NETWORK / UPSTREAM_UNREACHABLE
+        // / TOOL_ERROR …)都必须上屏降级原因——禁止黑屏充绿(G-F8-3)。
+        const msg =
+          err instanceof ForgeApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        if (msg !== lastFrameErr.current) {
+          lastFrameErr.current = msg;
           useEditorStore.getState().setViewportStatus(msg, null);
         }
       }
