@@ -101,12 +101,19 @@ export const useAssetStore = create<AssetState>((set, get) => ({
 
   load: async () => {
     set({ loading: true, error: null });
+    // asset_list 为主:成功即显示资产;asset_build_status 失败(如 .rx 无 .meta 的 NO_META)
+    // 不阻断列表——状态徽标留空 + 警告如实显示(不伪造全绿)。
     try {
       const list = await callAssetTool<{ assets: AssetItem[] }>('asset_list');
-      const statusList = await callAssetTool<{ items: AssetBuildStatus[] }>('asset_build_status', {});
-      const statusMap: Record<string, AssetBuildStatus['state']> = {};
-      for (const s of statusList.items) statusMap[s.path] = s.state;
-      set({ items: list.assets, status: statusMap, loading: false });
+      let statusMap: Record<string, AssetBuildStatus['state']> = {};
+      let warning: string | null = null;
+      try {
+        const statusList = await callAssetTool<{ items: AssetBuildStatus[] }>('asset_build_status', {});
+        for (const s of statusList.items) statusMap[s.path] = s.state;
+      } catch (err) {
+        warning = `构建状态不可用: ${(err as Error).message}`;
+      }
+      set({ items: list.assets, status: statusMap, error: warning, loading: false });
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
     }

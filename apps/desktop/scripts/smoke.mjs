@@ -28,7 +28,7 @@ function findLatestScreenshot() {
   return candidates.length > 0 ? candidates[0].full : null;
 }
 
-const scenario = process.env.FORGE_SMOKE_SCENARIO || 'home';
+const scenario = process.env.FORGE_SMOKE_SCENARIO || 'shell'; // F7 wave.3:home 退役,默认 shell
 console.log(`[smoke] launching electron (FORGE_SMOKE=1, scenario=${scenario}) ...`);
 const childLog = fs.createWriteStream(path.join(evidenceDir, 'smoke-child.log'));
 const child = spawn(electronBin, ['.'], {

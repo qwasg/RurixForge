@@ -11,12 +11,25 @@ export function mockForgeBackend(
 ) {
   return vi.fn(async (_url: unknown, init?: { body?: string }) => {
     const url = String(_url);
-    if (url in rest) {
-      const v = rest[url];
+    // F7 wave.3:REST 面允许带 query(design-snapshot?sessionId= 等)——先全串再去 query 匹配;
+    // 再退最长前缀匹配(PATCH/DELETE /sessions/{id} 等带参路径)。
+    const noQuery = url.split('?')[0];
+    let hit = url in rest ? url : noQuery in rest ? noQuery : null;
+    if (hit === null) {
+      const prefixes = Object.keys(rest)
+        .filter((k) => noQuery.startsWith(k))
+        .sort((a, b) => b.length - a.length);
+      hit = prefixes[0] ?? null;
+    }
+    if (hit !== null) {
+      const v = rest[hit];
+      const payload = () => (typeof v === 'function' ? (v as (i?: { body?: string }) => unknown)(init) : v);
       return {
         ok: true,
         status: 200,
-        json: async () => (typeof v === 'function' ? (v as (i?: { body?: string }) => unknown)(init) : v),
+        json: async () => payload(),
+        // F7 wave.3:apiDelete 走 text()(空体容忍),桩需同构
+        text: async () => JSON.stringify(payload() ?? null),
       } as Response;
     }
     const { tool } = JSON.parse(init?.body ?? '{}') as { tool: string };

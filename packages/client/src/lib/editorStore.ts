@@ -2,18 +2,13 @@ import { create } from 'zustand';
 import { apiPost, callTool } from './forgeApi';
 import { ringPush } from './consoleUtils';
 
-/** composer 五模式(04 §3 / 07 §5) */
-export type ComposerMode = 'build' | 'plan' | 'debug' | 'ask' | 'multitask';
-export const COMPOSER_MODES: ComposerMode[] = ['build', 'plan', 'debug', 'ask', 'multitask'];
-
-/** swarm 分片报告(/api/forge/swarm/execute 响应子集,卡片渲染用) */
-export interface SwarmReport {
-  shardType: string;
-  shards: Array<{ shardId: string; status: string; okCount: number; errorCount: number }>;
-  aggregate: { totalItems: number; succeeded: number; failed: number; disjoint: boolean };
-}
-
-/** 编辑器状态:实体 / 选中 / PIE / 事件流 / 帧统计,action 全部真实打后端。 */
+/**
+ * 编辑器状态:实体 / 选中 / PIE / 事件流 / 帧统计,action 全部真实打后端。
+ * F7 wave.3(D-F7-B):chat 子集(chatOpen/chatMessages/sendChat/toggleChat/
+ * COMPOSER_MODES/ComposerMode/SwarmReport/LlmChatResponse/executeMultitask)退役——
+ * agent 对话统一由壳内对话列承接(wave.4 chatStore);chatPrefill 三件套保留
+ * (AssetsPanel「生成」预填 seam,wave.4 composer 消费)。
+ */
 
 export interface TransformData {
   translation: number[];
@@ -65,15 +60,6 @@ export interface PlaytestReport {
   failed: number;
   durationMs: number;
   cases: Array<{ name: string; kind: string; pass: boolean; actual: unknown; expected: unknown; detail: string }>;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'error';
-  text: string;
-  /** 发送时的 composer 模式(user 消息记录;04 §3) */
-  mode?: ComposerMode;
-  /** multitask 分片执行报告卡片载荷(assistant 消息) */
-  swarm?: SwarmReport;
 }
 
 export type CenterTab = 'viewport' | 'nodegraph';
@@ -136,54 +122,11 @@ function quatMul(a: number[], b: number[]): number[] {
   ];
 }
 
-/**
- * multitask 确定性模板执行(D-F3-E):文本意图 → /api/forge/swarm/execute。
- * 当前模板集(未命中如实报错,不伪造执行):
- * - 「…碰撞体/collider…」→ 对场景全部实体 add RigidBody(static),scene-partition 4 片。
- */
-export async function executeMultitask(text: string, entities: EntityData[]): Promise<SwarmReport> {
-  if (/碰撞|collider/i.test(text)) {
-    if (entities.length === 0) {
-      throw new Error('multitask 失败:当前场景无实体,无法生成碰撞体');
-    }
-    const resp = await apiPost<SwarmReport & { aggregate: SwarmReport['aggregate'] & { consistent?: boolean } }>(
-      '/api/forge/swarm/execute',
-      {
-        shardType: 'scene-partition',
-        items: entities.map((e) => e.id),
-        shardCount: 4,
-        operation: { kind: 'add_component', type: 'RigidBody', props: { kind: 'static', mass: 0 } },
-      },
-    );
-    return {
-      shardType: resp.shardType,
-      shards: resp.shards,
-      aggregate: resp.aggregate,
-    };
-  }
-  throw new Error(
-    `multitask 模板未命中:「${text.slice(0, 40)}」。当前支持模板:批量碰撞体(含「碰撞体/collider」);更多模板随 F4/F6 工具面落地`,
-  );
-}
-
 interface SceneSummary {
   name: string;
   entityCount: number;
   playState: PlayState;
   render: RenderStats;
-}
-
-/** RD-F1-002:/api/forge/llm/chat 响应面(agentd llm.rs;provider=deepseek|mock) */
-export interface LlmToolCall {
-  name: string;
-  ok: boolean;
-  summary: string;
-}
-export interface LlmChatResponse {
-  provider: string;
-  text: string;
-  toolCalls: LlmToolCall[];
-  iters: number;
 }
 
 interface EditorState {
@@ -203,9 +146,7 @@ interface EditorState {
   gizmo: GizmoMode;
   centerTab: CenterTab;
   workbenchTab: WorkbenchTab;
-  chatOpen: boolean;
-  chatMessages: ChatMessage[];
-  /** F2 wave.3:Assets 右键「生成」预填 seam(F3 gen-image/gen-model 接入前仅预填文案) */
+  /** F2 wave.3:Assets 右键「生成」预填 seam(F7 wave.3 保留;wave.4 composer 消费) */
   chatPrefill: string | null;
 
   /** 编辑器相机(null = 未拉取) */
@@ -242,16 +183,15 @@ interface EditorState {
   redo: () => Promise<void>;
   saveScene: () => Promise<void>;
   loadScene: () => Promise<void>;
-
-  sendChat: (text: string, mode?: ComposerMode) => Promise<void>;
+  /** 空场景时加载默认场景(demo 迷宫;entityCount>0 不动)——打开 IDE 即见真实场景而非空工程。 */
+  ensureDefaultScene: () => Promise<void>;
 
   setGizmo: (g: GizmoMode) => void;
   setCenterTab: (t: CenterTab) => void;
   setWorkbenchTab: (t: WorkbenchTab) => void;
-  toggleChat: () => void;
-  /** 预填 Chat 输入框并确保 Chat 打开(Assets 右键「生成」) */
+  /** 预填 chat 输入框(F7 wave.3:仅写 chatPrefill;wave.4 composer 消费) */
   prefillChat: (text: string) => void;
-  /** ChatDock 消费预填后清除 */
+  /** 消费预填后清除 */
   clearChatPrefill: () => void;
 
   loadCamera: () => Promise<void>;
@@ -297,8 +237,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
     gizmo: 'translate',
     centerTab: 'viewport',
     workbenchTab: 'console',
-    chatOpen: false,
-    chatMessages: [],
     chatPrefill: null,
 
     camera: null,
@@ -491,63 +429,23 @@ export const useEditorStore = create<EditorState>((set, get) => {
         set({ stats: s.render, sceneName: s.name, playState: s.playState });
       }),
 
-    sendChat: (text, mode = 'build') =>
+    ensureDefaultScene: () =>
       run(async () => {
-        set((s) => ({ chatMessages: [...s.chatMessages, { role: 'user', text, mode }] }));
-        try {
-          if (mode === 'multitask') {
-            // F3 multitask 确定性执行器(D-F3-E,无 LLM):模板解析 → /swarm/execute → 分片卡片。
-            const report = await executeMultitask(text, get().entities);
-            set((s) => ({
-              chatMessages: [
-                ...s.chatMessages,
-                {
-                  role: 'assistant',
-                  text: `分片执行:${report.aggregate.succeeded}/${report.aggregate.totalItems} 成功,${report.aggregate.failed} 失败`,
-                  swarm: report,
-                },
-              ],
-            }));
-            await reload();
-            return;
-          }
-          // RD-F1-002:真 LLM 工具循环(agentd provider=deepseek|mock;F1 scene_summary 回显 seam 退役)。
-          const r = await apiPost<LlmChatResponse>('/api/forge/llm/chat', { text, mode });
-          const calls = r.toolCalls ?? [];
-          const lines: string[] = [];
-          if (r.provider === 'mock') {
-            lines.push(`[mock] ${r.text}`);
-          } else {
-            lines.push(r.text);
-            if (calls.length > 0) {
-              lines.push(
-                '',
-                `工具调用 ${calls.length} 次(成功 ${calls.filter((c) => c.ok).length}):`,
-                ...calls.map((c) => `${c.ok ? '✓' : '✗'} ${c.name} — ${c.summary}`),
-              );
-            }
-          }
-          set((s) => ({
-            chatMessages: [...s.chatMessages, { role: 'assistant', text: lines.join('\n') }],
-          }));
-          // 工具实际改了场景:刷新实体与帧统计(与 reload/refreshSummary 同链)。
-          if (calls.some((c) => c.ok)) {
-            await reload();
-            const sum = await callTool<SceneSummary>('scene_summary');
-            set({ stats: sum.render, sceneName: sum.name, playState: sum.playState });
-          }
-        } catch (err) {
-          set((s) => ({
-            chatMessages: [...s.chatMessages, { role: 'error', text: (err as Error).message }],
-          }));
+        const s = await callTool<SceneSummary>('scene_summary');
+        if (s.entityCount > 0) {
+          set({ stats: s.render, sceneName: s.name, playState: s.playState });
+          return;
         }
+        await callTool('scene_load', { path: 'Content/Scenes/maze.rxscene' });
+        await reload();
+        const s2 = await callTool<SceneSummary>('scene_summary');
+        set({ stats: s2.render, sceneName: s2.name, playState: s2.playState, scenePath: 'Content/Scenes/maze.rxscene' });
       }),
 
     setGizmo: (g) => set({ gizmo: g }),
     setCenterTab: (t) => set({ centerTab: t }),
     setWorkbenchTab: (t) => set({ workbenchTab: t }),
-    toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
-    prefillChat: (text) => set({ chatPrefill: text, chatOpen: true }),
+    prefillChat: (text) => set({ chatPrefill: text }),
     clearChatPrefill: () => set({ chatPrefill: null }),
 
     loadCamera: () =>

@@ -316,7 +316,9 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64",
+ "futures-util",
  "gend",
+ "http-body-util",
  "image",
  "serde",
  "serde_json",

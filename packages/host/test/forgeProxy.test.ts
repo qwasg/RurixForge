@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { ApiError, HealthStatus } from '@forge/protocol';
 import { buildServer, type ForgeServer } from '../src/server.js';
+import { isLongLivedPath, proxyMatches, upstreamTimeoutMs } from '../src/plugins/forgeProxy.js';
 
 /**
  * forgeProxy 测试:假上游记录请求并回放响应。
@@ -115,11 +116,100 @@ describe('forgeProxy', () => {
     expect(recorded.some((r) => r.url === '/api/forge/health')).toBe(false);
   });
 
-  it('自有路由不被代理遮蔽:/api/forge/sessions 仍由 host 应答', async () => {
+  it('F7 wave.1:/api/forge/sessions 改由代理遮蔽透传(agentd 事实源,F0 stub 退役)', async () => {
+    // F0 时本断言为「仍由 host 应答」;F7 wave.1 起会话面事实源移到 agentd,
+    // 请求须命中上游(遮蔽 host 自有 sessions.ts 插件路由,契约留痕)。
     const res = await fetch(`${base}/api/forge/sessions`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([]);
-    expect(recorded.some((r) => r.url?.startsWith('/api/forge/sessions'))).toBe(false);
+    expect(await res.text()).toBe(UPSTREAM_REPLY);
+    expect(recorded.some((r) => r.url === '/api/forge/sessions' && r.method === 'GET')).toBe(true);
+  });
+
+  it('F7 wave.1:/api/forge/chat-folders 与 /api/forge/design-snapshot 透传', async () => {
+    const res = await fetch(`${base}/api/forge/chat-folders`);
+    expect(res.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/chat-folders')).toBe(true);
+    const res2 = await fetch(`${base}/api/forge/design-snapshot?sessionId=sess_x`);
+    expect(res2.status).toBe(200);
+    expect(
+      recorded.some((r) => r.url === '/api/forge/design-snapshot?sessionId=sess_x'),
+    ).toBe(true);
+  });
+
+  it('F7 wave.1/2:代理前缀/长生命周期超时豁免纯函数判定', () => {
+    // 新前缀命中(含子路径)
+    expect(proxyMatches('/api/forge/sessions')).toBe(true);
+    expect(proxyMatches('/api/forge/sessions/sess_1')).toBe(true);
+    expect(proxyMatches('/api/forge/sessions/sess_1/events/stream')).toBe(true);
+    expect(proxyMatches('/api/forge/sessions/sess_1/fork')).toBe(true);
+    expect(proxyMatches('/api/forge/chat-folders')).toBe(true);
+    expect(proxyMatches('/api/forge/chat-folders/fld_1')).toBe(true);
+    expect(proxyMatches('/api/forge/design-snapshot')).toBe(true);
+    // F7 wave.2:runs/todos 前缀 + ask:execute(sessions 前缀内)
+    expect(proxyMatches('/api/forge/runs')).toBe(true);
+    expect(proxyMatches('/api/forge/runs/run_1')).toBe(true);
+    expect(proxyMatches('/api/forge/runs/run_1/cancel')).toBe(true);
+    expect(proxyMatches('/api/forge/todos')).toBe(true);
+    expect(proxyMatches('/api/forge/todos/todo_1')).toBe(true);
+    expect(proxyMatches('/api/forge/sessions/sess_1/todos')).toBe(true);
+    expect(proxyMatches('/api/forge/sessions/sess_1/ask:execute')).toBe(true);
+    // F7 wave.5:workspace 树前缀;llm/key 落在既有 /api/forge/llm 前缀内
+    expect(proxyMatches('/api/forge/workspace')).toBe(true);
+    expect(proxyMatches('/api/forge/workspace/tree')).toBe(true);
+    expect(proxyMatches('/api/forge/llm/key')).toBe(true);
+    // 边界:相似串不命中;health 仍 host 自有
+    expect(proxyMatches('/api/forge/workspacex')).toBe(false);
+    expect(proxyMatches('/api/forge/sessionsx')).toBe(false);
+    expect(proxyMatches('/api/forge/runsx')).toBe(false);
+    expect(proxyMatches('/api/forge/todosx')).toBe(false);
+    expect(proxyMatches('/api/forge/health')).toBe(false);
+    expect(proxyMatches('/api/other')).toBe(false);
+    // 长生命周期豁免:/events/stream 与 /ask:execute 并列 0(不限时),其余 15s
+    expect(isLongLivedPath('/api/forge/sessions/sess_1/events/stream')).toBe(true);
+    expect(isLongLivedPath('/api/forge/sessions/sess_1/ask:execute')).toBe(true);
+    expect(isLongLivedPath('/api/forge/sessions/sess_1/events')).toBe(false);
+    expect(isLongLivedPath('/api/forge/sessions/sess_1/ask')).toBe(false);
+    expect(isLongLivedPath('/api/forge/sessions')).toBe(false);
+    expect(isLongLivedPath('/api/forge/runs/run_1/cancel')).toBe(false);
+    expect(upstreamTimeoutMs('/api/forge/sessions/sess_1/events/stream')).toBe(0);
+    expect(upstreamTimeoutMs('/api/forge/sessions/sess_1/ask:execute')).toBe(0);
+    expect(upstreamTimeoutMs('/api/forge/sessions')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/design-snapshot')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/runs/run_1')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/todos/todo_1')).toBe(15_000);
+  });
+
+  it('F7 wave.2:runs/todos 请求经代理透传到上游', async () => {
+    const res = await fetch(`${base}/api/forge/runs/run_x`);
+    expect(res.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/runs/run_x' && r.method === 'GET')).toBe(
+      true,
+    );
+    const res2 = await fetch(`${base}/api/forge/runs/run_x/cancel`, { method: 'POST' });
+    expect(res2.status).toBe(200);
+    expect(
+      recorded.some((r) => r.url === '/api/forge/runs/run_x/cancel' && r.method === 'POST'),
+    ).toBe(true);
+    const payload = JSON.stringify({ sessionId: 'sess_1', title: 't' });
+    const res3 = await fetch(`${base}/api/forge/todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(res3.status).toBe(200);
+    const hit = recorded.find((r) => r.url === '/api/forge/todos');
+    expect(hit).toBeDefined();
+    expect(hit!.method).toBe('POST');
+    expect(hit!.body).toBe(payload);
+    const res4 = await fetch(`${base}/api/forge/todos/todo_1`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'completed' }),
+    });
+    expect(res4.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/todos/todo_1' && r.method === 'PATCH')).toBe(
+      true,
+    );
   });
 
   it('上游不可达 → 502 UPSTREAM_UNREACHABLE', async () => {

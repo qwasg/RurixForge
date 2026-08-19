@@ -126,159 +126,17 @@ describe('editorStore', () => {
     expect(useEditorStore.getState().lastError).toContain('未 mock 的工具');
   });
 
-  it('prefillChat:预填文案并打开 Chat,clearChatPrefill 清除(F2 wave.3 seam)', () => {
+  it('prefillChat:预填文案写入 chatPrefill,clearChatPrefill 清除(F2 wave.3 seam;F7 wave.3 保留)', () => {
     useEditorStore.getState().prefillChat('基于资产 Meshes/cube.gltf 生成变体:');
     let s = useEditorStore.getState();
     expect(s.chatPrefill).toBe('基于资产 Meshes/cube.gltf 生成变体:');
-    expect(s.chatOpen).toBe(true);
     useEditorStore.getState().clearChatPrefill();
     s = useEditorStore.getState();
     expect(s.chatPrefill).toBeNull();
-    expect(s.chatOpen).toBe(true); // 清除预填不回收面板
   });
 
-  // ---- F3 wave.4:Composer 五模式载荷 + multitask 分片卡片 ----
-
-  it('sendChat:选中模式随发送载荷(user 消息记录 mode)', async () => {
-    // RD-F1-002:非 multitask 四模式走 /api/forge/llm/chat(REST 面),不再打 scene_summary 工具。
-    const chatCalls: Array<Record<string, unknown>> = [];
-    fetchMock = mockForgeBackend({}, {
-      '/api/forge/llm/chat': (init?: { body?: string }) => {
-        chatCalls.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>);
-        return { provider: 'mock', text: 'mock:已收到', toolCalls: [], iters: 0 };
-      },
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    for (const mode of ['build', 'plan', 'debug', 'ask'] as const) {
-      await useEditorStore.getState().sendChat(`hello ${mode}`, mode);
-    }
-    const users = useEditorStore.getState().chatMessages.filter((m) => m.role === 'user');
-    expect(users.map((m) => m.mode)).toEqual(['build', 'plan', 'debug', 'ask']);
-    // 载荷:{text, mode} 逐项打到 llm/chat
-    expect(chatCalls).toHaveLength(4);
-    expect(chatCalls.map((c) => c.mode)).toEqual(['build', 'plan', 'debug', 'ask']);
-    // mock provider 如实标注
-    const assistants = useEditorStore.getState().chatMessages.filter((m) => m.role === 'assistant');
-    expect(assistants.every((m) => m.text.startsWith('[mock]'))).toBe(true);
-  });
-
-  it('sendChat deepseek:工具循环响应渲染工具摘要 + 成功后刷新实体与统计', async () => {
-    fetchMock = mockForgeBackend(
-      {
-        entity_list: { entities: [CUBE] },
-        scene_summary: {
-          name: 'Demo',
-          entityCount: 1,
-          playState: 'edit',
-          render: { frames: 9, lastTris: 3, lastNonZeroPixels: 7 },
-        },
-      },
-      {
-        '/api/forge/llm/chat': () => ({
-          provider: 'deepseek',
-          text: '已创建 1 个立方体',
-          toolCalls: [
-            { name: 'mcp__engine-scene__entity_create', ok: true, summary: '{"id":1}' },
-            { name: 'mcp__engine-scene__component_add', ok: false, summary: '不支持' },
-          ],
-          iters: 3,
-        }),
-      },
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    await useEditorStore.getState().sendChat('创建一个立方体', 'build');
-    const s = useEditorStore.getState();
-    const assistant = s.chatMessages.find((m) => m.role === 'assistant');
-    expect(assistant).toBeDefined();
-    expect(assistant!.text).toContain('已创建 1 个立方体');
-    expect(assistant!.text).toContain('工具调用 2 次(成功 1)');
-    expect(assistant!.text).toContain('✓ mcp__engine-scene__entity_create');
-    expect(assistant!.text).toContain('✗ mcp__engine-scene__component_add');
-    // 有成功工具调用 → reload(entity_list)+ scene_summary 刷新
-    expect(s.entities).toEqual([CUBE]);
-    expect(s.stats).toEqual({ frames: 9, lastTris: 3, lastNonZeroPixels: 7 });
-  });
-
-  it('sendChat deepseek:无工具调用不刷新实体(纯文本答复)', async () => {
-    fetchMock = mockForgeBackend(
-      {},
-      {
-        '/api/forge/llm/chat': () => ({
-          provider: 'deepseek',
-          text: '这是一个解释',
-          toolCalls: [],
-          iters: 1,
-        }),
-      },
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    useEditorStore.setState({ entities: [] });
-
-    await useEditorStore.getState().sendChat('解释一下场景', 'ask');
-    const s = useEditorStore.getState();
-    const assistant = s.chatMessages.find((m) => m.role === 'assistant');
-    expect(assistant!.text).toBe('这是一个解释');
-    // 无 toolCalls → 不打 entity_list/scene_summary(仅一次 llm/chat 请求)
-    expect(fetchMock.mock.calls).toHaveLength(1);
-  });
-
-  it('sendChat multitask:碰撞模板 → /swarm/execute 载荷 + 分片卡片消息', async () => {
-    const executeCalls: Array<Record<string, unknown>> = [];
-    fetchMock = mockForgeBackend(
-      { entity_list: { entities: [CUBE] } },
-      {
-        '/api/forge/swarm/execute': (init?: { body?: string }) => {
-          executeCalls.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>);
-          return {
-            shardType: 'scene-partition',
-            shards: [{ shardId: 'shard-1', status: 'done', okCount: 1, errorCount: 0 }],
-            aggregate: { totalItems: 1, succeeded: 1, failed: 0, disjoint: true, consistent: true },
-          };
-        },
-      },
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    useEditorStore.setState({ entities: [CUBE] });
-
-    await useEditorStore.getState().sendChat('给全部关卡块生成碰撞体', 'multitask');
-
-    // /swarm/execute 载荷:scene-partition + 全部实体 id + add_component RigidBody
-    expect(executeCalls).toHaveLength(1);
-    expect(executeCalls[0].shardType).toBe('scene-partition');
-    expect(executeCalls[0].items).toEqual([CUBE.id]);
-    expect(executeCalls[0].shardCount).toBe(4);
-    expect((executeCalls[0].operation as { type: string }).type).toBe('RigidBody');
-
-    // 分片卡片消息:assistant 带 swarm 报告;multitask 后 reload 拉实体
-    const msgs = useEditorStore.getState().chatMessages;
-    const card = msgs.find((m) => m.swarm);
-    expect(card).toBeDefined();
-    expect(card!.swarm!.aggregate).toMatchObject({ totalItems: 1, succeeded: 1, failed: 0 });
-    expect(card!.text).toContain('1/1');
-    const tools = fetchMock.mock.calls.map((c) => {
-      try {
-        return (JSON.parse((c[1] as { body: string }).body) as { tool?: string }).tool;
-      } catch {
-        return undefined;
-      }
-    });
-    expect(tools).toContain('mcp__engine-scene__entity_list');
-  });
-
-  it('sendChat multitask:模板未命中 → error 消息如实,不伪造执行', async () => {
-    fetchMock = mockForgeBackend({});
-    vi.stubGlobal('fetch', fetchMock);
-    useEditorStore.setState({ entities: [CUBE] });
-
-    await useEditorStore.getState().sendChat('给我讲个故事', 'multitask');
-    const msgs = useEditorStore.getState().chatMessages;
-    const err = msgs[msgs.length - 1];
-    expect(err.role).toBe('error');
-    expect(err.text).toContain('multitask 模板未命中');
-    expect(msgs.some((m) => m.swarm)).toBe(false);
-  });
+  // F7 wave.3(D-F7-B):sendChat/multitask/ChatDock 用例随 chat 子集退役删除;
+  // agent 对话统一由壳内对话列承接(wave.4 chatStore 测试面)。
 
   // ---- F1 wave.2:viewport 相机 / 点选 / gizmo ----
 

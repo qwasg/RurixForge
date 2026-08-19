@@ -3,11 +3,15 @@ import type { PluginFn } from '../ctx.js';
 import type { Logger } from './logger.js';
 
 /**
- * forgeProxy 插件:/api/forge/mcp/* 与 /api/forge/llm/* 反向代理到 forge-agentd;
+ * forgeProxy 插件:/api/forge/* 选定前缀反向代理到 forge-agentd;
  * F3 扩:agentd REST 面(skills/subagents/swarm/proposals)同代理——desktop/web 场景
  * client 只认 host 单源(3080),agentd REST 必须经 host 透传。
+ * F7 wave.1:agent 会话事实源移到 agentd(事件基座)——/api/forge/sessions、
+ * /api/forge/chat-folders、/api/forge/design-snapshot 加入代理前缀;host 自有 F0 stub
+ * (sessions.ts/eventlog.ts 的 /api/forge/sessions 路由)在运行时被遮蔽(F0 已 closed,契约留痕)。
+ * SSE 长连接(/events/stream)豁免 15s 上游超时(setTimeout(0)),保持 pipe 流式;普通请求维持 15s。
  * 方法与 body 透传;上游不可达 → 502 {error:{code:"UPSTREAM_UNREACHABLE"}}。
- * host 自有 /api/forge/health、/api/forge/sessions 不走代理(前缀不重叠)。
+ * host 自有 /api/forge/health 不走代理(前缀不重叠)。
  */
 export interface ForgeProxy {
   /** 命中代理前缀时转发并返回 true;否则返回 false 交给 host 自有路由 */
@@ -27,11 +31,35 @@ const PROXY_PREFIXES = [
   '/api/forge/gen',
   // F6:playtest 矩阵执行器(Console 报告行注入链)
   '/api/forge/playtest',
+  // F7 wave.1:agent 事件基座(会话 CRUD/fork/revert + SSE 流 + chat-folders + design-snapshot)
+  '/api/forge/sessions',
+  '/api/forge/chat-folders',
+  '/api/forge/design-snapshot',
+  // F7 wave.2:turn 执行事件化(runs 控制 + todos REST;ask:execute 在 sessions 前缀内)
+  '/api/forge/runs',
+  '/api/forge/todos',
+  // F7 wave.5:工作区文件树只读面(Inspector;llm/key 在已有 /api/forge/llm 前缀内,无需新增)
+  '/api/forge/workspace',
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
-function matches(pathname: string): boolean {
+/** 代理前缀命中判定(导出供单测)。 */
+export function proxyMatches(pathname: string): boolean {
   return PROXY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/**
+ * 长生命周期端点判定(导出供单测;pathname 不含 query)。
+ * F7 wave.1 原名 isStreamPath(仅 SSE);wave.2 改名 isLongLivedPath 留痕——
+ * ask:execute turn 可能远超 15s(16 迭代 × 60s 上限),与 events/stream 并列豁免。
+ */
+export function isLongLivedPath(pathname: string): boolean {
+  return pathname.endsWith('/events/stream') || pathname.endsWith('/ask:execute');
+}
+
+/** 上游超时毫秒:长生命周期端点 0(不限时),其余 15s(导出供单测)。 */
+export function upstreamTimeoutMs(pathname: string): number {
+  return isLongLivedPath(pathname) ? 0 : UPSTREAM_TIMEOUT_MS;
 }
 
 function readBody(req: http.IncomingMessage): Promise<Buffer> {
@@ -55,7 +83,7 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
       res: http.ServerResponse,
       pathname: string,
     ): Promise<boolean> {
-      if (!matches(pathname)) return false;
+      if (!proxyMatches(pathname)) return false;
 
       const body = await readBody(req);
       const headers: Record<string, string> = {};
@@ -96,9 +124,16 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
           }
           resolve();
         });
-        out.setTimeout(UPSTREAM_TIMEOUT_MS, () => {
-          out.destroy(new Error(`upstream timeout ${UPSTREAM_TIMEOUT_MS}ms`));
-        });
+        // F7 wave.1/2:长生命周期端点(SSE 流 / ask:execute turn)豁免 15s 不活动超时;
+        // 普通请求维持原超时防挂死。
+        const timeoutMs = upstreamTimeoutMs(pathname);
+        if (timeoutMs > 0) {
+          out.setTimeout(timeoutMs, () => {
+            out.destroy(new Error(`upstream timeout ${timeoutMs}ms`));
+          });
+        } else {
+          out.setTimeout(0);
+        }
         out.end(body);
       });
       return true;

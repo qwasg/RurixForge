@@ -159,3 +159,37 @@ export async function apiPost<T = unknown>(path: string, payload: unknown): Prom
   }
   return body as T;
 }
+
+/** 非 MCP 的 agentd REST PATCH(plain JSON;F7 会话 title/pinned/folderId)。 */
+export async function apiPatch<T = unknown>(path: string, payload: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = (await res.json()) as unknown;
+  if (!res.ok) {
+    const err = (body as { error?: { code?: string; message?: string } })?.error;
+    throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return body as T;
+}
+
+/** 非 MCP 的 agentd REST DELETE(F7 会话/文件夹删除;空响应体容忍)。 */
+export async function apiDelete<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(path, { method: 'DELETE' });
+  const text = await res.text();
+  let body: unknown = null;
+  if (text !== '') {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new ForgeApiError('BAD_RESPONSE', `响应非 JSON(HTTP ${res.status})`, res.status);
+    }
+  }
+  if (!res.ok) {
+    const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
+    throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return body as T;
+}

@@ -785,12 +785,9 @@ fn parse_batch_op(v: &Value, scene: &Scene) -> Result<Op, (i64, String)> {
     }
 }
 
-/// 场景默认落盘路径:<cwd>/data/scene.rxscene。
+/// 场景默认落盘路径:<项目根>/data/scene.rxscene。
 fn default_scene_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("data")
-        .join("scene.rxscene")
+    project_root().join("data").join("scene.rxscene")
 }
 
 /// 分派单条请求(请求已合法解析为 JSON;坏 JSON 由连接层回 -32700)。
@@ -1423,10 +1420,35 @@ fn transform_batch_set(st: &mut HostState, params: &Value) -> HResult {
 
 // ---------- scene.* 存取 / diff / checkpoint ----------
 
+/// 场景路径解析:绝对路径原样;`projects/` 前缀按 workspace 根解析(playtest 矩阵契约:
+/// 「scene_load 直接吃:workspace 相对或绝对」,见 forge-agentd playtest.rs);其余相对路径按
+/// 项目根(projects/demo 或 FORGE_PROJECT_ROOT)解析。scene_save/scene_load/scene_diff 共用,
+/// 避免随进程 CWD 漂移。
+/// F7 wave.5 回归修复:此前「相对一律项目根」使 workspace 相对路径双前缀(projects/demo/
+/// projects/demo/...)→ scene_load os error 3,console-metrics 场景回归;恢复双契约。
+fn resolve_scene_path(s: &str) -> PathBuf {
+    let p = PathBuf::from(s);
+    if p.is_absolute() {
+        return p;
+    }
+    let first = p
+        .components()
+        .next()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned());
+    if first.as_deref() == Some("projects") {
+        return PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("workspace 根")
+            .join(p);
+    }
+    project_root().join(p)
+}
+
 fn scene_save(st: &HostState, params: &Value) -> HResult {
     let path = match params.get("path") {
         None | Some(Value::Null) => default_scene_path(),
-        Some(Value::String(s)) => PathBuf::from(s),
+        Some(Value::String(s)) => resolve_scene_path(s),
         Some(_) => return param_err("invalid params: path 须为字符串"),
     };
     if let Some(dir) = path.parent() {
@@ -1446,7 +1468,7 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
         return domain_err("play 态禁止 scene.load,请先 play.exit");
     }
     let path = match params.get("path") {
-        Some(Value::String(s)) => PathBuf::from(s),
+        Some(Value::String(s)) => resolve_scene_path(s),
         _ => return param_err("invalid params: path 必填且须为字符串"),
     };
     let scene = Scene::load(&path).map_err(|e| (-32000, e.to_string()))?;
@@ -1460,7 +1482,7 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
 fn scene_diff(st: &HostState, params: &Value) -> HResult {
     let path = match params.get("path") {
         None | Some(Value::Null) => default_scene_path(),
-        Some(Value::String(s)) => PathBuf::from(s),
+        Some(Value::String(s)) => resolve_scene_path(s),
         Some(_) => return param_err("invalid params: path 须为字符串"),
     };
     let cur = st.scene.to_json().map_err(|e| (-32000, e.to_string()))?;

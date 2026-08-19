@@ -5,6 +5,11 @@
 //! 密钥红线(R-5):FORGE_LLM_API_KEY env 优先 → gend keystore["deepseek"](key_for 语义,
 //! FORGE_GEN_API_KEY 共享 dev-key 覆盖如实标注);皆无 → provider=mock。密钥只进
 //! Authorization 请求头,永不进日志/事件/工具返回/错误消息。
+//!
+//! F7 wave.2:循环核心抽为 run_tool_loop(step/executor/sink/cancel/forbidden 全可注入)——
+//! llm/chat handler 以无事件 sink 调用(返回结构与行为不变,RD-F1-002 红线);
+//! agent.rs ask:execute 以事件 sink + 可注入 executor 调用(单测 scripted fake 全内存,
+//! 禁止网络与子进程)。
 
 use axum::response::IntoResponse;
 use serde::Deserialize;
@@ -22,7 +27,7 @@ const TOOL_FEEDBACK_MAX: usize = 4000;
 /// 单次 HTTP 请求超时(工具循环多轮,每轮一个请求)。
 const HTTP_TIMEOUT_SECS: u64 = 60;
 
-const SYSTEM_PROMPT: &str = "你是 RurixForge 游戏引擎编辑器的内置助手。\
+pub(crate) const SYSTEM_PROMPT: &str = "你是 RurixForge 游戏引擎编辑器的内置助手。\
 用户用中文描述场景编辑/资产管理/代码工具意图,你应优先调用提供的工具完成实际操作,而不是只描述步骤。\
 工具调用参数严格遵循各工具的 inputSchema;实体创建等操作完成后可用一句话如实汇报结果(成功/失败/数量),不得伪造执行结果。";
 
@@ -45,7 +50,7 @@ pub struct ToolCallRecord {
 
 /// provider 解析结果。
 #[derive(Clone, PartialEq)]
-enum Provider {
+pub(crate) enum Provider {
     /// 无密钥:恒绿 seam,不触网不触 MCP。
     Mock,
     /// DeepSeek 官方 API;String 仅用于 Authorization 头组装。
@@ -64,17 +69,30 @@ impl std::fmt::Debug for Provider {
 
 /// 密钥面:FORGE_LLM_API_KEY env 优先 → gend keystore["deepseek"]。
 /// keystore.key_for 语义含 FORGE_GEN_API_KEY 共享 dev-key 覆盖(D-RDG-B 如实标注)。
-fn resolve_provider() -> Provider {
+/// F7 wave.1:抽成可复用判定(design-snapshot models.availability 同源;R-5 行为不变)。
+fn resolve_deepseek_key() -> Option<String> {
     if let Ok(v) = std::env::var("FORGE_LLM_API_KEY") {
         if !v.is_empty() {
-            return Provider::Deepseek(v);
+            return Some(v);
         }
     }
     let ks = gend::keystore::Keystore::load();
     match ks.key_for("deepseek") {
-        Some(k) if !k.is_empty() => Provider::Deepseek(k),
-        _ => Provider::Mock,
+        Some(k) if !k.is_empty() => Some(k),
+        _ => None,
     }
+}
+
+pub(crate) fn resolve_provider() -> Provider {
+    match resolve_deepseek_key() {
+        Some(k) => Provider::Deepseek(k),
+        None => Provider::Mock,
+    }
+}
+
+/// deepseek 密钥可用性(design-snapshot availability 复用;不暴露密钥本体,R-5)。
+pub(crate) fn deepseek_key_available() -> bool {
+    resolve_deepseek_key().is_some()
 }
 
 /// MCP tools/list 条目 → OpenAI tools 格式(type:function;parameters 缺省补 {"type":"object"})。
@@ -117,6 +135,13 @@ fn build_request_body(messages: &[Value], tools: &[Value]) -> Value {
 /// LLM 侧失败(上行 HTTP / 协议 / 工具面不可用);消息保证不含密钥。
 #[derive(Debug)]
 pub struct LlmError(String);
+
+impl LlmError {
+    /// F7 wave.2:agent.rs 构造工具面不可用等失败(消息面不含密钥)。
+    pub fn new(msg: impl Into<String>) -> Self {
+        LlmError(msg.into())
+    }
+}
 
 impl std::fmt::Display for LlmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -197,7 +222,8 @@ fn tool_calls_of(msg: &Value) -> Option<&Vec<Value>> {
         .filter(|a| !a.is_empty())
 }
 
-/// DeepSeek 工具循环主流程:返回 (最终文本, 工具调用记录, 实际轮数)。
+/// DeepSeek 工具循环主流程(F7 wave.2:薄壳——工具面拉取 + 无事件 sink 调 run_tool_loop,
+/// 返回 (最终文本, 工具调用记录, 实际轮数) 与 RD-F1-002 原行为逐字一致)。
 async fn run_deepseek_loop(
     text: &str,
     key: &str,
@@ -206,26 +232,207 @@ async fn run_deepseek_loop(
         .await
         .map_err(|e| LlmError(format!("MCP 工具面拉取失败: {e}")))?;
     let tools = to_openai_tools(&mcp_tools);
+    let step = deepseek_step(key);
+    let execute = mcp_executor();
+    let out = run_tool_loop(
+        SYSTEM_PROMPT,
+        text,
+        ToolLoopCfg {
+            tools,
+            step: step.as_ref(),
+            execute: execute.as_ref(),
+            sink: None,
+            forbidden: None,
+            cancelled: None,
+        },
+    )
+    .await?;
+    Ok((out.text, out.records, out.iters))
+}
+
+// ---------- F7 wave.2:可注入工具循环核心(agent.rs 事件化复用;llm/chat 无 sink 行为不变) ----------
+
+/// 盒装异步返回(注入闭包统一签名)。
+pub type BoxFut<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
+
+/// provider 单轮 token 用量(deepseek 响应 usage;mock 无此概念 → 不发 agent.usage)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Usage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
+/// provider 步进结果:assistant message 本体(可含 tool_calls)+ 可选 usage。
+pub struct StepOutcome {
+    pub message: Value,
+    pub usage: Option<Usage>,
+}
+
+/// provider 步进(可注入;单测用 scripted fake,禁止网络/子进程):
+/// (messages, openai tools) → assistant message + usage。
+pub type StepFn =
+    dyn Fn(Vec<Value>, Vec<Value>) -> BoxFut<Result<StepOutcome, LlmError>> + Send + Sync;
+
+/// 工具执行器(可注入;单测假成功/假失败):(name, args) → (ok, feedback)。
+/// 失败以 (false, 原因) 表达——工具错误不打断循环(RD-F1-002 原语义)。
+pub type ExecFn = dyn Fn(String, Value) -> BoxFut<(bool, String)> + Send + Sync;
+
+/// 工具循环事件(sink;llm/chat 传 None = 零事件 = 原行为;agent.rs 接 EventBus)。
+#[derive(Debug)]
+pub enum LoopEvent {
+    ToolInvoked {
+        name: String,
+        args: Value,
+        tool_call_id: String,
+    },
+    ToolCompleted {
+        name: String,
+        tool_call_id: String,
+        duration_ms: u64,
+    },
+    ToolFailed {
+        name: String,
+        error: String,
+        tool_call_id: String,
+        duration_ms: u64,
+    },
+    Usage(Usage),
+}
+
+/// 工具循环结果。
+pub struct ToolLoopOutcome {
+    pub text: String,
+    pub records: Vec<ToolCallRecord>,
+    pub iters: usize,
+    pub cancelled: bool,
+}
+
+/// 循环配置(sink/forbidden/cancelled 三注入点全 Option,None = llm/chat 原行为)。
+pub struct ToolLoopCfg<'a> {
+    /// 给 provider 的 openai tools(ask 模式传空 = 纯对话)。
+    pub tools: Vec<Value>,
+    pub step: &'a StepFn,
+    pub execute: &'a ExecFn,
+    /// 事件汇。
+    pub sink: Option<&'a (dyn Fn(LoopEvent) + Send + Sync)>,
+    /// 禁用工具判定(plan 模式写工具门):命中 → 不执行,该调用 TOOL_FORBIDDEN 收尾。
+    pub forbidden: Option<&'a (dyn Fn(&str) -> bool + Send + Sync)>,
+    /// 取消令牌判定(每迭代开头检查一次)。
+    pub cancelled: Option<&'a (dyn Fn() -> bool + Send + Sync)>,
+}
+
+/// chat.completions 响应 → StepOutcome(message + usage;usage 缺省 None)。
+fn parse_step_response(resp: &Value) -> Result<StepOutcome, LlmError> {
+    let msg = resp
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|c| c.get("message"))
+        .cloned()
+        .ok_or_else(|| LlmError("DeepSeek 响应缺 choices[0].message".to_string()))?;
+    let usage = resp.get("usage").map(|u| Usage {
+        prompt_tokens: u.get("prompt_tokens").and_then(Value::as_u64).unwrap_or(0),
+        completion_tokens: u
+            .get("completion_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        total_tokens: u.get("total_tokens").and_then(Value::as_u64).unwrap_or(0),
+    });
+    Ok(StepOutcome {
+        message: msg,
+        usage,
+    })
+}
+
+/// deepseek 步进工厂(阻塞 HTTP 走 spawn_blocking;R-5:密钥只进请求头,闭包不外泄)。
+pub fn deepseek_step(key: &str) -> Box<StepFn> {
+    let key = key.to_string();
+    Box::new(move |messages, tools| {
+        let key = key.clone();
+        Box::pin(async move {
+            let resp =
+                tokio::task::spawn_blocking(move || chat_completions(&key, &messages, &tools))
+                    .await
+                    .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
+            parse_step_response(&resp)
+        })
+    })
+}
+
+/// mock 文案(llm/chat 与 agent.rs mock 步进同一字符串,行为不变红线)。
+pub(crate) fn mock_reply_text(input: &str) -> String {
+    format!("mock:已收到「{}」(无 LLM 密钥,真实工具循环未启用;配 FORGE_LLM_API_KEY 或 keystore[deepseek] 后走 deepseek)", truncate_chars(input, 80))
+}
+
+/// mock 步进:首轮即终稿,不产工具调用,无 usage(无密钥恒绿 seam,不触网不触 MCP)。
+pub fn mock_step() -> Box<StepFn> {
+    Box::new(|messages, _tools| {
+        // 取末条 user 消息作输入(与 llm/chat mock 文案同源)。
+        let input = messages
+            .iter()
+            .rev()
+            .find(|m| m.get("role").and_then(Value::as_str) == Some("user"))
+            .and_then(|m| m.get("content"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        Box::pin(async move {
+            Ok(StepOutcome {
+                message: json!({ "role": "assistant", "content": mock_reply_text(&input) }),
+                usage: None,
+            })
+        })
+    })
+}
+
+/// 生产 executor:进程内 mcp::call_tool(RD-F1-002 原语义:ok = !isError;错误不打断循环)。
+pub fn mcp_executor() -> Box<ExecFn> {
+    Box::new(|name, args| {
+        Box::pin(async move {
+            match mcp::call_tool(&name, Some(args)).await {
+                Ok(result) => {
+                    let is_err = result
+                        .get("isError")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    (!is_err, envelope_text(&result))
+                }
+                Err(e) => (false, format!("工具调用失败: {e}")),
+            }
+        })
+    })
+}
+
+/// 工具循环主流程(F7 wave.2 抽出;llm/chat 以 sink/forbidden/cancelled 全 None 调用,
+/// 行为与 RD-F1-002 原 run_deepseek_loop 逐行等价:同一消息序/截断/记录面/轮数语义)。
+pub async fn run_tool_loop(
+    system_prompt: &str,
+    user_text: &str,
+    cfg: ToolLoopCfg<'_>,
+) -> Result<ToolLoopOutcome, LlmError> {
     let mut messages = vec![
-        json!({ "role": "system", "content": SYSTEM_PROMPT }),
-        json!({ "role": "user", "content": text }),
+        json!({ "role": "system", "content": system_prompt }),
+        json!({ "role": "user", "content": user_text }),
     ];
     let mut records: Vec<ToolCallRecord> = Vec::new();
+    let mut iters_done = 0usize;
 
     for iter in 1..=MAX_ITERS {
-        let key_owned = key.to_string();
-        let msgs = messages.clone();
-        let tls = tools.clone();
-        let resp = tokio::task::spawn_blocking(move || chat_completions(&key_owned, &msgs, &tls))
-            .await
-            .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
-        let msg = resp
-            .get("choices")
-            .and_then(Value::as_array)
-            .and_then(|a| a.first())
-            .and_then(|c| c.get("message"))
-            .cloned()
-            .ok_or_else(|| LlmError("DeepSeek 响应缺 choices[0].message".to_string()))?;
+        // 每迭代检查取消令牌(F7 wave.2 runs cancel;llm/chat 传 None 恒 false)。
+        if cfg.cancelled.map(|c| c()).unwrap_or(false) {
+            return Ok(ToolLoopOutcome {
+                text: String::new(),
+                records,
+                iters: iters_done,
+                cancelled: true,
+            });
+        }
+        let out = (cfg.step)(messages.clone(), cfg.tools.clone()).await?;
+        if let (Some(sink), Some(u)) = (cfg.sink, out.usage) {
+            sink(LoopEvent::Usage(u));
+        }
+        let msg = out.message;
 
         let Some(calls) = tool_calls_of(&msg).cloned() else {
             // 无工具调用:终止,文本即最终答复。
@@ -234,8 +441,14 @@ async fn run_deepseek_loop(
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            return Ok((content, records, iter));
+            return Ok(ToolLoopOutcome {
+                text: content,
+                records,
+                iters: iter,
+                cancelled: false,
+            });
         };
+        iters_done = iter;
 
         // assistant 消息(含 tool_calls)原样回注,再逐项执行工具并回注 role:tool。
         messages.push(msg);
@@ -253,18 +466,57 @@ async fn run_deepseek_loop(
                 .and_then(Value::as_str)
                 .unwrap_or("{}");
             let args = serde_json::from_str::<Value>(args_raw).unwrap_or_else(|_| json!({}));
-            let (ok, feedback) = match mcp::call_tool(&name, Some(args)).await {
-                Ok(result) => {
-                    let is_err = result
-                        .get("isError")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false);
-                    (!is_err, envelope_text(&result))
+            if let Some(sink) = cfg.sink {
+                sink(LoopEvent::ToolInvoked {
+                    name: name.clone(),
+                    args: args.clone(),
+                    tool_call_id: call_id.clone(),
+                });
+            }
+            // 禁用工具门(plan 写工具):不执行,该调用 TOOL_FORBIDDEN 收尾并如实回注。
+            if cfg.forbidden.map(|f| f(&name)).unwrap_or(false) {
+                let feedback = format!("TOOL_FORBIDDEN: 当前模式禁止调用写工具 {name}");
+                if let Some(sink) = cfg.sink {
+                    sink(LoopEvent::ToolFailed {
+                        name: name.clone(),
+                        error: feedback.clone(),
+                        tool_call_id: call_id.clone(),
+                        duration_ms: 0,
+                    });
                 }
-                Err(e) => (false, format!("工具调用失败: {e}")),
-            };
+                records.push(ToolCallRecord {
+                    name,
+                    ok: false,
+                    summary: truncate_chars(&feedback, 200),
+                });
+                messages.push(json!({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": truncate_chars(&feedback, TOOL_FEEDBACK_MAX),
+                }));
+                continue;
+            }
+            let started = std::time::Instant::now();
+            let (ok, feedback) = (cfg.execute)(name.clone(), args).await;
+            let duration_ms = started.elapsed().as_millis() as u64;
+            if let Some(sink) = cfg.sink {
+                if ok {
+                    sink(LoopEvent::ToolCompleted {
+                        name: name.clone(),
+                        tool_call_id: call_id.clone(),
+                        duration_ms,
+                    });
+                } else {
+                    sink(LoopEvent::ToolFailed {
+                        name: name.clone(),
+                        error: truncate_chars(&feedback, 200),
+                        tool_call_id: call_id.clone(),
+                        duration_ms,
+                    });
+                }
+            }
             records.push(ToolCallRecord {
-                name: name.clone(),
+                name,
                 ok,
                 summary: truncate_chars(&feedback, 200),
             });
@@ -276,11 +528,12 @@ async fn run_deepseek_loop(
         }
     }
     // 轮数耗尽:如实标注,不伪造收尾。
-    Ok((
-        format!("(工具循环已达上限 {MAX_ITERS} 轮,未收束;以上为已执行部分)"),
+    Ok(ToolLoopOutcome {
+        text: format!("(工具循环已达上限 {MAX_ITERS} 轮,未收束;以上为已执行部分)"),
         records,
-        MAX_ITERS,
-    ))
+        iters: MAX_ITERS,
+        cancelled: false,
+    })
 }
 
 /// POST /api/forge/llm/chat 处理:provider 分派。
@@ -297,7 +550,7 @@ pub async fn chat(
     match resolve_provider() {
         Provider::Mock => Ok(axum::Json(json!({
             "provider": "mock",
-            "text": format!("mock:已收到「{}」(无 LLM 密钥,真实工具循环未启用;配 FORGE_LLM_API_KEY 或 keystore[deepseek] 后走 deepseek)", truncate_chars(&req.text, 80)),
+            "text": mock_reply_text(&req.text),
             "toolCalls": [],
             "iters": 0,
         }))),
@@ -320,6 +573,37 @@ pub async fn chat(
                 .into_response()),
         },
     }
+}
+
+// ---------- F7 wave.5:POST /api/forge/llm/key(设置·模型页 deepseek 渠道配置面) ----------
+
+#[derive(Deserialize)]
+pub struct LlmKeyRequest {
+    /// deepseek API Key;只写 gend keystore["deepseek"],永不回显/永不进日志(R-5)。
+    #[serde(rename = "apiKey")]
+    api_key: String,
+}
+
+/// 写 keystore["deepseek"](复用 gend::keystore::set_key 读-改-写面,DPAPI 落盘形态不变)。
+/// 响应只给 {ok, configured}(configured = 写后 availability 重判定);空 key → 400 EMPTY_KEY;
+/// 写盘失败 → 500 FORGE_IO(错误信息仅 IO 面,不带 key 值)。
+pub async fn set_llm_key(axum::Json(req): axum::Json<LlmKeyRequest>) -> axum::response::Response {
+    let key = req.api_key.trim();
+    if key.is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": { "code": "EMPTY_KEY", "message": "apiKey 不可空" } })),
+        )
+            .into_response();
+    }
+    if let Err(e) = gend::keystore::set_key("deepseek", key) {
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
+        )
+            .into_response();
+    }
+    axum::Json(json!({ "ok": true, "configured": deepseek_key_available() })).into_response()
 }
 
 #[cfg(test)]
@@ -392,5 +676,273 @@ mod tests {
         let s = "创建三个立方体";
         assert_eq!(truncate_chars(s, 3), "创建三…");
         assert_eq!(truncate_chars(s, 100), s);
+    }
+
+    // ---------- F7 wave.2:run_tool_loop 可注入核心(全内存 scripted fake,禁网络/子进程) ----------
+
+    /// scripted step:依次弹出预置 assistant message;记录每轮收到的 tools。
+    fn scripted_step(
+        messages: Vec<Value>,
+        tools_seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
+    ) -> Box<StepFn> {
+        let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+            messages,
+        )));
+        Box::new(move |_msgs, tools| {
+            tools_seen.lock().unwrap().push(tools.len());
+            let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
+        })
+    }
+    fn tool_call_msg(name: &str, args: &str) -> Value {
+        json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": name, "arguments": args },
+            }],
+        })
+    }
+    fn final_msg(text: &str) -> Value {
+        json!({ "role": "assistant", "content": text })
+    }
+    /// 事件收集 sink(类型序列 + 细节)。
+    fn collect_sink() -> (
+        impl Fn(LoopEvent) + Send + Sync,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let log2 = log.clone();
+        let sink = move |ev: LoopEvent| {
+            let s = match ev {
+                LoopEvent::ToolInvoked { name, .. } => format!("invoked:{name}"),
+                LoopEvent::ToolCompleted { name, duration_ms, .. } => {
+                    format!("completed:{name}:{duration_ms}")
+                }
+                LoopEvent::ToolFailed { name, error, .. } => format!("failed:{name}:{error}"),
+                LoopEvent::Usage(u) => format!("usage:{}", u.total_tokens),
+            };
+            log2.lock().unwrap().push(s);
+        };
+        (sink, log)
+    }
+
+    #[tokio::test]
+    async fn loop_one_tool_call_then_final_event_order() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let step = scripted_step(
+            vec![
+                tool_call_msg("mcp__engine-scene__entity_list", "{}"),
+                final_msg("终稿"),
+            ],
+            seen.clone(),
+        );
+        let execute: Box<ExecFn> = Box::new(|name, _args| {
+            Box::pin(async move { (true, format!("{name} ok")) })
+        });
+        let (sink, log) = collect_sink();
+        let out = run_tool_loop(
+            "sys",
+            "用户输入",
+            ToolLoopCfg {
+                tools: vec![json!({"type":"function"})],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "终稿");
+        assert_eq!(out.iters, 2);
+        assert!(!out.cancelled);
+        assert_eq!(out.records.len(), 1);
+        assert!(out.records[0].ok);
+        assert_eq!(out.records[0].name, "mcp__engine-scene__entity_list");
+        assert_eq!(seen.lock().unwrap().len(), 2, "两轮 step");
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0], "invoked:mcp__engine-scene__entity_list");
+        assert!(
+            log[1].starts_with("completed:mcp__engine-scene__entity_list:"),
+            "completed 带 durationMs≥0: {}",
+            log[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn loop_executor_failure_emits_failed_and_continues() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let step = scripted_step(
+            vec![tool_call_msg("mcp__engine-scene__entity_get", "{}"), final_msg("收尾")],
+            seen,
+        );
+        let execute: Box<ExecFn> = Box::new(|_n, _a| Box::pin(async move { (false, "假失败".into()) }));
+        let (sink, log) = collect_sink();
+        let out = run_tool_loop(
+            "sys",
+            "x",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "收尾", "工具失败不打断循环");
+        assert!(!out.records[0].ok);
+        let log = log.lock().unwrap();
+        assert_eq!(log[0], "invoked:mcp__engine-scene__entity_get");
+        assert!(
+            log[1].starts_with("failed:mcp__engine-scene__entity_get:假失败"),
+            "failed 如实: {}",
+            log[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn loop_forbidden_tool_not_executed() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let step = scripted_step(
+            vec![
+                tool_call_msg("mcp__engine-scene__entity_create", "{}"),
+                final_msg("计划"),
+            ],
+            seen,
+        );
+        let executed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let executed2 = executed.clone();
+        let execute: Box<ExecFn> = Box::new(move |name, _a| {
+            executed2.lock().unwrap().push(name);
+            Box::pin(async move { (true, "ok".into()) })
+        });
+        let (sink, log) = collect_sink();
+        let forbid = |n: &str| n == "mcp__engine-scene__entity_create";
+        let out = run_tool_loop(
+            "sys",
+            "x",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                sink: Some(&sink),
+                forbidden: Some(&forbid),
+                cancelled: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "计划");
+        assert!(executed.lock().unwrap().is_empty(), "禁用工具不得执行");
+        assert!(!out.records[0].ok);
+        assert!(out.records[0].summary.starts_with("TOOL_FORBIDDEN"));
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        assert!(log[1].contains("TOOL_FORBIDDEN"), "{}", log[1]);
+    }
+
+    #[tokio::test]
+    async fn loop_cancel_between_iterations() {
+        // step 恒产工具调用;executor 首调后置取消旗 → 第二迭代开头收束 cancelled。
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag2 = flag.clone();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let step = scripted_step(
+            vec![
+                tool_call_msg("mcp__engine-scene__entity_list", "{}"),
+                tool_call_msg("mcp__engine-scene__entity_list", "{}"),
+                final_msg("不应到达"),
+            ],
+            seen,
+        );
+        let execute: Box<ExecFn> = Box::new(move |_n, _a| {
+            flag2.store(true, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async move { (true, "ok".into()) })
+        });
+        let flag3 = flag.clone();
+        let cancelled = move || flag3.load(std::sync::atomic::Ordering::SeqCst);
+        let (sink, log) = collect_sink();
+        let out = run_tool_loop(
+            "sys",
+            "x",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: Some(&cancelled),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(out.cancelled);
+        assert_eq!(out.text, "");
+        assert_eq!(out.iters, 1, "仅完成一迭代");
+        assert_eq!(log.lock().unwrap().len(), 2, "invoked+completed 后取消");
+    }
+
+    #[tokio::test]
+    async fn loop_usage_event_only_when_present() {
+        // 带 usage 的 step 一轮终稿 → Usage 事件;无 usage(如 mock)→ 无事件。
+        let with_usage: Box<StepFn> = Box::new(|_m, _t| {
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: final_msg("ok"),
+                    usage: Some(Usage {
+                        prompt_tokens: 3,
+                        completion_tokens: 2,
+                        total_tokens: 5,
+                    }),
+                })
+            })
+        });
+        let execute: Box<ExecFn> = Box::new(|_n, _a| Box::pin(async move { (true, "x".into()) }));
+        let (sink, log) = collect_sink();
+        run_tool_loop(
+            "sys",
+            "x",
+            ToolLoopCfg {
+                tools: vec![],
+                step: with_usage.as_ref(),
+                execute: execute.as_ref(),
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(log.lock().unwrap().as_slice(), ["usage:5"]);
+        let mock = mock_step();
+        let (sink2, log2) = collect_sink();
+        let out = run_tool_loop(
+            "sys",
+            "你好",
+            ToolLoopCfg {
+                tools: vec![],
+                step: mock.as_ref(),
+                execute: execute.as_ref(),
+                sink: Some(&sink2),
+                forbidden: None,
+                cancelled: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(out.text.contains("mock:已收到「你好」"), "mock 步进终稿: {}", out.text);
+        assert!(log2.lock().unwrap().is_empty(), "mock 无 usage 事件");
     }
 }

@@ -104,7 +104,8 @@ export const httpPlugin: PluginFn = (ctx) => {
     const segs = pathname.split('/').filter(Boolean); // ['api','forge',...]
     const method = req.method ?? 'GET';
 
-    // 代理前缀(mcp/llm)与自有路由(health/sessions)不重叠,优先放行代理
+    // 代理优先判定:F7 wave.1 起 sessions/chat-folders/design-snapshot 由 agentd 承接
+    // (代理遮蔽下方 host 自有 F0 sessions stub 路由,F0 已 closed,契约留痕);health 仍 host 自有。
     if (proxy && (await proxy.handle(req, res, pathname))) return;
 
     if (method === 'GET' && pathname === '/api/forge/health') {

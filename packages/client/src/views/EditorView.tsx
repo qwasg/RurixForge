@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ChevronRight,
   FolderOpen,
-  MessageSquare,
   Move,
   Pause,
   Play,
@@ -26,9 +24,7 @@ import AssetsPanel from '@/components/editor/AssetsPanel';
 import NodeGraphView from '@/components/editor/NodeGraphView';
 import { useGraphStore } from '@/lib/graphStore';
 import {
-  COMPOSER_MODES,
   useEditorStore,
-  type ComposerMode,
   type EntityData,
   type GizmoMode,
   type PlayState,
@@ -38,7 +34,9 @@ import {
 /**
  * 编辑器视图:07 §1 七区骨架。
  * A Hierarchy / B Assets(F2 占位)/ C Viewport(+G NodeGraph 同位页签)/
- * D Inspector / E Workbench / F Chat(可折叠右 dock)。
+ * D Inspector / E Workbench。
+ * F7 wave.3(D-F7-B):F Chat dock 移除——agent 对话统一由壳内对话列承接;
+ * 本视图作为壳内 workbench 的「编辑器」tab 内容嵌入(游戏原生内部逻辑零改动)。
  */
 
 const iconBtn =
@@ -233,12 +231,10 @@ function ViewportPanel() {
   const setGizmo = useEditorStore((s) => s.setGizmo);
   const playState = useEditorStore((s) => s.playState);
   const sceneName = useEditorStore((s) => s.sceneName);
-  const chatOpen = useEditorStore((s) => s.chatOpen);
-  const toggleChat = useEditorStore((s) => s.toggleChat);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Viewport">
-      {/* 顶部工具条:Viewport/NodeGraph 页签 + gizmo + PIE 控制 + Chat 开关 */}
+      {/* 顶部工具条:Viewport/NodeGraph 页签 + gizmo + PIE 控制(F7:Chat 开关移除,对话入壳对话列) */}
       <div className="flex shrink-0 items-center gap-2 border-b border-line-soft px-2 py-1">
         <span className="flex items-center gap-0.5 rounded-md bg-panel p-0.5">
           {(['viewport', 'nodegraph'] as const).map((t) => (
@@ -272,14 +268,6 @@ function ViewportPanel() {
         <span className="h-4 w-px bg-line" />
         <PlayControls />
         <span className="flex-1" />
-        <button
-          type="button"
-          title="Toggle Chat"
-          className={cn(iconBtn, chatOpen && 'bg-panel-active text-ink')}
-          onClick={toggleChat}
-        >
-          <MessageSquare size={13} strokeWidth={1.8} />
-        </button>
       </div>
 
       {centerTab === 'viewport' ? (
@@ -702,126 +690,6 @@ function InspectorPanel() {
   );
 }
 
-// ---------- F Chat(可折叠右 dock) ----------
-
-function ChatDock() {
-  const chatMessages = useEditorStore((s) => s.chatMessages);
-  const sendChat = useEditorStore((s) => s.sendChat);
-  const toggleChat = useEditorStore((s) => s.toggleChat);
-  const chatPrefill = useEditorStore((s) => s.chatPrefill);
-  const clearChatPrefill = useEditorStore((s) => s.clearChatPrefill);
-  const [draft, setDraft] = useState('');
-  const [mode, setMode] = useState<ComposerMode>('build');
-
-  // F2 wave.3:Assets 右键「生成」预填(F3 gen-image/gen-model seam)
-  useEffect(() => {
-    if (chatPrefill !== null) {
-      setDraft(chatPrefill);
-      clearChatPrefill();
-    }
-  }, [chatPrefill, clearChatPrefill]);
-
-  const send = () => {
-    const text = draft.trim();
-    if (text === '') return;
-    setDraft('');
-    void sendChat(text, mode);
-  };
-
-  return (
-    <aside
-      className="flex w-[300px] shrink-0 flex-col border-l border-line-soft bg-panel"
-      aria-label="Chat"
-    >
-      <div className="flex shrink-0 items-center justify-between px-2 pb-1 pt-2">
-        <span className="text-2xs text-muted-faint">Chat</span>
-        <button type="button" title="Collapse Chat" className={iconBtn} onClick={toggleChat}>
-          <ChevronRight size={13} strokeWidth={1.8} />
-        </button>
-      </div>
-      {/* composer 五模式切换器(04 §3 / 07 §5;multitask 走 swarm 分片执行) */}
-      <div className="flex shrink-0 gap-1 px-2 pb-1" data-testid="composer-modes">
-        {COMPOSER_MODES.map((m) => (
-          <button
-            key={m}
-            type="button"
-            data-mode={m}
-            onClick={() => setMode(m)}
-            className={cn(
-              'rounded-full px-2 py-0.5 text-2xs transition-colors',
-              mode === m ? 'bg-ink text-white' : 'bg-white text-ink-soft hover:bg-panel-hover',
-            )}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-1">
-        {chatMessages.length === 0 && (
-          <p className="pt-1 text-xs text-muted-faint">
-            发送消息经 /api/forge/mcp/call 实测回显(F3 接入真实 LLM)
-          </p>
-        )}
-        {chatMessages.map((m, i) => (
-          <div
-            key={i}
-            className={cn(
-              'my-1 rounded-lg px-2 py-1 text-xs',
-              m.role === 'user' && 'ml-6 bg-ink text-white',
-              m.role === 'assistant' && 'mr-4 bg-white font-mono text-2xs text-ink-soft shadow-composer',
-              m.role === 'error' && 'mr-4 bg-white text-2xs text-accent-blue shadow-composer',
-            )}
-          >
-            {m.role === 'user' && m.mode && m.mode !== 'build' && (
-              <span className="mb-0.5 inline-block rounded-full bg-white/20 px-1.5 text-2xs">{m.mode}</span>
-            )}
-            <div className="whitespace-pre-wrap break-all">{m.text}</div>
-            {/* multitask 分片报告卡片(数据来自 /api/forge/swarm/execute 真实响应) */}
-            {m.swarm && (
-              <div className="mt-1 space-y-0.5" data-testid="swarm-card">
-                {m.swarm.shards.map((s) => (
-                  <div key={s.shardId} className="flex items-center gap-1 text-2xs">
-                    <span
-                      className={cn(
-                        'inline-block h-1.5 w-1.5 rounded-full',
-                        s.status === 'done' ? 'bg-accent-green' : 'bg-red-500',
-                      )}
-                    />
-                    <span>{s.shardId}</span>
-                    <span className="text-muted-faint">
-                      {s.status} ok={s.okCount} err={s.errorCount}
-                    </span>
-                  </div>
-                ))}
-                <div className="border-t border-line-soft pt-0.5 text-2xs text-muted-faint">
-                  聚合 {m.swarm.aggregate.succeeded}/{m.swarm.aggregate.totalItems} 成功 ·{' '}
-                  {m.swarm.aggregate.failed} 失败 · disjoint={String(m.swarm.aggregate.disjoint)}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="shrink-0 p-2">
-        <div className="flex items-center gap-1 rounded-xl bg-white px-2 py-1 shadow-composer">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') send();
-            }}
-            placeholder={mode === 'multitask' ? '批量任务:如「给全部关卡块生成碰撞体」' : 'Ask the engine...'}
-            className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted-faint"
-          />
-          <button type="button" title="Send" className={iconBtn} onClick={send}>
-            <Play size={12} strokeWidth={1.8} />
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 // ---------- 七区总装 ----------
 
 export default function EditorView() {
@@ -829,18 +697,18 @@ export default function EditorView() {
   const refreshSummary = useEditorStore((s) => s.refreshSummary);
   const refreshPlayState = useEditorStore((s) => s.refreshPlayState);
   const loadEvents = useEditorStore((s) => s.loadEvents);
-  const chatOpen = useEditorStore((s) => s.chatOpen);
+  const ensureDefaultScene = useEditorStore((s) => s.ensureDefaultScene);
   const centerTab = useEditorStore((s) => s.centerTab);
   const selectedId = useEditorStore((s) => s.selectedId);
   const loadGraphForSelected = useGraphStore((s) => s.loadForSelectedEntity);
 
-  // 进视图即拉一次真实数据(实体 / 摘要 / PIE 状态 / 事件流)
+  // 进视图即拉一次真实数据;空场景 → 默认加载迷宫(打开即见真实工程,非空壳)
   useEffect(() => {
-    void loadEntities();
+    void ensureDefaultScene().then(() => loadEntities());
     void refreshSummary();
     void refreshPlayState();
     void loadEvents();
-  }, [loadEntities, refreshSummary, refreshPlayState, loadEvents]);
+  }, [ensureDefaultScene, loadEntities, refreshSummary, refreshPlayState, loadEvents]);
 
   // F4 wave.4:切到 NodeGraph 页签,或页签可见时选中实体变化 → 按 Script.graphRef 载图(无 → 空态)
   useEffect(() => {
@@ -863,9 +731,6 @@ export default function EditorView() {
 
       {/* D Inspector */}
       <InspectorPanel />
-
-      {/* F Chat 可折叠右 dock */}
-      {chatOpen && <ChatDock />}
     </div>
   );
 }

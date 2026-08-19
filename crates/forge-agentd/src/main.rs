@@ -1,14 +1,23 @@
 //! forge-agentd:F0 最小骨架 agent 守护进程
 //! 路由:/health、sessions stub、MCP 工具面声明与 stdio 透传调用、mock LLM provider(恒绿 seam)
 //! F2 wave.5:Proposal 确认单(12 §3)+ destructive 强制门(asset_delete force)+ skills 发现。
+//! F7 wave.1:agent 事件基座(D-F7-A)——events.rs(EventBus:append-only JSONL + 环缓冲 + seq
+//! 单调 + emit/emit_ephemeral 二分)、sessions.rs(会话/chat-folders 持久化 + CRUD/fork/revert)、
+//! sse.rs(会话事件流 replay+gap+live+keep-alive)、snapshot.rs(design-snapshot 聚合)。
 
+mod agent;
+mod events;
 mod llm;
 mod mcp;
 mod playtest;
 mod pack;
 mod proposals;
+mod sessions;
+mod snapshot;
+mod sse;
 mod subagents;
 mod swarm;
+mod workspace;
 
 use axum::{
     extract::{Path, State},
@@ -21,11 +30,21 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{sync::Arc, time::Instant};
 
-/// 服务共享状态(启动时刻,供 uptimeSec 实测;Proposal 存贮)
-struct AppState {
-    started: Instant,
-    proposals: proposals::ProposalStore,
-    swarm: swarm::SwarmCoordinator,
+/// 服务共享状态(启动时刻,供 uptimeSec 实测;Proposal 存贮;F7 事件基座三件套 + wave.2 runs/todos)
+pub(crate) struct AppState {
+    pub(crate) started: Instant,
+    pub(crate) proposals: proposals::ProposalStore,
+    pub(crate) swarm: swarm::SwarmCoordinator,
+    /// F7:事件总线(append-only JSONL data/agent-events/{sessionId}.jsonl + 环缓冲)。
+    pub(crate) events: Arc<events::EventBus>,
+    /// F7:会话存贮(data/agent-sessions/sessions.json)。
+    pub(crate) sessions: Arc<sessions::SessionStore>,
+    /// F7:聊天文件夹存贮(data/agent-sessions/chat-folders.json)。
+    pub(crate) folders: Arc<sessions::ChatFolderStore>,
+    /// F7 wave.2:run 注册表(内存,进程重启即空)+ 取消令牌。
+    pub(crate) runs: Arc<agent::RunRegistry>,
+    /// F7 wave.2:待办存贮(data/agent-sessions/todos.json 读-改-写)。
+    pub(crate) todos: Arc<agent::TodoStore>,
 }
 
 #[tokio::main]
@@ -42,20 +61,85 @@ async fn main() {
         .expect("axum serve 失败");
 }
 
+/// agent 数据根:env FORGE_AGENTD_DATA_DIR 优先(测试隔离),否则 <workspace>/data(D-F7-E)。
+fn agent_data_root() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("FORGE_AGENTD_DATA_DIR") {
+        if !p.is_empty() {
+            return std::path::PathBuf::from(p);
+        }
+    }
+    workspace_root().join("data")
+}
+
 /// 构建路由表(main 与测试复用)
 fn build_app() -> Router {
+    let data_root = agent_data_root();
     let state = Arc::new(AppState {
         started: Instant::now(),
         proposals: proposals::ProposalStore::default(),
         swarm: swarm::SwarmCoordinator::default(),
+        events: Arc::new(events::EventBus::from_env(data_root.join("agent-events"))),
+        sessions: Arc::new(sessions::SessionStore::load(
+            data_root.join("agent-sessions").join("sessions.json"),
+        )),
+        folders: Arc::new(sessions::ChatFolderStore::load(
+            data_root.join("agent-sessions").join("chat-folders.json"),
+        )),
+        runs: Arc::new(agent::RunRegistry::default()),
+        todos: Arc::new(agent::TodoStore::load(
+            data_root.join("agent-sessions").join("todos.json"),
+        )),
     });
     Router::new()
         .route("/health", get(health))
-        .route("/api/forge/sessions", get(sessions))
+        // F7 wave.1:会话事实源(替换 F0 恒空 stub)+ fork/revert 动作 + SSE 事件流。
+        .route(
+            "/api/forge/sessions",
+            get(sessions::list_sessions).post(sessions::create_session),
+        )
+        .route(
+            "/api/forge/sessions/{id}",
+            get(sessions::get_session)
+                .patch(sessions::patch_session)
+                .delete(sessions::delete_session),
+        )
+        .route("/api/forge/sessions/{id}/fork", post(sessions::fork_session))
+        .route(
+            "/api/forge/sessions/{id}/revert",
+            post(sessions::revert_session),
+        )
+        .route(
+            "/api/forge/sessions/{id}/events/stream",
+            get(sse::session_event_stream),
+        )
+        // F7 wave.2:turn 执行(ask:execute 静态段含冒号,matchit 0.8 仅 {} 为参数语法)+
+        // runs 控制 + todos REST。
+        .route(
+            "/api/forge/sessions/{id}/ask:execute",
+            post(agent::ask_execute),
+        )
+        .route("/api/forge/sessions/{id}/todos", get(agent::list_todos))
+        .route("/api/forge/runs/{id}", get(agent::get_run))
+        .route("/api/forge/runs/{id}/cancel", post(agent::cancel_run))
+        .route("/api/forge/todos", post(agent::create_todo))
+        .route("/api/forge/todos/{id}", patch(agent::patch_todo))
+        .route(
+            "/api/forge/chat-folders",
+            get(sessions::list_chat_folders).post(sessions::create_chat_folder),
+        )
+        .route(
+            "/api/forge/chat-folders/{id}",
+            patch(sessions::patch_chat_folder).delete(sessions::delete_chat_folder),
+        )
+        .route("/api/forge/design-snapshot", get(snapshot::design_snapshot))
         .route("/api/forge/mcp/tools", get(mcp_tools))
         .route("/api/forge/mcp/call", post(mcp_call))
         .route("/api/forge/llm/complete", get(llm_complete))
         .route("/api/forge/llm/chat", post(llm::chat))
+        // F7 wave.5:deepseek key 配置面(设置·模型页;R-5 不回显)
+        .route("/api/forge/llm/key", post(llm::set_llm_key))
+        // F7 wave.5:工作区文件树只读面(Inspector 树;confined + 单层 + 截断如实)
+        .route("/api/forge/workspace/tree", get(workspace::workspace_tree))
         .route("/api/forge/playtest/run", post(playtest_run))
         .route("/api/forge/project/pack", post(project_pack))
         .route(
@@ -86,11 +170,6 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Value> {
         "version": "0.1.0",
         "uptimeSec": state.started.elapsed().as_secs_f64(),
     }))
-}
-
-/// F0 会话 stub:恒空数组
-async fn sessions() -> Json<Value> {
-    Json(json!([]))
 }
 
 /// 已挂载 MCP 工具面(声明式 stub)
@@ -1032,16 +1111,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sessions_empty_array() {
-        let resp = build_app()
-            .oneshot(get("/api/forge/sessions"))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(json_body(resp).await, json!([]));
-    }
-
-    #[tokio::test]
     async fn mcp_tools_declared() {
         let resp = build_app()
             .oneshot(get("/api/forge/mcp/tools"))
@@ -1118,6 +1187,840 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         assert_eq!(json_body(resp).await["error"]["code"], "EMPTY_TEXT");
+    }
+
+    // ---------- F7 wave.1:事件基座(会话 CRUD/fork/revert + folders + snapshot + SSE) ----------
+
+    /// F7 env 隔离锁(FORGE_AGENTD_DATA_DIR 进程级;set+build_app 须原子)。
+    static F7_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// 独立数据目录的 app(会话/事件落盘隔离;返回 (app, 数据根))。
+    fn f7_app(tag: &str) -> (Router, std::path::PathBuf) {
+        let _g = F7_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!(
+            "agentd-f7-{tag}-{}-{}",
+            std::process::id(),
+            events::new_id("t")
+        ));
+        std::env::set_var("FORGE_AGENTD_DATA_DIR", &dir);
+        let app = build_app();
+        std::env::remove_var("FORGE_AGENTD_DATA_DIR");
+        (app, dir)
+    }
+
+    fn delete_req(uri: &str) -> Request<Body> {
+        Request::delete(uri).body(Body::empty()).unwrap()
+    }
+
+    fn event_file(dir: &std::path::Path, sid: &str) -> std::path::PathBuf {
+        dir.join("agent-events").join(format!("{sid}.jsonl"))
+    }
+
+    /// 读会话 JSONL 事件行(落盘形态,含 seq/type/sessionId)。
+    fn read_events(dir: &std::path::Path, sid: &str) -> Vec<Value> {
+        std::fs::read_to_string(event_file(dir, sid))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str(l).expect("事件行应可解析"))
+            .collect()
+    }
+
+    /// 读 SSE 流到 dur 为止,返回原始文本(帧数据拼合;超时即收)。
+    async fn sse_read_for(body: &mut Body, dur: std::time::Duration) -> String {
+        use http_body_util::BodyExt;
+        let mut buf = String::new();
+        let deadline = std::time::Instant::now() + dur;
+        loop {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                break;
+            }
+            match tokio::time::timeout(deadline - now, body.frame()).await {
+                Ok(Some(Ok(frame))) => {
+                    if let Ok(data) = frame.into_data() {
+                        buf.push_str(&String::from_utf8_lossy(&data));
+                    }
+                }
+                _ => break,
+            }
+        }
+        buf
+    }
+
+    #[tokio::test]
+    async fn f7_sessions_crud_flow() {
+        let (app, dir) = f7_app("crud");
+        // 列表空 {sessions: []}(替换 F0 恒 [] stub 的形态)。
+        let r = app.clone().oneshot(get("/api/forge/sessions")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(json_body(r).await, json!({ "sessions": [] }));
+        // 创建(缺省字段面)+ session.created 持久事件。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        let s = &v["session"];
+        let sid = s["id"].as_str().unwrap().to_string();
+        assert!(sid.starts_with("sess_"));
+        assert_eq!(s["title"], "新会话");
+        assert_eq!(s["status"], "idle");
+        assert_eq!(s["agentKind"], "coding");
+        assert_eq!(s["webSearchEnabled"], true);
+        assert_eq!(s["pinned"], false);
+        assert_eq!(s["titleManuallySet"], false);
+        let evs = read_events(&dir, &sid);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0]["type"], "session.created");
+        assert_eq!(evs[0]["seq"], 1);
+        // get。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        // patch title → titleManuallySet=true;pinned。
+        let r = app
+            .clone()
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                r#"{"title":"改题","pinned":true}"#,
+            ))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["session"]["title"], "改题");
+        assert_eq!(v["session"]["titleManuallySet"], true);
+        assert_eq!(v["session"]["pinned"], true);
+        // 列表含 1 条。
+        let r = app.clone().oneshot(get("/api/forge/sessions")).await.unwrap();
+        assert_eq!(json_body(r).await["sessions"].as_array().unwrap().len(), 1);
+        // 404 面。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/sessions/sess_none"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "SESSION_NOT_FOUND");
+        let r = app
+            .clone()
+            .oneshot(patch_json("/api/forge/sessions/sess_none", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        // delete:元信息 + 事件文件同删。
+        let r = app
+            .clone()
+            .oneshot(delete_req(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(json_body(r).await["ok"], true);
+        assert!(!event_file(&dir, &sid).exists(), "删除须清事件文件");
+        let r = app
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f7_fork_clones_events_and_revert_truncates() {
+        let (app, dir) = f7_app("fork");
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", r#"{"title":"主线"}"#))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        for body in [r#"{"pinned":true}"#, r#"{"title":"主线改"}"#] {
+            app.clone()
+                .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), body))
+                .await
+                .unwrap();
+        }
+        assert_eq!(read_events(&dir, &sid).len(), 3);
+        // fork:分支标题 + 事件克隆(seq 保持单调)+ session.forked。
+        let r = app
+            .clone()
+            .oneshot(post_json(&format!("/api/forge/sessions/{sid}/fork"), "{}"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let fv = json_body(r).await;
+        let forked = &fv["session"];
+        let fid = forked["id"].as_str().unwrap().to_string();
+        assert_ne!(fid, sid);
+        assert_eq!(forked["title"], "分支 · 主线改");
+        let fevs = read_events(&dir, &fid);
+        assert_eq!(fevs.len(), 4, "克隆 3 + session.forked: {fevs:?}");
+        assert_eq!(
+            fevs.iter().map(|e| e["seq"].as_i64().unwrap()).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4],
+            "seq 单调保持"
+        );
+        assert_eq!(fevs[0]["type"], "session.created");
+        assert!(
+            fevs.iter().all(|e| e["sessionId"] == fid),
+            "克隆事件 sessionId 换新"
+        );
+        assert_eq!(fevs[3]["type"], "session.forked");
+        assert_eq!(fevs[3]["payload"]["sourceSessionId"], sid.as_str());
+        // 源流不受 fork 影响。
+        assert_eq!(read_events(&dir, &sid).len(), 3);
+        // fork 不存在 → 404。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions/sess_none/fork", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+
+        // revert mode=before:截到 seq2 事件之前 → 仅余 seq1;session.reverted 复接 seq2。
+        let target_id = read_events(&dir, &sid)[1]["id"].as_str().unwrap().to_string();
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/revert"),
+                &format!(r#"{{"messageId":"{target_id}","mode":"before"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let evs = read_events(&dir, &sid);
+        assert_eq!(
+            evs.iter().map(|e| e["type"].as_str().unwrap()).collect::<Vec<_>>(),
+            vec!["session.created", "session.reverted"]
+        );
+        assert_eq!(evs[1]["seq"], 2, "截断后 reverted 复接 seq");
+        // revert 缺省 mode(含该事件):patch(seq3)后截到含它。
+        app.clone()
+            .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), r#"{"pinned":false}"#))
+            .await
+            .unwrap();
+        let tid3 = read_events(&dir, &sid)
+            .into_iter()
+            .find(|e| e["type"] == "session.updated")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        app.clone()
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/revert"),
+                &format!(r#"{{"messageId":"{tid3}"}}"#),
+            ))
+            .await
+            .unwrap();
+        let evs = read_events(&dir, &sid);
+        assert_eq!(
+            evs.iter().map(|e| e["type"].as_str().unwrap()).collect::<Vec<_>>(),
+            vec!["session.created", "session.reverted", "session.updated", "session.reverted"],
+            "含该事件截断语义"
+        );
+        // 无 messageId:不截断,仅追加 session.reverted。
+        let before = read_events(&dir, &sid).len();
+        let r = app
+            .clone()
+            .oneshot(post_json(&format!("/api/forge/sessions/{sid}/revert"), "{}"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(
+            read_events(&dir, &sid).len(),
+            before + 1,
+            "无 messageId 仅清 activeRunId + 发事件"
+        );
+        // messageId 不存在 → 404 EVENT_NOT_FOUND。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/revert"),
+                r#"{"messageId":"evt_none"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "EVENT_NOT_FOUND");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f7_chat_folders_router_and_cascade() {
+        let (app, dir) = f7_app("folders");
+        let r = app.clone().oneshot(get("/api/forge/chat-folders")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(json_body(r).await, json!({ "folders": [] }));
+        // 空名 400 INVALID_NAME。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/chat-folders", r#"{"name":" "}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "INVALID_NAME");
+        // 建 + 改。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/chat-folders", r#"{"name":"工作"}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let fid = json_body(r).await["folder"]["id"].as_str().unwrap().to_string();
+        let r = app
+            .clone()
+            .oneshot(patch_json(&format!("/api/forge/chat-folders/{fid}"), r#"{"name":"工作区"}"#))
+            .await
+            .unwrap();
+        assert_eq!(json_body(r).await["folder"]["name"], "工作区");
+        // 会话挂接 → 删文件夹级联清 folderId。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", "{}"))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        app.clone()
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                &format!(r#"{{"folderId":"{fid}"}}"#),
+            ))
+            .await
+            .unwrap();
+        let r = app
+            .clone()
+            .oneshot(delete_req(&format!("/api/forge/chat-folders/{fid}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        assert!(
+            json_body(r).await["session"]["folderId"].is_null(),
+            "删文件夹须级联清会话 folderId"
+        );
+        // 删不存在 → 404 FOLDER_NOT_FOUND。
+        let r = app
+            .oneshot(delete_req(&format!("/api/forge/chat-folders/{fid}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "FOLDER_NOT_FOUND");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f7_design_snapshot_fields_and_models_two_states() {
+        // key 判定读 FORGE_LLM_API_KEY + keystore(请求时判定):三锁同源纪律(同 llm 测试组)。
+        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let (app, dir) = f7_app("snap");
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let ks_dir = std::env::temp_dir().join(format!("agentd-f7-ks-{}", std::process::id()));
+        std::env::set_var("FORGE_GEN_DATA_DIR", &ks_dir);
+        // 无 key 态:字段穷举 + needs-key。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/design-snapshot"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            ["activeSession", "chatFolders", "events", "latestSeq", "models", "run", "sessions", "todos"],
+            "字段穷举: {keys:?}"
+        );
+        assert_eq!(v["activeSession"], Value::Null);
+        assert_eq!(v["events"], json!([]));
+        assert_eq!(v["todos"], json!([]));
+        assert_eq!(v["run"], Value::Null);
+        assert_eq!(v["latestSeq"], 0);
+        let models = v["models"]["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0]["id"], "deepseek-chat");
+        assert_eq!(models[0]["provider"], "deepseek");
+        assert_eq!(models[0]["availability"], "needs-key");
+        assert_eq!(models[1]["id"], "mock");
+        assert_eq!(models[1]["availability"], "available");
+        assert_eq!(v["models"]["defaultModelId"], "deepseek-chat");
+        // 有 key 态:available;响应面不含密钥本体(R-5)。
+        std::env::set_var("FORGE_LLM_API_KEY", "sk-test-availability-f7");
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/design-snapshot"))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["models"]["models"][0]["availability"], "available");
+        assert!(
+            !v.to_string().contains("sk-test-availability-f7"),
+            "响应泄漏密钥(R-5)"
+        );
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        // sessionId 腿:activeSession + 持久化全量回放 + latestSeq + chatFolders。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", r#"{"title":"快照"}"#))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        app.clone()
+            .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), r#"{"pinned":true}"#))
+            .await
+            .unwrap();
+        app.clone()
+            .oneshot(post_json("/api/forge/chat-folders", r#"{"name":"夹"}"#))
+            .await
+            .unwrap();
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/design-snapshot?sessionId={sid}")))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["activeSession"]["id"], sid.as_str());
+        assert_eq!(v["activeSession"]["title"], "快照");
+        let evs = v["events"].as_array().unwrap();
+        assert_eq!(evs.len(), 2);
+        assert_eq!(evs[0]["type"], "session.created");
+        assert_eq!(evs[1]["type"], "session.updated");
+        assert_eq!(v["latestSeq"], 2);
+        assert_eq!(v["sessions"].as_array().unwrap().len(), 1);
+        assert_eq!(v["chatFolders"].as_array().unwrap().len(), 1);
+        // 不存在 sessionId → null 三态。
+        let r = app
+            .oneshot(get("/api/forge/design-snapshot?sessionId=sess_none"))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["activeSession"], Value::Null);
+        assert_eq!(v["events"], json!([]));
+        assert_eq!(v["latestSeq"], 0);
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&ks_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f7_sse_replay_live_resume_and_404() {
+        let (app, dir) = f7_app("sse");
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", r#"{"title":"S"}"#))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        // 404 面。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/sessions/sess_none/events/stream"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "SESSION_NOT_FOUND");
+        // replay:首帧 session.created(id/event/data 帧格式齐)。
+        let r = app
+            .clone()
+            .oneshot(get(&format!(
+                "/api/forge/sessions/{sid}/events/stream?fromSeq=0"
+            )))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(r.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/event-stream"));
+        let mut body = r.into_body();
+        let replay = sse_read_for(&mut body, std::time::Duration::from_millis(600)).await;
+        assert!(replay.contains("id: 1\n"), "帧 id=seq: {replay:?}");
+        assert!(replay.contains("event: session.created\n"), "帧 event=type: {replay:?}");
+        assert!(replay.contains("data: {"), "帧 data=wire JSON: {replay:?}");
+        assert!(replay.contains("\"seq\":1"), "wire 含 seq: {replay:?}");
+        // live:PATCH 推 session.updated(seq 2 续接)。
+        let r = app
+            .clone()
+            .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), r#"{"pinned":true}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let live = sse_read_for(&mut body, std::time::Duration::from_millis(600)).await;
+        assert!(live.contains("event: session.updated\n"), "live 推送: {live:?}");
+        assert!(live.contains("id: 2\n"), "live seq 续接: {live:?}");
+        drop(body);
+        // 续传无重:fromSeq=latest → 600ms 内零事件帧。
+        let r = app
+            .clone()
+            .oneshot(get(&format!(
+                "/api/forge/sessions/{sid}/events/stream?fromSeq=2"
+            )))
+            .await
+            .unwrap();
+        let mut body2 = r.into_body();
+        let resume = sse_read_for(&mut body2, std::time::Duration::from_millis(600)).await;
+        assert!(
+            !resume.contains("event: "),
+            "fromSeq=latest 续传不应有回放帧: {resume:?}"
+        );
+        drop(body2);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f7_sse_gap_frame_when_window_exceeded() {
+        // 小环缓冲(4)制造超窗:env 于 build_app 读取,锁内原子 set+build。
+        let (app, dir) = {
+            let _g = F7_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let dir = std::env::temp_dir().join(format!(
+                "agentd-f7-gap-{}-{}",
+                std::process::id(),
+                events::new_id("t")
+            ));
+            std::env::set_var("FORGE_AGENTD_DATA_DIR", &dir);
+            std::env::set_var("FORGE_AGENTD_EVENT_BUFFER", "4");
+            let app = build_app();
+            std::env::remove_var("FORGE_AGENTD_DATA_DIR");
+            std::env::remove_var("FORGE_AGENTD_EVENT_BUFFER");
+            (app, dir)
+        };
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", "{}"))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        // 6 个持久事件(PATCH 轮替 pinned)→ 共 7 条,窗口仅容 4。
+        for i in 0..6 {
+            let body = if i % 2 == 0 {
+                r#"{"pinned":true}"#
+            } else {
+                r#"{"pinned":false}"#
+            };
+            app.clone()
+                .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), body))
+                .await
+                .unwrap();
+        }
+        assert_eq!(read_events(&dir, &sid).len(), 7);
+        let r = app
+            .clone()
+            .oneshot(get(&format!(
+                "/api/forge/sessions/{sid}/events/stream?fromSeq=0"
+            )))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let mut body = r.into_body();
+        let text = sse_read_for(&mut body, std::time::Duration::from_millis(800)).await;
+        // 首帧必须是合成 stream.gap。
+        let first = text.split("\n\n").next().unwrap_or("");
+        assert!(first.contains("event: stream.gap"), "超窗首帧须 stream.gap: {text:?}");
+        assert!(first.contains("replay-window-exceeded"), "gap 原因: {text:?}");
+        assert!(first.contains("\"gap\":true"), "gap payload: {text:?}");
+        // 回放段 = 窗口内 seq 4..7;窗口外 seq 3 不得回放。
+        assert!(text.contains("id: 4\n") && text.contains("id: 7\n"), "窗口帧: {text:?}");
+        assert!(!text.contains("id: 3\n"), "窗口外帧不得回放: {text:?}");
+        drop(body);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---------- F7 wave.2:turn 执行(ask:execute / runs / todos)路由级 ----------
+
+    /// mock provider 环境(无 key + keystore 指空目录;三锁纪律同 llm 测试组)。
+    fn mock_provider_env() -> std::path::PathBuf {
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let dir = std::env::temp_dir().join(format!("agentd-w2-ks-{}", std::process::id()));
+        std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
+        dir
+    }
+
+    #[tokio::test]
+    async fn f7w2_ask_execute_mock_build_route_and_validation() {
+        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let ks_dir = mock_provider_env();
+        let (app, dir) = f7_app("ask");
+        // 404 SESSION_NOT_FOUND。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/sessions/sess_none/ask:execute",
+                r#"{"userInput":"hi"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "SESSION_NOT_FOUND");
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", r#"{"title":"T"}"#))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        // 400 INVALID_INPUT:空 userInput。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/ask:execute"),
+                r#"{"userInput":"  "}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "INVALID_INPUT");
+        // 400 INVALID_INPUT:未知 mode。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/ask:execute"),
+                r#"{"userInput":"x","mode":"bogus"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "INVALID_INPUT");
+        // mock build:200 + run completed + 事件序列落盘 + 自动命名 + activeRunId 清理。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/ask:execute"),
+                r#"{"userInput":"给我一个场景综述","mode":"build"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["run"]["status"], "completed");
+        assert!(v["run"]["id"].as_str().unwrap().starts_with("run_"));
+        assert!(v["message"]["text"].as_str().unwrap().contains("mock:已收到「给我一个场景综述」"));
+        assert_eq!(v["mode"], "build");
+        let run_id = v["run"]["id"].as_str().unwrap().to_string();
+        let types: Vec<String> = read_events(&dir, &sid)
+            .iter()
+            .map(|e| e["type"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            types,
+            vec![
+                "session.created",
+                "composer.user.message",
+                "agent.started",
+                "agent.message",
+                "agent.completed"
+            ],
+            "mock build 全事件序列: {types:?}"
+        );
+        let evs = read_events(&dir, &sid);
+        assert_eq!(evs[1]["payload"]["composerMode"], "build");
+        assert_eq!(evs[1]["payload"]["runId"], run_id.as_str());
+        assert_eq!(evs[2]["payload"]["model"], "mock");
+        assert_eq!(evs[3]["payload"]["provider"], "mock");
+        assert_eq!(evs[4]["payload"]["runId"], run_id.as_str());
+        // 首条消息自动命名 + activeRunId 清理。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        let s = json_body(r).await;
+        assert_eq!(s["session"]["title"], "给我一个场景综述");
+        assert_eq!(s["session"]["titleManuallySet"], false);
+        assert!(s["session"]["activeRunId"].is_null());
+        // runs REST:GET 200;cancel 非 running → ok:false 如实。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/runs/{run_id}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let rv = json_body(r).await;
+        assert_eq!(rv["run"]["status"], "completed");
+        assert_eq!(rv["run"]["trigger"], "composer_chat");
+        assert_eq!(rv["run"]["sessionId"], sid.as_str());
+        let r = app
+            .clone()
+            .oneshot(post_json(&format!("/api/forge/runs/{run_id}/cancel"), "{}"))
+            .await
+            .unwrap();
+        let cv = json_body(r).await;
+        assert_eq!(cv["ok"], false);
+        assert_eq!(cv["status"], "completed");
+        // 404 RUN_NOT_FOUND 双腿。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/runs/run_none"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "RUN_NOT_FOUND");
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/runs/run_none/cancel", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "RUN_NOT_FOUND");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&ks_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn f7w2_todos_rest_events_and_validation() {
+        let (app, dir) = f7_app("todos");
+        // POST:404 会话不存在。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/todos",
+                r#"{"sessionId":"sess_none","title":"x"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "SESSION_NOT_FOUND");
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", "{}"))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        // 400 TODO_INVALID:空 title / 非法 kind。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/todos",
+                &format!(r#"{{"sessionId":"{sid}","title":" "}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "TODO_INVALID");
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/todos",
+                &format!(r#"{{"sessionId":"{sid}","title":"x","kind":"bogus"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        // 建两条:缺省面 + explore 带 description。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/todos",
+                &format!(r#"{{"sessionId":"{sid}","title":"改场景"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let t1 = json_body(r).await["todo"].clone();
+        assert!(t1["id"].as_str().unwrap().starts_with("todo_"));
+        assert_eq!(t1["kind"], "edit");
+        assert_eq!(t1["source"], "user");
+        assert_eq!(t1["status"], "queued");
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/todos",
+                &format!(r#"{{"sessionId":"{sid}","title":"看布局","kind":"explore","description":"先取证"}}"#),
+            ))
+            .await
+            .unwrap();
+        let t2 = json_body(r).await["todo"].clone();
+        assert_eq!(t2["kind"], "explore");
+        assert_eq!(t2["description"], "先取证");
+        // todo.created 事件落盘(payload id/title/kind/status)。
+        let evs = read_events(&dir, &sid);
+        let created: Vec<&Value> = evs.iter().filter(|e| e["type"] == "todo.created").collect();
+        assert_eq!(created.len(), 2);
+        assert_eq!(created[0]["payload"]["id"], t1["id"]);
+        assert_eq!(created[0]["payload"]["title"], "改场景");
+        assert_eq!(created[0]["payload"]["kind"], "edit");
+        assert_eq!(created[0]["payload"]["status"], "queued");
+        // GET 列表(404 腿)。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}/todos")))
+            .await
+            .unwrap();
+        assert_eq!(json_body(r).await["todos"].as_array().unwrap().len(), 2);
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/sessions/sess_none/todos"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        // PATCH:status/title/summary + todo.updated 事件。
+        let r = app
+            .clone()
+            .oneshot(patch_json(
+                &format!("/api/forge/todos/{}", t1["id"].as_str().unwrap()),
+                r#"{"status":"completed","summary":"已完成","title":"改场景v2"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let pt = json_body(r).await["todo"].clone();
+        assert_eq!(pt["status"], "completed");
+        assert_eq!(pt["summary"], "已完成");
+        assert_eq!(pt["title"], "改场景v2");
+        let evs2 = read_events(&dir, &sid);
+        let updated: Vec<&Value> = evs2.iter().filter(|e| e["type"] == "todo.updated").collect();
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0]["payload"]["id"], t1["id"]);
+        assert_eq!(updated[0]["payload"]["status"], "completed");
+        // 400 TODO_INVALID:非法 status;404 TODO_NOT_FOUND。
+        let r = app
+            .clone()
+            .oneshot(patch_json(
+                &format!("/api/forge/todos/{}", t1["id"].as_str().unwrap()),
+                r#"{"status":"bogus"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "TODO_INVALID");
+        let r = app
+            .clone()
+            .oneshot(patch_json("/api/forge/todos/todo_none", r#"{"status":"running"}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "TODO_NOT_FOUND");
+        // snapshot:todos 填真(经路由)。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/design-snapshot?sessionId={sid}")))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        let todos = v["todos"].as_array().unwrap();
+        assert_eq!(todos.len(), 2, "snapshot todos 填真: {todos:?}");
+        assert!(todos.iter().any(|t| t["title"] == "改场景v2" && t["status"] == "completed"));
+        assert!(v["run"].is_null(), "无 activeRunId → null");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     // ---------- F6 wave.1:/api/forge/playtest/run ----------
@@ -1763,6 +2666,224 @@ mod tests {
         assert_eq!(bad_kind.status(), StatusCode::BAD_REQUEST);
         assert_eq!(json_body(bad_kind).await["error"]["code"], "GEN_BAD_PARAMS");
 
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    // ---------- F7 wave.5:workspace/tree + llm/key ----------
+
+    /// FORGE_AGENTD_WORKSPACE_ROOT 进程级,workspace 树测试串行(F4 wave.3 教训:共享目录读写互斥)。
+    static WS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// 独立 workspace 根(造目录树;返回 (根, guard 落盘即清))。
+    fn ws_temp_root(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "agentd-w5-ws-{tag}-{}-{}",
+            std::process::id(),
+            events::new_id("t")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn f7w5_workspace_tree_single_level_sorted_and_hidden() {
+        let _g = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = ws_temp_root("tree");
+        // 造树:两目录 + 三文件(含 .hidden)+ 嵌套(单层面不应下钻)。
+        std::fs::create_dir_all(root.join("beta_dir")).unwrap();
+        std::fs::create_dir_all(root.join("Alpha dir")).unwrap();
+        std::fs::write(root.join("zeta.txt"), "z").unwrap();
+        std::fs::write(root.join("alpha.txt"), "aa").unwrap();
+        std::fs::write(root.join(".hidden"), "h").unwrap();
+        std::fs::write(root.join("beta_dir").join("inner.txt"), "i").unwrap();
+        std::env::set_var("FORGE_AGENTD_WORKSPACE_ROOT", &root);
+        let app = build_app();
+        // 根单层。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/workspace/tree"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["path"], "");
+        assert_eq!(v["truncated"], false);
+        let names: Vec<&str> = v["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap())
+            .collect();
+        // 目录优先 + 名称小写排序:.hidden(h) < Alpha dir < beta dir?否——hidden 不参与排前,
+        // 统一按 (dir 优先, name 小写):Alpha dir / beta_dir 目录在前;.hidden/alpha.txt/zeta.txt 文件在后。
+        assert_eq!(names, vec!["Alpha dir", "beta_dir", ".hidden", "alpha.txt", "zeta.txt"], "排序: {names:?}");
+        let entries = v["entries"].as_array().unwrap();
+        assert_eq!(entries[0]["kind"], "dir");
+        assert_eq!(entries[0]["size"], 0);
+        assert_eq!(entries[0]["relPath"], "Alpha dir");
+        assert_eq!(entries[0]["hidden"], false);
+        assert!(entries[0]["modifiedAt"].as_str().unwrap().contains('T'));
+        assert_eq!(entries[2]["hidden"], true, ". 前缀隐藏标记");
+        assert_eq!(entries[3]["size"], 2, "alpha.txt 两字节");
+        // 单层:未见嵌套 inner.txt。
+        assert!(!names.contains(&"inner.txt"));
+        // 子目录层(正斜杠 relPath 下钻)。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/workspace/tree?path=beta_dir"))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["path"], "beta_dir");
+        let names: Vec<&str> = v["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["inner.txt"]);
+        assert_eq!(v["entries"][0]["relPath"], "beta_dir/inner.txt");
+        std::env::remove_var("FORGE_AGENTD_WORKSPACE_ROOT");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn f7w5_workspace_tree_confined_and_not_found() {
+        let _g = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = ws_temp_root("confined");
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("f.txt"), "x").unwrap();
+        std::env::set_var("FORGE_AGENTD_WORKSPACE_ROOT", &root);
+        let app = build_app();
+        // .. 逃逸 → 400 PATH_OUTSIDE_ROOT。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/workspace/tree?path=.."))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "PATH_OUTSIDE_ROOT");
+        // 绝对路径出根 → 400(root.join(带盘符/根的路径)= 整体替换,canon 后出根)。
+        // 用固定盘符/根路径(ASCII 安全;http::Uri 不接受非 ASCII query)。
+        #[cfg(windows)]
+        let abs = "C:/";
+        #[cfg(not(windows))]
+        let abs = "/";
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/workspace/tree?path={abs}")))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST, "绝对出根: {abs}");
+        assert_eq!(json_body(r).await["error"]["code"], "PATH_OUTSIDE_ROOT");
+        // 不存在 → 404 PATH_NOT_FOUND;文件当目录 → 404。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/workspace/tree?path=no_such_dir"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(r).await["error"]["code"], "PATH_NOT_FOUND");
+        let r = app
+            .oneshot(get("/api/forge/workspace/tree?path=f.txt"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        std::env::remove_var("FORGE_AGENTD_WORKSPACE_ROOT");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn f7w5_workspace_tree_truncation_over_500() {
+        let _g = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = ws_temp_root("trunc");
+        for i in 0..505 {
+            std::fs::write(root.join(format!("f{i:03}.txt")), "x").unwrap();
+        }
+        std::env::set_var("FORGE_AGENTD_WORKSPACE_ROOT", &root);
+        let app = build_app();
+        let r = app
+            .oneshot(get("/api/forge/workspace/tree"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["total"], 505);
+        assert_eq!(v["truncated"], true, "超 500 如实截断标记");
+        assert_eq!(v["entries"].as_array().unwrap().len(), 500);
+        // 截断后仍按排序前缀(f000..f499)。
+        assert_eq!(v["entries"][0]["name"], "f000.txt");
+        assert_eq!(v["entries"][499]["name"], "f499.txt");
+        std::env::remove_var("FORGE_AGENTD_WORKSPACE_ROOT");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn f7w5_llm_key_write_flips_availability_redline() {
+        // 三锁同源纪律(gen REST + llm env + F7 data dir 互不串扰)。
+        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let data = gen_temp_dir("llmkey");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        let app = build_app();
+        // 前置:无 key → needs-key。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/design-snapshot"))
+            .await
+            .unwrap();
+        assert_eq!(
+            json_body(r).await["models"]["models"][0]["availability"],
+            "needs-key"
+        );
+        // 空 key → 400 EMPTY_KEY。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/llm/key", r#"{"apiKey":"  "}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "EMPTY_KEY");
+        // 写 key → {ok, configured};响应面不回显(R-5);availability 翻转。
+        let secret = "sk-test-REDLINE-w5-llmkey";
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/llm/key",
+                &format!(r#"{{"apiKey":"{secret}"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v, json!({ "ok": true, "configured": true }), "响应面仅 ok+configured: {v}");
+        assert!(!v.to_string().contains(secret), "响应回显密钥(R-5): {v}");
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/design-snapshot"))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["models"]["models"][0]["availability"], "available");
+        assert!(!v.to_string().contains(secret), "snapshot 泄漏密钥(R-5)");
+        // keystore 回读 = 写入值(经 Keystore 面;Windows DPAPI 密文文件无明文)。
+        let ks = gend::keystore::Keystore::load_from(&data.join("keystore.json"));
+        assert_eq!(ks.key_for("deepseek").as_deref(), Some(secret));
+        // 覆盖写:新值替换。
+        let secret2 = "sk-test-REDLINE-w5-overwrite";
+        let r = app
+            .oneshot(post_json(
+                "/api/forge/llm/key",
+                &format!(r#"{{"apiKey":"{secret2}"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let ks2 = gend::keystore::Keystore::load_from(&data.join("keystore.json"));
+        assert_eq!(ks2.key_for("deepseek").as_deref(), Some(secret2), "覆盖写未生效");
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();
     }

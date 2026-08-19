@@ -1,46 +1,46 @@
 import { useEffect } from 'react';
-import { useAppStore } from './lib/store';
-import TitleBar from './components/TitleBar';
-import Sidebar from './components/Sidebar';
-import SearchPalette from './components/SearchPalette';
-import HomeView from './views/HomeView';
-import AutomationsView from './views/AutomationsView';
-import CustomizeView from './views/CustomizeView';
-import AgentView from './views/AgentView';
-import EditorView from './views/EditorView';
-import SettingsView from './views/SettingsView';
+import Shell from './components/shell/Shell';
+import { useChatStore } from './lib/chatStore';
+import { useOverlayStore } from './lib/overlayStore';
+import { useSessionStore } from './lib/sessionStore';
+import { useSettingsStore, type SettingsPage } from './lib/settingsStore';
+import { useThemeStore, type ThemeMode } from './lib/themeStore';
+import { useWorkbenchStore, type TabKind } from './lib/workbenchStore';
 
+/**
+ * F7 wave.3:App = 新壳(titlebar/三栏/statusbar + 浮层)。
+ * 快捷键(Ctrl+K / Ctrl+Shift+N / Ctrl+J / Esc)与首次 loadAll 在 Shell 内挂载;
+ * 主题初始化在 main.tsx(initTheme,首帧前注入 CSS 变量)。
+ */
 export default function App() {
-  const route = useAppStore((s) => s.route);
-  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
-  const setPaletteOpen = useAppStore((s) => s.setPaletteOpen);
-
+  // desktop 冒烟 seam(F7 wave.3):window.__forgeShell 暴露最小 action 面,
+  // 供 apps/desktop main.cjs 冒烟场景 executeJavaScript 驱动(开编辑器 tab /
+  // 主题切换 / 建会话)。与 F5 gen 冒烟的 data-* 选择器同级,属调试 seam。
+  // wave.5 扩:设置开/翻页、内建 tab、底部面板。
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPaletteOpen(true);
-      }
+    const w = window as unknown as { __forgeShell?: Record<string, unknown> };
+    w.__forgeShell = {
+      openEditor: () => useWorkbenchStore.getState().openEditor(),
+      openTab: (k: TabKind) => useWorkbenchStore.getState().openTab(k),
+      toggleBottom: () => useWorkbenchStore.getState().toggleBottom(),
+      openSettings: (page?: SettingsPage) => {
+        if (page) useSettingsStore.getState().setPage(page);
+        useOverlayStore.getState().open('settings');
+      },
+      setThemeMode: (m: ThemeMode) => useThemeStore.getState().setMode(m),
+      createSession: (title?: string) => useSessionStore.getState().create(title),
+      stores: {
+        theme: useThemeStore,
+        workbench: useWorkbenchStore,
+        sessions: useSessionStore,
+        chat: useChatStore,
+        settings: useSettingsStore,
+      },
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [setPaletteOpen]);
+    return () => {
+      delete w.__forgeShell;
+    };
+  }, []);
 
-  return (
-    <div className="flex h-full flex-col bg-white">
-      <TitleBar />
-      <div className="flex min-h-0 flex-1">
-        {sidebarVisible && <Sidebar />}
-        <main className="min-w-0 flex-1">
-          {route === 'home' && <HomeView />}
-          {route === 'automations' && <AutomationsView />}
-          {route === 'customize' && <CustomizeView />}
-          {route === 'agent' && <AgentView />}
-          {route === 'editor' && <EditorView />}
-          {route === 'settings' && <SettingsView />}
-        </main>
-      </div>
-      <SearchPalette />
-    </div>
-  );
+  return <Shell />;
 }

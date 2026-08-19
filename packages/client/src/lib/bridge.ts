@@ -1,7 +1,5 @@
-import { MOCK_FORGE_API } from './mock';
-
 /**
- * 与 Electron preload(apps/ide/src/preload)注入到 window.forgeAPI 的结构同构。
+ * 与 Electron preload(apps/desktop/src/preload.cjs)注入到 window.forgeAPI 的结构同构。
  * 独立 web SPA 下本地定义,切断对 preload 的依赖(去 Electron 耦合)。
  */
 export interface ForgeAPI {
@@ -39,9 +37,24 @@ declare global {
 }
 
 /**
+ * 纯 web 环境下的 window.forgeAPI 桩:窗口控制全部 no-op,
+ * onMaximizedChanged 返回 no-op 取消订阅函数,platform 标记为 'web'。
+ * (F7 wave.3:自 lib/mock.ts 迁入本文件——mock.ts 假数据体系随旧面下线。)
+ */
+const MOCK_FORGE_API: ForgeAPI = {
+  win: {
+    minimize: () => {},
+    toggleMaximize: () => {},
+    close: () => {},
+    onMaximizedChanged: () => () => {},
+  },
+  platform: 'web',
+};
+
+/**
  * Electron 环境使用 preload 注入的 window.forgeAPI;
- * 纯 web 环境(window.forgeAPI 不存在)回退到 lib/mock.ts 的 no-op 实现。
- * seam 保持不变:调用点仍写作 bridge()?.win.xxx()。
+ * 纯 web 环境(window.forgeAPI 不存在)回退到上面的 no-op 实现。
+ * seam 保持不变:调用点仍写作 bridge().win.xxx()。
  */
 export function bridge(): ForgeAPI {
   return window.forgeAPI ?? MOCK_FORGE_API;

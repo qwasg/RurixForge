@@ -104,3 +104,13 @@ F0 地基 → F1 场景编辑闭环 → F2 素材管线 → F3 agent 集群与 s
 
 - 示例游戏(迷宫原型)回归矩阵全绿;打包产物在干净机器(无工具链)可运行。
 - 性能:示例场景 1080p ≥ 60fps(实测记录进 evidence/,对标 rurix measured 纪律)。
+
+## F7 · Agent 前端重设计(后路线图里程碑,2026-08-18 立项 D-020)
+
+交付:
+
+1. agentd 事件基座:append-only 事件日志 + seq + SSE + design-snapshot;会话持久化 CRUD/fork/revert。
+2. turn 执行事件化(`ask:execute` 五模式 + runs 控制 + todos REST)。
+3. React 壳全量重设计对齐 Moonlit Agent IDE(I:\agent-debug-frontend-backend-copy-20260530):主题系统(明暗+预设+派色算法)、三栏壳、聊天时间线、Composer、workbench tabs、设置体系;游戏编辑器嵌入为壳内视图(游戏原生区零改动);技术栈不变。
+
+验收门:见 `milestones/f7/F7_CONTRACT.md`(G-F7-1~5)。

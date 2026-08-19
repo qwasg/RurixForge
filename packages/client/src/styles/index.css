@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+/* theme.css 由 main.tsx 在 index.css 之前 import(@import 位置约束,不走此处) */
+
 @layer base {
   html,
   body,
@@ -12,7 +14,12 @@
   }
 
   body {
-    @apply bg-white text-ink font-sans text-base antialiased;
+    /* F7 wave.3:壳底色/文字/字体走主题变量(默认 moonlit 亮表,见 theme.css) */
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--ui-size);
+    @apply antialiased;
     user-select: none;
   }
 
@@ -39,6 +46,41 @@
 }
 
 @layer components {
+  /* F7 wave.5:设置滑杆(参考 set_slider:4px 轨 + 12px knob,accent 填充) */
+  .set-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 14px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .set-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--line-strong);
+  }
+  .set-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4px;
+    border-radius: 9999px;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .set-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--line-strong);
+  }
+  .set-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+  }
   /* 黑色主按钮(New Automation / Browse Marketplace / Commit & Push) */
   .btn-primary {
     @apply inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-black;

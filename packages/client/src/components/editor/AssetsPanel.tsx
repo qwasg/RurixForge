@@ -170,7 +170,7 @@ function AssetListItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.Mo
 
 export default function AssetsPanel() {
   const store = useAssetStore();
-  const { items, viewMode, typeFilter, search, currentFolder, loading, load } = store;
+  const { items, viewMode, typeFilter, search, currentFolder, loading, load, error } = store;
   const [menu, setMenu] = useState<{ x: number; y: number; item: AssetItem } | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -396,6 +396,7 @@ export default function AssetsPanel() {
         {/* 资产列表 */}
         <div className="min-w-0 flex-1 overflow-y-auto px-2 pb-1">
           {loading && <p className="text-xs text-muted-faint">Loading...</p>}
+          {!loading && error && <p className="text-xs text-amber-600" title={error}>{error}</p>}
           {!loading && filtered.length === 0 && (
             <p className="text-xs text-muted-faint">{items.length === 0 ? '暂无资产,先导入' : '无匹配资产'}</p>
           )}

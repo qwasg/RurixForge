@@ -1,0 +1,29 @@
+﻿{
+    "milestone":  "F6",
+    "wave":  "wave.5",
+    "gate":  "G-F6-5",
+    "method":  "D-F6-E",
+    "scene":  "Content/Scenes/maze.rxscene",
+    "resolution":  "1920x1080",
+    "framesPerRound":  300,
+    "rounds":  3,
+    "timestamp":  "2026-08-18T17:11:21.6187276+08:00",
+    "roundsFps":  [
+                      16.13,
+                      15.8,
+                      15.83
+                  ],
+    "meanFps":  15.92,
+    "minFps":  15.8,
+    "machine":  {
+                    "gpu":  "NVIDIA GeForce RTX 4070 Ti",
+                    "cpu":  "13th Gen Intel(R) Core(TM) i5-13600KF",
+                    "os":  "Microsoft Windows 11 Pro Insider Preview",
+                    "ramGB":  31.8
+                },
+    "binary":  null,
+    "binaryProfile":  "debug",
+    "probeNonZeroPixels":  290082,
+    "thresholdFps":  60,
+    "pass":  false
+}

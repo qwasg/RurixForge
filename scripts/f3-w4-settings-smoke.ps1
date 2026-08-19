@@ -1,9 +1,10 @@
 # F3 wave.4 前端门冒烟(G-F3-4 桌面腿)。
-# 流程:起 agentd(skills/list 上游)→ desktop 冒烟 FORGE_SMOKE_SCENARIO=settings →
-#       侧栏 Settings → 设置页 skills tab 真实列表(>=13 篇)→ 截图字节数断言。
-# 前置:target\debug\forge-agentd.exe 已构建;packages/client dist 已构建(host 静态托管)。
-# 用法: powershell -ExecutionPolicy Bypass -File scripts\f3-w4-settings-smoke.ps1 ; exit 0 = PASS
+# 【已退役 2026-08-18 F7 wave.5】本脚本断言的旧 SettingsView(F3 版设置页)已随 D-F7-D 下线;
+# settings 场景已在 F7 wave.5 以新设置体系重建(全屏 overlay + 五页),由
+# scripts/f7-w5-workbench-smoke.ps1 覆盖(开设置/预设明暗实测/技能禁用写回复核)。
+# 保留本文件仅为历史留档;直接运行会因旧断言面不存在而 FAIL(诚实报错,不静默绿)。
 $ErrorActionPreference = 'Stop'
+throw "f3-w4-settings-smoke 已退役:旧 SettingsView 随 F7 D-F7-D 下线,新设置体系冒烟见 scripts/f7-w5-workbench-smoke.ps1"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"

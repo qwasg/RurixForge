@@ -1,0 +1,31 @@
+﻿{
+    "milestone":  "F6",
+    "wave":  "wave.5",
+    "gate":  "G-F6-5",
+    "method":  "D-F6-E",
+    "scene":  "Content/Scenes/maze.rxscene",
+    "resolution":  "1920x1080",
+    "framesPerRound":  300,
+    "rounds":  3,
+    "timestamp":  "2026-08-18T17:45:35.6476349+08:00",
+    "roundsFps":  [
+                      2026.05,
+                      2063.2,
+                      2283.66
+                  ],
+    "meanFps":  2124.3,
+    "minFps":  2026.05,
+    "e2eRgba8Fps":  6.52,
+    "caliber":  "none 档 = 渲染+提交产能(游戏运行时语义,判门);rgba8 档 = 编辑器帧通道端到端(对照,readback 瓶颈 RD-F6-002)",
+    "machine":  {
+                    "gpu":  "NVIDIA GeForce RTX 4070 Ti",
+                    "cpu":  "13th Gen Intel(R) Core(TM) i5-13600KF",
+                    "os":  "Microsoft Windows 11 Pro Insider Preview",
+                    "ramGB":  31.8
+                },
+    "binary":  "target\\release\\engine-host.exe",
+    "binaryProfile":  "release",
+    "probeNonZeroPixels":  290082,
+    "thresholdFps":  60,
+    "pass":  true
+}

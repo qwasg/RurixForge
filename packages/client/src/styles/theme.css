@@ -1,0 +1,128 @@
+/**
+ * F7 wave.3 主题 token 静态默认表(Moonlit Agent IDE 复刻)。
+ * :root = moonlit 亮色;[data-theme="dark"] = moonlit 暗色。
+ * 派生值与 lib/themeStore.ts applyPalette(参考 appearance.rs 逐行移植)输出逐值一致;
+ * 运行时 themeStore 会把当前预设/自定义派色结果注入 documentElement.style 覆盖本表。
+ *
+ * 差异留痕:语义色 sage/danger/warn/info(+_bg)与 dot_done/idle/blocked/queued 的
+ * 参考默认值位于 moonlit-uikit crate(未随拷贝仓提供),本表为派生值(同族色);
+ * apply_palette 派生面(bg_sunk/panel/text_2/3/4/accent_*/line/hover/active/
+ * sidebar/float/selection/text_inv/dot_running)与参考算法逐值一致。
+ */
+
+:root {
+  /* 表面 */
+  --bg: #FAF9F5;
+  --bg-sunk: #F0EFEB;
+  --bg-panel: #FAF9F5;
+  --bg-input: #FAF9F5;
+  --bg-float: #FAF9F5;
+  --bg-sidebar: #F0EFEB;
+  --bg-hover: #2A27240A;
+  --bg-active: #2A272412;
+  --bg-selection: #C9644214;
+  /* 文字 */
+  --text: #2A2724;
+  --text-2: #767470;
+  --text-3: #9D9B97;
+  --text-4: #BDBBB7;
+  --text-inv: #FAF9F5;
+  /* 线 */
+  --line: #2A272417;
+  --line-strong: #2A272424;
+  /* 强调 */
+  --accent: #C96442;
+  --accent-soft: #B85C3C;
+  --accent-bg: #C9644214;
+  --accent-ring: #C9644247;
+  /* 语义(派生,见头注) */
+  --sage: #5F8D6A;
+  --sage-bg: rgba(95, 141, 106, 0.12);
+  --danger: #B8432F;
+  --danger-bg: rgba(184, 67, 47, 0.1);
+  --warn: #B2862C;
+  --warn-bg: rgba(178, 134, 44, 0.12);
+  --info: #3E74C2;
+  --info-bg: rgba(62, 116, 194, 0.1);
+  /* 状态点 */
+  --dot-running: #C96442;
+  --dot-done: #5F8D6A;
+  --dot-idle: #BDBBB7;
+  --dot-blocked: #B8432F;
+  --dot-queued: #B2862C;
+  /* 字体栈与字号(themeStore 可注入覆盖) */
+  --font-sans: "HarmonyOS Sans SC", "Microsoft YaHei UI", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Noto Serif SC", "SimSun", serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", Consolas, monospace;
+  --ui-size: 13px;
+  --code-size: 12px;
+  /* 阴影(参考 sh1/sh_float) */
+  --sh-1: 0 1px 2px rgba(42, 39, 36, 0.04), 0 0 0 1px rgba(42, 39, 36, 0.04);
+  --sh-float: 0 12px 40px rgba(42, 39, 36, 0.14), 0 0 0 1px rgba(42, 39, 36, 0.06);
+  /* 菜单玻璃底(参考 menubar_glass_bg) */
+  --menu-glass: rgba(255, 255, 255, 0.53);
+  /* 浮层 scrim */
+  --scrim-palette: rgba(42, 39, 36, 0.18);
+  --scrim-modal: rgba(20, 18, 15, 0.32);
+}
+
+[data-theme='dark'] {
+  --bg: #1C1B18;
+  --bg-sunk: #1A1916;
+  --bg-panel: #252421;
+  --bg-input: #252421;
+  --bg-float: #252421;
+  --bg-sidebar: #1A1916;
+  --bg-hover: #FFFFFF0D;
+  --bg-active: #FFFFFF14;
+  --bg-selection: #E2886A24;
+  --text: #ECE8DF;
+  --text-2: #A6A39C;
+  --text-3: #7F7D77;
+  --text-4: #5E5C57;
+  --text-inv: #1C1B18;
+  --line: #ECE8DF12;
+  --line-strong: #ECE8DF21;
+  --accent: #E2886A;
+  --accent-soft: #E69980;
+  --accent-bg: #E2886A24;
+  --accent-ring: #E2886A6B;
+  --sage: #8FBF9B;
+  --sage-bg: rgba(143, 191, 155, 0.16);
+  --danger: #DD6B55;
+  --danger-bg: rgba(221, 107, 85, 0.16);
+  --warn: #D4AC55;
+  --warn-bg: rgba(212, 172, 85, 0.16);
+  --info: #6FA3E0;
+  --info-bg: rgba(111, 163, 224, 0.16);
+  --dot-running: #E2886A;
+  --dot-done: #8FBF9B;
+  --dot-idle: #5E5C57;
+  --dot-blocked: #DD6B55;
+  --dot-queued: #D4AC55;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --sh-float: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --menu-glass: rgba(35, 34, 32, 0.53);
+  --scrim-palette: rgba(42, 39, 36, 0.18);
+  --scrim-modal: rgba(20, 18, 15, 0.32);
+}
+
+/* F7 wave.4:流式 caret 1s 闪烁(参考 .stream-caret);reduce-motion 禁闪 */
+@keyframes forge-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.forge-stream-caret {
+  animation: forge-caret-blink 1s step-end infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .forge-stream-caret {
+    animation: none;
+  }
+}

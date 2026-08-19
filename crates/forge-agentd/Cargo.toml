@@ -17,7 +17,11 @@ ureq = { version = "2", default-features = false, features = ["tls"] }
 # F6 wave.1:playtest SSIM 断言——golden PNG 解码 + viewport_frame pixelsB64 解码(与 assetd/gend 同版本面)。
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+# F7 wave.1:SSE 流(stream::iter/unfold + StreamExt::chain;锁文件已有 0.3.34,不引宏特性)。
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # util:ServiceExt::oneshot 路由级测试
 tower = { workspace = true, features = ["util"] }
+# F7 wave.1:SSE 测试逐帧读响应体(BodyExt::frame;锁文件已有 0.1.5)。
+http-body-util = "0.1"
