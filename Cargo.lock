@@ -255,12 +255,14 @@ dependencies = [
 name = "engine-host"
 version = "0.1.0"
 dependencies = [
+ "assetd",
  "base64",
  "forge-logic",
  "forge-scene",
  "forge-util",
  "naga",
  "openh264",
+ "rurix-geom-build",
  "rurix-physics",
  "rurix-rt",
  "serde",

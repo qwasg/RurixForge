@@ -2,9 +2,14 @@
 //! 场景实渲染 + Readback 回读 + 射线点选。
 //!
 //! 架构:
-//! - 实体(MeshRenderer enabled → 单位立方体)以相机 UBO(viewProj)+ 逐实体 push constants
+//! - 实体(MeshRenderer enabled)以相机 UBO(viewProj)+ 逐实体 push constants
 //!   (model 64B + color 16B = 80B ≤ 128)经 GPU 光栅化(Depth32Float,LESS_OR_EQUAL),
 //!   `Readback::Texture` 回读 RGBA8。该帧既供 canvas 回退腿,也供 D3D12 共享纹理生产者作帧源。
+//! - 网格(2026-08-28 资产→视口断链接线):`MeshRenderer.mesh` 引用经 [`crate::meshres`]
+//!   解析到项目 .rxmesh 构建产物 → 展平顶点缓冲(pos3+normal3);解析失败/超上限诚实回退
+//!   内置 cube 并计入 `meshFallbacks`。pass 槽位按网格类静态绑定 VB(类槽位按当帧实体
+//!   计数分配,cube 类兜底占余量),实体帧内按类序稳定占槽;网格类布局变化触发会话重建
+//!   (与改尺寸同路径,编辑期人手尺度,代价有界)。
 //! - 固定 pass 图:[`MAX_DRAW_SLOTS`] 个 draw pass 常驻;未占槽以「远埋微缩」模型矩阵消隐
 //!   (有限值,避免 NaN 顶点未定义光栅化)。每帧仅经 `FrameUpdate`(buffer_uploads 相机 +
 //!   push_constant_overrides 实体)驱动,provenance 可机验。
@@ -12,7 +17,8 @@
 //! - 诚实三态:vulkan loader/能力缺失 → `DEV_ENV_DEGRADE:` 前缀错误,绝不伪造帧。
 //!
 //! 会话描述块(resources/passes/barriers/readbacks)借给 `DeviceFrameSession<'static>`,
-//! 经 `Box::leak` 提升;重建发生在视口改尺寸或实体数超档升档(F6 wave.5,只升不降),代价有界。
+//! 经 `Box::leak` 提升;重建发生在视口改尺寸、实体数超档升档(F6 wave.5,只升不降)或
+//! 网格类布局变化,代价有界。
 
 use std::sync::{Mutex, OnceLock};
 
@@ -21,6 +27,8 @@ use forge_scene::{Scene, Transform};
 use rurix_rt::render_exec as rex;
 use rurix_rt::vk;
 use serde_json::Value;
+
+use crate::meshres::{self, MeshGpu};
 
 // ─────────────────────────── 向量/矩阵(手卷 f32,确定性) ───────────────────────────
 
@@ -288,6 +296,17 @@ fn is_renderable(e: &forge_scene::Entity) -> bool {
         .any(|c| c.ctype == "MeshRenderer" && c.enabled)
 }
 
+/// 实体网格引用(MeshRenderer.props.mesh;缺省/空 = 内置 cube)。
+fn entity_mesh_ref(e: &forge_scene::Entity) -> String {
+    e.components
+        .iter()
+        .find(|c| c.ctype == "MeshRenderer" && c.enabled)
+        .and_then(|c| c.props.get("mesh").and_then(Value::as_str))
+        .filter(|s| !s.is_empty())
+        .unwrap_or("cube")
+        .to_string()
+}
+
 /// 点选:像素坐标(左上原点) → 最近命中实体 (id, 命中点)。
 pub fn pick_entity(
     scene: &Scene,
@@ -475,6 +494,8 @@ struct ViewportRenderer {
     height: u32,
     /// 本会话 pass 图槽数(F6 wave.5 动态档;升档触发重建)。
     slots: usize,
+    /// 本会话槽位→网格类签名(网格类布局变化触发重建)。
+    mesh_sig: u64,
     session: rex::DeviceFrameSession<'static>,
     device_name: String,
     /// 本会话 import 的共享纹理键(nt_handle, alloc_size);None = 纯 readback 腿。
@@ -527,16 +548,23 @@ fn current_import(width: u32, height: u32) -> Option<ShareImport> {
     }
 }
 
-/// 建固定 pass 图会话(资源:0=网格 VB,1=相机 UBO,2=色 attachment,3=深度)。
-/// 零拷贝优先:有共享纹理可 import 时先建 import 会话;失败(如无 external memory
-/// 扩展)如实 eprintln 并回退纯 readback 腿(G-F1-10 证据面能区分两档)。
-fn build_session(width: u32, height: u32, slots: usize) -> Result<ViewportRenderer, String> {
+/// 建固定 pass 图会话(资源:0=内置 cube VB,1=相机 UBO,2=色 attachment,3=深度,
+/// 4..=各网格类 VB,随后=零拷贝共享 SSBO)。零拷贝优先:有共享纹理可 import 时先建
+/// import 会话;失败(如无 external memory 扩展)如实 eprintln 并回退纯 readback 腿
+/// (G-F1-10 证据面能区分两档)。
+fn build_session(
+    width: u32,
+    height: u32,
+    slots: usize,
+    slot_mesh: &[Option<&'static MeshGpu>],
+    mesh_sig: u64,
+) -> Result<ViewportRenderer, String> {
     let import = current_import(width, height);
-    match build_session_with(width, height, import, slots) {
+    match build_session_with(width, height, import, slots, slot_mesh, mesh_sig) {
         Ok(r) => Ok(r),
         Err(e) if import.is_some() => {
             eprintln!("[viewport] 零拷贝 import 会话创建失败,回退 readback 上传腿: {e}");
-            build_session_with(width, height, None, slots)
+            build_session_with(width, height, None, slots, slot_mesh, mesh_sig)
         }
         Err(e) => Err(e),
     }
@@ -547,7 +575,10 @@ fn build_session_with(
     height: u32,
     import: Option<ShareImport>,
     slots: usize,
+    slot_mesh: &[Option<&'static MeshGpu>],
+    mesh_sig: u64,
 ) -> Result<ViewportRenderer, String> {
+    assert_eq!(slot_mesh.len(), slots, "槽位→网格类表长度须等于槽数");
     if !vk::vulkan_available() {
         return Err("DEV_ENV_DEGRADE: vulkan loader 不可用(无 GPU/驱动)".to_owned());
     }
@@ -559,17 +590,29 @@ fn build_session_with(
         ));
     }
     let (vs, fs) = shader_bytes()?;
-    let mesh = cube_mesh_bytes();
+    let cube = cube_mesh_bytes();
 
-    // 资源:0=网格 VB / 1=相机 UBO / 2=色 attachment / 3=深度 /(零拷贝档)4=共享 SSBO。
+    // 槽位→网格类 VB 资源下标:cube 恒 res 0;不同网格按首现序 4..;共享 SSBO 随后。
+    // (类布局由调用方按当帧实体计数定案;此处纯映射,重复 Arc 共享同一 VB 资源。)
+    let mut distinct: Vec<(&'static MeshGpu, u32)> = Vec::new(); // (mesh, res)
+    for s in slot_mesh {
+        if let Some(m) = s {
+            if !distinct.iter().any(|(d, _)| std::ptr::eq(*d, *m)) {
+                distinct.push((m, 4 + distinct.len() as u32));
+            }
+        }
+    }
+    let import_res = 4 + distinct.len() as u32;
+
+    // 资源:0=cube VB / 1=相机 UBO / 2=色 attachment / 3=深度 / 4..=网格类 VB /(零拷贝档)共享 SSBO。
     let mut resources: Vec<rex::ResourceDesc> = vec![
         rex::ResourceDesc::Buffer(rex::BufferDesc {
-            size: mesh.len() as u64,
+            size: cube.len() as u64,
             usage: rex::BufferUsage {
                 vertex: true,
                 ..Default::default()
             },
-            data: Some(mesh),
+            data: Some(cube),
             device_local: false,
         }),
         rex::ResourceDesc::Buffer(rex::BufferDesc {
@@ -605,6 +648,17 @@ fn build_session_with(
             data: None,
         }),
     ];
+    for (m, _) in &distinct {
+        resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
+            size: m.bytes.len() as u64,
+            usage: rex::BufferUsage {
+                vertex: true,
+                ..Default::default()
+            },
+            data: Some(&m.bytes),
+            device_local: false,
+        }));
+    }
     if let Some(im) = import {
         // 上游 imported 集强制 data=None + device_local。
         resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
@@ -630,20 +684,27 @@ fn build_session_with(
 
     let mut passes: Vec<rex::Pass> = Vec::with_capacity(slots);
     let mut barrier_plan: Vec<Vec<(u32, rex::TargetState)>> = Vec::with_capacity(slots);
-    for k in 0..slots {
+    for (k, s) in slot_mesh.iter().enumerate() {
+        let (vb_res, vertex_count) = match s {
+            None => (0u32, 36u32),
+            Some(m) => (
+                distinct.iter().find(|(d, _)| std::ptr::eq(*d, *m)).map(|(_, r)| *r).unwrap_or(0),
+                m.vertex_count,
+            ),
+        };
         let first = k == 0;
         passes.push(rex::Pass::Raster(rex::RasterPass {
             name: "forge_viewport_entity",
             vs_spirv: vs,
             fs_spirv: fs,
             vertex: rex::VertexData::Resource {
-                res: 0,
+                res: vb_res,
                 offset: 0,
                 stride: 24,
                 attrs: &VERTEX_ATTRS,
             },
             draw: rex::DrawSpec::Direct {
-                vertex_count: 36,
+                vertex_count,
                 instance_count: 1,
                 first_vertex: 0,
                 first_instance: 0,
@@ -687,7 +748,7 @@ fn build_session_with(
             entry: None,
             dispatch: rex::DispatchSpec::Direct([width.div_ceil(8), height.div_ceil(8), 1]),
             bindings: rex::Bindings {
-                storage_buffers: vec![4],
+                storage_buffers: vec![import_res],
                 storage_images: vec![2],
                 push_constants: pc,
                 ..Default::default()
@@ -711,7 +772,7 @@ fn build_session_with(
     let readbacks = Box::leak(readbacks.into_boxed_slice());
 
     let session = match import {
-        // 共享 buffer 以 D3D12_RESOURCE 反向导入(资源下标 4 ↔ NT handle 地址值)。
+        // 共享 buffer 以 D3D12_RESOURCE 反向导入(资源下标 import_res ↔ NT handle 地址值)。
         Some(im) => rex::DeviceFrameSession::new_with_imported_d3d12_textures(
             resources,
             passes,
@@ -720,7 +781,7 @@ fn build_session_with(
             2,
             &[],
             &[],
-            &[(4, im.handle as usize)],
+            &[(import_res, im.handle as usize)],
         )
         .map_err(|e| format!("零拷贝会话创建失败: {e}"))?,
         None => rex::DeviceFrameSession::new(resources, passes, barriers, readbacks, 2)
@@ -747,6 +808,7 @@ fn build_session_with(
         width,
         height,
         slots,
+        mesh_sig,
         session,
         device_name: caps.device_name,
         import_key: import.map(|im| (im.handle, im.size)),
@@ -781,6 +843,12 @@ pub struct FramePixels {
     pub draws: usize,
     pub truncated: bool,
     pub nonzero: usize,
+    /// 本帧实际绘制的三角形总数(cube=12/实体;真实网格 = 其 triangle_count)。
+    pub triangles: usize,
+    /// 因网格解析失败/超上限而回退 cube 的实体数(诚实诊断面)。
+    pub mesh_fallbacks: usize,
+    /// 本帧使用的不同网格类数(不含内置 cube)。
+    pub mesh_classes: usize,
     /// 本帧会话是否直渲进 D3D12 共享纹理(F1 wave.3 零拷贝档证据面)。
     pub imported: bool,
 }
@@ -802,14 +870,103 @@ pub fn render_scene_frame(
 ) -> Result<FramePixels, String> {
     let slot = renderer_slot();
     let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-    // 懒初始化 / 改尺寸或共享纹理 import 键变化时重建(降级态一经判定即缓存,不重试)。
-    // F6 wave.5:实体数超当前 pass 档 → 升档重建(只升不降,滞后防抖)。
-    let renderable_n = scene.entities.iter().filter(|e| is_renderable(e)).count();
+
+    // ── 网格类解析(资产→视口接线) ──
+    // 可渲染实体 + 网格引用;类 0 = 内置 cube/回退,类 1.. = 不同 mesh 引用(首现序)。
+    let renderables: Vec<(&forge_scene::Entity, String)> = scene
+        .entities
+        .iter()
+        .filter(|e| is_renderable(e))
+        .map(|e| (e, entity_mesh_ref(e)))
+        .collect();
+    let renderable_n = renderables.len();
     let want_slots = slot_tier(renderable_n);
     let want_import = current_import(width, height);
+
+    let mut class_refs: Vec<String> = Vec::new();
+    let mut class_mesh: Vec<&'static MeshGpu> = Vec::new();
+    let mut entity_class: Vec<usize> = Vec::with_capacity(renderable_n);
+    let mut mesh_fallbacks = 0usize;
+    for (_, mesh_ref) in &renderables {
+        if mesh_ref == "cube" {
+            entity_class.push(0);
+            continue;
+        }
+        let ci = match class_refs.iter().position(|c| c == mesh_ref) {
+            Some(i) => i + 1,
+            None => {
+                if class_refs.len() >= meshres::MAX_MESH_CLASSES {
+                    mesh_fallbacks += 1;
+                    entity_class.push(0);
+                    continue;
+                }
+                match meshres::load_mesh_static_cached(&crate::rpc::project_root(), mesh_ref) {
+                    Ok(m) => {
+                        class_refs.push(mesh_ref.clone());
+                        class_mesh.push(m);
+                        class_refs.len()
+                    }
+                    Err(_) => {
+                        // 失败详情已由 meshres 缓存路径 eprintln 一次;此处回退 cube。
+                        mesh_fallbacks += 1;
+                        entity_class.push(0);
+                        continue;
+                    }
+                }
+            }
+        };
+        entity_class.push(ci);
+    }
+
+    // ── 类槽位布局:cube 类先保(其实体必绘),非 cube 类按需分配,余量归 cube ──
+    let mut class_count = vec![0usize; class_refs.len() + 1];
+    for &c in &entity_class {
+        class_count[c] += 1;
+    }
+    let cube_n = class_count[0];
+    let mut class_slots = vec![0usize; class_refs.len() + 1];
+    let mut used_noncube = 0usize;
+    let avail = want_slots.saturating_sub(cube_n.min(want_slots));
+    for ci in 1..=class_refs.len() {
+        let take = class_count[ci].min(avail - used_noncube);
+        class_slots[ci] = take;
+        used_noncube += take;
+    }
+    class_slots[0] = want_slots - used_noncube;
+
+    // 槽位→网格类表(构建期定案,帧内实体按类序占槽):
+    // cube 类占 [0..class_slots[0]),各 mesh 类紧随。
+    let mut slot_mesh: Vec<Option<&'static MeshGpu>> = vec![None; want_slots];
+    let mut next = class_slots[0];
+    for (ci, m) in class_mesh.iter().enumerate() {
+        for _ in 0..class_slots[ci + 1] {
+            slot_mesh[next] = Some(m);
+            next += 1;
+        }
+    }
+
+    // 网格类布局签名(布局变化 → 会话重建;与改尺寸同路径)。
+    let mut sig_src = Vec::new();
+    sig_src.extend_from_slice(&width.to_le_bytes());
+    sig_src.extend_from_slice(&height.to_le_bytes());
+    sig_src.extend_from_slice(&(want_slots as u64).to_le_bytes());
+    sig_src.extend_from_slice(&want_import.map(|im| im.handle).unwrap_or(0).to_le_bytes());
+    sig_src.extend_from_slice(&want_import.map(|im| im.size).unwrap_or(0).to_le_bytes());
+    for (r, ks) in class_refs.iter().zip(class_slots[1..].iter()) {
+        sig_src.extend_from_slice(r.as_bytes());
+        sig_src.push(0xff);
+        sig_src.extend_from_slice(&(*ks as u32).to_le_bytes());
+    }
+    for m in &class_mesh {
+        sig_src.extend_from_slice(&m.bytes.len().to_le_bytes());
+    }
+    let mesh_sig = meshres::fnv1a64(&sig_src);
+
+    // 懒初始化 / 改尺寸或共享纹理 import 键变化或网格类布局变化时重建
+    // (降级态一经判定即缓存,不重试)。F6 wave.5:实体数超当前 pass 档 → 升档重建。
     match &*guard {
         RendererState::Uninit => {
-            *guard = match build_session(width, height, want_slots) {
+            *guard = match build_session(width, height, want_slots, &slot_mesh, mesh_sig) {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
             };
@@ -818,9 +975,10 @@ pub fn render_scene_frame(
             if r.width != width
                 || r.height != height
                 || r.import_key != want_import.map(|im| (im.handle, im.size))
-                || r.slots < want_slots =>
+                || r.slots < want_slots
+                || r.mesh_sig != mesh_sig =>
         {
-            *guard = match build_session(width, height, want_slots) {
+            *guard = match build_session(width, height, want_slots, &slot_mesh, mesh_sig) {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
             };
@@ -841,11 +999,30 @@ pub fn render_scene_frame(
         buffer_uploads: vec![(rex::StableResourceId(2), 0, vp_bytes.to_vec())],
         ..Default::default()
     };
-    let mut draws = 0usize;
-    for (k, e) in scene.entities.iter().filter(|e| is_renderable(e)).enumerate() {
-        if k >= slots {
-            break;
+    // 实体按类序稳定占槽(cube 类先,类内保持场景序);实体落位 = 其类槽区间内
+    // 顺次下一空槽(pass 的 VB 绑定按槽位类定案,实体绝不可跨类占槽)。
+    let mut class_start = vec![0usize; class_slots.len()];
+    {
+        let mut acc = 0usize;
+        for (c, k) in class_slots.iter().enumerate() {
+            class_start[c] = acc;
+            acc += *k;
         }
+    }
+    let mut order: Vec<usize> = (0..renderable_n).collect();
+    order.sort_by_key(|&i| entity_class[i]);
+    let mut drawn_class = vec![0usize; class_refs.len() + 1];
+    let mut draws = 0usize;
+    let mut triangles = 0usize;
+    for &i in &order {
+        let c = entity_class[i];
+        if drawn_class[c] >= class_slots[c] {
+            continue; // 该类槽满(同类后续实体跳过;异类仍有各自槽位)
+        }
+        if draws >= slots {
+            break; // 全槽满:剩余实体本帧不绘(truncated 如实上报)
+        }
+        let e = renderables[i].0;
         let model = trs_model(&e.transform);
         let color = entity_color(e.id, selected == Some(e.id));
         let mut pc = Vec::with_capacity(80);
@@ -853,20 +1030,29 @@ pub fn render_scene_frame(
         for f in color {
             pc.extend_from_slice(&f.to_le_bytes());
         }
-        update.push_constant_overrides.push((k as u32, pc));
+        let slot_idx = class_start[c] + drawn_class[c];
+        update.push_constant_overrides.push((slot_idx as u32, pc));
+        triangles += if c == 0 {
+            12
+        } else {
+            class_mesh[c - 1].triangle_count as usize
+        };
+        drawn_class[c] += 1;
         draws += 1;
     }
-    // 未占槽恒推回消隐模型(上帧可能有更多实体;80B×128 开销可忽略)。
+    // 类内未占槽恒推回消隐模型(上帧可能有更多实体;80B×128 开销可忽略)。
     let hidden_model = trs_model(&Transform {
         translation: [0.0, -1000.0, 0.0],
         rotation: [0.0, 0.0, 0.0, 1.0],
         scale: [1e-6, 1e-6, 1e-6],
     });
-    for k in draws..slots {
-        let mut pc = Vec::with_capacity(80);
-        pc.extend_from_slice(&m4_col_bytes(hidden_model));
-        pc.extend_from_slice(&[0u8; 16]);
-        update.push_constant_overrides.push((k as u32, pc));
+    for (c, k) in class_slots.iter().enumerate() {
+        for j in drawn_class[c]..*k {
+            let mut pc = Vec::with_capacity(80);
+            pc.extend_from_slice(&m4_col_bytes(hidden_model));
+            pc.extend_from_slice(&[0u8; 16]);
+            update.push_constant_overrides.push(((class_start[c] + j) as u32, pc));
+        }
     }
     // F6 wave.5 瓶颈分解:format=none 性能测量档不回读(跳过 submit→wait 同步
     // 阻塞 + 8MB 拷贝 + 2M 像素统计),纯渲染+提交产能与帧通道端到端成本可拆分留档。
@@ -909,8 +1095,11 @@ pub fn render_scene_frame(
         rgba8,
         device_name: r.device_name.clone(),
         draws,
-        truncated: renderable_n > slots,
+        truncated: renderable_n > draws,
         nonzero,
+        triangles,
+        mesh_fallbacks,
+        mesh_classes: class_refs.len(),
         imported: r.import_key.is_some(),
     })
 }

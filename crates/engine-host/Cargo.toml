@@ -14,6 +14,10 @@ soft-raster = { path = "H:/rurix/src/soft-raster" }
 # wave.2 Viewport:rurix-rt vulkan 档 render_exec(场景实渲染 + Readback);loader 运行时
 # 动态装载 vulkan-1.dll,编译期零原生依赖,无设备环境可编译、运行期诚实 DEV_ENV_DEGRADE。
 rurix-rt = { path = "H:/rurix/src/rurix-rt", features = ["vulkan"] }
+# 2026-08-28 资产→视口断链接线:RXGB .rxmesh 反序列化(read_dag)+ assetd 项目面
+# (ForgeProject/.meta/cache_key——与构建链同一缓存键事实源)。
+rurix-geom-build = { path = "H:/rurix/src/rurix-geom-build" }
+assetd = { path = "../assetd" }
 # WGSL→SPIR-V 纯 Rust 编译(naga 缓存钉版;仅着色器翻译,不含 GPU 调用)。
 naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"] }
 # H.264 编码(F1 wave.4 流腿;Cisco OpenH264 纯 Rust/BSD,CPU 编码无原生依赖)。

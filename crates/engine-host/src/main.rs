@@ -4,6 +4,7 @@
 //! 后台线程以真实时间 accumulator 驱动 rurix-physics 固定步(dt=1/60)空跑。
 
 mod frame;
+mod meshres;
 mod rpc;
 mod share;
 mod viewport;

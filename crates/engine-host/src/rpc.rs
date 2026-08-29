@@ -454,7 +454,7 @@ fn create_world() -> (Option<PhysicsWorld>, &'static str) {
 
 /// 资产项目根 = <workspace>/projects/demo(CARGO_MANIFEST_DIR = crates/engine-host,
 /// 上两级 = workspace 根);env FORGE_PROJECT_ROOT 覆盖(测试注入临时项目根)。
-fn project_root() -> PathBuf {
+pub(crate) fn project_root() -> PathBuf {
     if let Ok(p) = std::env::var("FORGE_PROJECT_ROOT") {
         return PathBuf::from(p);
     }
@@ -1057,7 +1057,7 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 }
             }
             st.frames += 1;
-            st.last_tris = f.draws * 12;
+            st.last_tris = f.triangles;
             st.last_nonzero = f.nonzero;
             let frames = st.frames;
             let cpu_uploads = st.cpu_uploads;
@@ -1076,6 +1076,9 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                     "deviceName": f.device_name,
                     "draws": f.draws,
                     "truncated": f.truncated,
+                    "triangles": f.triangles,
+                    "meshFallbacks": f.mesh_fallbacks,
+                    "meshClasses": f.mesh_classes,
                     "frames": frames,
                     "nonZeroPixels": f.nonzero,
                     "framePath": frame_path,
@@ -1096,6 +1099,9 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                     "deviceName": f.device_name,
                     "draws": f.draws,
                     "truncated": f.truncated,
+                    "triangles": f.triangles,
+                    "meshFallbacks": f.mesh_fallbacks,
+                    "meshClasses": f.mesh_classes,
                     "frames": frames,
                     "nonZeroPixels": f.nonzero,
                     "framePath": frame_path,
@@ -1110,6 +1116,9 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 "deviceName": f.device_name,
                 "draws": f.draws,
                 "truncated": f.truncated,
+                "triangles": f.triangles,
+                "meshFallbacks": f.mesh_fallbacks,
+                "meshClasses": f.mesh_classes,
                 "frames": frames,
                 "nonZeroPixels": f.nonzero,
                 "framePath": frame_path,
