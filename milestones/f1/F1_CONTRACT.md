@@ -1,9 +1,9 @@
 ---
 contract: F1
 title: F1 场景编辑闭环
-status: active
+status: closed
 implementation_status: unlocked
-active_scope: wave.4
+active_scope: none
 version: 0.1
 date: 2026-08-16
 timebox: 会话制推进,做不完转 deferred
@@ -229,3 +229,23 @@ deferred:
 - **RD-F1-002 → CLOSED**:真 LLM 工具循环以 DeepSeek 官方 API 真实闭环(RD-DIGEST 波 wave.1)——agentd llm.rs(provider 抽象 mock|deepseek;POST /api/forge/llm/chat;tools/list 五 server → OpenAI tools → 工具循环 max_iters=16 → role:tool 回注);client sendChat 非 multitask 四模式换 seam(F1 期 scene_summary 回显 seam 退役);live 冒烟 provider=deepseek、iters=4、toolCalls=10、实体 0→3 实增,R-5 密钥红线扫描 PASS(证据:scripts/rd-f1-002-llm-loop-smoke.ps1 + evidence/rd-f1-002-*.log)。原 refill 预期「RD-F0-003 七 crate 移植带回真 providers」被 D-017 取代——本仓原生 llm.rs 直接落地,未依赖移植。
 - **RD-F1-004 → CLOSED**:终审裁决 D-018(external semaphore no-go 终局;重开条件 = 帧流向反转场景登记)。
 - 至此 F1 deferred 全部终态(RD-F1-003 此前已 CLOSED)。
+
+### soak + close-out 终审(2026-08-28,双仓对账波;只追加)
+
+**复跑环境**:同一工作树 = 362 项在飞变更落账(commit 9df5c70,F9/F10/F11 + 视口面重构)+ 资产→视口断链接线(commit a701bfc);GPU=RTX 4070 Ti 12GiB。
+
+**1. 全量门复跑(2026-08-28,命令真实输出)**:
+- `cargo test --workspace --exclude engine-host --no-fail-fast` 全绿:forge-agentd 190 / gend 42 / forge-store 39 / forge-logic 41 / code-forge-mcp 32 / assetd 21 / forge-index 17 / forge-scene 12 / store-mcp 8 / forge-util 8 / gen-model 4 / gen-image 3 / context-mcp 1 / engine-scene-mcp 3(含 watchdog)/ asset-pipeline-mcp 1。
+- engine-host 六套件绿:f1_editing 5 / f1_viewport 设备腿 1(真跑,无 SKIP)/ f1_zerocopy 设备腿 2 / f1_h264 设备腿 1 / rpc_integration 1 / bin 单测 18(含 2026-08-28 新增 meshres 四单测 + f2_mesh_viewport 设备腿)。
+- `pnpm -r test` 绿(packages/host 29 + protocol/client 全量);`go test`(gateway-go)ok;`cargo check --workspace` 绿。
+- **落账前修复的实测缺陷(留痕)**:①watchdog_integration.rs 闭集漂移两处(tools/list 41→42 补 `scene_index`;component_list_types 7→8 补 `Category`)——F9–F11 在飞波改面未同步闭集;②`McpProc::drop` panic 安全清理(先探 host pid → 杀 MCP 停看门狗 → 杀 host)——Windows 父死不级联回收孙进程,孤儿 host 持继承的 stdout 管道句柄致上层 `cargo test | 管道` 永不 EOF(实测两轮复现,修复后 watchdog 0.84s 干净退出)。
+
+**2. 栈级/桌面腿(未复跑,不冒充)**:scripts/f1-w2-viewport-smoke.ps1、f1-w2-desktop-presenter-smoke.ps1、f1-w4-h264-smoke.ps1 需 gateway+agentd 全栈/可见 Electron 前台,本波未复跑;以在案 2026-08-19 `evidence/f1-w2-viewport-smoke-20260819-164157.log`(PASS,presented=3/3,OS 截屏锚点逐字节一致)与 `evidence/f8-w4-matrix-2026-08-19T08-30-14Z.json`(gateGreen=true)为准,如实登记。
+
+**3. 新增面(不翻既有门字面)**:资产→视口断链接线(a701bfc)——`MeshRenderer.mesh` 引用(.meta GUID/路径/文件名)经 assetd 同款 cache_key → RXGB `.rxmesh` → 叶层簇重建 → GPU 出帧;端到端实测 demo Main 场景 GUID 网格真机出帧(meshClasses=1/meshFallbacks=0/triangles=1〔f5w2_chair.gltf 为 1 三角占位件,如实登记〕,RTX 4070 Ti nonzero=440 客户端复核一致);f2_mesh_viewport 设备腿 tetra(4 三角)vs cube(12 三角)同位帧逐字节不同。该接线为 G-F1-6 场景实渲染的资产消费延伸,门判据字面不变。
+
+**4. 终审八 facts**:①全部门禁命令本波复跑绿(上列,数字来自命令输出);②deferred 全终态(RD-F1-001/002/003 CLOSED,RD-F1-004 no-go 终局 CLOSED=D-018);③证据链完整(evidence/ + 本节命令输出);④本波新增缺陷(闭集漂移×2、孤儿进程)已修并留痕,占位网格三角数如实登记;⑤无 YAML-only 验证;⑥无记忆数字;⑦契约 §6 全程只追加;⑧双状态机未混同(implementation_unlock 条件全程满足)。
+
+**5. status flip**:active → closed(frontmatter 已翻)。tag `f1-closed` 随本 commit 落地(F0/F6/F7/F8 同款)。
+
+**6. 签署**:Assisted-by: ZCode | 影响范围:milestones/f1/F1_CONTRACT.md(frontmatter + §6 只追加) | 验证方式:上述命令真实输出 + 在案 evidence 文件;裁决登记 D-027。

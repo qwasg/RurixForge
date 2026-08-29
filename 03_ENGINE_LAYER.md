@@ -120,3 +120,7 @@ engine-host 是本引擎唯一新增的内核侧进程 = rurix-render + rurix-ph
 - engine-host 以外任何进程不得 `use rurix_render` / `rurix_physics`(assetd 仅 geom-build/geometry/image-io)。
 - 不引入 rurix 之外的渲染/物理依赖(红线 R-4)。
 - 物理确定性:同一 `.rxscene` + 同一输入序列 → 同一状态序列;playtest 回放依赖此性质,破坏即 P0 缺陷。
+
+## Errata(只追加区)
+
+- **E-03-001(2026-08-28,双仓对账波 / D-028)——§1/§2/§5 as-built 勘误**:①§1 表 `rurix-render` 行「全部实时渲染…Cargo 库依赖」**不实**——截至本日零 crate 依赖 `rurix-render`;视口实渲染建在 `rurix-rt`(features=["vulkan"])的 `render_exec` 库面(`DeviceFrameSession` 固定 pass 图 + 相机 UBO + 逐实体 push constants + Readback)上,着色器为 engine-host 内嵌 WGSL 源经 naga 纯 Rust 编译 SPIR-V(不经 rurixc)。②§1 表 `rurix-geometry` 行「assetd/engine-host 库依赖」不实——两侧均未依赖。③§1 表 `rurix-rt-cabi` 行「engine-host 加载游戏代码时复用」不实——图解释执行走 forge-logic 自有 callruntime(`rurixc --emit=dll` 子进程 + libloading,缓存键含 rurixc.exe 字节 SHA-256);`#[export(c)]` 导出面为文本级扫描(rurixc `--emit=reflection` 对宿主 fn 产空,RXS-0304 实测留痕)。④§5 首段「engine-host = rurix-render + rurix-physics + forge-scene 的宿主」→ as-built = rurix-rt(vulkan)+ rurix-physics + soft-raster + forge-scene + forge-logic + forge-util + assetd + rurix-geom-build(2026-08-28 起含后两者:资产→视口断链接线)。⑤§2 渲染复用面补一行:2026-08-28 起 `MeshRenderer.mesh` 引用(.meta GUID/路径/文件名)经 assetd 同款 cache_key → `.forge/cache/rxmesh/<key>.rxmesh` → 叶层簇重建 → GPU 出帧(资产→视口断链接线,engine-host meshres)。**I-1 不变量维持不变**:内核单一、不自研第二渲染器;升级到 `rurix-render`/`rurix-renderer-sdk` 稳定面留待其覆盖本仓场景后按需立项(D-028),届时本章正文与 §1 表一并修订,本勘误不回写。
