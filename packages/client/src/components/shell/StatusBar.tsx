@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
-import { MessageSquareText, PanelBottom, PanelLeft, PanelRight } from 'lucide-react';
 import { apiGet } from '@/lib/forgeApi';
 import { cn } from '@/lib/cn';
 import { useSessionStore } from '@/lib/sessionStore';
-import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { StatusDot } from './primitives';
 
 /**
  * F7 wave.3 StatusBar(26px,参考 ui/statusbar.rs):
  * 左 ● host 在线/离线(轮询 /api/forge/health 5s)+ provider 段(design-snapshot
  * models:deepseek available→「Live · deepseek-chat」,否则「Mock provider」)
- * + accent 段「{会话标题} · {todos done}/{total}」(无会话不显示);右 面板开关钮。
+ * + accent 段「{会话标题} · {todos done}/{total}」(无会话不显示)。
+ * 面板开关钮已上移至 TitleBar。
  */
 
 interface SnapshotModel {
@@ -32,10 +31,6 @@ const POLL_MS = 5000;
 export default function StatusBar() {
   const activeSessionId = useSessionStore((st) => st.activeSessionId);
   const activeSession = useSessionStore((st) => st.sessions.find((s) => s.id === st.activeSessionId));
-  const collapsed = useWorkbenchStore((st) => st.collapsed);
-  const togglePane = useWorkbenchStore((st) => st.togglePane);
-  const bottomOpen = useWorkbenchStore((st) => st.bottomOpen);
-  const toggleBottom = useWorkbenchStore((st) => st.toggleBottom);
 
   const [online, setOnline] = useState(false);
   const [provider, setProvider] = useState<{ live: boolean; label: string }>({
@@ -81,11 +76,6 @@ export default function StatusBar() {
   }, [activeSessionId]);
 
   const seg = 'flex h-full items-center gap-[5px] px-1.5';
-  const paneBtn = (on: boolean) =>
-    cn(
-      'flex h-full items-center px-1.5 text-fg-3 transition-colors hover:text-fg',
-      on && 'text-fg',
-    );
 
   return (
     <footer
@@ -107,43 +97,6 @@ export default function StatusBar() {
         </span>
       )}
       <span className="flex-1" />
-      <button
-        type="button"
-        title="切换底部面板(Ctrl+J)"
-        aria-label="切换底部面板"
-        data-testid="statusbar-bottom-toggle"
-        className={paneBtn(bottomOpen)}
-        onClick={toggleBottom}
-      >
-        <PanelBottom size={11} />
-      </button>
-      <button
-        type="button"
-        title="切换会话栏"
-        aria-label="切换会话栏"
-        className={paneBtn(!collapsed.sessions)}
-        onClick={() => togglePane('sessions')}
-      >
-        <PanelLeft size={11} />
-      </button>
-      <button
-        type="button"
-        title="切换对话栏"
-        aria-label="切换对话栏"
-        className={paneBtn(!collapsed.chat)}
-        onClick={() => togglePane('chat')}
-      >
-        <MessageSquareText size={11} />
-      </button>
-      <button
-        type="button"
-        title="切换 Inspector"
-        aria-label="切换 Inspector"
-        className={paneBtn(!collapsed.inspector)}
-        onClick={() => togglePane('inspector')}
-      >
-        <PanelRight size={11} />
-      </button>
     </footer>
   );
 }

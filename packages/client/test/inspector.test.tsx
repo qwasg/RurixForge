@@ -1,14 +1,26 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Inspector from '@/components/shell/Inspector';
+import Workbench from '@/components/shell/Workbench';
 import { useToastStore } from '@/lib/toastStore';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
 
 /**
  * F7 wave.5 Inspector 工作区树:懒加载(展开才拉子层)/本地过滤/隐藏降档/错误面 toast 如实。
- * F8 wave.1:文件点击 → 真实只读预览面板(monospace 渲染 + 413/415 等错误态如实)。
+ * F8 wave.1:文件点击 → 个人工作区只读预览 tab(monospace 渲染 + 413/415 等错误态如实)。
  */
 
 const initialToast = useToastStore.getState();
+const initialWorkbench = useWorkbenchStore.getState();
+
+function renderWorkspace() {
+  return render(
+    <>
+      <Inspector />
+      <Workbench />
+    </>,
+  );
+}
 
 interface Entry {
   name: string;
@@ -61,6 +73,8 @@ function stubTree(
             size: f.content.length,
             content: f.content,
             truncated: false,
+            // F9:真实端点含纳秒级 mtime 令牌(编辑器乐观并发基线),stub 同形。
+            modifiedAt: '2026-08-18T10:00:00.000000000Z',
           }),
         } as Response;
       }
@@ -83,6 +97,7 @@ function stubTree(
 
 beforeEach(() => {
   useToastStore.setState(initialToast, true);
+  useWorkbenchStore.setState(initialWorkbench, true);
 });
 
 afterEach(() => {
@@ -97,7 +112,7 @@ describe('Inspector 工作区树', () => {
       crates: [entry('forge-agentd', 'dir', 'crates/forge-agentd'), entry('gend', 'dir', 'crates/gend')],
       'crates/gend': [entry('Cargo.toml', 'file', 'crates/gend/Cargo.toml')],
     });
-    render(<Inspector />);
+    renderWorkspace();
     // 根条目
     expect(await screen.findByTestId('ws-dir-crates')).toBeInTheDocument();
     expect(screen.getByTestId('ws-file-README.md')).toBeInTheDocument();
@@ -120,7 +135,7 @@ describe('Inspector 工作区树', () => {
     stubTree({
       '': [entry('crates', 'dir', 'crates'), entry('README.md', 'file', 'README.md'), entry('Cargo.toml', 'file', 'Cargo.toml')],
     });
-    render(<Inspector />);
+    renderWorkspace();
     await screen.findByTestId('ws-dir-crates');
     fireEvent.change(screen.getByTestId('ws-search'), { target: { value: 'cargo' } });
     expect(screen.queryByTestId('ws-file-README.md')).not.toBeInTheDocument();
@@ -136,7 +151,7 @@ describe('Inspector 工作区树', () => {
       },
       { 'README.md': { content: '# 标题\n正文第二行' } },
     );
-    render(<Inspector />);
+    renderWorkspace();
     const hidden = await screen.findByTestId('ws-file-.gitignore');
     expect(hidden.className).toContain('text-fg-3');
     expect(screen.getByTestId('ws-file-README.md').className).toContain('text-fg');
@@ -161,7 +176,7 @@ describe('Inspector 工作区树', () => {
         'big.txt': { status: 413, code: 'FILE_TOO_LARGE', message: 'path 须为根内 ≤256KB 文本文件(实: big.txt)' },
       },
     );
-    render(<Inspector />);
+    renderWorkspace();
     fireEvent.click(await screen.findByTestId('ws-file-a.bin'));
     expect((await screen.findByTestId('ws-preview-error')).textContent).toContain('415 BINARY_FILE');
     fireEvent.click(screen.getByTestId('ws-file-big.txt'));
@@ -180,7 +195,7 @@ describe('Inspector 工作区树', () => {
         json: async () => ({ error: { code: 'PATH_OUTSIDE_ROOT', message: 'path 须为根内已存在目录' } }),
       }) as Response),
     );
-    render(<Inspector />);
+    renderWorkspace();
     expect(await screen.findByText('工作区加载失败')).toBeInTheDocument();
     const toasts = useToastStore.getState().items;
     expect(toasts.some((t) => t.kind === 'error' && t.title.includes('工作区目录加载失败'))).toBe(true);

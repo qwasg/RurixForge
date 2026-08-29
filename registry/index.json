@@ -1,0 +1,86 @@
+{
+    "name":  "RurixForge 官方源",
+    "protocol":  1,
+    "packageCount":  3,
+    "updatedAt":  "2026-08-25T07:12:52Z",
+    "packages":  [
+                     {
+                         "id":  "forge.starter-props",
+                         "name":  "入门示例道具包",
+                         "kind":  "asset-pack",
+                         "description":  "三类资产各一件(网格/贴图/材质),用于验证商店安装链路与按扩展名分流落地。",
+                         "latestVersion":  "1.0.0",
+                         "tags":  [
+                                      "示例",
+                                      "道具",
+                                      "入门"
+                                  ],
+                         "license":  {
+                                         "id":  "CC0-1.0",
+                                         "url":  "https://creativecommons.org/publicdomain/zero/1.0/"
+                                     },
+                         "pricing":  {
+                                         "amount":  0,
+                                         "currency":  "CNY"
+                                     },
+                         "publisher":  {
+                                           "id":  "rurixforge",
+                                           "name":  "RurixForge 官方",
+                                           "url":  "https://github.com/rurixforge"
+                                       },
+                         "thumbnail":  null
+                     },
+                     {
+                         "id":  "forge.wood-pbr",
+                         "name":  "木质 PBR 贴图组",
+                         "kind":  "asset-pack",
+                         "description":  "一套木质 PBR 贴图(albedo / normal / roughness),可直接挂到材质三槽。1.1.0 修正 roughness 通道。",
+                         "latestVersion":  "1.1.0",
+                         "tags":  [
+                                      "贴图",
+                                      "PBR",
+                                      "木质"
+                                  ],
+                         "license":  {
+                                         "id":  "CC-BY-4.0",
+                                         "url":  "https://creativecommons.org/licenses/by/4.0/"
+                                     },
+                         "pricing":  {
+                                         "amount":  0,
+                                         "currency":  "CNY"
+                                     },
+                         "publisher":  {
+                                           "id":  "rurixforge",
+                                           "name":  "RurixForge 官方",
+                                           "url":  "https://github.com/rurixforge"
+                                       },
+                         "thumbnail":  null
+                     },
+                     {
+                         "id":  "forge.skill-scene-audit",
+                         "name":  "技能:场景健康度审计",
+                         "kind":  "skill",
+                         "description":  "交付前对场景做只读体检,产出 blocker/warn/info 三级问题清单。安装后出现在 Skill 管理与 Composer 技能菜单中。",
+                         "latestVersion":  "1.0.0",
+                         "tags":  [
+                                      "技能",
+                                      "场景",
+                                      "审计"
+                                  ],
+                         "license":  {
+                                         "id":  "CC0-1.0",
+                                         "url":  "https://creativecommons.org/publicdomain/zero/1.0/"
+                                     },
+                         "pricing":  {
+                                         "amount":  0,
+                                         "currency":  "CNY"
+                                     },
+                         "publisher":  {
+                                           "id":  "rurixforge",
+                                           "name":  "RurixForge 官方",
+                                           "url":  "https://github.com/rurixforge"
+                                       },
+                         "thumbnail":  null
+                     }
+                 ]
+}

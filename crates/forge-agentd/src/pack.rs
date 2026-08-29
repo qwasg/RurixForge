@@ -1,11 +1,13 @@
 //! F6 wave.4 project-pack 最小打包(D-F6-D):场景引用闭包收集(组件 props 内
-//! Content/ 引用 + .rxgraph 的 call_function module 链)→ Content 源 + .meta +
+//! Content/ 引用 + guid 引用经 .meta 索引解析(F9 D6)+ .rxgraph 的 call_function
+//! module 链)→ Content 源 + .meta +
 //! .forge 缓存(rxdll dll)+ engine-host 二进制 + pack-run.ps1 → 独立目录。
 //! 诚实纪律:闭包缺件/缓存缺失/二进制缺失如实报错或进 warnings;闭包外资产不入包。
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
+use assetd::meta::MetaDoc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -18,18 +20,53 @@ pub struct PackRequest {
     pub out_dir: String,
 }
 
-/// 递归收集 JSON 值中以 "Content/" 开头的字符串(组件 props / 图 inputs 通用)。
-fn collect_content_strings(v: &Value, out: &mut Vec<String>) {
+/// 递归收集 JSON 值中的全部字符串(组件 props / 图 inputs 通用;调用侧按
+/// Content/ 前缀 / guid 索引 / guid 形态分类,F9 D6:guid 引用亦须入闭包)。
+fn collect_strings(v: &Value, out: &mut Vec<String>) {
     match v {
-        Value::String(s) => {
-            if s.starts_with("Content/") {
-                out.push(s.clone());
-            }
-        }
-        Value::Array(a) => a.iter().for_each(|x| collect_content_strings(x, out)),
-        Value::Object(m) => m.values().for_each(|x| collect_content_strings(x, out)),
+        Value::String(s) => out.push(s.clone()),
+        Value::Array(a) => a.iter().for_each(|x| collect_strings(x, out)),
+        Value::Object(m) => m.values().for_each(|x| collect_strings(x, out)),
         _ => {}
     }
+}
+
+/// guid 形态判定(8-4-4-4-12 十六进制连字符,与 assetd::new_guid v4 输出一致)。
+fn looks_like_guid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    b.iter().enumerate().all(|(i, c)| match i {
+        8 | 13 | 18 | 23 => *c == b'-',
+        _ => c.is_ascii_hexdigit(),
+    })
+}
+
+/// guid → content 相对路径索引:扫 Content/ 下全部 .meta,复用 assetd
+/// MetaDoc::load 解析(解析失败的 .meta 跳过,与 refs::RefGraph::rebuild 同纪律)。
+fn build_guid_index(project_root: &Path) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let mut stack = vec![project_root.join("Content")];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if !e.file_name().to_string_lossy().ends_with(".meta") {
+                continue;
+            }
+            let Ok(m) = MetaDoc::load(&p) else { continue };
+            if let Ok(rel) = p.strip_prefix(project_root) {
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                out.insert(m.guid, rel.strip_suffix(".meta").unwrap_or(&rel).to_string());
+            }
+        }
+    }
+    out
 }
 
 /// 引用闭包 BFS:scene → (graphRef 等 Content/ 引用) → .rxgraph → (module 链)。
@@ -37,6 +74,7 @@ fn collect_content_strings(v: &Value, out: &mut Vec<String>) {
 pub fn collect_closure(scene_abs: &Path, project_root: &Path) -> (BTreeSet<String>, Vec<String>) {
     let mut closure: BTreeSet<String> = BTreeSet::new();
     let mut warnings: Vec<String> = Vec::new();
+    let guid_index = build_guid_index(project_root);
     let rel_scene = scene_abs
         .strip_prefix(project_root)
         .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -48,25 +86,44 @@ pub fn collect_closure(scene_abs: &Path, project_root: &Path) -> (BTreeSet<Strin
         }
         let abs = project_root.join(&rel);
         // 先读后收:不可读引用 → warning 如实且不入闭包(打包不得拷缺件)。
-        let Ok(text) = std::fs::read_to_string(&abs) else {
+        // 以字节读判可读性:贴图等二进制资产非 UTF-8,read_to_string 会误判缺失。
+        let Ok(bytes) = std::fs::read(&abs) else {
             warnings.push(format!("引用缺失: {rel}({} 不可读)", abs.display()));
             continue;
         };
         closure.insert(rel.clone());
         // 仅 JSON 类资产递归扫引用;.rx 等文本资产为叶子(其引用由图 module 链带入)。
-        let jsonish = rel.ends_with(".rxscene") || rel.ends_with(".rxgraph") || rel.ends_with(".json");
+        // .rxmat 亦为 JSON(textures.* 以 guid 引用贴图,F9 D6 链)。
+        let jsonish = rel.ends_with(".rxscene")
+            || rel.ends_with(".rxgraph")
+            || rel.ends_with(".rxmat")
+            || rel.ends_with(".json");
         if !jsonish {
             continue;
         }
+        let Ok(text) = String::from_utf8(bytes) else {
+            warnings.push(format!("引用非 UTF-8: {rel}(跳过递归)"));
+            continue;
+        };
         let Ok(doc) = serde_json::from_str::<Value>(&text) else {
             warnings.push(format!("引用非 JSON: {rel}(跳过递归)"));
             continue;
         };
         let mut found = Vec::new();
-        collect_content_strings(&doc, &mut found);
+        collect_strings(&doc, &mut found);
         for f in found {
-            if !closure.contains(&f) {
-                queue.push_back(f);
+            if f.starts_with("Content/") {
+                if !closure.contains(&f) {
+                    queue.push_back(f);
+                }
+            } else if let Some(target) = guid_index.get(&f) {
+                // guid 引用 → 经 .meta 索引映射回资产路径入闭包。
+                if !closure.contains(target) {
+                    queue.push_back(target.clone());
+                }
+            } else if looks_like_guid(&f) {
+                // guid 形态但无对应 .meta:如实 warning,不静默不 fail。
+                warnings.push(format!("guid 悬空: {f}({rel} 引用,无对应资产)"));
             }
         }
     }
@@ -229,6 +286,62 @@ mod tests {
         let (closure, warnings) = collect_closure(&root.join("Content/Scenes/s.rxscene"), &root);
         assert!(warnings.iter().any(|w| w.contains("m.rx")), "{warnings:?}");
         assert!(!closure.contains("Content/Scripts/m.rx"));
+    }
+
+    /// 临时项目(F9 D6 实测形态):场景 MeshRenderer.material 以 guid 引用材质,
+    /// 材质 textures.albedo 再以 guid 引用贴图(material→texture 链)。
+    fn fixture_project_guid(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge_f6w4_pack_guid_{}_{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Content/Scenes")).unwrap();
+        std::fs::create_dir_all(dir.join("Content/Materials")).unwrap();
+        std::fs::create_dir_all(dir.join("Content/Textures")).unwrap();
+        std::fs::write(
+            dir.join("Content/Scenes/g.rxscene"),
+            r#"{ "name": "g", "entities": [ { "id": 1, "name": "box", "components": [ { "type": "MeshRenderer", "enabled": true, "props": { "mesh": "cube", "material": "2a1004f5-6469-437f-84d4-04b3482df41c" } } ] } ] }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Content/Materials/m.rxmat"),
+            r#"{ "version": 1, "shader": "pbr-default", "params": {}, "textures": { "albedo": "e858d90b-19b7-425e-84a0-01a92733d053" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Content/Materials/m.rxmat.meta"),
+            "guid: 2a1004f5-6469-437f-84d4-04b3482df41c\ntype: material\nimporter: material\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("Content/Textures/t.png"), b"PNG-dummy").unwrap();
+        std::fs::write(
+            dir.join("Content/Textures/t.png.meta"),
+            "guid: e858d90b-19b7-425e-84a0-01a92733d053\ntype: texture\nimporter: png\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    #[test]
+    fn closure_guid_ref_resolves_to_asset() {
+        let root = fixture_project_guid("resolve");
+        let (closure, warnings) = collect_closure(&root.join("Content/Scenes/g.rxscene"), &root);
+        assert!(closure.contains("Content/Materials/m.rxmat"), "guid 引用材质须入闭包: {closure:?}");
+        assert!(closure.contains("Content/Materials/m.rxmat.meta"), "材质 .meta 须伴随入闭包: {closure:?}");
+        assert!(closure.contains("Content/Textures/t.png"), "材质 textures guid 链须入闭包: {closure:?}");
+        assert!(closure.contains("Content/Textures/t.png.meta"), "{closure:?}");
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn closure_dangling_guid_warns_not_fails() {
+        let root = fixture_project_guid("dangling");
+        std::fs::remove_file(root.join("Content/Materials/m.rxmat.meta")).unwrap();
+        let (closure, warnings) = collect_closure(&root.join("Content/Scenes/g.rxscene"), &root);
+        assert!(
+            warnings.iter().any(|w| w.contains("guid 悬空") && w.contains("2a1004f5-6469-437f-84d4-04b3482df41c")),
+            "悬空 guid 须如实进 warnings: {warnings:?}"
+        );
+        assert!(!closure.contains("Content/Materials/m.rxmat"));
+        assert!(closure.contains("Content/Scenes/g.rxscene"), "不 fail,场景仍在闭包");
     }
 
     #[test]

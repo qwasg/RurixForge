@@ -1,0 +1,101 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - generic "RurixForge" [ref=f1e6]: 铸
+      - navigation [ref=f1e7]:
+        - button "File" [ref=f1e9] [cursor=pointer]
+        - button "Edit" [ref=f1e11] [cursor=pointer]
+        - button "View" [ref=f1e13] [cursor=pointer]
+        - button "Help" [ref=f1e15] [cursor=pointer]
+      - generic [ref=f1e17]:
+        - button "切换底部面板" [ref=f1e18] [cursor=pointer]
+        - button "切换会话栏" [ref=f1e21] [cursor=pointer]
+        - button "切换对话栏" [ref=f1e24] [cursor=pointer]
+        - button "切换 Inspector" [ref=f1e27] [cursor=pointer]
+    - button "搜索会话、文件、命令… Ctrl K" [ref=f1e31] [cursor=pointer]:
+      - generic [ref=f1e35]: 搜索会话、文件、命令…
+      - generic [ref=f1e36]: Ctrl K
+  - generic [ref=f1e37]:
+    - generic [ref=f1e40]:
+      - generic "按住拖动窗口,双击回到左下角" [ref=f1e103]:
+        - button "还原对话窗口" [ref=f1e104] [cursor=pointer]
+        - button "折叠 chat" [ref=f1e110] [cursor=pointer]
+      - paragraph [ref=f1e115]: 选择左侧会话或点击 New Agent
+      - generic [ref=f1e52]:
+        - generic [ref=f1e53]:
+          - button "模式菜单" [ref=f1e54] [cursor=pointer]
+          - textbox "描述任务…" [ref=f1e116]
+          - button "发送" [disabled] [ref=f1e58]
+        - generic [ref=f1e61]:
+          - button "选择技能" [ref=f1e62] [cursor=pointer]
+          - button "选择模型" [ref=f1e66] [cursor=pointer]:
+            - generic [ref=f1e69]: default
+          - button "上下文窗口占用" [ref=f1e72] [cursor=pointer]:
+            - generic [ref=f1e76]: 12%
+          - button "语音输入" [ref=f1e77] [cursor=pointer]
+    - generic [ref=f1e122]:
+      - generic [ref=f1e123]: 个人工作区
+      - generic [ref=f1e124]: 从右侧工作区打开文件，或打开编辑器后开始搭建场景。
+      - generic [ref=f1e125]:
+        - button "新建会话" [ref=f1e126] [cursor=pointer]
+        - button "打开编辑器" [ref=f1e129] [cursor=pointer]
+        - button "回到全屏对话" [ref=f1e135] [cursor=pointer]
+    - generic [ref=f1e139]:
+      - generic [ref=f1e140]:
+        - generic [ref=f1e141]:
+          - button "工作区" [ref=f1e142] [cursor=pointer]
+          - button "层级" [ref=f1e148] [cursor=pointer]
+          - button "属性" [ref=f1e152] [cursor=pointer]
+          - button "资产" [ref=f1e154] [cursor=pointer]
+        - button "折叠 inspector" [ref=f1e159] [cursor=pointer]
+      - generic [ref=f1e163]:
+        - textbox "搜索工作区…" [ref=f1e169]
+        - generic [ref=f1e170]:
+          - button ".git" [ref=f1e171] [cursor=pointer]
+          - button ".playwright-cli" [ref=f1e177] [cursor=pointer]
+          - button ".tmp-frames" [ref=f1e183] [cursor=pointer]
+          - button ".trae" [ref=f1e189] [cursor=pointer]
+          - button "apps" [ref=f1e195] [cursor=pointer]
+          - button "crates" [ref=f1e201] [cursor=pointer]
+          - button "data" [ref=f1e207] [cursor=pointer]
+          - button "evidence" [ref=f1e213] [cursor=pointer]
+          - button "gateway-go" [ref=f1e219] [cursor=pointer]
+          - button "milestones" [ref=f1e225] [cursor=pointer]
+          - button "node_modules" [ref=f1e231] [cursor=pointer]
+          - button "packages" [ref=f1e237] [cursor=pointer]
+          - button "projects" [ref=f1e243] [cursor=pointer]
+          - button "scripts" [ref=f1e249] [cursor=pointer]
+          - button "shots" [ref=f1e255] [cursor=pointer]
+          - button "skills" [ref=f1e261] [cursor=pointer]
+          - button "target" [ref=f1e267] [cursor=pointer]
+          - button "tests" [ref=f1e273] [cursor=pointer]
+          - button "tools" [ref=f1e279] [cursor=pointer]
+          - button ".gitignore" [ref=f1e285] [cursor=pointer]
+          - button "00_MASTER_INDEX.md" [ref=f1e290] [cursor=pointer]
+          - button "01_PRODUCT_VISION.md" [ref=f1e295] [cursor=pointer]
+          - button "02_SYSTEM_ARCHITECTURE.md" [ref=f1e300] [cursor=pointer]
+          - button "03_ENGINE_LAYER.md" [ref=f1e305] [cursor=pointer]
+          - button "04_AGENT_BACKEND.md" [ref=f1e310] [cursor=pointer]
+          - button "05_MCP_PROJECTS.md" [ref=f1e315] [cursor=pointer]
+          - button "06_SKILLS_LIBRARY.md" [ref=f1e320] [cursor=pointer]
+          - button "07_FRONTEND_IDE.md" [ref=f1e325] [cursor=pointer]
+          - button "08_ASSET_PIPELINE.md" [ref=f1e330] [cursor=pointer]
+          - button "09_ENTITY_SCENE_MODEL.md" [ref=f1e335] [cursor=pointer]
+          - button "10_INTERACTION_LOGIC.md" [ref=f1e340] [cursor=pointer]
+          - button "11_API_CONTRACTS.md" [ref=f1e345] [cursor=pointer]
+          - button "12_SECURITY_PERMISSIONS.md" [ref=f1e350] [cursor=pointer]
+          - button "13_ROADMAP.md" [ref=f1e355] [cursor=pointer]
+          - button "14_DECISION_LOG.md" [ref=f1e360] [cursor=pointer]
+          - button "agentd-err.log" [ref=f1e365] [cursor=pointer]
+          - button "agentd-out.log" [ref=f1e370] [cursor=pointer]
+          - button "build-err.log" [ref=f1e375] [cursor=pointer]
+          - button "build-out.log" [ref=f1e380] [cursor=pointer]
+          - button "Cargo.lock" [ref=f1e385] [cursor=pointer]
+          - button "Cargo.toml" [ref=f1e390] [cursor=pointer]
+          - button "package.json" [ref=f1e395] [cursor=pointer]
+          - button "pnpm-lock.yaml" [ref=f1e400] [cursor=pointer]
+          - button "pnpm-workspace.yaml" [ref=f1e405] [cursor=pointer]
+          - button "tsconfig.base.json" [ref=f1e410] [cursor=pointer]
+  - contentinfo [ref=f1e98]:
+    - generic [ref=f1e99]: host 在线
+    - generic [ref=f1e101]: Live · deepseek-chat

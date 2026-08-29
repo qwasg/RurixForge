@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use crate::meta::MetaDoc;
+use crate::meta::{ensure_meta, MetaDoc, Semantic};
 use crate::project::ForgeProject;
 use crate::refs::RefGraph;
 use crate::{meta_path_for, normalize_rel, AssetError, Result};
@@ -47,7 +47,7 @@ pub fn delete_assets(
             continue;
         }
         // 真删:源文件 + .meta + 引用边。
-        let source_abs = project.content_root().join(&rel);
+        let source_abs = project.resolve_content_path(&rel)?;
         if source_abs.is_file() {
             std::fs::remove_file(&source_abs)?;
         }
@@ -88,8 +88,8 @@ pub fn move_asset(
         None => Path::new(&rel).file_name().and_then(|n| n.to_str()).unwrap_or("unnamed"),
     };
     let new_rel = format!("{}/{}", dest_rel, file_name);
-    let src_abs = content_root.join(&rel);
-    let dst_abs = content_root.join(&new_rel);
+    let src_abs = project.resolve_content_path(&rel)?;
+    let dst_abs = project.resolve_content_path(&new_rel).unwrap_or_else(|_| content_root.join(&new_rel));
     std::fs::create_dir_all(content_root.join(&dest_rel))?;
     std::fs::rename(&src_abs, &dst_abs)?;
 
@@ -142,7 +142,43 @@ pub fn reimport_assets(project: &ForgeProject, paths: &[String]) -> Result<Vec<S
     Ok(rebuilt)
 }
 
-/// asset_set_meta:打补丁到 .meta。
+/// asset_set_description:写入 semantic 段(description/tags/source/model/content_hash)。
+/// 缺 .meta 时自动补建(如 .rx/.rxgraph)。
+pub fn set_description(
+    project: &ForgeProject,
+    asset_path: &str,
+    description: &str,
+    tags: &[String],
+    source: &str,
+    model: Option<&str>,
+    content_hash: Option<&str>,
+) -> Result<()> {
+    let rel = normalize_rel(asset_path)?;
+    let source_abs = project.content_root().join(&rel);
+    if !source_abs.is_file() {
+        return Err(AssetError::new("NO_SOURCE", format!("源文件不存在: {rel}")));
+    }
+    let (meta_path, mut meta) = ensure_meta(&project.content_root(), &rel)?;
+    let mut sem = meta.semantic.take().unwrap_or_else(|| Semantic {
+        description: String::new(),
+        tags: Vec::new(),
+        source: String::new(),
+        model: None,
+        updated_at: None,
+        content_hash: None,
+    });
+    sem.description = description.to_string();
+    sem.tags = tags.to_vec();
+    sem.source = source.to_string();
+    sem.model = model.map(str::to_string);
+    sem.updated_at = Some(forge_util::timeutil::utc_now_iso8601());
+    sem.content_hash = content_hash.map(str::to_string);
+    meta.semantic = Some(sem);
+    meta.save(&meta_path)?;
+    Ok(())
+}
+
+/// asset_set_meta:打补丁到 .meta importSettings。
 pub fn set_meta(project: &ForgeProject, asset_path: &str, patch: &serde_json::Map<String, Value>) -> Result<()> {
     let rel = normalize_rel(asset_path)?;
     let meta_path = meta_path_for(&project.content_root(), &rel);

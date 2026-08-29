@@ -1,0 +1,543 @@
+- generic [ref=e2335]:
+  - banner [ref=e2336]:
+    - generic [ref=e2337]:
+      - generic "RurixForge" [ref=e2338]: 铸
+      - navigation [ref=e2339]:
+        - button "File" [ref=e2341] [cursor=pointer]
+        - button "Edit" [ref=e2343] [cursor=pointer]
+        - button "View" [ref=e2345] [cursor=pointer]
+        - button "Help" [ref=e2347] [cursor=pointer]
+      - generic [ref=e2349]:
+        - button "切换底部面板" [ref=e2350] [cursor=pointer]
+        - button "切换会话栏" [ref=e2353] [cursor=pointer]
+        - button "切换对话栏" [ref=e2356] [cursor=pointer]
+        - button "切换 Inspector" [ref=e2359] [cursor=pointer]
+    - button "搜索会话、文件、命令… Ctrl K" [ref=e2363] [cursor=pointer]:
+      - generic [ref=e2367]: 搜索会话、文件、命令…
+      - generic [ref=e2368]: Ctrl K
+  - generic [ref=e2369]:
+    - generic [ref=e2371]:
+      - generic [ref=e2372]:
+        - generic [ref=e2373]:
+          - textbox "搜索会话…" [ref=e2377]
+          - generic [ref=e2378]: /
+        - button "折叠 sessions" [ref=e2379] [cursor=pointer]
+        - button "New Agent Ctrl+Shift+N" [ref=e2382] [cursor=pointer]:
+          - generic [ref=e2385]: New Agent
+          - generic [ref=e2386]: Ctrl+Shift+N
+      - generic [ref=e2387]:
+        - generic [ref=e2388]:
+          - generic [ref=e2399]: WORKSPACES
+          - button "新建工作区" [ref=e2401] [cursor=pointer]
+        - button "全部" [ref=e2403] [cursor=pointer]
+        - generic [ref=e2415]: PINNED
+        - button "新会话 1h 取消置顶 移入文件夹 删除会话" [ref=e2419] [cursor=pointer]:
+          - generic [ref=e2421]: 新会话
+          - generic [ref=e2422]: 1h
+          - generic [ref=e2423]:
+            - button "取消置顶" [ref=e2424]
+            - button "移入文件夹" [ref=e2429]
+            - button "删除会话" [ref=e2432]
+        - button "journey 项目制作 2d 取消置顶 移入文件夹 删除会话" [ref=e2436] [cursor=pointer]:
+          - generic [ref=e2438]: journey 项目制作
+          - generic [ref=e2439]: 2d
+          - generic [ref=e2440]:
+            - button "取消置顶" [ref=e2441]
+            - button "移入文件夹" [ref=e2446]
+            - button "删除会话" [ref=e2449]
+        - button "F9 巡检会话 5d 取消置顶 移入文件夹 删除会话" [ref=e2453] [cursor=pointer]:
+          - generic [ref=e2455]: F9 巡检会话
+          - generic [ref=e2456]: 5d
+          - generic [ref=e2457]:
+            - button "取消置顶" [ref=e2458]
+            - button "移入文件夹" [ref=e2463]
+            - button "删除会话" [ref=e2466]
+        - button "冒烟A-改 6d 取消置顶 移入文件夹 删除会话" [ref=e2470] [cursor=pointer]:
+          - generic [ref=e2472]: 冒烟A-改
+          - generic [ref=e2473]: 6d
+          - generic [ref=e2474]:
+            - button "取消置顶" [ref=e2475]
+            - button "移入文件夹" [ref=e2480]
+            - button "删除会话" [ref=e2483]
+        - generic [ref=e2487]:
+          - generic [ref=e2490]: CHAT FOLDERS
+          - button "新建文件夹" [ref=e2492] [cursor=pointer]
+        - generic [ref=e2495]:
+          - button "会话" [ref=e2496] [cursor=pointer]
+          - button "新会话 2h 置顶 移入文件夹 删除会话" [ref=e2502] [cursor=pointer]:
+            - generic [ref=e2504]: 新会话
+            - generic [ref=e2505]: 2h
+            - generic [ref=e2506]:
+              - button "置顶" [ref=e2507]
+              - button "移入文件夹" [ref=e2510]
+              - button "删除会话" [ref=e2513]
+          - button "新会话 12h 置顶 移入文件夹 删除会话" [ref=e2517] [cursor=pointer]:
+            - generic [ref=e2519]: 新会话
+            - generic [ref=e2520]: 12h
+            - generic [ref=e2521]:
+              - button "置顶" [ref=e2522]
+              - button "移入文件夹" [ref=e2525]
+              - button "删除会话" [ref=e2528]
+          - button "新会话 12h 置顶 移入文件夹 删除会话" [ref=e2532] [cursor=pointer]:
+            - generic [ref=e2534]: 新会话
+            - generic [ref=e2535]: 12h
+            - generic [ref=e2536]:
+              - button "置顶" [ref=e2537]
+              - button "移入文件夹" [ref=e2540]
+              - button "删除会话" [ref=e2543]
+          - button "新会话 13h 置顶 移入文件夹 删除会话" [ref=e2547] [cursor=pointer]:
+            - generic [ref=e2549]: 新会话
+            - generic [ref=e2550]: 13h
+            - generic [ref=e2551]:
+              - button "置顶" [ref=e2552]
+              - button "移入文件夹" [ref=e2555]
+              - button "删除会话" [ref=e2558]
+          - button "帮我进行全项目探索并给出优化案 2d 置顶 移入文件夹 删除会话" [ref=e2562] [cursor=pointer]:
+            - generic [ref=e2564]: 帮我进行全项目探索并给出优化案
+            - generic [ref=e2565]: 2d
+            - generic [ref=e2566]:
+              - button "置顶" [ref=e2567]
+              - button "移入文件夹" [ref=e2570]
+              - button "删除会话" [ref=e2573]
+          - button "你好 2d 置顶 移入文件夹 删除会话" [ref=e2577] [cursor=pointer]:
+            - generic [ref=e2579]: 你好
+            - generic [ref=e2580]: 2d
+            - generic [ref=e2581]:
+              - button "置顶" [ref=e2582]
+              - button "移入文件夹" [ref=e2585]
+              - button "删除会话" [ref=e2588]
+          - button "新会话 2d 置顶 移入文件夹 删除会话" [ref=e2592] [cursor=pointer]:
+            - generic [ref=e2594]: 新会话
+            - generic [ref=e2595]: 2d
+            - generic [ref=e2596]:
+              - button "置顶" [ref=e2597]
+              - button "移入文件夹" [ref=e2600]
+              - button "删除会话" [ref=e2603]
+          - button "新会话 2d 置顶 移入文件夹 删除会话" [ref=e2607] [cursor=pointer]:
+            - generic [ref=e2609]: 新会话
+            - generic [ref=e2610]: 2d
+            - generic [ref=e2611]:
+              - button "置顶" [ref=e2612]
+              - button "移入文件夹" [ref=e2615]
+              - button "删除会话" [ref=e2618]
+          - button "冒烟B-gap 2d 置顶 移入文件夹 删除会话" [ref=e2622] [cursor=pointer]:
+            - generic [ref=e2624]: 冒烟B-gap
+            - generic [ref=e2625]: 2d
+            - generic [ref=e2626]:
+              - button "置顶" [ref=e2627]
+              - button "移入文件夹" [ref=e2630]
+              - button "删除会话" [ref=e2633]
+          - button "冒烟A-改 2d 置顶 移入文件夹 删除会话" [ref=e2637] [cursor=pointer]:
+            - generic [ref=e2639]: 冒烟A-改
+            - generic [ref=e2640]: 2d
+            - generic [ref=e2641]:
+              - button "置顶" [ref=e2642]
+              - button "移入文件夹" [ref=e2645]
+              - button "删除会话" [ref=e2648]
+          - button "分支 · 冒烟A-改 2d 置顶 移入文件夹 删除会话" [ref=e2652] [cursor=pointer]:
+            - generic [ref=e2654]: 分支 · 冒烟A-改
+            - generic [ref=e2655]: 2d
+            - generic [ref=e2656]:
+              - button "置顶" [ref=e2657]
+              - button "移入文件夹" [ref=e2660]
+              - button "删除会话" [ref=e2663]
+          - button "w5 workbench 冒烟 5d 置顶 移入文件夹 删除会话" [ref=e2667] [cursor=pointer]:
+            - generic [ref=e2669]: w5 workbench 冒烟
+            - generic [ref=e2670]: 5d
+            - generic [ref=e2671]:
+              - button "置顶" [ref=e2672]
+              - button "移入文件夹" [ref=e2675]
+              - button "删除会话" [ref=e2678]
+          - button "More (70)" [ref=e2682] [cursor=pointer]
+      - generic [ref=e2685]:
+        - generic [ref=e2686]: 本
+        - generic [ref=e2687]:
+          - generic [ref=e2688]: 我的空间
+          - generic [ref=e2689]: 本地用户
+        - button "设置" [ref=e2690] [cursor=pointer]
+    - generic [ref=e2696]:
+      - generic [ref=e2697]:
+        - button "缩小对话窗口" [ref=e2698] [cursor=pointer]
+        - button "折叠 chat" [ref=e2704] [cursor=pointer]
+      - paragraph [ref=e2709]: 选择左侧会话或点击 New Agent
+      - generic [ref=e2713]:
+        - generic [ref=e2714]:
+          - generic [ref=e2715]: 上下文
+          - generic "场景:maze" [ref=e2716]:
+            - generic [ref=e2727]: "@maze"
+            - button "移除上下文 @maze" [ref=e2728] [cursor=pointer]
+        - generic [ref=e2732]:
+          - button "模式菜单" [ref=e2733] [cursor=pointer]
+          - textbox "描述任务…" [ref=e2736]
+          - button "发送" [disabled] [ref=e2737]
+        - generic [ref=e2740]:
+          - button "选择技能" [ref=e2741] [cursor=pointer]
+          - button "选择模型" [ref=e2745] [cursor=pointer]:
+            - generic [ref=e2748]: default
+          - button "上下文窗口占用" [ref=e2751] [cursor=pointer]:
+            - generic [ref=e2755]: 12%
+          - button "语音输入" [ref=e2756] [cursor=pointer]
+    - generic [ref=e2761]:
+      - button "编辑器 关闭 编辑器" [ref=e2763] [cursor=pointer]:
+        - generic "编辑器" [ref=e2769]
+        - button "关闭 编辑器" [ref=e2770]
+      - generic [ref=e2775]:
+        - region "Viewport" [ref=e2776]:
+          - generic [ref=e2777]:
+            - button "隐藏 Assets 底栏" [ref=e2778] [cursor=pointer]
+            - generic [ref=e2782]:
+              - button "Viewport" [ref=e2783] [cursor=pointer]
+              - button "NodeGraph" [ref=e2784] [cursor=pointer]
+              - button "画板" [active] [ref=e2785] [cursor=pointer]
+            - generic "Gizmo" [ref=e2787]:
+              - button "Move (W)" [ref=e2788] [cursor=pointer]
+              - button "Rotate (E)" [ref=e2794] [cursor=pointer]
+              - button "Scale (R)" [ref=e2799] [cursor=pointer]
+            - generic [ref=e2806]:
+              - button "Play" [ref=e2807] [cursor=pointer]
+              - button "Pause" [disabled] [ref=e2810]
+              - button "Step" [disabled] [ref=e2814]
+              - button "Stop (exit PIE)" [disabled] [ref=e2817]
+            - button "Undo" [ref=e2820] [cursor=pointer]
+            - button "Redo" [ref=e2824] [cursor=pointer]
+            - button "Save Scene" [ref=e2829] [cursor=pointer]
+            - button "Load Scene" [ref=e2834] [cursor=pointer]
+            - button "Run maze playtest(结果走 toast)" [ref=e2838] [cursor=pointer]
+          - generic "DesignBoard" [ref=e3456]:
+            - generic [ref=e3457]:
+              - generic [ref=e3458]: 画板
+              - button "+ 角色" [ref=e3460] [cursor=pointer]
+              - button "+ 地图" [ref=e3465] [cursor=pointer]
+              - button "新类型" [ref=e3468] [cursor=pointer]
+              - generic [ref=e3470]: 2 实体 · 3 特性 · 0 连线
+              - button "清空" [ref=e3471] [cursor=pointer]
+              - button "交给 AI 制作" [ref=e3472] [cursor=pointer]
+            - generic [ref=e3475]:
+              - generic:
+                - generic [ref=e3476]:
+                  - generic [ref=e3478]:
+                    - button "角色 1" [ref=e3482]
+                    - generic [ref=e3483]: 角色
+                    - button "删除实体(特性与相关连线一并删除)" [ref=e3484] [cursor=pointer]
+                  - textbox "角色描述:外观 / 布局 / 行为…" [ref=e3488]
+                  - generic [ref=e3489]:
+                    - generic [ref=e3490]: 2 特性
+                    - button "特性" [ref=e3491] [cursor=pointer]
+                  - generic "按住拖到目标节点完成连线(交互写在线上)" [ref=e3493]
+                - generic "MeshRenderer(引擎组件)" [ref=e3494]:
+                  - generic [ref=e3496]: MeshRenderer
+                  - button "说明…" [ref=e3497] [cursor=pointer]
+                  - button "删除该特性(相关连线一并删除)" [ref=e3498] [cursor=pointer]
+                  - generic "按住拖到目标完成连线(交互挂在该特性上)" [ref=e3502]
+                - generic "RigidBody(引擎组件)" [ref=e3503]:
+                  - generic [ref=e3505]: RigidBody
+                  - button "说明…" [ref=e3506] [cursor=pointer]
+                  - button "删除该特性(相关连线一并删除)" [ref=e3507] [cursor=pointer]
+                  - generic "按住拖到目标完成连线(交互挂在该特性上)" [ref=e3511]
+                - generic [ref=e3512]:
+                  - generic [ref=e3514]:
+                    - button "地图 1" [ref=e3517]
+                    - generic [ref=e3518]: 地图
+                    - button "删除实体(特性与相关连线一并删除)" [ref=e3519] [cursor=pointer]
+                  - textbox "地图描述:外观 / 布局 / 行为…" [ref=e3523]
+                  - generic [ref=e3524]:
+                    - generic [ref=e3525]: 1 特性
+                    - button "特性" [ref=e3526] [cursor=pointer]
+                  - generic "按住拖到目标节点完成连线(交互写在线上)" [ref=e3528]
+                - generic "MeshRenderer(引擎组件)" [ref=e3529]:
+                  - generic [ref=e3531]: MeshRenderer
+                  - button "说明…" [ref=e3532] [cursor=pointer]
+                  - button "删除该特性(相关连线一并删除)" [ref=e3533] [cursor=pointer]
+                  - generic "按住拖到目标完成连线(交互挂在该特性上)" [ref=e3537]
+              - generic [ref=e3538]:
+                - button "缩小(Ctrl + 滚轮)" [ref=e3539] [cursor=pointer]
+                - button "54%" [ref=e3543] [cursor=pointer]
+                - button "放大(Ctrl + 滚轮)" [ref=e3544] [cursor=pointer]
+                - button "适应内容:把全部节点收进视野" [ref=e3549] [cursor=pointer]
+        - region "Assets" [ref=e2860]:
+          - generic [ref=e2861]:
+            - generic [ref=e2862]: Assets
+            - generic [ref=e2863]:
+              - button "All" [ref=e2864] [cursor=pointer]
+              - button "Mesh" [ref=e2865] [cursor=pointer]
+              - button "Texture" [ref=e2866] [cursor=pointer]
+              - button "Material" [ref=e2867] [cursor=pointer]
+              - button "Prefab" [ref=e2868] [cursor=pointer]
+              - button "Scene" [ref=e2869] [cursor=pointer]
+              - button "Script" [ref=e2870] [cursor=pointer]
+              - button "Audio" [ref=e2871] [cursor=pointer]
+            - textbox "Search assets..." [ref=e2876]
+            - generic [ref=e2877]:
+              - button "Grid" [ref=e2878] [cursor=pointer]
+              - button "List" [ref=e2881] [cursor=pointer]
+              - button "Refresh" [ref=e2884] [cursor=pointer]
+          - generic [ref=e2890]:
+            - generic "资产文件夹" [ref=e2891]:
+              - button "全部" [ref=e2892] [cursor=pointer]
+              - button "Meshes" [ref=e2896] [cursor=pointer]
+              - button "Textures" [ref=e2900] [cursor=pointer]
+              - button "Materials" [ref=e2904] [cursor=pointer]
+              - button "Prefabs" [ref=e2908] [cursor=pointer]
+              - button "Scenes" [ref=e2912] [cursor=pointer]
+              - button "Scripts" [ref=e2916] [cursor=pointer]
+              - button "Graphs" [ref=e2920] [cursor=pointer]
+            - generic [ref=e2925]:
+              - generic [ref=e2926]:
+                - 'generic "buildState: current" [ref=e2927]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2929]
+                - generic "Graphs/call_probe.rxgraph call.call_function 探针图:on_start 调 callprobe.rx add(2,3.5) 并把结果存 result 变量" [ref=e2935]: call_probe.rxgraph
+                - generic [ref=e2936]: script
+              - generic [ref=e2937]:
+                - 'generic "buildState: current" [ref=e2938]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2940]
+                - generic "Graphs/door_opener.rxgraph 开门逻辑图:玩家进触发区且带 player 标签时,按暴露属性 openSpeed 角度旋转门体(rotate_tween 1.2s)" [ref=e2946]: door_opener.rxgraph
+                - generic [ref=e2947]: script
+              - generic [ref=e2948]:
+                - 'generic "buildState: current" [ref=e2949]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2951]
+                - generic "Graphs/f4w3_probe.rxgraph 图解释器事件探针(F4 wave.3):on_input/on_contact_begin/on_update 三事件各接 debug.log" [ref=e2957]: f4w3_probe.rxgraph
+                - generic [ref=e2958]: script
+              - generic [ref=e2959]:
+                - 'generic "buildState: current" [ref=e2960]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2962]
+                - generic "Graphs/maze_door.rxgraph 迷宫门图:收到消息后调 maze.rx door_open_angle 旋转 90 度并下移开门" [ref=e2968]: maze_door.rxgraph
+                - generic [ref=e2969]: script
+              - generic [ref=e2970]:
+                - 'generic "buildState: current" [ref=e2971]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2973]
+                - generic "Graphs/maze_goal.rxgraph 迷宫终点图:玩家进触发区且 is_win_cell 为真时终点旋转上浮,给玩家加 winner 标签并记 maze win" [ref=e2979]: maze_goal.rxgraph
+                - generic [ref=e2980]: script
+              - generic [ref=e2981]:
+                - 'generic "buildState: current" [ref=e2982]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2984]
+                - generic "Graphs/maze_key.rxgraph 迷宫钥匙图:玩家进触发区后钥匙下沉(move_tween [0,-10,0])并广播 key_taken 消息" [ref=e2990]: maze_key.rxgraph
+                - generic [ref=e2991]: script
+              - generic [ref=e2992]:
+                - 'generic "buildState: current" [ref=e2993]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e2995]
+                - generic "Graphs/maze_player.rxgraph 迷宫玩家控制图:on_start 初始化方向向量/cell/hasKey 黑板并自检规则;on_input 按 maze.rx 规则判墙/门/钥匙后 move_tween 移动;on_message 收 key_taken 置 hasKey" [ref=e3001]: maze_player.rxgraph
+                - generic [ref=e3002]: script
+              - generic [ref=e3003]:
+                - 'generic "buildState: current" [ref=e3004]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3006]
+                - generic "Materials/f5w3_gen_mat.rxmat 生成流程产出材质(F5 wave.3):pbr-default、roughness 0.8,albedo 槽引用生成木纹贴图" [ref=e3011]: f5w3_gen_mat.rxmat
+                - generic [ref=e3012]: material
+              - generic [ref=e3013]:
+                - 'generic "buildState: current" [ref=e3014]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3016]
+                - generic "Materials/JourneyBoxRed.rxmat 纯参数红色 PBR 材质(无贴图),journey 场景红盒子用" [ref=e3021]: JourneyBoxRed.rxmat
+                - generic [ref=e3022]: material
+              - generic [ref=e3023]:
+                - 'generic "buildState: current" [ref=e3024]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3026]
+                - generic "Materials/w4_mat.rxmat 暖色 PBR 材质:baseColor(1,0.8,0.6)、roughness 0.7,albedo 槽引用贴图;W4 验收用" [ref=e3031]: w4_mat.rxmat
+                - generic [ref=e3032]: material
+              - generic [ref=e3033]:
+                - 'generic "buildState: current" [ref=e3034]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3036]
+                - generic "Meshes/f5w2_chair.gltf 椅子网格(F5 wave.2 生成接入验收的用户自备产物),Main 场景 W4Tri 实体经 MeshRenderer 引用" [ref=e3040]: f5w2_chair.gltf
+                - generic [ref=e3041]: mesh
+              - generic [ref=e3042]:
+                - 'generic "buildState: current" [ref=e3043]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3045]
+                - generic "Meshes/f5w2_chair2.gltf 椅子网格第二变体(F5 wave.2 生成变体验收产物)" [ref=e3049]: f5w2_chair2.gltf
+                - generic [ref=e3050]: mesh
+              - generic [ref=e3051]:
+                - 'generic "buildState: current" [ref=e3052]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3054]
+                - generic "Prefabs/tri_min.gltf 最小三角形网格夹具(单三角形),资产管线与渲染冒烟用" [ref=e3058]: tri_min.gltf
+                - generic [ref=e3059]: mesh
+              - generic [ref=e3060]:
+                - 'generic "buildState: stale" [ref=e3061]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3063]
+                - generic "Scenes/journey.rxscene 全流程 journey 验收场景(F9 制作旅程产物)" [ref=e3066]: journey.rxscene
+                - generic [ref=e3067]: scene
+              - generic [ref=e3068]:
+                - 'generic "buildState: stale" [ref=e3069]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3071]
+                - generic "Scenes/Main.rxscene 默认入口场景:单实体 W4Tri,MeshRenderer 引用椅子网格与 w4_mat 材质" [ref=e3074]: Main.rxscene
+                - generic [ref=e3075]: scene
+              - generic [ref=e3076]:
+                - 'generic "buildState: stale" [ref=e3077]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3079]
+                - generic "Scenes/maze.rxscene 7x7 迷宫玩法场景(36 实体):玩家/钥匙/门/终点 + 墙体环,玩法逻辑挂 maze_*.rxgraph 四图" [ref=e3082]: maze.rxscene
+                - generic [ref=e3083]: scene
+              - generic [ref=e3084]:
+                - 'generic "buildState: current" [ref=e3085]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3087]
+                - generic "Scripts/callprobe.rx call_function 链路探针脚本:导出 add(f32,f32) 与 mixed(f32,i32) 两个测试函数" [ref=e3093]: callprobe.rx
+                - generic [ref=e3094]: script
+              - generic [ref=e3095]:
+                - 'generic "buildState: current" [ref=e3096]'
+                - generic "缩略图未实现:网格三视角离屏渲染 = RD-F2-002" [ref=e3098]
+                - generic "Scripts/maze.rx 迷宫规则单一事实源:7x7 网格 cell=col*10+row,导出 open_at_cell/not_door_cell/is_win_cell/door_open_angle/goal_spin_angle 五个 C ABI 函数,供节点图 call_function 调用" [ref=e3104]: maze.rx
+                - generic [ref=e3105]: script
+              - generic [ref=e3106]:
+                - 'generic "buildState: current" [ref=e3107]'
+                - img "Textures/f2w4_dot.png" [ref=e3109]
+                - generic "Textures/f2w4_dot.png 极小的橙红色纯色点贴图(F2 wave.4 管线测试夹具),用于验证导入与缩略图链路" [ref=e3110]: f2w4_dot.png
+                - generic [ref=e3111]: texture
+              - generic [ref=e3112]:
+                - 'generic "buildState: current" [ref=e3113]'
+                - img "Textures/f2w4_dot@4x4.png" [ref=e3115]
+                - generic "Textures/f2w4_dot@4x4.png f2w4_dot 经 texture_process 缩放到 4x4 的产物,橙红纯色;验证贴图处理输出幂等" [ref=e3116]: f2w4_dot@4x4.png
+                - generic [ref=e3117]: texture
+              - generic [ref=e3118]:
+                - 'generic "buildState: current" [ref=e3119]'
+                - img "Textures/wood-9425964566131575000.png" [ref=e3121]
+                - generic "Textures/wood-9425964566131575000.png 512x512 生成式木纹贴图,密集竖条木板拼贴、橙棕色调(gen-image 产物);可作木质表面 albedo" [ref=e3122]: wood-9425964566131575000.png
+                - generic [ref=e3123]: texture
+              - generic [ref=e3124]:
+                - 'generic "buildState: current" [ref=e3125]'
+                - img "Textures/wood_albedo.png" [ref=e3127]
+                - generic "Textures/wood_albedo.png 橙棕色编织木纹反照率贴图,横竖交错的木块拼贴图案;适合木地板、家具表面的 PBR albedo 槽" [ref=e3128]: wood_albedo.png
+                - generic [ref=e3129]: texture
+              - generic [ref=e3130]:
+                - 'generic "buildState: current" [ref=e3131]'
+                - img "Textures/wood_normal.png" [ref=e3133]
+                - generic "Textures/wood_normal.png 与 wood_albedo 配套的切线空间法线贴图(淡紫蓝基调),表现木块拼贴的凹凸走向" [ref=e3134]: wood_normal.png
+                - generic [ref=e3135]: texture
+              - generic [ref=e3136]:
+                - 'generic "buildState: current" [ref=e3137]'
+                - img "Textures/wood_roughness.png" [ref=e3139]
+                - generic "Textures/wood_roughness.png 与 wood_albedo 配套的灰度粗糙度贴图,木块区域明暗交错" [ref=e3140]: wood_roughness.png
+                - generic [ref=e3141]: texture
+    - generic [ref=e3143]:
+      - generic [ref=e3144]:
+        - generic [ref=e3145]:
+          - button "工作区" [ref=e3146] [cursor=pointer]
+          - button "层级" [ref=e3152] [cursor=pointer]
+          - button "属性" [ref=e3156] [cursor=pointer]
+          - button "资产" [ref=e3158] [cursor=pointer]
+        - button "折叠 inspector" [ref=e3163] [cursor=pointer]
+      - region "Hierarchy" [ref=e3167]:
+        - generic [ref=e3168]:
+          - generic [ref=e3169]: 层级 · 角色 / 地图 / 交互
+          - button "Create entity" [ref=e3170] [cursor=pointer]
+        - textbox "Filter entities..." [ref=e3177]
+        - generic [ref=e3178]:
+          - generic [ref=e3179]:
+            - button "角色 1" [ref=e3180] [cursor=pointer]:
+              - generic [ref=e3186]: 角色
+              - generic [ref=e3187]: "1"
+            - 'button "Player #33" [ref=e3189] [cursor=pointer]':
+              - generic [ref=e3193]: Player
+              - generic [ref=e3194]: "#33"
+          - generic [ref=e3195]:
+            - button "地图 32" [ref=e3196] [cursor=pointer]:
+              - generic [ref=e3201]: 地图
+              - generic [ref=e3202]: "32"
+            - generic [ref=e3203]:
+              - 'button "Wall_0_0 #1" [ref=e3204] [cursor=pointer]':
+                - generic [ref=e3207]: Wall_0_0
+                - generic [ref=e3208]: "#1"
+              - 'button "Wall_0_1 #2" [ref=e3209] [cursor=pointer]':
+                - generic [ref=e3212]: Wall_0_1
+                - generic [ref=e3213]: "#2"
+              - 'button "Wall_0_2 #3" [ref=e3214] [cursor=pointer]':
+                - generic [ref=e3217]: Wall_0_2
+                - generic [ref=e3218]: "#3"
+              - 'button "Wall_0_3 #4" [ref=e3219] [cursor=pointer]':
+                - generic [ref=e3222]: Wall_0_3
+                - generic [ref=e3223]: "#4"
+              - 'button "Wall_0_4 #5" [ref=e3224] [cursor=pointer]':
+                - generic [ref=e3227]: Wall_0_4
+                - generic [ref=e3228]: "#5"
+              - 'button "Wall_0_5 #6" [ref=e3229] [cursor=pointer]':
+                - generic [ref=e3232]: Wall_0_5
+                - generic [ref=e3233]: "#6"
+              - 'button "Wall_0_6 #7" [ref=e3234] [cursor=pointer]':
+                - generic [ref=e3237]: Wall_0_6
+                - generic [ref=e3238]: "#7"
+              - 'button "Wall_6_0 #8" [ref=e3239] [cursor=pointer]':
+                - generic [ref=e3242]: Wall_6_0
+                - generic [ref=e3243]: "#8"
+              - 'button "Wall_6_1 #9" [ref=e3244] [cursor=pointer]':
+                - generic [ref=e3247]: Wall_6_1
+                - generic [ref=e3248]: "#9"
+              - 'button "Wall_6_2 #10" [ref=e3249] [cursor=pointer]':
+                - generic [ref=e3252]: Wall_6_2
+                - generic [ref=e3253]: "#10"
+              - 'button "Wall_6_3 #11" [ref=e3254] [cursor=pointer]':
+                - generic [ref=e3257]: Wall_6_3
+                - generic [ref=e3258]: "#11"
+              - 'button "Wall_6_4 #12" [ref=e3259] [cursor=pointer]':
+                - generic [ref=e3262]: Wall_6_4
+                - generic [ref=e3263]: "#12"
+              - 'button "Wall_6_5 #13" [ref=e3264] [cursor=pointer]':
+                - generic [ref=e3267]: Wall_6_5
+                - generic [ref=e3268]: "#13"
+              - 'button "Wall_6_6 #14" [ref=e3269] [cursor=pointer]':
+                - generic [ref=e3272]: Wall_6_6
+                - generic [ref=e3273]: "#14"
+              - 'button "Wall_1_0 #15" [ref=e3274] [cursor=pointer]':
+                - generic [ref=e3277]: Wall_1_0
+                - generic [ref=e3278]: "#15"
+              - 'button "Wall_2_0 #16" [ref=e3279] [cursor=pointer]':
+                - generic [ref=e3282]: Wall_2_0
+                - generic [ref=e3283]: "#16"
+              - 'button "Wall_3_0 #17" [ref=e3284] [cursor=pointer]':
+                - generic [ref=e3287]: Wall_3_0
+                - generic [ref=e3288]: "#17"
+              - 'button "Wall_4_0 #18" [ref=e3289] [cursor=pointer]':
+                - generic [ref=e3292]: Wall_4_0
+                - generic [ref=e3293]: "#18"
+              - 'button "Wall_5_0 #19" [ref=e3294] [cursor=pointer]':
+                - generic [ref=e3297]: Wall_5_0
+                - generic [ref=e3298]: "#19"
+              - 'button "Wall_1_6 #20" [ref=e3299] [cursor=pointer]':
+                - generic [ref=e3302]: Wall_1_6
+                - generic [ref=e3303]: "#20"
+              - 'button "Wall_2_6 #21" [ref=e3304] [cursor=pointer]':
+                - generic [ref=e3307]: Wall_2_6
+                - generic [ref=e3308]: "#21"
+              - 'button "Wall_3_6 #22" [ref=e3309] [cursor=pointer]':
+                - generic [ref=e3312]: Wall_3_6
+                - generic [ref=e3313]: "#22"
+              - 'button "Wall_4_6 #23" [ref=e3314] [cursor=pointer]':
+                - generic [ref=e3317]: Wall_4_6
+                - generic [ref=e3318]: "#23"
+              - 'button "Wall_5_6 #24" [ref=e3319] [cursor=pointer]':
+                - generic [ref=e3322]: Wall_5_6
+                - generic [ref=e3323]: "#24"
+              - 'button "Wall_2_2 #25" [ref=e3324] [cursor=pointer]':
+                - generic [ref=e3327]: Wall_2_2
+                - generic [ref=e3328]: "#25"
+              - 'button "Wall_4_2 #26" [ref=e3329] [cursor=pointer]':
+                - generic [ref=e3332]: Wall_4_2
+                - generic [ref=e3333]: "#26"
+              - 'button "Wall_2_3 #27" [ref=e3334] [cursor=pointer]':
+                - generic [ref=e3337]: Wall_2_3
+                - generic [ref=e3338]: "#27"
+              - 'button "Wall_2_4 #28" [ref=e3339] [cursor=pointer]':
+                - generic [ref=e3342]: Wall_2_4
+                - generic [ref=e3343]: "#28"
+              - 'button "Wall_4_4 #29" [ref=e3344] [cursor=pointer]':
+                - generic [ref=e3347]: Wall_4_4
+                - generic [ref=e3348]: "#29"
+              - 'button "Wall_5_4 #30" [ref=e3349] [cursor=pointer]':
+                - generic [ref=e3352]: Wall_5_4
+                - generic [ref=e3353]: "#30"
+              - 'button "Wall_2_5 #31" [ref=e3354] [cursor=pointer]':
+                - generic [ref=e3357]: Wall_2_5
+                - generic [ref=e3358]: "#31"
+              - 'button "Floor #32" [ref=e3359] [cursor=pointer]':
+                - generic [ref=e3362]: Floor
+                - generic [ref=e3363]: "#32"
+          - generic [ref=e3364]:
+            - button "交互 3" [ref=e3365] [cursor=pointer]:
+              - generic [ref=e3370]: 交互
+              - generic [ref=e3371]: "3"
+            - generic [ref=e3372]:
+              - 'button "Key #34" [ref=e3373] [cursor=pointer]':
+                - generic [ref=e3376]: Key
+                - generic [ref=e3377]: "#34"
+              - 'button "Door #35" [ref=e3378] [cursor=pointer]':
+                - generic [ref=e3381]: Door
+                - generic [ref=e3382]: "#35"
+              - 'button "Goal #36" [ref=e3383] [cursor=pointer]':
+                - generic [ref=e3386]: Goal
+                - generic [ref=e3387]: "#36"
+  - contentinfo [ref=e3388]:
+    - generic [ref=e3389]: host 在线
+    - generic [ref=e3391]: Live · deepseek-chat

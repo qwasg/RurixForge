@@ -1,7 +1,7 @@
 /**
  * F7 wave.4 输入框自适应高(参考 app.rs estimate_wrapped_lines / auto_input_height 逐行移植):
- * 按 44 列估行,高 = min + (n-1)×20,clamp [min,max];composer 用 [68,200](底 32),
- * 内联编辑用 [56,200](底 56)。
+ * 按 44 列估行,高 = min + (n-1)×20,clamp [min,max];composer 用 [26,200](底 26,
+ * 即空/单行贴合 20px 行高 + pt-1/pb-0.5,与模式条拼成胶囊),内联编辑用 [56,200](底 56)。
  */
 
 /** 参考 estimate_wrapped_lines:逐 \n 分段,chars/44 上取整,空段计 1。 */
@@ -21,9 +21,12 @@ export function autoInputHeight(text: string, base: number, minH: number, maxH: 
   return Math.min(Math.max(base + (n - 1) * 20, minH), maxH);
 }
 
-/** composer 输入壳高:32+(n-1)×20 clamp 68–200。 */
+/** 空/单行时的输入壳高;高于它说明已换行,composer 退出胶囊态。 */
+export const COMPOSER_INPUT_MIN = 26;
+
+/** composer 输入壳高:26+(n-1)×20 clamp 26–200(空态最扁,单行即 COMPOSER_INPUT_MIN)。 */
 export function composerInputHeight(text: string): number {
-  return autoInputHeight(text, 32, 68, 200);
+  return autoInputHeight(text, COMPOSER_INPUT_MIN, COMPOSER_INPUT_MIN, 200);
 }
 
 /** 用户卡内联编辑高:56+(n-1)×20 clamp 56–200。 */

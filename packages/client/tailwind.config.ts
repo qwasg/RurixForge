@@ -7,6 +7,8 @@ import type { Config } from 'tailwindcss';
  * F7 wave.3:新增 shell-* 语义 token → CSS 变量映射(Moonlit 派色,见 styles/theme.css
  * 与 lib/themeStore.ts);旧 ink/muted/line/panel/accent.green 等 token 保留不动——
  * EditorView(游戏原生)类名零改动继续解析(视觉与新壳有缝,如实留档,wave.5 再评统一)。
+ * UI 融合波(2026-08-20 用户拍板):编辑器域(EditorView/editor-* 组件/index.css 组件类)
+ * 已批量迁 shell 语义 token,亮暗主题打通;旧 token 仅余兼容定义,不再被编辑器面消费。
  */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],

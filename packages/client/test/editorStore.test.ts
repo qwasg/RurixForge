@@ -1,19 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore, type EntityData } from '@/lib/editorStore';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
+import { useToastStore } from '@/lib/toastStore';
 import { mockForgeBackend } from './forgeMock';
 
 const CUBE: EntityData = {
   id: 1,
   name: 'Cube',
+  category: 'map',
   transform: { translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
   components: [{ type: 'MeshRenderer', enabled: true, props: { mesh: 'cube' } }],
 };
+
+const initialWorkbench = useWorkbenchStore.getState();
 
 let fetchMock: ReturnType<typeof mockForgeBackend>;
 
 const initialState = useEditorStore.getState();
 beforeEach(() => {
   useEditorStore.setState(initialState, true);
+  useWorkbenchStore.setState(initialWorkbench, true);
+  useToastStore.getState().clear();
   fetchMock = mockForgeBackend({});
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -104,6 +111,46 @@ describe('editorStore', () => {
     expect(s.playState).toBe('edit');
   });
 
+  it('F9(D1) refreshSummary:entityCount 漂移(MCP 侧外部新建)时真实重拉 entity_list', async () => {
+    const JOURNEY_BOX: EntityData = { ...CUBE, id: 37, name: 'JourneyBox' };
+    fetchMock = mockForgeBackend({
+      scene_summary: {
+        name: 'Demo',
+        entityCount: 2, // 后端已 2 实体,本地仅 1 → 漂移
+        playState: 'edit',
+        render: { frames: 7, lastTris: 1, lastNonZeroPixels: 42 },
+      },
+      entity_list: { entities: [CUBE, JOURNEY_BOX] },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ entities: [CUBE] });
+
+    await useEditorStore.getState().refreshSummary();
+    const s = useEditorStore.getState();
+    // 面板数据来自 entity_list 实返(非伪造拼接)
+    expect(s.entities).toEqual([CUBE, JOURNEY_BOX]);
+    expect(callBody(0).tool).toBe('mcp__engine-scene__scene_summary');
+    expect(callBody(1).tool).toBe('mcp__engine-scene__entity_list');
+  });
+
+  it('F9(D1) refreshSummary:entityCount 与本地一致时不重拉(不多打 entity_list)', async () => {
+    fetchMock = mockForgeBackend({
+      scene_summary: {
+        name: 'Demo',
+        entityCount: 1,
+        playState: 'edit',
+        render: { frames: 7, lastTris: 1, lastNonZeroPixels: 42 },
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ entities: [CUBE] });
+
+    await useEditorStore.getState().refreshSummary();
+    const s = useEditorStore.getState();
+    expect(s.entities).toEqual([CUBE]);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // 仅 scene_summary
+  });
+
   it('destroyEntity:移除实体并清空其选中态', async () => {
     fetchMock = mockForgeBackend({ entity_destroy: { destroyed: 1 } });
     vi.stubGlobal('fetch', fetchMock);
@@ -126,6 +173,62 @@ describe('editorStore', () => {
     expect(useEditorStore.getState().lastError).toContain('未 mock 的工具');
   });
 
+  it('runPlaytest:汇总行 + 失败用例走 toast(底栏波:Console 退役后的唯一展示位)', async () => {
+    const report = {
+      scene: 'projects/demo/Content/Scenes/maze.rxscene',
+      ok: false,
+      passed: 5,
+      failed: 1,
+      durationMs: 270,
+      cases: [
+        { name: '实体计数=36', kind: 'entity_count', pass: true, actual: 36, expected: 36, detail: '' },
+        {
+          name: '玩家抵达终点',
+          kind: 'transform_near',
+          pass: false,
+          actual: [2, 0.4, 4],
+          expected: [10, 0.4, 10],
+          detail: 'maxDeviation=4.0, tolerance=0.3',
+        },
+      ],
+    };
+    fetchMock = mockForgeBackend({}, { '/api/forge/playtest/run': report });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useEditorStore.getState().runPlaytest('tests/maze/matrix.json');
+    const items = useToastStore.getState().items;
+    // 汇总 1 条 + 失败用例 1 条;通过的用例不刷屏
+    expect(items).toHaveLength(2);
+    expect(items[0].kind).toBe('error');
+    expect(items[0].title).toContain('FAIL 5/6');
+    expect(items[0].title).toContain('270ms');
+    expect(items[1].title).toContain('玩家抵达终点');
+    expect(items[1].title).toContain('maxDeviation=4.0');
+  });
+
+  it('runPlaytest:全绿 → 单条 success toast', async () => {
+    fetchMock = mockForgeBackend(
+      {},
+      {
+        '/api/forge/playtest/run': {
+          scene: 's',
+          ok: true,
+          passed: 6,
+          failed: 0,
+          durationMs: 120,
+          cases: [{ name: 'a', kind: 'entity_count', pass: true, actual: 1, expected: 1, detail: '' }],
+        },
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useEditorStore.getState().runPlaytest('tests/maze/matrix.json');
+    const items = useToastStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe('success');
+    expect(items[0].title).toContain('PASS 6/6');
+  });
+
   it('prefillChat:预填文案写入 chatPrefill,clearChatPrefill 清除(F2 wave.3 seam;F7 wave.3 保留)', () => {
     useEditorStore.getState().prefillChat('基于资产 Meshes/cube.gltf 生成变体:');
     let s = useEditorStore.getState();
@@ -142,7 +245,7 @@ describe('editorStore', () => {
 
   const CAM = { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 };
 
-  it('pickAt:命中设置 selectedId,未命中清空', async () => {
+  it('pickAt:命中设置 selectedId 并切右栏到属性,未命中清空', async () => {
     fetchMock = mockForgeBackend({
       viewport_pick: { hit: true, entityId: 7, name: 'Cube7', point: [0, 0.5, 0] },
     });
@@ -150,6 +253,7 @@ describe('editorStore', () => {
 
     await useEditorStore.getState().pickAt(64, 48, 128, 96);
     expect(useEditorStore.getState().selectedId).toBe(7);
+    expect(useWorkbenchStore.getState().rightTab).toBe('properties');
     expect(callBody(0).tool).toBe('mcp__engine-scene__viewport_pick');
     expect(callBody(0).arguments).toEqual({ x: 64, y: 48, width: 128, height: 96 });
 

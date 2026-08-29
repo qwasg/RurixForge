@@ -33,6 +33,9 @@ fn default_agent_kind() -> String {
 fn default_true() -> bool {
     true
 }
+fn default_purpose() -> String {
+    "chat".to_string()
+}
 
 /// 会话本体(wire 对齐参考 DebugSession;workspaceRoot/mode/activePlanId 属参考全量字段,
 /// wave.1 不落地,如实省略——参考默认值即本仓行为)。
@@ -47,6 +50,15 @@ pub struct DebugSession {
     pub agent_kind: String,
     #[serde(default)]
     pub selected_model_id: Option<String>,
+    /// 模型规格三档之一:思考总开关(见 modelspec.rs;不支持的模型解析时如实忽略)。
+    #[serde(default)]
+    pub thinking_enabled: bool,
+    /// 模型规格三档之一:reasoning_effort 档 id(None = 用该模型 defaultEffort)。
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    /// 模型规格三档之一:上下文窗口档 id(None = 用该模型 defaultContext)。
+    #[serde(default)]
+    pub context_option_id: Option<String>,
     #[serde(default = "default_true")]
     pub web_search_enabled: bool,
     #[serde(default)]
@@ -61,10 +73,23 @@ pub struct DebugSession {
     pub title_manually_set: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    /// chat = 侧栏可见;studio = 素材创作隐藏会话。
+    #[serde(default = "default_purpose")]
+    pub purpose: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub studio_node_id: Option<String>,
 }
 
 impl DebugSession {
-    fn new(title: &str, agent_kind: &str, model_id: Option<String>, web_search: bool) -> Self {
+    fn new(
+        title: &str,
+        agent_kind: &str,
+        model_id: Option<String>,
+        web_search: bool,
+        workspace_id: Option<String>,
+    ) -> Self {
         let ts = now_rfc3339();
         DebugSession {
             id: new_id("sess"),
@@ -72,6 +97,11 @@ impl DebugSession {
             status: default_status(),
             agent_kind: agent_kind.to_string(),
             selected_model_id: model_id,
+            // 规格三档不进 create 入参:新会话一律起于该模型默认档(resolve 现算),
+            // fork 侧显式拷贝源会话的选择(见 fork_session)。
+            thinking_enabled: false,
+            reasoning_effort: None,
+            context_option_id: None,
             web_search_enabled: web_search,
             active_run_id: None,
             created_at: ts.clone(),
@@ -79,7 +109,14 @@ impl DebugSession {
             pinned: false,
             title_manually_set: false,
             folder_id: None,
+            workspace_id,
+            purpose: default_purpose(),
+            studio_node_id: None,
         }
+    }
+
+    pub(crate) fn is_studio(&self) -> bool {
+        self.purpose == "studio"
     }
 
     /// F7 wave.2:pub(crate)(agent.rs activeRunId/自动命名写回用)。
@@ -98,12 +135,16 @@ pub struct ChatFolder {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
 }
 
 #[derive(Debug)]
 pub enum PatchError {
     NotFound,
     InvalidTitle,
+    /// 模型规格档位不在 modelspec 已知集合内(当前模型是否支持该档交给 resolve 回落,此处只拦生造值)。
+    InvalidModelSpec(String),
 }
 
 #[derive(Debug)]
@@ -131,6 +172,21 @@ pub struct PatchSessionRequest {
     /// "mock" 在 ask:execute 侧强制 Mock provider)。
     #[serde(default)]
     pub(crate) selected_model_id: Option<Option<String>>,
+    /// 模型规格三档(effort/context 同 folderId 的 Option<Option<_>> 形态;thinking 是纯布尔)。
+    ///
+    /// 三态在 REST 层的实况留痕(与 folderId/selectedModelId/workspaceId 同源,非本波引入):
+    /// serde 对 Option<Option<T>> 把 JSON null 折成外层 None,即「null」与「缺省」在 wire 上
+    /// 不可分,故经 HTTP 只有两态可达——缺省不变 / 字符串设置。要清回「跟随模型默认档」,
+    /// 传空串:下面的 filter(!is_empty) 会把它归为 None(client 未用到该腿,档位一律显式设值)。
+    /// Some(None) 仅 Rust 内部调用方可构造,单测覆盖该腿。
+    #[serde(default)]
+    pub(crate) thinking_enabled: Option<bool>,
+    #[serde(default)]
+    pub(crate) reasoning_effort: Option<Option<String>>,
+    #[serde(default)]
+    pub(crate) context_option_id: Option<Option<String>>,
+    #[serde(default)]
+    pub(crate) workspace_id: Option<Option<String>>,
 }
 
 /// 会话存贮:内存 HashMap + sessions.json 整文件读-改-写(Mutex 串行化并发写)。
@@ -158,12 +214,25 @@ impl SessionStore {
         }
     }
 
-    /// updatedAt 倒序(同刻 tie-break:id 倒序,确定性)。
+    /// updatedAt 倒序(同刻 tie-break:id 倒序,确定性)。studio 隐藏会话不进侧栏清单。
     pub fn list(&self) -> Vec<DebugSession> {
         let inner = self.inner.lock().unwrap();
-        let mut v: Vec<DebugSession> = inner.values().cloned().collect();
+        let mut v: Vec<DebugSession> = inner
+            .values()
+            .filter(|s| s.purpose != "studio")
+            .cloned()
+            .collect();
         v.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(b.id.cmp(&a.id)));
         v
+    }
+
+    /// 素材创作隐藏会话:同一工作区 + 同一节点复用。
+    pub fn find_studio(&self, workspace_id: Option<&str>, node_id: &str) -> Option<DebugSession> {
+        self.inner.lock().unwrap().values().find(|s| {
+            s.purpose == "studio"
+                && s.studio_node_id.as_deref() == Some(node_id)
+                && s.workspace_id.as_deref() == workspace_id
+        }).cloned()
     }
 
     pub fn get(&self, id: &str) -> Option<DebugSession> {
@@ -176,8 +245,9 @@ impl SessionStore {
         agent_kind: &str,
         model_id: Option<String>,
         web_search: bool,
+        workspace_id: Option<String>,
     ) -> DebugSession {
-        let session = DebugSession::new(title, agent_kind, model_id, web_search);
+        let session = DebugSession::new(title, agent_kind, model_id, web_search, workspace_id);
         let mut inner = self.inner.lock().unwrap();
         inner.insert(session.id.clone(), session.clone());
         self.persist_locked(&inner);
@@ -192,6 +262,19 @@ impl SessionStore {
     }
 
     pub fn patch(&self, id: &str, req: &PatchSessionRequest) -> Result<DebugSession, PatchError> {
+        // 规格档位先验:非法值在拿到 &mut session 之前拒掉,避免半改状态。
+        if let Some(Some(e)) = &req.reasoning_effort {
+            let e = e.trim();
+            if !e.is_empty() && !crate::modelspec::is_known_effort(e) {
+                return Err(PatchError::InvalidModelSpec(format!("未知 effort 档: {e}")));
+            }
+        }
+        if let Some(Some(c)) = &req.context_option_id {
+            let c = c.trim();
+            if !c.is_empty() && !crate::modelspec::is_known_context(c) {
+                return Err(PatchError::InvalidModelSpec(format!("未知 context 档: {c}")));
+            }
+        }
         let mut inner = self.inner.lock().unwrap();
         let Some(session) = inner.get_mut(id) else {
             return Err(PatchError::NotFound);
@@ -226,6 +309,27 @@ impl SessionStore {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
         }
+        if let Some(thinking) = req.thinking_enabled {
+            session.thinking_enabled = thinking;
+        }
+        if let Some(effort) = &req.reasoning_effort {
+            session.reasoning_effort = effort
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+        }
+        if let Some(ctx) = &req.context_option_id {
+            session.context_option_id = ctx
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+        }
+        if let Some(workspace) = &req.workspace_id {
+            session.workspace_id = workspace
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+        }
         session.touch();
         let out = session.clone();
         self.persist_locked(&inner);
@@ -239,6 +343,23 @@ impl SessionStore {
             self.persist_locked(&inner);
         }
         existed
+    }
+
+    /// 工作区删除级联:清引用该 workspaceId 的会话;返回清理数。
+    pub fn clear_workspace(&self, workspace_id: &str) -> usize {
+        let mut inner = self.inner.lock().unwrap();
+        let mut n = 0;
+        for s in inner.values_mut() {
+            if s.workspace_id.as_deref() == Some(workspace_id) {
+                s.workspace_id = None;
+                s.touch();
+                n += 1;
+            }
+        }
+        if n > 0 {
+            self.persist_locked(&inner);
+        }
+        n
     }
 
     /// 文件夹删除级联:清引用该 folderId 的会话;返回清理数。
@@ -286,7 +407,7 @@ impl ChatFolderStore {
         self.inner.lock().unwrap().clone()
     }
 
-    pub fn create(&self, name: &str) -> Result<ChatFolder, FolderError> {
+    pub fn create(&self, name: &str, workspace_id: Option<String>) -> Result<ChatFolder, FolderError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(FolderError::InvalidName);
@@ -297,6 +418,7 @@ impl ChatFolderStore {
             name: name.to_string(),
             created_at: ts.clone(),
             updated_at: ts,
+            workspace_id,
         };
         let mut inner = self.inner.lock().unwrap();
         inner.push(folder.clone());
@@ -329,6 +451,18 @@ impl ChatFolderStore {
             self.persist_locked(&inner);
         }
         existed
+    }
+
+    /// 工作区删除级联:清引用该 workspaceId 的文件夹;返回清理数。
+    pub fn clear_workspace(&self, workspace_id: &str) -> usize {
+        let mut inner = self.inner.lock().unwrap();
+        let before = inner.len();
+        inner.retain(|f| f.workspace_id.as_deref() != Some(workspace_id));
+        let cleared = before - inner.len();
+        if cleared > 0 {
+            self.persist_locked(&inner);
+        }
+        cleared
     }
 }
 
@@ -388,7 +522,7 @@ fn read_folders_file(path: &FsPath) -> Vec<ChatFolder> {
 }
 
 /// 原子写:tmp 全量写 + rename(与 events.rs write_jsonl_atomic 同纪律)。
-fn write_atomic(path: &FsPath, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &FsPath, text: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -431,6 +565,8 @@ pub struct CreateSessionRequest {
     selected_model_id: Option<String>,
     #[serde(default)]
     web_search_enabled: Option<bool>,
+    #[serde(default)]
+    workspace_id: Option<String>,
 }
 
 /// POST /api/forge/sessions → {session};发持久事件 session.created。
@@ -453,12 +589,60 @@ pub async fn create_session(
         &kind,
         req.selected_model_id,
         req.web_search_enabled.unwrap_or(true),
+        req.workspace_id
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
     );
     state.events.emit(
         EventDraft::new(&session.id, "session.created", "session")
             .payload(json!({ "sessionId": session.id, "title": session.title })),
     );
     Json(json!({ "session": session }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnsureStudioSessionRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    node_id: String,
+    #[serde(default)]
+    selected_model_id: Option<String>,
+}
+
+/// POST /api/forge/studio/sessions {workspaceId?, nodeId} → {session}
+/// 同一工作区+节点复用隐藏会话;默认 agentKind=studio,权限 auto。
+pub async fn ensure_studio_session(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<EnsureStudioSessionRequest>,
+) -> Response {
+    let node_id = req.node_id.trim().to_string();
+    if node_id.is_empty() {
+        return bad_request("INVALID_INPUT", "nodeId 不可空");
+    }
+    let ws = req
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if let Some(existing) = state.sessions.find_studio(ws, &node_id) {
+        return Json(json!({ "session": existing })).into_response();
+    }
+    let title = format!("studio:{node_id}");
+    let mut session = state.sessions.create(
+        &title,
+        "studio",
+        req.selected_model_id,
+        false,
+        ws.map(str::to_string),
+    );
+    session.purpose = "studio".into();
+    session.studio_node_id = Some(node_id);
+    session.touch();
+    state.sessions.save(&session);
+    let _ = state.permissions.set_mode(&session.id, "auto");
+    Json(json!({ "session": session })).into_response()
 }
 
 /// GET /api/forge/sessions/{id} → {session}(404 SESSION_NOT_FOUND)。
@@ -486,6 +670,7 @@ pub async fn patch_session(
         }
         Err(PatchError::NotFound) => not_found("SESSION_NOT_FOUND", format!("会话不存在: {id}")),
         Err(PatchError::InvalidTitle) => bad_request("INVALID_TITLE", "title 不可为空"),
+        Err(PatchError::InvalidModelSpec(msg)) => bad_request("INVALID_MODEL_SPEC", &msg),
     }
 }
 
@@ -510,8 +695,12 @@ pub async fn fork_session(State(state): State<Arc<AppState>>, Path(id): Path<Str
         &src.agent_kind,
         src.selected_model_id.clone(),
         src.web_search_enabled,
+        src.workspace_id.clone(),
     );
     forked.folder_id = src.folder_id.clone();
+    forked.thinking_enabled = src.thinking_enabled;
+    forked.reasoning_effort = src.reasoning_effort.clone();
+    forked.context_option_id = src.context_option_id.clone();
     forked.touch();
     state.sessions.save(&forked);
     // 事件流克隆(磁盘全文,sessionId 换新,seq/id/ts 保持 → 单调)。
@@ -581,9 +770,12 @@ pub async fn list_chat_folders(State(state): State<Arc<AppState>>) -> Json<Value
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FolderNameRequest {
     #[serde(default)]
     name: String,
+    #[serde(default)]
+    workspace_id: Option<String>,
 }
 
 /// POST /api/forge/chat-folders {name} → {folder}(空名 400 INVALID_NAME)。
@@ -591,7 +783,12 @@ pub async fn create_chat_folder(
     State(state): State<Arc<AppState>>,
     Json(req): Json<FolderNameRequest>,
 ) -> Response {
-    match state.folders.create(&req.name) {
+    match state.folders.create(
+        &req.name,
+        req.workspace_id
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()),
+    ) {
         Ok(f) => Json(json!({ "folder": f })).into_response(),
         Err(FolderError::InvalidName) => bad_request("INVALID_NAME", "folder name 不可为空"),
         Err(FolderError::NotFound) => unreachable!("create 不产生 NotFound"),
@@ -645,9 +842,9 @@ mod tests {
     fn crud_sort_and_reload() {
         let dir = temp_dir("crud");
         let s = store(&dir);
-        let a = s.create("甲", "coding", None, true);
+        let a = s.create("甲", "coding", None, true, None);
         std::thread::sleep(std::time::Duration::from_millis(3));
-        let b = s.create("乙", "coding", Some("deepseek-chat".to_string()), false);
+        let b = s.create("乙", "coding", Some("deepseek-chat".to_string()), false, None);
         // 排序:updatedAt 倒序(乙新)。
         let list = s.list();
         assert_eq!(list.len(), 2);
@@ -696,7 +893,7 @@ mod tests {
     fn patch_title_sets_manual_flag_and_validates() {
         let dir = temp_dir("title");
         let s = store(&dir);
-        let a = s.create("原题", "coding", None, true);
+        let a = s.create("原题", "coding", None, true, None);
         assert!(!a.title_manually_set);
         let p = s
             .patch(
@@ -728,7 +925,7 @@ mod tests {
     fn patch_folder_id_three_states() {
         let dir = temp_dir("fold3");
         let s = store(&dir);
-        let a = s.create("x", "coding", None, true);
+        let a = s.create("x", "coding", None, true, None);
         // 设置。
         let p1 = s
             .patch(
@@ -762,7 +959,7 @@ mod tests {
         // F7 wave.4:selectedModelId 三态(设置/缺省不变/null 清除),同 folderId 口径。
         let dir = temp_dir("model3");
         let s = store(&dir);
-        let a = s.create("x", "coding", None, true);
+        let a = s.create("x", "coding", None, true, None);
         assert!(a.selected_model_id.is_none());
         let p1 = s
             .patch(
@@ -789,14 +986,137 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// 规格波:三档落库 + 重启恢复 + 生造档位 400(当前模型是否支持交给 resolve 回落,此处只拦未知值)。
+    #[test]
+    fn patch_model_spec_persists_and_rejects_unknown_tier() {
+        let dir = temp_dir("spec3");
+        let s = store(&dir);
+        let a = s.create("x", "coding", None, true, None);
+        assert!(!a.thinking_enabled);
+        assert!(a.reasoning_effort.is_none());
+        assert!(a.context_option_id.is_none());
+
+        let p1 = s
+            .patch(
+                &a.id,
+                &PatchSessionRequest {
+                    thinking_enabled: Some(true),
+                    reasoning_effort: Some(Some("xhigh".to_string())),
+                    context_option_id: Some(Some("1m".to_string())),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(p1.thinking_enabled);
+        assert_eq!(p1.reasoning_effort.as_deref(), Some("xhigh"));
+        assert_eq!(p1.context_option_id.as_deref(), Some("1m"));
+
+        // 缺省不变 / null 清除(effort、context 同 folderId 三态;thinking 是纯布尔)。
+        let p2 = s.patch(&a.id, &PatchSessionRequest::default()).unwrap();
+        assert_eq!(p2.reasoning_effort.as_deref(), Some("xhigh"), "缺省不变");
+        let p3 = s
+            .patch(
+                &a.id,
+                &PatchSessionRequest {
+                    reasoning_effort: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(p3.reasoning_effort.is_none(), "Some(None) 清除");
+
+        // 经 HTTP 只能拿空串表达「清回默认档」(wire 上 null 与缺省不可分,见字段注);
+        // 空串既要绕过档位先验,又要落到 None。
+        let p4 = s
+            .patch(
+                &a.id,
+                &PatchSessionRequest {
+                    context_option_id: Some(Some("  ".to_string())),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(p4.context_option_id.is_none(), "空串清回默认档");
+        let p5 = s
+            .patch(
+                &a.id,
+                &PatchSessionRequest {
+                    context_option_id: Some(Some("1m".to_string())),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(p5.context_option_id.as_deref(), Some("1m"));
+
+        // 生造档位一律拒绝,且拒绝时不得半改(context 仍是上一轮的 1m)。
+        for bad in [
+            PatchSessionRequest {
+                reasoning_effort: Some(Some("ludicrous".to_string())),
+                context_option_id: Some(Some("64k".to_string())),
+                ..Default::default()
+            },
+            PatchSessionRequest {
+                context_option_id: Some(Some("9m".to_string())),
+                ..Default::default()
+            },
+        ] {
+            assert!(matches!(
+                s.patch(&a.id, &bad),
+                Err(PatchError::InvalidModelSpec(_))
+            ));
+        }
+        assert_eq!(
+            s.get(&a.id).unwrap().context_option_id.as_deref(),
+            Some("1m"),
+            "拒绝的 PATCH 不得留下半改状态"
+        );
+
+        // 重启恢复:三档随 sessions.json 落盘。
+        let s2 = store(&dir);
+        let re = s2.get(&a.id).unwrap();
+        assert!(re.thinking_enabled);
+        assert_eq!(re.context_option_id.as_deref(), Some("1m"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn patch_workspace_id_three_states() {
+        let dir = temp_dir("ws3");
+        let s = store(&dir);
+        let a = s.create("x", "coding", None, true, None);
+        let p1 = s
+            .patch(
+                &a.id,
+                &PatchSessionRequest {
+                    workspace_id: Some(Some("ws_1".to_string())),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(p1.workspace_id.as_deref(), Some("ws_1"));
+        let p2 = s.patch(&a.id, &PatchSessionRequest::default()).unwrap();
+        assert_eq!(p2.workspace_id.as_deref(), Some("ws_1"));
+        let p3 = s
+            .patch(
+                &a.id,
+                &PatchSessionRequest {
+                    workspace_id: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(p3.workspace_id.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn folders_crud_and_cascade_clear() {
         let dir = temp_dir("folders");
         let s = store(&dir);
         let f = ChatFolderStore::load(dir.join("chat-folders.json"));
         // 空名 400 语义。
-        assert!(matches!(f.create("  "), Err(FolderError::InvalidName)));
-        let fld = f.create("工作").unwrap();
+        assert!(matches!(f.create("  ", None), Err(FolderError::InvalidName)));
+        let fld = f.create("工作", None).unwrap();
         assert!(fld.id.starts_with("fld_"));
         // 改名。
         let r = f.rename(&fld.id, "工作区").unwrap();
@@ -804,7 +1124,7 @@ mod tests {
         assert!(matches!(f.rename(&fld.id, ""), Err(FolderError::InvalidName)));
         assert!(matches!(f.rename("fld_none", "x"), Err(FolderError::NotFound)));
         // 会话挂 folder → 删文件夹级联清。
-        let a = s.create("挂接", "coding", None, true);
+        let a = s.create("挂接", "coding", None, true, None);
         s.patch(
             &a.id,
             &PatchSessionRequest {
@@ -822,6 +1142,24 @@ mod tests {
         // 重启恢复(文件夹已删、会话 folderId 已清)。
         let f2 = ChatFolderStore::load(dir.join("chat-folders.json"));
         assert!(f2.list().is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn studio_sessions_hidden_from_list_and_reusable() {
+        let dir = temp_dir("studio");
+        let s = store(&dir);
+        let mut a = s.create("chat", "coding", None, true, None);
+        a.purpose = "studio".into();
+        a.studio_node_id = Some("n1".into());
+        a.workspace_id = Some("ws_a".into());
+        s.save(&a);
+        let b = s.create("可见", "coding", None, true, None);
+        let list = s.list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, b.id);
+        assert_eq!(s.find_studio(Some("ws_a"), "n1").unwrap().id, a.id);
+        assert!(s.find_studio(Some("ws_b"), "n1").is_none());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

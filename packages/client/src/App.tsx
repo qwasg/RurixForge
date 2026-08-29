@@ -5,7 +5,7 @@ import { useOverlayStore } from './lib/overlayStore';
 import { useSessionStore } from './lib/sessionStore';
 import { useSettingsStore, type SettingsPage } from './lib/settingsStore';
 import { useThemeStore, type ThemeMode } from './lib/themeStore';
-import { useWorkbenchStore, type TabKind } from './lib/workbenchStore';
+import { useWorkbenchStore, type BuiltinTabKind } from './lib/workbenchStore';
 
 /**
  * F7 wave.3:App = 新壳(titlebar/三栏/statusbar + 浮层)。
@@ -21,7 +21,8 @@ export default function App() {
     const w = window as unknown as { __forgeShell?: Record<string, unknown> };
     w.__forgeShell = {
       openEditor: () => useWorkbenchStore.getState().openEditor(),
-      openTab: (k: TabKind) => useWorkbenchStore.getState().openTab(k),
+      openTab: (k: BuiltinTabKind) => useWorkbenchStore.getState().openTab(k),
+      openFile: (path: string) => useWorkbenchStore.getState().openFile(path),
       toggleBottom: () => useWorkbenchStore.getState().toggleBottom(),
       openSettings: (page?: SettingsPage) => {
         if (page) useSettingsStore.getState().setPage(page);

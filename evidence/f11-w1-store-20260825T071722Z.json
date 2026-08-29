@@ -1,0 +1,11 @@
+{
+    "at":  "2026-08-25T07:17:22Z",
+    "fail":  0,
+    "pass":  0,
+    "failed":  "3080 被占用(疑有运行中的 host),请先关闭再跑冒烟",
+    "wave":  "f11-w1-store",
+    "failures":  [
+
+                 ],
+    "gateGreen":  false
+}

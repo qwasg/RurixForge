@@ -4,3 +4,13 @@ importer: rx
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 迷宫规则单一事实源:7x7 网格 cell=col*10+row,导出 open_at_cell/not_door_cell/is_win_cell/door_open_angle/goal_spin_angle 五个 C ABI 函数,供节点图 call_function 调用
+  tags:
+  - 脚本
+  - 迷宫
+  - 规则
+  - rx
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

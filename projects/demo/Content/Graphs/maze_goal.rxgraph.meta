@@ -4,3 +4,13 @@ importer: rxgraph
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 迷宫终点图:玩家进触发区且 is_win_cell 为真时终点旋转上浮,给玩家加 winner 标签并记 maze win
+  tags:
+  - 节点图
+  - 迷宫
+  - 终点
+  - 胜利
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

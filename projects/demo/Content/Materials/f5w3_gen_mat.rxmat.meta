@@ -4,3 +4,12 @@ importer: material
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 生成流程产出材质(F5 wave.3):pbr-default、roughness 0.8,albedo 槽引用生成木纹贴图
+  tags:
+  - 材质
+  - 生成素材
+  - 木纹
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

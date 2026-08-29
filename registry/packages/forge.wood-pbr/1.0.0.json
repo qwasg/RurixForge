@@ -1,0 +1,54 @@
+{
+    "id":  "forge.wood-pbr",
+    "name":  "木质 PBR 贴图组",
+    "version":  "1.0.0",
+    "kind":  "asset-pack",
+    "description":  "一套木质 PBR 贴图(albedo / normal / roughness),可直接挂到材质三槽。",
+    "publisher":  {
+                      "id":  "rurixforge",
+                      "name":  "RurixForge 官方",
+                      "url":  "https://github.com/rurixforge"
+                  },
+    "tags":  [
+                 "贴图",
+                 "PBR",
+                 "木质"
+             ],
+    "license":  {
+                    "id":  "CC-BY-4.0",
+                    "url":  "https://creativecommons.org/licenses/by/4.0/"
+                },
+    "pricing":  {
+                    "amount":  0,
+                    "currency":  "CNY"
+                },
+    "engineVersion":  "\u003e=0.1.0",
+    "dependencies":  [
+
+                     ],
+    "files":  [
+                  {
+                      "path":  "pbr_wood_albedo.png",
+                      "sha256":  "bec836e6e2922168e268cbc2327677e26ddd0c5b3aaf114dfedd0db803012e5d",
+                      "size":  137442
+                  },
+                  {
+                      "path":  "pbr_wood_normal.png",
+                      "sha256":  "5d205d352b81c58fd93fd13823b8f0ba1b3428b6589d58589cbd2dbe4ab8b362",
+                      "size":  196947
+                  },
+                  {
+                      "path":  "pbr_wood_roughness.png",
+                      "sha256":  "479e1aefddb1ec62dcadf0d2a4a36b6f22f5e87648ec0069f350c01bc97211ec",
+                      "size":  153040
+                  }
+              ],
+    "preview":  {
+                    "thumbnail":  null,
+                    "screenshots":  [
+
+                                    ]
+                },
+    "createdAt":  "2026-08-25T07:12:52Z",
+    "updatedAt":  "2026-08-25T07:12:52Z"
+}

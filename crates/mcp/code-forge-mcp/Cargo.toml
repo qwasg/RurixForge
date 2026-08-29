@@ -9,3 +9,4 @@ serde.workspace = true
 serde_json.workspace = true
 # F4 wave.2:.rxgraph 校验器(graph_validate/graph_create 复用)。
 forge-logic = { path = "../../forge-logic" }
+forge-util = { path = "../../forge-util" }

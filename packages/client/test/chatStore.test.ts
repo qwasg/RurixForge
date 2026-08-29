@@ -143,6 +143,45 @@ describe('chatStore.applyEvent(全类型)', () => {
     expect(st.activeRunId).toBeNull();
   });
 
+  it('流式 delta + message 终稿;stream.reset 清半截字;args.delta 拼 args', () => {
+    const s = useChatStore.getState();
+    s.applyEvent(evt('agent.started', { runId: 'rs' }));
+    s.applyEvent(evt('agent.reasoning.delta', { runId: 'rs', delta: '想' }));
+    s.applyEvent(evt('agent.token.stream.delta', { runId: 'rs', delta: '你' }));
+    s.applyEvent(evt('agent.token.stream.delta', { runId: 'rs', delta: '好' }));
+    let m = useChatStore.getState().messages[0];
+    expect(m.blocks.find((b) => b.kind === 'reasoning')).toMatchObject({ kind: 'reasoning', text: '想' });
+    expect(m.blocks.find((b) => b.kind === 'text')).toMatchObject({ kind: 'text', text: '你好', final: false });
+    s.applyEvent(evt('agent.message', { runId: 'rs', text: '你好世界', provider: 'mock' }));
+    m = useChatStore.getState().messages[0];
+    expect(m.blocks.find((b) => b.kind === 'text')).toMatchObject({ kind: 'text', text: '你好世界', final: true });
+    s.applyEvent(evt('agent.started', { runId: 'rr' }));
+    s.applyEvent(evt('agent.token.stream.delta', { runId: 'rr', delta: '半' }));
+    s.applyEvent(evt('agent.stream.reset', { runId: 'rr' }));
+    const rr = useChatStore.getState().messages.find((x) => x.runId === 'rr');
+    expect(rr?.blocks.some((b) => b.kind === 'text' && b.kind === 'text' && !b.final && b.text === '半')).toBe(false);
+    s.applyEvent(evt('agent.tool.args.delta', { runId: 'rr', toolCallId: 'cΔ', name: 'read_file', delta: '{"p' }));
+    s.applyEvent(evt('agent.tool.args.delta', { runId: 'rr', toolCallId: 'cΔ', name: 'read_file', delta: 'ath"}' }));
+    const tool = useChatStore.getState().messages.find((x) => x.runId === 'rr')?.blocks.find((b) => b.kind === 'tool');
+    expect(tool).toMatchObject({ kind: 'tool', args: '{"path"}' });
+  });
+
+  it('completed 带 output → result;denied 标失败;permission.requested 不进气泡', () => {
+    const s = useChatStore.getState();
+    s.applyEvent(evt('agent.started', { runId: 'ro' }));
+    s.applyEvent(evt('agent.tool.invoked', { runId: 'ro', name: 'read_file', args: { path: 'a.txt' }, toolCallId: 'c1' }));
+    s.applyEvent(evt('agent.tool.completed', { runId: 'ro', toolCallId: 'c1', ok: true, output: 'hello\nworld', durationMs: 4 }));
+    s.applyEvent(evt('agent.tool.invoked', { runId: 'ro', name: 'write_file', args: { path: 'b.txt' }, toolCallId: 'c2' }));
+    s.applyEvent(evt('agent.tool.denied', { runId: 'ro', toolCallId: 'c2', error: 'TOOL_FORBIDDEN: write_file' }));
+    s.applyEvent(evt('permission.requested', { id: 'perm_1', tool: 'write_file', runId: 'ro' }));
+    const st = useChatStore.getState();
+    const tools = st.messages[0].blocks.filter((b) => b.kind === 'tool');
+    expect(tools[0]).toMatchObject({ result: 'hello\nworld', ok: true });
+    expect(tools[1]).toMatchObject({ ok: false, error: 'TOOL_FORBIDDEN: write_file' });
+    expect(st.pendingPermission).toEqual({ id: 'perm_1', tool: 'write_file' });
+    expect(useToastStore.getState().items.some((t) => t.title.includes('需要批准'))).toBe(true);
+  });
+
   it('name==="task" → subagent 块;completed 回填 subagent 状态', () => {
     const s = useChatStore.getState();
     s.applyEvent(evt('agent.started', { runId: 'r4' }));
@@ -150,6 +189,24 @@ describe('chatStore.applyEvent(全类型)', () => {
     s.applyEvent(evt('agent.tool.completed', { runId: 'r4', name: 'task', ok: true, toolCallId: 'c1' }));
     const m = useChatStore.getState().messages[0];
     expect(m.blocks[0]).toMatchObject({ kind: 'subagent', id: 'c1', label: '探索后端', status: 'done' });
+  });
+
+  it('子代理 work 嵌套 parentToolCallId + subagent.started', () => {
+    const s = useChatStore.getState();
+    s.applyEvent(evt('agent.started', { runId: 'rp' }));
+    s.applyEvent(evt('agent.tool.invoked', { runId: 'rp', name: 'task', args: { prompt: '查实体', description: '探索' }, toolCallId: 'sub1' }));
+    s.applyEvent(evt('subagent.started', { runId: 'rp', subRunId: 'sub1', parentToolCallId: 'sub1', description: '探索', prompt: '查实体' }));
+    s.applyEvent(evt('agent.tool.invoked', { runId: 'rp', parentToolCallId: 'sub1', name: 'read_file', args: { path: 'x' }, toolCallId: 'c2' }));
+    s.applyEvent(evt('agent.token.stream.delta', { runId: 'rp', parentToolCallId: 'sub1', delta: '子文' }));
+    s.applyEvent(evt('subagent.completed', { runId: 'rp', subRunId: 'sub1', summary: '查完了' }));
+    const sub = useChatStore.getState().messages[0].blocks[0];
+    expect(sub.kind).toBe('subagent');
+    if (sub.kind !== 'subagent') return;
+    expect(sub.prompt).toBe('查实体');
+    expect(sub.status).toBe('done');
+    expect(sub.summary).toBe('查完了');
+    expect(sub.work.some((b) => b.kind === 'tool' && b.name === 'read_file')).toBe(true);
+    expect(sub.work.some((b) => b.kind === 'text' && b.text === '子文')).toBe(true);
   });
 
   it('去重:同 id 二次到达不重复应用;空 id 走 fallback 签名', () => {
@@ -302,6 +359,7 @@ describe('chatStore 动作', () => {
       sessions: [
         {
           id: 'sess_1', title: 't', status: 'idle', agentKind: 'coding', selectedModelId: null,
+          thinkingEnabled: false, reasoningEffort: null, contextOptionId: null,
           webSearchEnabled: true, activeRunId: null, createdAt: '', updatedAt: '', pinned: false,
           titleManuallySet: false, folderId: null,
         },

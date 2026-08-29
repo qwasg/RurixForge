@@ -1,0 +1,13 @@
+[package]
+name = "context-mcp"
+description = "F10 语义索引/RAG 检索 MCP 服务器:stdio NDJSON JSON-RPC,内嵌 forge-index 库;六工具(context_index_build/context_search/context_get/context_index_status/asset_describe_batch/asset_set_description);embedding 经 gend::embed(未配置显式词法档,I-5)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+assetd = { path = "../../assetd" }
+forge-index = { path = "../../forge-index" }
+# embedding 渠道(resolve_embedder;R-5 key 不出)+ workspace_root(md 文档腿)。
+gend = { path = "../../gend" }
+serde.workspace = true
+serde_json.workspace = true

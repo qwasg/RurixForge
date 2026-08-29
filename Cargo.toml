@@ -2,15 +2,20 @@
 members = [
   "crates/forge-scene",
   "crates/forge-logic",
+  "crates/forge-util",
+  "crates/forge-index",
+  "crates/forge-store",
   "crates/engine-host",
   "crates/forge-agentd",
   "crates/assetd",
   "crates/gend",
   "crates/mcp/engine-scene-mcp",
   "crates/mcp/asset-pipeline-mcp",
+  "crates/mcp/context-mcp",
   "crates/mcp/code-forge-mcp",
   "crates/mcp/gen-image-mcp",
   "crates/mcp/gen-model-mcp",
+  "crates/mcp/store-mcp",
   "crates/viewport-presenter",
 ]
 resolver = "2"

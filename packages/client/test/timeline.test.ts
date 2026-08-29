@@ -210,7 +210,7 @@ describe('行级摘要', () => {
     expect(argSummary(JSON.stringify({ other: 1 }))).toBeNull();
   });
 
-  it('toolSummary:arg + 运行中/失败后缀;done 无结果摘要(本仓差异留痕)', () => {
+  it('toolSummary:arg + 运行中/失败后缀;done 带结果首行', () => {
     const running = tool('t1', 'mcp__engine-scene__entity_create', { name: 'a' });
     expect(toolSummary(running)).toBe('a · 运行中…');
     const failed = tool('t2', 'mcp__engine-scene__entity_create', { name: 'a' }, false, '首行错\n次行');
@@ -219,6 +219,8 @@ describe('行级摘要', () => {
     expect(toolSummary(failedNoMsg)).toBe('失败');
     const done = tool('t4', 'mcp__engine-scene__entity_create', { name: 'a' }, true);
     expect(toolSummary(done)).toBe('a');
+    const withResult = { ...done, result: 'created #12\nmore' };
+    expect(toolSummary(withResult)).toBe('a · created #12');
   });
 
   it('reasoningSummary/ellipsize/todoMilestoneLabel/subagent 摘要', () => {
@@ -236,7 +238,15 @@ describe('行级摘要', () => {
     expect(subagentDispatchSummary('', '')).toBe('子 Agent 任务');
     expect(subagentLiveSummary('最终摘要', [], 'done')).toBe('最终摘要');
     expect(subagentLiveSummary('a\nb', [], 'done')).toBe('已完成（a b）');
-    expect(subagentLiveSummary('', ['working…'], 'running')).toBe('working…');
+    expect(subagentLiveSummary('', [{ kind: 'text', text: 'working…', final: false }], 'running')).toBe('working…');
     expect(subagentLiveSummary('', [], 'running')).toBe('Planning next moves');
+    expect(todoMilestoneLabel(JSON.stringify({ todos: [{ title: '写材质' }] }))).toBe('写材质');
+    expect(isMilestoneBlock(tool('t9', 'todo_write', { todos: [] }, true))).toBe(true);
+    expect(toolVisual('read_file')).toBe('读取');
+    expect(toolVisual('apply_patch')).toBe('补丁');
+    expect(toolCategory('grep')).toBe('search');
+    expect(toolDiffStats(JSON.stringify({
+      patch: '*** Begin Patch\n*** Add File: a.txt\n+one\n+two\n*** End Patch',
+    }))).toEqual({ added: 2, removed: 0 });
   });
 });

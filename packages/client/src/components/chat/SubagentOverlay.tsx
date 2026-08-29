@@ -1,25 +1,26 @@
 import { GitFork, X } from 'lucide-react';
+import { cn } from '@/lib/cn';
 import { useChatStore } from '@/lib/chatStore';
+import { HOME_COL_MAX, type ChatVariant } from '@/lib/chatVariant';
+import { buildTimeline, type ChatBlock } from '@/lib/timeline';
+import ActivitySegment, { ToolLine } from './ActivitySegment';
 import MarkdownFlat from './MarkdownFlat';
 
 /**
- * F7 wave.4 子代理浮层(参考 render_subagent_overlay):浮于 composer 上方
- * (bottom 118 / left 14 / right 14,max-h 360,rounded 10 + 上飘阴影);
- * 头 = accent_bg 图标 + label + 状态徽(运行中 accent/已完成 sage/失败 danger)+ x;
- * 体 = PROMPT / SUMMARY 两节(摘要走 MarkdownFlat;运行中空摘要给占位文案)。
- * 本仓事件面不产生 subagent 块,组件就绪单测覆盖。
+ * 子代理浮层:PROMPT / SUMMARY / WORK(嵌套时间线)。
+ * home 变体跟着全屏主页走:收进居中列宽,并抬高到大输入盒之上。
  */
-export default function SubagentOverlay() {
+export default function SubagentOverlay({ variant = 'column' }: { variant?: ChatVariant }) {
   const overlayId = useChatStore((st) => st.subagentOverlayId);
   const messages = useChatStore((st) => st.messages);
   const openSubagent = useChatStore((st) => st.openSubagent);
 
   if (!overlayId) return null;
-  let found: { label: string; status: 'running' | 'done' | 'error'; summary?: string } | null = null;
+  let found: Extract<ChatBlock, { kind: 'subagent' }> | null = null;
   for (let i = messages.length - 1; i >= 0 && !found; i -= 1) {
     for (const b of messages[i].blocks) {
       if (b.kind === 'subagent' && b.id === overlayId) {
-        found = { label: b.label, status: b.status, summary: b.summary };
+        found = b;
         break;
       }
     }
@@ -31,11 +32,20 @@ export default function SubagentOverlay() {
       : found.status === 'done'
         ? { text: '已完成', cls: 'bg-shell-sunk text-sage' }
         : { text: '失败', cls: 'bg-shell-sunk text-danger' };
+  const work = found.work;
+  const timeline = buildTimeline(work);
+  const home = variant === 'home';
 
   return (
     <div
       data-testid="subagent-overlay"
-      className="absolute inset-x-[14px] bottom-[118px] z-30 flex max-h-[360px] flex-col overflow-hidden rounded-[10px] border border-edge bg-shell-float shadow-float"
+      style={home ? { maxWidth: HOME_COL_MAX - 28 } : undefined}
+      className={cn(
+        'absolute z-30 flex max-h-[360px] flex-col overflow-hidden rounded-[10px] border border-edge bg-shell-float shadow-float',
+        home
+          ? 'bottom-[184px] left-1/2 w-[calc(100%-56px)] -translate-x-1/2'
+          : 'inset-x-[14px] bottom-[118px]',
+      )}
     >
       <div className="flex items-center gap-2 border-b border-edge px-2.5 py-2">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-acc-bg text-acc">
@@ -56,6 +66,12 @@ export default function SubagentOverlay() {
         </button>
       </div>
       <div className="flex max-h-[316px] flex-col gap-2.5 overflow-y-auto p-3">
+        {found.prompt && found.prompt.trim() !== '' && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold text-fg-4">PROMPT</span>
+            <span className="whitespace-pre-wrap text-[12px] text-fg-2">{found.prompt}</span>
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold text-fg-4">SUMMARY</span>
           {found.summary && found.summary.trim() !== '' ? (
@@ -66,6 +82,27 @@ export default function SubagentOverlay() {
             </span>
           )}
         </div>
+        {work.length > 0 && (
+          <div className="flex flex-col gap-1" data-testid="subagent-work">
+            <span className="text-[10px] font-semibold text-fg-4">WORK</span>
+            {timeline.map((item, i) => {
+              if (item.type === 'activity') {
+                return <ActivitySegment key={i} blocks={work} indices={item.indices} />;
+              }
+              const block = work[item.index];
+              if (block.kind === 'tool') return <ToolLine key={i} block={block} />;
+              if (block.kind === 'text') return <MarkdownFlat key={i} text={block.text} />;
+              if (block.kind === 'reasoning') {
+                return (
+                  <div key={i} className="whitespace-pre-wrap text-[12px] text-fg-4">
+                    {block.text}
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

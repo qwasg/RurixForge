@@ -1,13 +1,18 @@
 import { create } from 'zustand';
 import { apiPost, callTool } from './forgeApi';
-import { ringPush } from './consoleUtils';
+import { useToastStore } from './toastStore';
+import { useWorkbenchStore } from './workbenchStore';
+import type { EntityCategory } from './entityCategory';
 
 /**
- * 编辑器状态:实体 / 选中 / PIE / 事件流 / 帧统计,action 全部真实打后端。
+ * 编辑器状态:实体 / 选中 / PIE / 帧统计,action 全部真实打后端。
  * F7 wave.3(D-F7-B):chat 子集(chatOpen/chatMessages/sendChat/toggleChat/
  * COMPOSER_MODES/ComposerMode/SwarmReport/LlmChatResponse/executeMultitask)退役——
  * agent 对话统一由壳内对话列承接(wave.4 chatStore);chatPrefill 三件套保留
  * (AssetsPanel「生成」预填 seam,wave.4 composer 消费)。
+ * 底栏波(2026-08-24 用户拍板):Workbench 面板整块退役,随之退役 host 事件流
+ * (events/loadEvents/HostEvent)、Metrics 采样环(metricsHistory)与 workbenchTab;
+ * playtest 报告改走 toast 汇总(唯一展示位)。
  */
 
 export interface TransformData {
@@ -27,6 +32,8 @@ export interface EntityData {
   name: string;
   transform: TransformData;
   components: ComponentData[];
+  /** 计算字段:role/map/interaction(由 entity_list 附加) */
+  category?: EntityCategory;
 }
 
 export type PlayState = 'edit' | 'play_running' | 'play_paused';
@@ -42,17 +49,7 @@ export interface ComponentTypeInfo {
   fields: Array<{ name: string; type: string }>;
 }
 
-/** host_events 返回的 jsonl 行(字段随事件类型变化;role=playtest 为本地报告注入行) */
-export type HostEvent = Record<string, unknown> & { role?: string };
-
-/** Metrics 采样环(F6 wave.3;三序列定长 60,refreshSummary 轮询追加) */
-export interface MetricsHistory {
-  frames: number[];
-  tris: number[];
-  nonZero: number[];
-}
-
-/** playtest 矩阵报告(/api/forge/playtest/run 响应面;Console 注入用) */
+/** playtest 矩阵报告(/api/forge/playtest/run 响应面;toast 汇总用) */
 export interface PlaytestReport {
   scene: string;
   ok: boolean;
@@ -62,9 +59,39 @@ export interface PlaytestReport {
   cases: Array<{ name: string; kind: string; pass: boolean; actual: unknown; expected: unknown; detail: string }>;
 }
 
-export type CenterTab = 'viewport' | 'nodegraph';
-export type WorkbenchTab = 'console' | 'problems' | 'output' | 'terminal' | 'logs' | 'metrics';
+/** 中央区同位页签(画板波 2026-08-24:+design 画板设计;素材创作波:+studio 素材创作) */
+export type CenterTab = 'viewport' | 'nodegraph' | 'design' | 'studio';
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
+
+/**
+ * 编辑器面板显隐(2026-08-24 底栏波):
+ * Inspector / Hierarchy 已迁壳右栏;Assets 迁底栏后横向铺满、不再与视口争宽度,
+ * 故响应式波的宽度分档收放退役,只留工具条手动开合 + 持久化。
+ */
+export interface EditorPanes {
+  assets: boolean;
+}
+
+const EDITOR_PANES_KEY = 'forge:editorPanes';
+
+function loadPanePref(): EditorPanes {
+  try {
+    const raw = globalThis.localStorage?.getItem(EDITOR_PANES_KEY);
+    if (!raw) return { assets: true };
+    const p = JSON.parse(raw) as Partial<EditorPanes>;
+    return { assets: p.assets !== false };
+  } catch {
+    return { assets: true };
+  }
+}
+
+function persistPanePref(p: EditorPanes): void {
+  try {
+    globalThis.localStorage?.setItem(EDITOR_PANES_KEY, JSON.stringify(p));
+  } catch {
+    // 写不进静默
+  }
+}
 
 /** 编辑器相机(与服务端 EditorCamera 字段一一对应) */
 export interface CameraData {
@@ -133,21 +160,20 @@ interface EditorState {
   entities: EntityData[];
   selectedId: number | null;
   playState: PlayState;
-  events: HostEvent[];
   stats: RenderStats | null;
   sceneName: string;
   /** 最近一次 scene_save 落盘路径,供 scene_load 复用 */
   scenePath: string | null;
   componentTypes: ComponentTypeInfo[];
   lastError: string | null;
-  /** Metrics 采样环(refreshSummary 每次成功追加,cap 60) */
-  metricsHistory: MetricsHistory;
 
   gizmo: GizmoMode;
   centerTab: CenterTab;
-  workbenchTab: WorkbenchTab;
   /** F2 wave.3:Assets 右键「生成」预填 seam(F7 wave.3 保留;wave.4 composer 消费) */
   chatPrefill: string | null;
+
+  /** 编辑器面板显隐(持久化的手动开合结果) */
+  editorPanes: EditorPanes;
 
   /** 编辑器相机(null = 未拉取) */
   camera: CameraData | null;
@@ -160,8 +186,7 @@ interface EditorState {
   refreshSummary: () => Promise<void>;
   refreshPlayState: () => Promise<void>;
   loadComponentTypes: () => Promise<void>;
-  loadEvents: () => Promise<void>;
-  /** F6 wave.3:跑 playtest 矩阵并把报告行注入 Console(role=playtest;红绿如实) */
+  /** 跑 playtest 矩阵,汇总行 + 失败用例走 toast(红绿如实) */
   runPlaytest: (matrixRef: string) => Promise<void>;
 
   selectEntity: (id: number | null) => void;
@@ -172,6 +197,8 @@ interface EditorState {
   addComponent: (id: number, type: string) => Promise<void>;
   removeComponent: (id: number, type: string) => Promise<void>;
   setComponentEnabled: (id: number, type: string, enabled: boolean) => Promise<void>;
+  /** 设置实体分类(写 Category 组件;可 undo) */
+  setCategory: (id: number, category: EntityCategory) => Promise<void>;
 
   playEnter: () => Promise<void>;
   playPause: () => Promise<void>;
@@ -188,7 +215,8 @@ interface EditorState {
 
   setGizmo: (g: GizmoMode) => void;
   setCenterTab: (t: CenterTab) => void;
-  setWorkbenchTab: (t: WorkbenchTab) => void;
+  /** 手动显隐某面板(持久化) */
+  toggleEditorPane: (which: keyof EditorPanes) => void;
   /** 预填 chat 输入框(F7 wave.3:仅写 chatPrefill;wave.4 composer 消费) */
   prefillChat: (text: string) => void;
   /** 消费预填后清除 */
@@ -226,18 +254,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
     entities: [],
     selectedId: null,
     playState: 'edit',
-    events: [],
     stats: null,
     sceneName: '',
     scenePath: null,
     componentTypes: [],
     lastError: null,
-    metricsHistory: { frames: [], tris: [], nonZero: [] },
 
     gizmo: 'translate',
     centerTab: 'viewport',
-    workbenchTab: 'console',
     chatPrefill: null,
+
+    editorPanes: loadPanePref(),
 
     camera: null,
     viewportDegraded: null,
@@ -248,16 +275,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
     refreshSummary: () =>
       run(async () => {
         const s = await callTool<SceneSummary>('scene_summary');
-        set((st) => ({
-          stats: s.render,
-          sceneName: s.name,
-          playState: s.playState,
-          metricsHistory: {
-            frames: ringPush(st.metricsHistory.frames, s.render.frames),
-            tris: ringPush(st.metricsHistory.tris, s.render.lastTris),
-            nonZero: ringPush(st.metricsHistory.nonZero, s.render.lastNonZeroPixels),
-          },
-        }));
+        set({ stats: s.render, sceneName: s.name, playState: s.playState });
+        // F9(D1):entityCount 与本地清单漂移 = 外部(MCP/agent)实体变更 → 真实 entity_list 重拉。
+        // 不伪造同步:漂移只作触发信号,面板数据始终来自后端 entity_list 实返。
+        if (s.entityCount !== get().entities.length) await reload();
       }),
 
     refreshPlayState: () =>
@@ -272,33 +293,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
         set({ componentTypes: list });
       }),
 
-    loadEvents: () =>
-      run(async () => {
-        const list = await callTool<HostEvent[]>('host_events');
-        set({ events: list });
-      }),
-
     runPlaytest: (matrixRef) =>
       run(async () => {
         const r = await apiPost<PlaytestReport>('/api/forge/playtest/run', { matrixRef });
-        const ts = new Date().toISOString();
-        const rows: HostEvent[] = [
-          {
-            ts,
-            role: 'playtest',
-            event: 'playtest.report',
-            ok: r.ok,
-            summary: `${matrixRef} — ${r.ok ? 'PASS' : 'FAIL'} ${r.passed}/${r.passed + r.failed} (${r.durationMs}ms)`,
-          },
-          ...r.cases.map((c) => ({
-            ts,
-            role: 'playtest',
-            event: 'playtest.case',
-            ok: c.pass,
-            summary: `${c.pass ? '✓' : '✗'} ${c.name} [${c.kind}] ${c.detail}`,
-          })),
-        ];
-        set((st) => ({ events: [...st.events, ...rows] }));
+        const push = useToastStore.getState().push;
+        push(
+          r.ok ? 'success' : 'error',
+          `${matrixRef} — ${r.ok ? 'PASS' : 'FAIL'} ${r.passed}/${r.passed + r.failed} (${r.durationMs}ms)`,
+        );
+        // 失败用例逐条如实抛出(名称 + kind + detail),不折叠成一句「若干失败」
+        for (const c of r.cases) {
+          if (!c.pass) push('error', `✗ ${c.name} [${c.kind}] ${c.detail}`);
+        }
       }),
 
     selectEntity: (id) => set({ selectedId: id }),
@@ -368,6 +374,23 @@ export const useEditorStore = create<EditorState>((set, get) => {
               : e,
           ),
         }));
+      }),
+
+    setCategory: (id, category) =>
+      run(async () => {
+        const entity = get().entities.find((e) => e.id === id);
+        if (!entity) return;
+        const has = entity.components.some((c) => c.type === 'Category');
+        if (has) {
+          await callTool('component_set', { id, type: 'Category', props: { category } });
+        } else {
+          await callTool('component_add', {
+            id,
+            type: 'Category',
+            props: { category },
+          });
+        }
+        await reload();
       }),
 
     playEnter: () =>
@@ -444,7 +467,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     setGizmo: (g) => set({ gizmo: g }),
     setCenterTab: (t) => set({ centerTab: t }),
-    setWorkbenchTab: (t) => set({ workbenchTab: t }),
+
+    toggleEditorPane: (which) =>
+      set((s) => {
+        const next = { ...s.editorPanes, [which]: !s.editorPanes[which] };
+        persistPanePref(next);
+        return { editorPanes: next };
+      }),
+
     prefillChat: (text) => set({ chatPrefill: text }),
     clearChatPrefill: () => set({ chatPrefill: null }),
 
@@ -484,6 +514,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       run(async () => {
         const r = await callTool<PickResult>('viewport_pick', { x, y, width: w, height: h });
         set({ selectedId: r.hit ? (r.entityId ?? null) : null });
+        if (r.hit) useWorkbenchStore.getState().setRightTab('properties');
       }),
 
     gizmoDragSelected: (dxPx, dyPx, viewH) =>

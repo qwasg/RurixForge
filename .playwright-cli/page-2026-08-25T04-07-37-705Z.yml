@@ -1,0 +1,71 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic "RurixForge" [ref=e6]: 铸
+      - navigation [ref=e7]:
+        - button "File" [ref=e9] [cursor=pointer]
+        - button "Edit" [ref=e11] [cursor=pointer]
+        - button "View" [ref=e13] [cursor=pointer]
+        - button "Help" [ref=e15] [cursor=pointer]
+      - generic [ref=e17]:
+        - button "切换底部面板" [ref=e18] [cursor=pointer]
+        - button "切换会话栏" [ref=e21] [cursor=pointer]
+        - button "切换对话栏" [ref=e24] [cursor=pointer]
+        - button "切换 Inspector" [ref=e27] [cursor=pointer]
+    - button "搜索会话、文件、命令… Ctrl K" [ref=e31] [cursor=pointer]:
+      - generic [ref=e35]: 搜索会话、文件、命令…
+      - generic [ref=e36]: Ctrl K
+  - generic [ref=e37]:
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - textbox "搜索会话…" [ref=e45]
+            - generic [ref=e46]: /
+          - button "折叠 sessions" [ref=e47] [cursor=pointer]
+          - button "New Agent Ctrl+Shift+N" [ref=e50] [cursor=pointer]:
+            - generic [ref=e53]: New Agent
+            - generic [ref=e54]: Ctrl+Shift+N
+        - generic [ref=e55]:
+          - generic [ref=e56]:
+            - generic [ref=e67]: WORKSPACES
+            - button "新建工作区" [ref=e69] [cursor=pointer]
+          - button "全部" [ref=e71] [cursor=pointer]
+          - paragraph [ref=e83]: 暂无会话，可点击「New Agent」创建。
+          - generic [ref=e84]:
+            - generic [ref=e87]: CHAT FOLDERS
+            - button "新建文件夹" [ref=e89] [cursor=pointer]
+          - button "会话" [ref=e93] [cursor=pointer]
+        - generic [ref=e99]:
+          - generic [ref=e100]: 本
+          - generic [ref=e101]:
+            - generic [ref=e102]: 我的空间
+            - generic [ref=e103]: 本地用户
+          - button "设置" [ref=e104] [cursor=pointer]
+      - separator "拖动改栏宽 sessions" [ref=e108]
+    - generic [ref=e111]:
+      - button "工作台" [ref=e113] [cursor=pointer]
+      - generic [ref=e117]:
+        - paragraph [ref=e118]: 今天想搭点什么？
+        - paragraph [ref=e119]: 直接描述目标，Agent 会拆成计划再动手；需要看场景时随时打开编辑器。
+      - generic [ref=e121]:
+        - generic [ref=e123]:
+          - generic [ref=e124]:
+            - button "模式菜单" [ref=e125] [cursor=pointer]
+            - textbox "描述你要做的事，Enter 发送…" [ref=e128]
+            - button "发送" [disabled] [ref=e129]
+          - generic [ref=e132]:
+            - button "选择技能" [ref=e133] [cursor=pointer]
+            - button "选择模型" [ref=e137] [cursor=pointer]:
+              - generic [ref=e140]: default
+            - button "上下文窗口占用" [ref=e143] [cursor=pointer]:
+              - generic [ref=e147]: 12%
+            - button "语音输入" [ref=e148] [cursor=pointer]
+        - generic [ref=e152]:
+          - button "搭一个灰盒关卡" [ref=e153] [cursor=pointer]
+          - button "先出一份计划" [ref=e156] [cursor=pointer]
+          - button "排查视口没画面" [ref=e159] [cursor=pointer]
+          - button "打开编辑器" [ref=e162] [cursor=pointer]
+  - contentinfo [ref=e169]:
+    - generic [ref=e170]: host 离线
+    - generic [ref=e172]: Mock provider

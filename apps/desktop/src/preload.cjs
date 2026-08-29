@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('forgeAPI', {
     pickImport: () => ipcRenderer.invoke('assets:pick-import'),
     showInFolder: (rel) => ipcRenderer.send('assets:show-in-folder', rel),
   },
+  // 工作区选择器:系统目录对话框选根目录(web 端无此面,入口如实禁用)。
+  workspace: {
+    pickFolder: () => ipcRenderer.invoke('workspace:pick-folder'),
+  },
   platform: process.platform,
   versions: {
     electron: process.versions.electron,

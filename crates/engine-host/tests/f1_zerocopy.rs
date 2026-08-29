@@ -261,27 +261,6 @@ fn f1_w3_zero_copy_editor_size_leg() {
     eprintln!("[f1_zerocopy] 960x540 实尺零拷贝 PASS");
 }
 
-/// RD-F1-003 对账探针:多尺寸 × external 开关的 vk 图像内存需求(size, alignment)。
-/// 信息性测试(数字进 evidence,不做断言;无 vulkan 设备如实 SKIP)。
-#[test]
-fn f1_w3_probe_image_req() {
-    use rurix_rt::render_exec as rex;
-    if !rurix_rt::vk::vulkan_available() {
-        eprintln!("[probe] SKIP vulkan 不可用");
-        return;
-    }
-    let usage = rex::TextureUsage {
-        color: true,
-        ..Default::default()
-    };
-    for (w, h) in [(128u32, 96u32), (64, 64), (512, 288), (960, 540), (1024, 540), (1920, 1080)] {
-        let plain = rex::probe_image_mem_req(w, h, rex::TexFormat::Rgba8Unorm, usage, false);
-        let ext = rex::probe_image_mem_req(w, h, rex::TexFormat::Rgba8Unorm, usage, true);
-        match (plain, ext) {
-            (Ok((ps, pa)), Ok((es, ea))) => eprintln!(
-                "[probe] {w}x{h}: plain size={ps} align={pa} | external size={es} align={ea}"
-            ),
-            (pe, ee) => eprintln!("[probe] {w}x{h}: plain={pe:?} external={ee:?}"),
-        }
-    }
-}
+// RD-F1-003 的 `probe_image_mem_req` 探针随共享体由纹理改为 buffer 一并退役:
+// 线性 buffer 两侧字节数逐字一致,不再需要「VK 图像需求 vs D3D12 分配」对账。
+// 共享体的行距/尺寸契约改由 share.rs 内联单测 shared_layout_contract 看守。

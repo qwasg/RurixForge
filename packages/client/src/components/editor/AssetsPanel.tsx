@@ -1,15 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Box,
-  FileAudio,
-  FileCode,
-  FileImage,
   Folder,
   FolderOpen,
   Grid3X3,
-  LayoutGrid,
   List,
-  Package,
   RefreshCw,
   Search,
   X,
@@ -17,9 +11,11 @@ import {
 import { cn } from '@/lib/cn';
 import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { useAssetStore, type AssetItem, type AssetMenuAction, type AssetTypeFilter } from '@/lib/assetStore';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { useGenStore } from '@/lib/genStore';
 import GenerateDialog from './GenerateDialog';
 import CandidatesModal from './CandidatesModal';
+import Thumb from './assetThumb';
 
 const TYPE_FILTERS: Array<{ key: AssetTypeFilter; label: string }> = [
   { key: 'all', label: 'All' },
@@ -35,27 +31,6 @@ const TYPE_FILTERS: Array<{ key: AssetTypeFilter; label: string }> = [
 /** 标准目录排序(08 §2 项目布局),其余字母序兜底。 */
 const FOLDER_ORDER = ['Meshes', 'Textures', 'Materials', 'Prefabs', 'Scenes', 'Scripts', 'Audio'];
 
-function typeIcon(type: string, size: number) {
-  switch (type) {
-    case 'mesh':
-      return <Box size={size} strokeWidth={1.5} />;
-    case 'texture':
-      return <FileImage size={size} strokeWidth={1.5} />;
-    case 'material':
-      return <Package size={size} strokeWidth={1.5} />;
-    case 'prefab':
-      return <LayoutGrid size={size} strokeWidth={1.5} />;
-    case 'scene':
-      return <FolderOpen size={size} strokeWidth={1.5} />;
-    case 'script':
-      return <FileCode size={size} strokeWidth={1.5} />;
-    case 'audio':
-      return <FileAudio size={size} strokeWidth={1.5} />;
-    default:
-      return <Package size={size} strokeWidth={1.5} />;
-  }
-}
-
 /** 从资产路径推导一级文件夹(仅含真实有资产的目录,不虚构空目录)。 */
 function deriveFolders(items: AssetItem[]): string[] {
   const set = new Set<string>();
@@ -70,12 +45,12 @@ function deriveFolders(items: AssetItem[]): string[] {
 function BuildBadge({ state }: { state?: string }) {
   const color =
     state === 'failed'
-      ? 'bg-accent-blue'
+      ? 'bg-info'
       : state === 'stale'
-        ? 'bg-accent-yellow'
+        ? 'bg-warn'
         : state === 'building'
-          ? 'bg-accent-blue'
-          : 'bg-accent-green';
+          ? 'bg-info'
+          : 'bg-sage';
   return (
     <span
       className={cn('absolute right-1 top-1 h-2 w-2 rounded-full', color)}
@@ -84,43 +59,31 @@ function BuildBadge({ state }: { state?: string }) {
   );
 }
 
-/** 缩略图:贴图原图直出;其他类型图标占位 + tooltip 如实标注(RD-F2-002)。 */
-function Thumb({ item, size }: { item: AssetItem; size: number }) {
-  const thumb = useAssetStore((s) => s.thumbs[item.guid]);
-  const loadThumb = useAssetStore((s) => s.loadThumb);
-  useEffect(() => {
-    if (item.type === 'texture' && thumb === undefined) void loadThumb(item);
-  }, [item, thumb, loadThumb]);
-
-  if (item.type === 'texture' && thumb && thumb !== 'none') {
-    return (
-      <img
-        src={thumb}
-        alt={item.path}
-        className="h-full w-full rounded-md object-cover"
-        draggable={false}
-      />
-    );
-  }
-  const hint =
-    item.type === 'texture'
-      ? '缩略图不可用(源缺失或超 8MiB 上限)'
-      : '缩略图未实现:网格三视角离屏渲染 = RD-F2-002';
-  return (
-    <div
-      className="flex h-full w-full items-center justify-center rounded-md bg-panel text-muted"
-      title={hint}
-    >
-      {typeIcon(item.type, size)}
-    </div>
+/** F10:点击选中 → selectedGuid(上下文 chip / 资产检视器同源)+ 右栏切「资产」页。 */
+function useSelectAsset() {
+  const setSelectedGuid = useAssetStore((s) => s.setSelectedGuid);
+  const setRightTab = useWorkbenchStore((s) => s.setRightTab);
+  return useCallback(
+    (guid: string) => {
+      setSelectedGuid(guid);
+      setRightTab('asset');
+    },
+    [setSelectedGuid, setRightTab],
   );
 }
 
 function AssetGridItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.MouseEvent, item: AssetItem) => void }) {
   const status = useAssetStore((s) => s.status[item.path]);
+  const selected = useAssetStore((s) => s.selectedGuid === item.guid);
+  const select = useSelectAsset();
+  const tip = item.description ? `${item.path}\n${item.description}` : item.path;
   return (
     <div
-      className="group relative flex flex-col items-center rounded-md border border-line bg-white p-2 hover:bg-panel-hover"
+      className={cn(
+        'group relative flex flex-col items-center rounded-md border bg-shell-panel p-2 hover:bg-shell-hover',
+        selected ? 'border-acc' : 'border-edge-strong',
+      )}
+      onClick={() => select(item.guid)}
       onContextMenu={(e) => onMenu(e, item)}
       draggable
       onDragStart={(e) => {
@@ -130,24 +93,31 @@ function AssetGridItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.Mo
       }}
       data-asset-guid={item.guid}
       data-asset-path={item.path}
+      data-selected={selected || undefined}
     >
       <BuildBadge state={status} />
       <div className="h-10 w-10">
         <Thumb item={item} size={20} />
       </div>
-      <span className="mt-1 max-w-full truncate text-2xs text-ink-soft" title={item.path}>
+      <span className="mt-1 max-w-full truncate text-2xs text-fg-2" title={tip}>
         {item.path.split('/').pop()}
       </span>
-      <span className="text-2xs text-muted-faint">{item.type}</span>
+      <span className="text-2xs text-fg-4">{item.type}</span>
     </div>
   );
 }
 
 function AssetListItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.MouseEvent, item: AssetItem) => void }) {
   const status = useAssetStore((s) => s.status[item.path]);
+  const selected = useAssetStore((s) => s.selectedGuid === item.guid);
+  const select = useSelectAsset();
   return (
     <div
-      className="group relative flex items-center gap-2 rounded-md px-2 py-1 hover:bg-panel-hover"
+      className={cn(
+        'group relative flex items-center gap-2 rounded-md px-2 py-1 hover:bg-shell-hover',
+        selected && 'bg-shell-active',
+      )}
+      onClick={() => select(item.guid)}
       onContextMenu={(e) => onMenu(e, item)}
       draggable
       onDragStart={(e) => {
@@ -157,13 +127,19 @@ function AssetListItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.Mo
       }}
       data-asset-guid={item.guid}
       data-asset-path={item.path}
+      data-selected={selected || undefined}
     >
       <BuildBadge state={status} />
       <div className="h-6 w-6">
         <Thumb item={item} size={14} />
       </div>
-      <span className="min-w-0 flex-1 truncate text-xs text-ink-soft">{item.path}</span>
-      <span className="text-2xs text-muted-faint">{item.type}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-fg-2">{item.path}</span>
+      {item.description && (
+        <span className="max-w-[260px] truncate text-2xs text-fg-4" title={item.description}>
+          {item.description}
+        </span>
+      )}
+      <span className="text-2xs text-fg-4">{item.type}</span>
     </div>
   );
 }
@@ -203,7 +179,12 @@ export default function AssetsPanel() {
     if (typeFilter !== 'all' && i.type !== typeFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
-      return i.path.toLowerCase().includes(q) || i.guid.toLowerCase().includes(q);
+      return (
+        i.path.toLowerCase().includes(q) ||
+        i.guid.toLowerCase().includes(q) ||
+        (i.description ?? '').toLowerCase().includes(q) ||
+        (i.tags ?? []).some((t) => t.toLowerCase().includes(q))
+      );
     }
     return true;
   });
@@ -276,79 +257,77 @@ export default function AssetsPanel() {
   const pendingDelete = store.pendingDelete;
 
   return (
-    <section className="flex h-[208px] shrink-0 flex-col border-t border-line-soft" aria-label="Assets">
-      {/* 工具条 */}
-      <div className="flex shrink-0 items-center justify-between px-2 pb-1 pt-2">
-        <span className="text-2xs text-muted-faint">Assets</span>
-        <span className="flex items-center gap-0.5">
-          <button type="button" title="Grid" className={cn(iconBtn, viewMode === 'grid' && 'bg-panel-active text-ink')} onClick={() => store.setViewMode('grid')}>
+    <section className="flex min-h-0 flex-1 flex-col" aria-label="Assets">
+      {/* 工具条(底栏波:标题/类型过滤/搜索/视图切换并作一行,190px 矮底栏省纵向空间;
+          窄宽下搜索框整体换行,不把类型 chips 挤成 0 宽) */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-edge px-2 py-1">
+        <span className="shrink-0 text-2xs text-fg-4">Assets</span>
+
+        <span className="flex min-w-[120px] flex-1 gap-1 overflow-x-auto">
+          {TYPE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => store.setTypeFilter(f.key)}
+              className={cn(
+                'shrink-0 rounded-full px-2 py-px text-2xs transition-colors',
+                typeFilter === f.key ? 'bg-fg text-fg-inv' : 'bg-shell-panel text-fg-3 hover:text-fg-2',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </span>
+
+        <div className="flex w-[180px] min-w-[140px] items-center gap-1.5 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5">
+          <Search size={12} className="shrink-0 text-fg-4" />
+          <input
+            value={search}
+            onChange={(e) => store.setSearch(e.target.value)}
+            placeholder="Search assets..."
+            className="min-w-0 flex-1 bg-transparent text-xs text-fg outline-none placeholder:text-fg-4"
+          />
+        </div>
+
+        <span className="flex shrink-0 items-center gap-0.5">
+          <button type="button" title="Grid" className={cn(iconBtn, viewMode === 'grid' && 'bg-shell-active text-fg')} onClick={() => store.setViewMode('grid')}>
             <Grid3X3 size={11} strokeWidth={1.8} />
           </button>
-          <button type="button" title="List" className={cn(iconBtn, viewMode === 'list' && 'bg-panel-active text-ink')} onClick={() => store.setViewMode('list')}>
+          <button type="button" title="List" className={cn(iconBtn, viewMode === 'list' && 'bg-shell-active text-fg')} onClick={() => store.setViewMode('list')}>
             <List size={11} strokeWidth={1.8} />
           </button>
-          <span className="h-3.5 w-px bg-line" />
+          <span className="h-3.5 w-px bg-edge-strong" />
           <button type="button" title="Refresh" className={iconBtn} onClick={() => load()}>
             <RefreshCw size={11} strokeWidth={1.8} />
           </button>
         </span>
       </div>
 
-      {/* 类型过滤 chips */}
-      <div className="flex shrink-0 gap-1 overflow-x-auto px-2 pb-1">
-        {TYPE_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => store.setTypeFilter(f.key)}
-            className={cn(
-              'shrink-0 rounded-full px-2 py-px text-2xs transition-colors',
-              typeFilter === f.key ? 'bg-ink text-white' : 'bg-panel text-muted hover:text-ink-soft',
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* 搜索 */}
-      <div className="shrink-0 px-2 pb-1">
-        <div className="flex items-center gap-1.5 rounded-md border border-line bg-white px-2 py-1">
-          <Search size={12} className="shrink-0 text-muted-faint" />
-          <input
-            value={search}
-            onChange={(e) => store.setSearch(e.target.value)}
-            placeholder="Search assets..."
-            className="min-w-0 flex-1 bg-transparent text-xs text-ink outline-none placeholder:text-muted-faint"
-          />
-        </div>
-      </div>
-
       {/* 删除提案条(非模态;模态 dialog 会永久阻塞无人值守冒烟,见 F1 坑) */}
       {pendingDelete && (
-        <div className="mx-2 mb-1 shrink-0 rounded-md border border-line bg-white px-2 py-1" data-testid="delete-proposal">
+        <div className="mx-2 mt-1 shrink-0 rounded-md border border-edge-strong bg-shell-panel px-2 py-1" data-testid="delete-proposal">
           {pendingDelete.blocked === null ? (
             <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-2xs text-ink-soft">
+              <span className="min-w-0 flex-1 truncate text-2xs text-fg-2">
                 删除 {pendingDelete.path}?源文件与 .meta 将一并删除。
               </span>
               <button
                 type="button"
-                className="shrink-0 rounded bg-ink px-2 py-px text-2xs text-white"
+                className="shrink-0 rounded bg-fg px-2 py-px text-2xs text-fg-inv"
                 onClick={() => void store.confirmDelete()}
               >
                 确认删除
               </button>
-              <button type="button" className="shrink-0 text-2xs text-muted" onClick={store.cancelDelete}>
+              <button type="button" className="shrink-0 text-2xs text-fg-3" onClick={store.cancelDelete}>
                 取消
               </button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-2xs text-accent-blue" title={pendingDelete.blocked.join('\n')}>
+              <span className="min-w-0 flex-1 truncate text-2xs text-info" title={pendingDelete.blocked.join('\n')}>
                 引用阻断,未删除。引用方:{pendingDelete.blocked.join('; ')}
               </span>
-              <button type="button" className="shrink-0 text-2xs text-muted" onClick={store.cancelDelete}>
+              <button type="button" className="shrink-0 text-2xs text-fg-3" onClick={store.cancelDelete}>
                 关闭
               </button>
             </div>
@@ -358,14 +337,18 @@ export default function AssetsPanel() {
 
       {/* 主区:文件夹树左栏 + 资产内容 */}
       <div className="flex min-h-0 flex-1">
-        {/* 文件夹树(07 §4 左栏;拖到文件夹 = asset_move 自动 redirector) */}
-        <div className="w-[72px] shrink-0 overflow-y-auto border-r border-line-soft py-0.5 pr-1" aria-label="资产文件夹">
+        {/* 文件夹树(07 §4 左栏;拖到文件夹 = asset_move 自动 redirector)
+            —— 底栏窄宽时按比例收，不吃掉半条资产区 */}
+        <div
+          className="w-[38%] min-w-[84px] max-w-[132px] shrink-0 overflow-y-auto border-r border-edge py-1 pr-1"
+          aria-label="资产文件夹"
+        >
           <button
             type="button"
             onClick={() => store.setCurrentFolder('')}
             className={cn(
               'flex w-full items-center gap-1 rounded-r-md px-1.5 py-0.5 text-left text-2xs',
-              currentFolder === '' ? 'bg-panel-active text-ink' : 'text-muted hover:text-ink-soft',
+              currentFolder === '' ? 'bg-shell-active text-fg' : 'text-fg-3 hover:text-fg-2',
             )}
           >
             <FolderOpen size={11} strokeWidth={1.8} />
@@ -386,8 +369,8 @@ export default function AssetsPanel() {
               onDrop={(e) => onDropFolder(f, e)}
               className={cn(
                 'flex w-full items-center gap-1 rounded-r-md px-1.5 py-0.5 text-left text-2xs',
-                currentFolder === f ? 'bg-panel-active text-ink' : 'text-muted hover:text-ink-soft',
-                dragOverFolder === f && 'outline outline-1 outline-ink',
+                currentFolder === f ? 'bg-shell-active text-fg' : 'text-fg-3 hover:text-fg-2',
+                dragOverFolder === f && 'outline outline-1 outline-fg',
               )}
             >
               <Folder size={11} strokeWidth={1.8} />
@@ -396,15 +379,15 @@ export default function AssetsPanel() {
           ))}
         </div>
 
-        {/* 资产列表 */}
-        <div className="min-w-0 flex-1 overflow-y-auto px-2 pb-1">
-          {loading && <p className="text-xs text-muted-faint">Loading...</p>}
-          {!loading && error && <p className="text-xs text-amber-600" title={error}>{error}</p>}
+        {/* 资产列表(底栏横向铺开:网格按可用宽自动填列,不再钉死三列) */}
+        <div className="min-w-0 flex-1 overflow-y-auto px-2 py-1">
+          {loading && <p className="text-xs text-fg-4">Loading...</p>}
+          {!loading && error && <p className="text-xs text-warn" title={error}>{error}</p>}
           {!loading && filtered.length === 0 && (
-            <p className="text-xs text-muted-faint">{items.length === 0 ? '暂无资产,先导入' : '无匹配资产'}</p>
+            <p className="text-xs text-fg-4">{items.length === 0 ? '暂无资产,先导入' : '无匹配资产'}</p>
           )}
           {viewMode === 'grid' ? (
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1">
               {filtered.map((item) => (
                 <AssetGridItem key={item.guid} item={item} onMenu={onMenu} />
               ))}
@@ -421,9 +404,9 @@ export default function AssetsPanel() {
 
       {/* 引用查询浮层 */}
       {refsResult && (
-        <div className="fixed bottom-4 right-4 z-50 flex w-72 flex-col rounded-md border border-line bg-white p-2 shadow-sm" data-testid="refs-panel">
+        <div className="fixed bottom-4 right-4 z-50 flex w-72 flex-col rounded-md border border-edge-strong bg-shell-panel p-2 shadow-sm" data-testid="refs-panel">
           <div className="flex items-center justify-between">
-            <span className="min-w-0 flex-1 truncate text-2xs font-medium text-ink" title={refsResult.path}>
+            <span className="min-w-0 flex-1 truncate text-2xs font-medium text-fg" title={refsResult.path}>
               引用:{refsResult.path}
             </span>
             <button type="button" title="关闭" className={iconBtn} onClick={store.clearRefs}>
@@ -431,20 +414,20 @@ export default function AssetsPanel() {
             </button>
           </div>
           <div className="mt-1 max-h-40 overflow-y-auto">
-            <p className="text-2xs text-muted-faint">被引用 (referencedBy):</p>
+            <p className="text-2xs text-fg-4">被引用 (referencedBy):</p>
             {refsResult.referencedBy.length === 0 ? (
-              <p className="pl-2 text-2xs text-muted-faint">无</p>
+              <p className="pl-2 text-2xs text-fg-4">无</p>
             ) : (
               refsResult.referencedBy.map((r, i) => (
-                <p key={i} className="truncate pl-2 text-2xs text-ink-soft" title={r}>{r}</p>
+                <p key={i} className="truncate pl-2 text-2xs text-fg-2" title={r}>{r}</p>
               ))
             )}
-            <p className="mt-1 text-2xs text-muted-faint">引用 (refs):</p>
+            <p className="mt-1 text-2xs text-fg-4">引用 (refs):</p>
             {refsResult.refs.length === 0 ? (
-              <p className="pl-2 text-2xs text-muted-faint">无</p>
+              <p className="pl-2 text-2xs text-fg-4">无</p>
             ) : (
               refsResult.refs.map((r, i) => (
-                <p key={i} className="truncate pl-2 text-2xs text-ink-soft" title={r}>{r}</p>
+                <p key={i} className="truncate pl-2 text-2xs text-fg-2" title={r}>{r}</p>
               ))
             )}
           </div>
@@ -459,7 +442,7 @@ export default function AssetsPanel() {
       {menu && (
         <div
           ref={menuRef}
-          className="fixed z-50 flex w-48 flex-col rounded-md border border-line bg-white py-1 shadow-sm"
+          className="fixed z-50 flex w-48 flex-col rounded-md border border-edge-strong bg-shell-panel py-1 shadow-sm"
           style={{ left: menu.x, top: menu.y }}
         >
           {menuItems.map((a) => (
@@ -470,7 +453,7 @@ export default function AssetsPanel() {
               title={a.hint}
               className={cn(
                 'px-3 py-1 text-left text-xs',
-                a.disabled ? 'cursor-not-allowed text-muted-faint' : 'text-ink-soft hover:bg-panel-hover',
+                a.disabled ? 'cursor-not-allowed text-fg-4' : 'text-fg-2 hover:bg-shell-hover',
               )}
               onClick={() => runAction(a.action)}
             >
@@ -484,4 +467,4 @@ export default function AssetsPanel() {
 }
 
 const iconBtn =
-  'flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-ink-soft';
+  'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2';

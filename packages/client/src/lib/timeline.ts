@@ -34,10 +34,13 @@ export type ChatBlock =
       name: string;
       /** pretty JSON 串(参考 args 形态);无 args 载荷时空串。 */
       args: string;
-      /** completed → true;failed → false 且 error 填。 */
+      /** completed → true;failed/denied → false 且 error 填。 */
       ok?: boolean;
       error?: string;
       durationMs?: number;
+      /** 成功工具截断后的输出(本仓 completed 带 output/outputPreview)。 */
+      result?: string;
+      status?: BlockStatus;
       /** mcp__server__tool 形态剥出;否则 null。 */
       mcp: [string, string] | null;
     }
@@ -47,11 +50,14 @@ export type ChatBlock =
       label: string;
       status: BlockStatus;
       summary?: string;
-      work: string[];
+      prompt?: string;
+      parentToolCallId?: string;
+      work: ChatBlock[];
     };
 
-/** tool 块状态派生(ok 未回填 = running)。 */
+/** tool 块状态派生(显式 status 优先;否则 ok 未回填 = running)。 */
 export function toolStatus(b: Extract<ChatBlock, { kind: 'tool' }>): BlockStatus {
+  if (b.status) return b.status;
   if (b.ok === true) return 'done';
   if (b.error !== undefined || b.ok === false) return 'error';
   return 'running';
@@ -130,6 +136,19 @@ const TOOL_META: Record<string, ToolMeta> = {
   gen_mesh: { label: '生成网格', groupPrefix: '生成网格', groupSuffix: '次' },
   // 合成工具(F3 multitask)
   'swarm.execute': { label: '集群执行', groupPrefix: '集群执行', groupSuffix: '次' },
+  // 运行时原生工具(对齐参考仓 IDE 动词)
+  read_file: { label: '读取', groupPrefix: '读取', groupSuffix: '个文件' },
+  list_dir: { label: '列出目录', groupPrefix: '列出', groupSuffix: '个目录' },
+  glob: { label: '查找文件', groupPrefix: '查找', groupSuffix: '次' },
+  grep: { label: '搜索', groupPrefix: '搜索', groupSuffix: '次' },
+  write_file: { label: '写入', groupPrefix: '写入', groupSuffix: '个文件' },
+  str_replace_edit: { label: '替换', groupPrefix: '替换', groupSuffix: '个文件' },
+  apply_patch: { label: '补丁', groupPrefix: '补丁', groupSuffix: '个文件' },
+  todo_write: { label: '待办', groupPrefix: '待办', groupSuffix: '次' },
+  write_todos: { label: '待办', groupPrefix: '待办', groupSuffix: '次' },
+  plan_write: { label: '计划', groupPrefix: '计划', groupSuffix: '次' },
+  todo_update: { label: '更新待办', groupPrefix: '更新待办', groupSuffix: '次' },
+  task: { label: '委派', groupPrefix: '委派', groupSuffix: '次' },
 };
 
 /** 通配族(viewport_*=视口操作 / asset_*=资产操作,任务书具名)。 */
@@ -184,7 +203,7 @@ export type TimelineItem =
 export function isMilestoneBlock(block: ChatBlock): boolean {
   if (block.kind !== 'tool') return true; // text / reasoning / subagent
   const bare = bareName(block.name);
-  return bare === 'write_todos' || bare === 'task';
+  return bare === 'write_todos' || bare === 'todo_write' || bare === 'plan_write' || bare === 'task';
 }
 
 export function buildTimeline(blocks: ChatBlock[]): TimelineItem[] {
@@ -249,6 +268,7 @@ const EDIT_TOOLS = new Set([
   'asset_set_meta', 'material_create', 'texture_process',
   'rx_fmt', 'graph_create', 'code_structured_edit',
   'gen_image', 'gen_texture_set', 'gen_accept', 'gen_variations', 'gen_mesh', 'gen_mesh_refine',
+  'write_file', 'str_replace_edit', 'apply_patch',
 ]);
 const EXPLORE_TOOLS = new Set([
   'entity_list', 'entity_get', 'transform_get', 'component_get', 'component_list_types',
@@ -257,8 +277,9 @@ const EXPLORE_TOOLS = new Set([
   'asset_list', 'asset_get_meta', 'asset_build_status', 'asset_refs', 'asset_thumbnail',
   'mesh_inspect', 'asset_cleanup_scan', 'graph_get', 'graph_validate',
   'rx_check', 'gen_backends_list', 'play_state',
+  'read_file', 'list_dir', 'glob',
 ]);
-const SEARCH_TOOLS = new Set(['code_symbol_search', 'code_references']);
+const SEARCH_TOOLS = new Set(['code_symbol_search', 'code_references', 'grep']);
 const COMMAND_TOOLS = new Set([
   'rx_build', 'rx_run', 'rx_test', 'swarm.execute',
   'play_enter', 'play_exit', 'play_pause', 'play_resume', 'play_step',
@@ -345,12 +366,26 @@ export function toolDiffStats(args: string): { added: number; removed: number } 
     const v = obj[k];
     return typeof v === 'string' ? v : '';
   };
-  const oldS = pick('old_str') || pick('oldContent');
-  const newS = pick('new_str') || pick('newContent');
+  const patch = pick('patch');
+  if (patch !== '') return patchDiffStats(patch);
+  const oldS = pick('old_str') || pick('oldContent') || pick('old_string');
+  const newS = pick('new_str') || pick('newContent') || pick('new_string');
   if (oldS !== '' || newS !== '') return diffCounts(oldS, newS);
   const content = pick('content') || pick('contents') || pick('text');
   if (content !== '') return { added: content.split('\n').length, removed: 0 };
   return { added: 0, removed: 0 };
+}
+
+/** apply_patch `*** Add/Update/Delete File` 头：按 +/- 行计增删。 */
+export function patchDiffStats(patch: string): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const raw of patch.split('\n')) {
+    if (raw.startsWith('*** ') || raw.startsWith('@@')) continue;
+    if (raw.startsWith('+')) added += 1;
+    else if (raw.startsWith('-')) removed += 1;
+  }
+  return { added, removed };
 }
 
 export function segmentStats(blocks: ChatBlock[], indices: number[]): SegmentStats {
@@ -483,6 +518,9 @@ export function toolSummary(b: Extract<ChatBlock, { kind: 'tool' }>): string {
   else if (st === 'error') {
     const head = firstLine(b.error ?? '');
     parts.push(head === '' ? '失败' : `失败：${ellipsize(head, 48)}`);
+  } else if (st === 'done' && b.result) {
+    const head = firstLine(b.result);
+    if (head !== '') parts.push(ellipsize(head, 48));
   }
   return parts.join(' · ');
 }
@@ -501,9 +539,10 @@ export function todoMilestoneLabel(args: string): string {
   const todos = obj?.todos;
   if (!Array.isArray(todos)) return '更新待办';
   const content = (item: unknown): string | null => {
-    const c = (item as { content?: unknown })?.content;
-    if (typeof c !== 'string') return null;
-    const t = c.trim();
+    const rec = item as { content?: unknown; title?: unknown } | null;
+    const raw = typeof rec?.content === 'string' ? rec.content : typeof rec?.title === 'string' ? rec.title : null;
+    if (raw === null) return null;
+    const t = raw.trim();
     return t === '' ? null : t;
   };
   const inProgress = todos.find(
@@ -521,10 +560,19 @@ export function subagentDispatchSummary(label: string, prompt: string): string {
   return p === '' ? '子 Agent 任务' : ellipsize(p, 84);
 }
 
-/** 子代理进展行(参考 subagent_live_summary 的持久摘要分支;本仓 work 为 string[] 简形)。 */
+/** 把子代理 work 块压成一行摘录。 */
+export function workLine(block: ChatBlock): string {
+  if (block.kind === 'text') return block.text;
+  if (block.kind === 'reasoning') return block.text;
+  if (block.kind === 'tool') return toolSummary(block) || toolVisual(block.name);
+  if (block.kind === 'subagent') return block.label;
+  return '';
+}
+
+/** 子代理进展行(参考 subagent_live_summary;work 为嵌套 ChatBlock[])。 */
 export function subagentLiveSummary(
   summary: string | undefined,
-  work: string[],
+  work: ChatBlock[],
   status: BlockStatus,
 ): string {
   const trimmed = (summary ?? '').trim();
@@ -534,7 +582,7 @@ export function subagentLiveSummary(
     return ellipsize(trimmed, 120);
   }
   for (let i = work.length - 1; i >= 0; i -= 1) {
-    const head = compactText(work[i]);
+    const head = compactText(workLine(work[i]));
     if (head !== '') return ellipsize(head, 120);
   }
   if (status === 'running') return 'Planning next moves';

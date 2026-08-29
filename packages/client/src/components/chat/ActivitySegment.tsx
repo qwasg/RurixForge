@@ -95,9 +95,16 @@ function ToolDetailBody({ block }: { block: Extract<ChatBlock, { kind: 'tool' }>
         ? boxed(block.error ?? '', 'error')
         : st === 'running'
           ? <div className="text-[11.5px] text-fg-4">运行中…</div>
-          : block.durationMs !== undefined
-            ? <div className="text-[11.5px] text-fg-4">完成 · {block.durationMs}ms</div>
-            : <div className="text-[11.5px] text-fg-4">无输出</div>}
+          : (
+            <>
+              {block.result ? boxed(block.result, 'result') : null}
+              {block.durationMs !== undefined
+                ? <div className="text-[11.5px] text-fg-4">完成 · {block.durationMs}ms</div>
+                : !block.result
+                  ? <div className="text-[11.5px] text-fg-4">无输出</div>
+                  : null}
+            </>
+          )}
     </div>
   );
 }

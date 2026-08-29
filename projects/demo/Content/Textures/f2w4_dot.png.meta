@@ -4,3 +4,12 @@ importer: png
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 极小的橙红色纯色点贴图(F2 wave.4 管线测试夹具),用于验证导入与缩略图链路
+  tags:
+  - 测试夹具
+  - 纯色
+  - 橙红
+  source: agent-vision
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

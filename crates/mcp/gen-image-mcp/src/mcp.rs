@@ -136,8 +136,23 @@ fn arg_n(args: &Value, default: u32) -> Result<u32, GenError> {
     Ok(n)
 }
 
-/// 后端解析:指定 id → 须已配置;缺省 → 注册表序首个已配置;全无 → GEN_BACKEND_NOT_CONFIGURED。
-fn resolve_backend(backend: Option<&str>, cfg: &GenConfig, keys: &Keystore) -> Result<Box<dyn GenBackend>, GenError> {
+/// 能力面 kinds 是否含该 kind。
+fn supports_kind(b: &dyn GenBackend, kind: &str) -> bool {
+    b.capabilities()["kinds"]
+        .as_array()
+        .map(|ks| ks.iter().any(|k| k == kind))
+        .unwrap_or(false)
+}
+/// 后端解析:指定 id → 须已配置(能力由调用处的门把关);缺省 → 注册表序首个「已配置
+/// 且支持 kind」者;全无 → GEN_BACKEND_NOT_CONFIGURED。缺省按能力过滤,是为了让只会
+/// text2img 的远程后端与兜 texture-set/variations 的占位后端共存时各取所需,
+/// 而不是让缺省解析一头撞上能力门。
+fn resolve_backend(
+    backend: Option<&str>,
+    kind: &str,
+    cfg: &GenConfig,
+    keys: &Keystore,
+) -> Result<Box<dyn GenBackend>, GenError> {
     if let Some(id) = backend {
         let b = backends::find(id)
             .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, format!("未知后端 id: {id}")))?;
@@ -151,11 +166,11 @@ fn resolve_backend(backend: Option<&str>, cfg: &GenConfig, keys: &Keystore) -> R
     }
     backends::registry()
         .into_iter()
-        .find(|b| b.configured(cfg, keys))
+        .find(|b| b.configured(cfg, keys) && supports_kind(b.as_ref(), kind))
         .ok_or_else(|| {
             GenError::new(
                 GEN_BACKEND_NOT_CONFIGURED,
-                "无已配置生成后端(data/gen-backends.json 缺 enabled 条目)",
+                format!("无支持 {kind} 的已配置生成后端(data/gen-backends.json 缺 enabled 条目)"),
             )
         })
 }
@@ -255,7 +270,7 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             let _style_ref_unconsumed = args.get("styleRefAssetPath").and_then(Value::as_str);
             let cfg = GenConfig::load();
             let keys = Keystore::load();
-            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), &cfg, &keys)?;
+            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), "text2img", &cfg, &keys)?;
             let req = GenRequest {
                 prompt: prompt.to_string(),
                 negative_prompt: negative.map(str::to_string),
@@ -306,7 +321,7 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             let _seamless = args.get("seamless").and_then(Value::as_bool).unwrap_or(true);
             let cfg = GenConfig::load();
             let keys = Keystore::load();
-            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), &cfg, &keys)?;
+            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), "texture-set", &cfg, &keys)?;
             // texture-set 能力门:remote-openai-compatible v1 仅 text2img → 如实拒绝。
             let kinds = backend.capabilities()["kinds"].as_array().cloned().unwrap_or_default();
             if !kinds.iter().any(|k| k == "texture-set") {
@@ -358,7 +373,7 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             // 后端门先于源文件解析(G-F5-1:无配置一律 NOT_CONFIGURED)。
             let cfg = GenConfig::load();
             let keys = Keystore::load();
-            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), &cfg, &keys)?;
+            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), "variations", &cfg, &keys)?;
             // 远程 v1 无 img2img 面(images/generations 不消费源图)→ 如实报错不伪装。
             if backend.kind() != "local" {
                 return Err(GenError::new(

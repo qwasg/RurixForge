@@ -50,6 +50,18 @@
   --dot-idle: #BDBBB7;
   --dot-blocked: #B8432F;
   --dot-queued: #B2862C;
+  /* F9:代码高亮 token(文件编辑器 CodeMirror HighlightStyle 消费;
+     色相从语义色派生(accent/sage/warn/info + type 紫/prop 棕补位),
+     静态双表随 data-theme 切换,不接 applyPalette 自定义派色——留痕见 spec) */
+  --code-keyword: #AD4F2D;
+  --code-string: #517F5D;
+  --code-comment: #9D9B97;
+  --code-number: #96721F;
+  --code-func: #3E74C2;
+  --code-type: #7A569E;
+  --code-prop: #8A5A44;
+  --code-punct: #767470;
+  --code-meta: #9C6B3F;
   /* 字体栈与字号(themeStore 可注入覆盖) */
   --font-sans: "HarmonyOS Sans SC", "Microsoft YaHei UI", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-serif: "Noto Serif SC", "SimSun", serif;
@@ -100,6 +112,15 @@
   --dot-idle: #5E5C57;
   --dot-blocked: #DD6B55;
   --dot-queued: #D4AC55;
+  --code-keyword: #E2886A;
+  --code-string: #8FBF9B;
+  --code-comment: #7F7D77;
+  --code-number: #D4AC55;
+  --code-func: #6FA3E0;
+  --code-type: #B79CE4;
+  --code-prop: #C99E7C;
+  --code-punct: #A6A39C;
+  --code-meta: #C79B72;
   --sh-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --sh-float: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --menu-glass: rgba(35, 34, 32, 0.53);

@@ -383,33 +383,61 @@ fn main(@location(0) nrm: vec3<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// WGSL → SPIR-V 字节(naga 纯 Rust;启动期一次,OnceLock 缓存)。
+/// 零拷贝 pack(共享体 buffer 形态):色 attachment(storage image)→ 共享 SSBO,
+/// 按 D3D12 `CopyTextureRegion` 的 PLACED_FOOTPRINT 契约以 256B 对齐行距逐像素打包 RGBA8。
+/// 绑定序沿 render_exec set0 固定约定:storage_buffers 在前(binding 0),
+/// storage_images 次之(binding 1)——sampled_images 是 COMBINED_IMAGE_SAMPLER,
+/// 与 naga 产出的分离式绑定不兼容,故读色附件走 storage image。
+const PACK_WGSL: &str = r#"
+struct PackPc { width: u32, height: u32, row_words: u32, pad: u32, };
+var<push_constant> pc: PackPc;
+@group(0) @binding(0) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(1) var src: texture_storage_2d<rgba8unorm, read>;
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if (gid.x >= pc.width || gid.y >= pc.height) { return; }
+    let c = textureLoad(src, vec2<i32>(i32(gid.x), i32(gid.y)));
+    let r = u32(clamp(c.r, 0.0, 1.0) * 255.0 + 0.5);
+    let g = u32(clamp(c.g, 0.0, 1.0) * 255.0 + 0.5);
+    let b = u32(clamp(c.b, 0.0, 1.0) * 255.0 + 0.5);
+    let a = u32(clamp(c.a, 0.0, 1.0) * 255.0 + 0.5);
+    dst[gid.y * pc.row_words + gid.x] = r | (g << 8u) | (b << 16u) | (a << 24u);
+}
+"#;
+
+/// WGSL → SPIR-V(naga 纯 Rust;lang_version 1.3 与 render_exec 一致)。
+fn compile_wgsl(src: &str, stage: &str) -> Result<&'static [u8], String> {
+    let module =
+        naga::front::wgsl::parse_str(src).map_err(|e| format!("{stage} wgsl 解析失败: {e}"))?;
+    let info = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::empty() | naga::valid::Capabilities::PUSH_CONSTANT,
+    )
+    .validate(&module)
+    .map_err(|e| format!("{stage} wgsl 校验失败: {e}"))?;
+    let mut opts = naga::back::spv::Options::default();
+    opts.lang_version = (1, 3);
+    let words = naga::back::spv::write_vec(&module, &info, &opts, None)
+        .map_err(|e| format!("{stage} spirv 产出失败: {e}"))?;
+    let mut bytes = Vec::with_capacity(words.len() * 4);
+    for w in words {
+        bytes.extend_from_slice(&w.to_le_bytes());
+    }
+    Ok(Box::leak(bytes.into_boxed_slice()))
+}
+
+/// 光栅着色器对字节(启动期一次,OnceLock 缓存)。
 fn shader_bytes() -> Result<(&'static [u8], &'static [u8]), String> {
     static SHADERS: OnceLock<Result<(&'static [u8], &'static [u8]), String>> = OnceLock::new();
     SHADERS
-        .get_or_init(|| {
-            let compile = |src: &str, stage: &str| -> Result<&'static [u8], String> {
-                let module = naga::front::wgsl::parse_str(src)
-                    .map_err(|e| format!("{stage} wgsl 解析失败: {e}"))?;
-                let info = naga::valid::Validator::new(
-                    naga::valid::ValidationFlags::all(),
-                    naga::valid::Capabilities::empty() | naga::valid::Capabilities::PUSH_CONSTANT,
-                )
-                .validate(&module)
-                .map_err(|e| format!("{stage} wgsl 校验失败: {e}"))?;
-                let mut opts = naga::back::spv::Options::default();
-                opts.lang_version = (1, 3);
-                let words = naga::back::spv::write_vec(&module, &info, &opts, None)
-                    .map_err(|e| format!("{stage} spirv 产出失败: {e}"))?;
-                let mut bytes = Vec::with_capacity(words.len() * 4);
-                for w in words {
-                    bytes.extend_from_slice(&w.to_le_bytes());
-                }
-                Ok(Box::leak(bytes.into_boxed_slice()))
-            };
-            Ok((compile(VS_WGSL, "vs")?, compile(FS_WGSL, "fs")?))
-        })
+        .get_or_init(|| Ok((compile_wgsl(VS_WGSL, "vs")?, compile_wgsl(FS_WGSL, "fs")?)))
         .clone()
+}
+
+/// 零拷贝 pack compute 着色器字节(仅共享档用;OnceLock 缓存)。
+fn pack_shader_bytes() -> Result<&'static [u8], String> {
+    static PACK: OnceLock<Result<&'static [u8], String>> = OnceLock::new();
+    PACK.get_or_init(|| compile_wgsl(PACK_WGSL, "pack")).clone()
 }
 
 // ─────────────────────────── 渲染会话(DeviceFrameSession) ───────────────────────────
@@ -465,42 +493,38 @@ fn renderer_slot() -> &'static Mutex<RendererState> {
     RENDERER.get_or_init(|| Mutex::new(RendererState::Uninit))
 }
 
-/// 当前应 import 的共享纹理键(F1 wave.3 方向 B):share 已开且尺寸与本帧一致时返回
-/// (nt_handle, alloc_size, is_heap);否则 None(纯 readback 腿)。非 Windows 恒 None。
-fn current_import(width: u32, height: u32) -> Option<(u64, u64, bool)> {
+/// 共享 buffer 导入面(buffer 形态零拷贝):D3D12 `D3D12_HEAP_FLAG_SHARED` 线性
+/// buffer 的 NT handle + 字节数 + 256B 对齐行距。
+///
+/// 之所以共享体是 buffer 而非纹理:两侧对同一张纹理的行/高补齐规则不同
+/// (960×540 实测 VK 需 2,457,600B、D3D12 committed 只给 2,228,224B),
+/// 尺寸不匹配会让未绑定图像参与渲染直至 `VK_ERROR_DEVICE_LOST`;线性 buffer
+/// 两侧字节数逐字一致,无歧义(与上游 fsr 驻留车道同形态)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ShareImport {
+    handle: u64,
+    size: u64,
+    row_pitch: u32,
+}
+
+/// 当前应 import 的共享 buffer:share 已开且尺寸与本帧一致时返回;
+/// 否则 None(纯 readback 腿)。非 Windows 恒 None。
+fn current_import(width: u32, height: u32) -> Option<ShareImport> {
     #[cfg(windows)]
     {
         crate::share::vk_import_info()
-            .filter(|&(_, _, sw, sh, _)| sw == width && sh == height)
-            .map(|(h, sz, _, _, heap)| (h, sz, heap))
+            .filter(|i| i.width == width && i.height == height)
+            .map(|i| ShareImport {
+                handle: i.handle,
+                size: i.size,
+                row_pitch: i.row_pitch,
+            })
     }
     #[cfg(not(windows))]
     {
         let _ = (width, height);
         None
     }
-}
-
-/// share_open 前的 VK import 需求探针(F1 wave.3 加堆腿判定):同设备同扩展实测
-/// 图像内存需求 size。无 vulkan / 无扩展 / 探测失败 → None(share 走 committed 腿,
-/// import 会话失败时回退 readback,全程诚实不报绿)。
-#[cfg(windows)]
-pub fn probe_import_min_alloc(width: u32, height: u32) -> Option<u64> {
-    if !vk::vulkan_available() {
-        return None;
-    }
-    rex::probe_image_mem_req(
-        width,
-        height,
-        rex::TexFormat::Rgba8Unorm,
-        rex::TextureUsage {
-            color: true,
-            ..Default::default()
-        },
-        true,
-    )
-    .map(|(size, _align)| size)
-    .ok()
 }
 
 /// 建固定 pass 图会话(资源:0=网格 VB,1=相机 UBO,2=色 attachment,3=深度)。
@@ -521,7 +545,7 @@ fn build_session(width: u32, height: u32, slots: usize) -> Result<ViewportRender
 fn build_session_with(
     width: u32,
     height: u32,
-    import: Option<(u64, u64, bool)>,
+    import: Option<ShareImport>,
     slots: usize,
 ) -> Result<ViewportRenderer, String> {
     if !vk::vulkan_available() {
@@ -537,7 +561,8 @@ fn build_session_with(
     let (vs, fs) = shader_bytes()?;
     let mesh = cube_mesh_bytes();
 
-    let resources: Vec<rex::ResourceDesc> = vec![
+    // 资源:0=网格 VB / 1=相机 UBO / 2=色 attachment / 3=深度 /(零拷贝档)4=共享 SSBO。
+    let mut resources: Vec<rex::ResourceDesc> = vec![
         rex::ResourceDesc::Buffer(rex::BufferDesc {
             size: mesh.len() as u64,
             usage: rex::BufferUsage {
@@ -545,6 +570,7 @@ fn build_session_with(
                 ..Default::default()
             },
             data: Some(mesh),
+            device_local: false,
         }),
         rex::ResourceDesc::Buffer(rex::BufferDesc {
             size: 64,
@@ -553,6 +579,8 @@ fn build_session_with(
                 ..Default::default()
             },
             data: None,
+            // FrameUpdate::buffer_uploads 目标须 host-visible(上游校验期 fail-closed)。
+            device_local: false,
         }),
         rex::ResourceDesc::Texture(rex::TextureDesc {
             width,
@@ -560,15 +588,11 @@ fn build_session_with(
             format: rex::TexFormat::Rgba8Unorm,
             usage: rex::TextureUsage {
                 color: true,
+                // 零拷贝档色附件兼作 pack pass 的 storage image 源。
+                storage: import.is_some(),
                 ..Default::default()
             },
             data: None,
-            // F1 wave.3 方向 B:共享纹理/堆 import 时,色目标直渲进 D3D12 共享内存。
-            external_import: import.map(|(h, sz, heap)| rex::ExternalTextureImport {
-                nt_handle: h,
-                allocation_size: sz,
-                heap,
-            }),
         }),
         rex::ResourceDesc::Texture(rex::TextureDesc {
             width,
@@ -579,9 +603,20 @@ fn build_session_with(
                 ..Default::default()
             },
             data: None,
-            external_import: None,
         }),
     ];
+    if let Some(im) = import {
+        // 上游 imported 集强制 data=None + device_local。
+        resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
+            size: im.size,
+            usage: rex::BufferUsage {
+                storage: true,
+                ..Default::default()
+            },
+            data: None,
+            device_local: true,
+        }));
+    }
 
     // 消隐槽模型:远埋 + 微缩(全有限值,规避 NaN 顶点未定义光栅化)。
     let hidden_model = trs_model(&Transform {
@@ -638,6 +673,32 @@ fn build_session_with(
             (3, rex::TargetState::DepthAttachmentWrite),
         ]);
     }
+    // 零拷贝档追加 pack pass:色附件 → 共享 SSBO(帧图内无 copy/blit pass,
+    // 搬运只能经 compute;帧末上游自动追加 EXTERNAL release,D3D12 侧据本帧 fence 消费)。
+    if let Some(im) = import {
+        let pack = pack_shader_bytes()?;
+        let mut pc = Vec::with_capacity(16);
+        for v in [width, height, im.row_pitch / 4, 0u32] {
+            pc.extend_from_slice(&v.to_le_bytes());
+        }
+        passes.push(rex::Pass::Compute(rex::ComputePass {
+            name: "forge_viewport_pack",
+            spirv: pack,
+            entry: None,
+            dispatch: rex::DispatchSpec::Direct([width.div_ceil(8), height.div_ceil(8), 1]),
+            bindings: rex::Bindings {
+                storage_buffers: vec![4],
+                storage_images: vec![2],
+                push_constants: pc,
+                ..Default::default()
+            },
+        }));
+        barrier_plan.push(vec![
+            (2, rex::TargetState::StorageImageReadWrite),
+            (4, rex::TargetState::StorageReadWrite),
+        ]);
+    }
+
     let readbacks: Vec<rex::Readback> = vec![rex::Readback::Texture { res: 2 }];
 
     // session 借用上述描述块:'static 提升;重建仅发生在改尺寸,有界。
@@ -649,15 +710,46 @@ fn build_session_with(
     let barriers = Box::leak(barriers.into_boxed_slice());
     let readbacks = Box::leak(readbacks.into_boxed_slice());
 
-    let session = rex::DeviceFrameSession::new(resources, passes, barriers, readbacks, 2)
-        .map_err(|e| format!("DEV_ENV_DEGRADE: 渲染会话创建失败: {e}"))?;
+    let session = match import {
+        // 共享 buffer 以 D3D12_RESOURCE 反向导入(资源下标 4 ↔ NT handle 地址值)。
+        Some(im) => rex::DeviceFrameSession::new_with_imported_d3d12_textures(
+            resources,
+            passes,
+            barriers,
+            readbacks,
+            2,
+            &[],
+            &[],
+            &[(4, im.handle as usize)],
+        )
+        .map_err(|e| format!("零拷贝会话创建失败: {e}"))?,
+        None => rex::DeviceFrameSession::new(resources, passes, barriers, readbacks, 2)
+            .map_err(|e| format!("DEV_ENV_DEGRADE: 渲染会话创建失败: {e}"))?,
+    };
+
+    // LUID 对拍由调用方负责(上游契约):跨 adapter 不可共享显存。不匹配即 Err,
+    // 由 build_session 收口回退到 readback 腿,绝不带着错 adapter 继续跑。
+    #[cfg(windows)]
+    if import.is_some() {
+        let vk_luid = session
+            .physical_device_luid()
+            .ok_or_else(|| "零拷贝会话:deviceLUIDValid=false,无法与 D3D12 adapter 对拍".to_string())?;
+        let d3d_luid = crate::share::adapter_luid()
+            .ok_or_else(|| "零拷贝会话:D3D12 adapter LUID 不可得".to_string())?;
+        if vk_luid != d3d_luid {
+            return Err(format!(
+                "零拷贝会话:LUID 不匹配(vulkan {vk_luid:?} vs d3d12 {d3d_luid:?})——跨 adapter 不可共享显存"
+            ));
+        }
+    }
+
     Ok(ViewportRenderer {
         width,
         height,
         slots,
         session,
         device_name: caps.device_name,
-        import_key: import.map(|(h, sz, _)| (h, sz)),
+        import_key: import.map(|im| (im.handle, im.size)),
     })
 }
 
@@ -725,7 +817,7 @@ pub fn render_scene_frame(
         RendererState::Ready(r)
             if r.width != width
                 || r.height != height
-                || r.import_key != want_import.map(|(h, sz, _)| (h, sz))
+                || r.import_key != want_import.map(|im| (im.handle, im.size))
                 || r.slots < want_slots =>
         {
             *guard = match build_session(width, height, want_slots) {

@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsOverlay from '@/components/settings/SettingsOverlay';
 import { useOverlayStore } from '@/lib/overlayStore';
 import { useSettingsStore } from '@/lib/settingsStore';
+import { useSkillStore } from '@/lib/skillStore';
 import { useThemeStore } from '@/lib/themeStore';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
 
 /**
  * F7 wave.5 设置体系:全屏 overlay + 左导航翻页 + Agent 页(Ctrl+Enter/权限信息行)
@@ -14,6 +16,8 @@ import { useThemeStore } from '@/lib/themeStore';
 const initialSettings = useSettingsStore.getState();
 const initialOverlay = useOverlayStore.getState();
 const initialTheme = useThemeStore.getState();
+const initialSkill = useSkillStore.getState();
+const initialWorkbench = useWorkbenchStore.getState();
 
 function openSettings(page?: 'appearance' | 'agent' | 'models' | 'skills' | 'about') {
   if (page) useSettingsStore.getState().setPage(page);
@@ -24,6 +28,8 @@ beforeEach(() => {
   useSettingsStore.setState(initialSettings, true);
   useOverlayStore.setState(initialOverlay, true);
   useThemeStore.setState(initialTheme, true);
+  useSkillStore.setState(initialSkill, true);
+  useWorkbenchStore.setState(initialWorkbench, true);
   globalThis.localStorage?.clear();
 });
 
@@ -64,6 +70,9 @@ describe('Agent 页', () => {
     expect(useSettingsStore.getState().submitCtrlEnter).toBe(true);
     expect(globalThis.localStorage?.getItem('forge:submitCtrl')).toBe('1');
     expect(screen.getByTestId('permission-mode-value')).toHaveTextContent('bypass · 工具全部自动执行');
+    expect(screen.getByTestId('permission-mode-bypass')).toBeInTheDocument();
+    expect(screen.getByTestId('permission-mode-plan')).toBeInTheDocument();
+    expect(screen.getByTestId('permission-mode-auto')).toBeInTheDocument();
   });
 });
 
@@ -165,6 +174,120 @@ describe('模型页', () => {
     expect(body.endpoint).toBe('https://api.example.com');
     expect(body.apiKey).toBe('sk-gen');
   });
+
+  it('停用态据实预填:只改 key 的保存不得把 enabled 悄悄翻回 true', async () => {
+    const posts: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
+        const u = String(url);
+        if (u === '/api/forge/design-snapshot') {
+          return { ok: true, status: 200, json: async () => ({ models: { models: [] } }) } as Response;
+        }
+        if (u === '/api/forge/gen/backends/configure' && init?.method === 'POST') {
+          posts.push({ url: u, body: init.body ?? '' });
+          return { ok: true, status: 200, json: async () => ({ ok: true, configured: false }) } as Response;
+        }
+        if (u === '/api/forge/gen/backends') {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              backends: [
+                {
+                  id: 'remote-video-compatible',
+                  kind: 'remote',
+                  configured: false,
+                  enabled: false,
+                  endpointSet: true,
+                  keyConfigured: true,
+                  model: 'vgen-1',
+                  capabilities: { kinds: ['text2video'] },
+                },
+              ],
+            }),
+          } as Response;
+        }
+        throw new Error(`未 mock: ${u}`);
+      }),
+    );
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    // 卡片行如实标停用 + 已配置 endpoint + 当前 model
+    const row = await screen.findByTestId('gen-backend-row-remote-video-compatible');
+    expect(row).toHaveTextContent('已停用');
+    expect(row).toHaveTextContent('endpoint 已配置');
+    expect(row).toHaveTextContent('model=vgen-1');
+    // configured=false 只因停用,key 事实独立成面,不得被误报成「未配置」
+    expect(row).toHaveTextContent('key 已配置');
+    // 展开:toggle 预填 false(不是硬编码 true),model 预填既有值
+    fireEvent.click(screen.getByTestId('gen-configure-remote-video-compatible'));
+    expect(await screen.findByTestId('gen-enabled-remote-video-compatible')).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByTestId('gen-model-remote-video-compatible')).toHaveValue('vgen-1');
+    expect(
+      screen.getByTestId('gen-apikey-remote-video-compatible').getAttribute('placeholder'),
+    ).toContain('已配置');
+    // 只换 key 后保存 → enabled 保持 false,model 原样带回
+    fireEvent.change(screen.getByTestId('gen-apikey-remote-video-compatible'), {
+      target: { value: 'sk-only-key' },
+    });
+    fireEvent.click(screen.getByTestId('gen-save-remote-video-compatible'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(posts.length).toBe(1);
+    const body = JSON.parse(posts[0].body);
+    expect(body.enabled).toBe(false);
+    expect(body.model).toBe('vgen-1');
+    expect(body.apiKey).toBe('sk-only-key');
+  });
+
+  it('agentd 不可达:离线态如实 + 重试钮复拉清单(不是死胡同)', async () => {
+    let backendsUp = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown) => {
+        const u = String(url);
+        if (u === '/api/forge/design-snapshot') {
+          return { ok: true, status: 200, json: async () => ({ models: { models: [] } }) } as Response;
+        }
+        if (u === '/api/forge/gen/backends') {
+          if (!backendsUp) {
+            return {
+              ok: false,
+              status: 502,
+              json: async () => ({
+                error: { code: 'UPSTREAM_UNREACHABLE', message: 'agentd 不可达: http://127.0.0.1:8103' },
+              }),
+            } as Response;
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              backends: [{ id: 'local-mock', kind: 'local', configured: true, enabled: true, endpointSet: false }],
+            }),
+          } as Response;
+        }
+        throw new Error(`未 mock: ${u}`);
+      }),
+    );
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    // 502 → 离线态措辞(与「清单出错」分开)+ 原始信息保留,不吞
+    const err = await screen.findByTestId('gen-backends-error');
+    expect(err).toHaveTextContent('生成后端服务未连接');
+    expect(err).toHaveTextContent('agentd 不可达: http://127.0.0.1:8103');
+    expect(screen.queryByTestId('gen-backend-local-mock')).not.toBeInTheDocument();
+    // agentd 起来后点重试 → 清单上屏,错误卡消失
+    backendsUp = true;
+    fireEvent.click(screen.getByTestId('gen-backends-retry'));
+    expect(await screen.findByTestId('gen-backend-local-mock')).toBeInTheDocument();
+    expect(screen.queryByTestId('gen-backends-error')).not.toBeInTheDocument();
+  });
 });
 
 describe('模型页 · OpenAI-Compatible 渠道卡(F8 wave.2)', () => {
@@ -245,10 +368,13 @@ describe('模型页 · OpenAI-Compatible 渠道卡(F8 wave.2)', () => {
       await Promise.resolve();
     });
     expect(posts.length).toBe(1);
+    // vision 恒随体上送(不同于 key 的「留空即省略」):它是开关不是密钥,
+    // 省略会被后端当成「保留既有」,那样用户关不掉它。
     expect(JSON.parse(posts[0].body)).toEqual({
       baseUrl: 'http://127.0.0.1:8000',
       model: 'glm-4-air',
       key: 'sk-test-oai-card',
+      vision: false,
     });
     // 保存后收起 + 状态刷新(第二轮 status 仍为 stub 值)。
     expect(screen.queryByTestId('oai-config-form')).not.toBeInTheDocument();
@@ -263,6 +389,33 @@ describe('模型页 · OpenAI-Compatible 渠道卡(F8 wave.2)', () => {
     expect(body2.baseUrl).toBe('http://127.0.0.1:8000');
     expect(body2.model).toBe('qwen2.5-7b');
     expect('key' in body2).toBe(false);
+    expect(body2.vision).toBe(false);
+  });
+
+  it('图片输入开关:从 status 预填并随保存上送', async () => {
+    const posts: Array<{ url: string; body: string }> = [];
+    stubBase(
+      {
+        configured: true,
+        baseUrl: 'http://127.0.0.1:8000',
+        model: 'gpt-4o-mini',
+        keyConfigured: true,
+        vision: true,
+      },
+      posts,
+    );
+    render(<SettingsOverlay />);
+    act(() => openSettings('models'));
+    fireEvent.click(await screen.findByTestId('oai-config-toggle'));
+    // 已开启态须按 status 预填,否则「只改 model」的保存会把它悄悄关掉。
+    const toggle = await screen.findByTestId('oai-vision-toggle');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByTestId('oai-config-save'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect((JSON.parse(posts[0].body) as Record<string, unknown>).vision).toBe(false);
   });
 
   it('空 baseUrl/model 保存钮禁用(400 防线前置)', async () => {
@@ -278,42 +431,87 @@ describe('模型页 · OpenAI-Compatible 渠道卡(F8 wave.2)', () => {
   });
 });
 
+/**
+ * F11 wave.5(D-F11-E):技能清单移交工作台「Skill 管理」tab,设置页只留
+ * 跳转入口 + 技能目录(extraDirs)配置——避免清单两处事实源。
+ */
 describe('技能页', () => {
-  it('清单渲染 + toggle → config/write {disabled} 全量写回', async () => {
-    const writes: string[] = [];
+  interface RestCall {
+    url: string;
+    method: string;
+    body: Record<string, unknown> | null;
+  }
+
+  function stubSkillsRest(): RestCall[] {
+    const calls: RestCall[] = [];
+    let extraDirs: string[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
         const u = String(url);
+        const method = init?.method ?? 'GET';
+        const body = init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : null;
+        calls.push({ url: u, method, body });
         if (u === '/api/forge/skills/list') {
           return {
             ok: true,
             status: 200,
             json: async () => ({
               skills: [
-                { name: 'asset-cleanup', description: '整理资产', enabled: true },
-                { name: 'scene-greybox', description: '灰盒', enabled: true },
+                {
+                  name: 'asset-cleanup',
+                  description: '整理资产',
+                  enabled: true,
+                  tags: [],
+                  allowedTools: [],
+                  builtin: true,
+                  dir: 'skills/asset-cleanup',
+                },
               ],
             }),
           } as Response;
         }
-        if (u === '/api/forge/skills/config/write' && init?.method === 'POST') {
-          writes.push(init.body ?? '');
-          return { ok: true, status: 200, json: async () => ({ written: true }) } as Response;
+        if (u === '/api/forge/skills/config/write' && method === 'POST') {
+          if (Array.isArray(body?.extraDirs)) extraDirs = body.extraDirs as string[];
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ written: true, disabled: [], extraDirs }),
+          } as Response;
         }
         throw new Error(`未 mock: ${u}`);
       }),
     );
+    return calls;
+  }
+
+  it('不再重复渲染技能清单;入口钮开 Skill 管理 tab 并关掉设置浮层', async () => {
+    stubSkillsRest();
     render(<SettingsOverlay />);
     act(() => openSettings('skills'));
-    const toggle = await screen.findByTestId('skill-toggle-asset-cleanup');
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(toggle);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(writes.length).toBe(1);
-    expect(JSON.parse(writes[0])).toEqual({ disabled: ['asset-cleanup'] });
+    expect(await screen.findByTestId('settings-page-skills')).toBeInTheDocument();
+    expect(screen.queryByTestId('skill-row-asset-cleanup')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-toggle-asset-cleanup')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('skills-open-manager'));
+    expect(useWorkbenchStore.getState().tabs.some((t) => t.kind === 'skills')).toBe(true);
+    expect(useWorkbenchStore.getState().activeTabId).toBe('skills');
+    expect(useOverlayStore.getState().settings).toBe(false);
+    expect(screen.queryByTestId('settings-overlay')).not.toBeInTheDocument();
+  });
+
+  it('技能目录卡:添加目录 → config/write {extraDirs}', async () => {
+    const calls = stubSkillsRest();
+    render(<SettingsOverlay />);
+    act(() => openSettings('skills'));
+    expect(await screen.findByTestId('skill-dirs-empty')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('skill-dir-input'), { target: { value: 'vendor/skills' } });
+    fireEvent.click(screen.getByTestId('skill-dir-add'));
+    expect(await screen.findByTestId('skill-dir-vendor/skills')).toBeInTheDocument();
+    const write = calls.find(
+      (c) => c.url === '/api/forge/skills/config/write' && Array.isArray(c.body?.extraDirs),
+    );
+    expect(write?.body?.extraDirs).toEqual(['vendor/skills']);
   });
 });
 

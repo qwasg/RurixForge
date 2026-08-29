@@ -13,3 +13,13 @@ provenance:
     sourceRefs:
     - .forge/tmp/gen/f5w2-gen-chair.gltf
 build_state: current
+semantic:
+  description: 椅子网格第二变体(F5 wave.2 生成变体验收产物)
+  tags:
+  - 椅子
+  - 家具
+  - 网格
+  - 变体
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { parseMarkdownBlocks, stripInline, visibleBlocks, type MdBlock } from '@/lib/markdown';
+import EntityRefText from './EntityRefText';
 
 /**
  * F7 wave.4 MarkdownFlat(参考 render_markdown_flat + render_one_block 样式逐条对齐):
@@ -53,7 +54,11 @@ function Block({ block, streaming }: { block: MdBlock; streaming: boolean }) {
     case 'truncated':
       return <div className="pt-1 text-[11px] text-fg-4">（内容较长，已截断显示）</div>;
     case 'paragraph':
-      return <div>{stripInline(block.text.trimStart())}</div>;
+      return (
+        <div>
+          <EntityRefText text={stripInline(block.text.trimStart())} />
+        </div>
+      );
   }
 }
 

@@ -81,6 +81,13 @@ impl ForgeProject {
         self.root.join(&self.content_dir)
     }
 
+    /// 相对 Content/ 的用户路径 → 根内绝对路径。`..` / UNC / 盘符 / junction 逃逸一律拒绝。
+    pub fn resolve_content_path(&self, rel: &str) -> Result<PathBuf> {
+        let root = self.content_root();
+        forge_util::pathutil::confine_under(&[&root], rel)
+            .map_err(|e| AssetError::new("PROJECT_OUT_OF_ROOT", format!("{e}: {rel}")))
+    }
+
     pub fn cache_root(&self) -> PathBuf {
         self.root.join(".forge").join("cache")
     }
@@ -129,5 +136,26 @@ impl ForgeProject {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_content_path_rejects_traversal() {
+        let dir = std::env::temp_dir().join(format!(
+            "assetd-confine-{}-{}",
+            std::process::id(),
+            forge_util::timeutil::unix_millis()
+        ));
+        std::fs::create_dir_all(dir.join("Content").join("Textures")).unwrap();
+        std::fs::write(dir.join("Content").join("Textures").join("a.png"), b"x").unwrap();
+        let p = ForgeProject::with_defaults(dir.clone());
+        assert!(p.resolve_content_path("Textures/a.png").is_ok());
+        assert!(p.resolve_content_path("../secret.txt").is_err());
+        assert!(p.resolve_content_path("C:/Windows/notepad.exe").is_err());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -336,7 +336,15 @@ pub fn structured_edit(args: &Value, root: &Path) -> TResult<Value> {
         .and_then(Value::as_array)
         .filter(|a| !a.is_empty())
         .ok_or_else(|| terr("USAGE", "缺 edits 参数(非空数组)"))?;
-    let abs = root.join(file);
+    let abs = match forge_util::pathutil::confine_under(&[root], file) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(json!({
+                "applied": false,
+                "error": { "code": "PATH_OUTSIDE_ROOT", "message": e }
+            }));
+        }
+    };
     let fail = |code: &str, msg: String| Ok(json!({ "applied": false, "error": { "code": code, "message": msg } }));
     let text = match std::fs::read_to_string(&abs) {
         Ok(t) => t,
@@ -634,6 +642,23 @@ mod tests {
         // 不存在符号 → SYMBOL_NOT_FOUND。
         let e = references(&json!({ "symbolQuery": "ghost_xyz" }), &root).unwrap_err();
         assert_eq!(e.code, "SYMBOL_NOT_FOUND");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn structured_edit_rejects_path_escape() {
+        let root = tmp_root("escape");
+        std::fs::write(root.join("a.rx"), TWO_FN).unwrap();
+        let v = structured_edit(
+            &json!({
+                "file": "../a.rx",
+                "edits": [{ "kind": "replace", "symbolQuery": "smooth_open", "content": "x" }]
+            }),
+            &root,
+        )
+        .unwrap();
+        assert_eq!(v["applied"], false);
+        assert_eq!(v["error"]["code"], "PATH_OUTSIDE_ROOT");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

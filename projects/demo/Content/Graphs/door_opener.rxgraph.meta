@@ -4,3 +4,12 @@ importer: rxgraph
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 开门逻辑图:玩家进触发区且带 player 标签时,按暴露属性 openSpeed 角度旋转门体(rotate_tween 1.2s)
+  tags:
+  - 节点图
+  - 门
+  - 交互
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

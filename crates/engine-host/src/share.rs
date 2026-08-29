@@ -27,40 +27,50 @@ use windows::Win32::System::Threading::*;
 /// GENERIC_ALL(0x10000000):CreateSharedHandle 访问掩码。
 const GENERIC_ALL_ACCESS: u32 = 0x1000_0000;
 
-struct SharedTex {
-    texture: ID3D12Resource,
-    /// 加堆腿(F1 wave.3):vk req > committed alloc 时,纹理为堆内 placed resource,
-    /// 堆对象须活过纹理(字段序:先 texture 后 heap,drop 同序)。
-    heap: Option<ID3D12Heap>,
-    /// local_tex_handle 指向堆(true,D3D12_HEAP import)还是纹理本身(false,D3D12_RESOURCE)。
-    is_heap_handle: bool,
+/// 共享体线性布局:行距按 D3D12 `CopyTextureRegion` 的 PLACED_FOOTPRINT 契约
+/// 256B 对齐(`D3D12_TEXTURE_DATA_PITCH_ALIGNMENT`),总字节 = 行距 × 高。
+/// 生产者(VK pack pass 写)与消费者(D3D12 拷进后台缓冲)按同一公式推导,
+/// 任一侧漂移即接线硬错。
+pub fn shared_layout(width: u32, height: u32) -> (usize, u64) {
+    let row_pitch = ((width as usize) * 4).div_ceil(256) * 256;
+    (row_pitch, (row_pitch * height as usize) as u64)
+}
+
+struct SharedBuf {
+    /// 共享线性 buffer(DEFAULT 堆 + `D3D12_HEAP_FLAG_SHARED`;VK 侧导入为 SSBO 直写)。
+    buffer: ID3D12Resource,
     upload: ID3D12Resource,
     upload_ptr: *mut u8,
     row_pitch: usize,
+    size: u64,
     width: u32,
     height: u32,
     fence: ID3D12Fence,
     fence_value: u64,
     fence_event: HANDLE,
-    in_copy_dest: bool,
-    /// 本进程持有的纹理 NT handle(F1 wave.3:VK import 用;Drop 关闭)。
-    local_tex_handle: HANDLE,
-    /// `GetResourceAllocationInfo` 实测分配字节数(VK import `allocationSize` 用)。
-    alloc_size: u64,
-    /// 零拷贝档首帧是否已把纹理一次性迁移到 COPY_SOURCE。
-    zc_transitioned: bool,
+    /// 本进程持有的 buffer NT handle(VK import 用;Drop 关闭)。
+    local_buf_handle: HANDLE,
 }
 
-impl Drop for SharedTex {
+impl Drop for SharedBuf {
     fn drop(&mut self) {
         unsafe {
-            // SAFETY: fence_event/local_tex_handle 为本进程持有的内核句柄;COM 引用随 drop。
+            // SAFETY: fence_event/local_buf_handle 为本进程持有的内核句柄;COM 引用随 drop。
             let _ = CloseHandle(self.fence_event);
-            if !self.local_tex_handle.is_invalid() {
-                let _ = CloseHandle(self.local_tex_handle);
+            if !self.local_buf_handle.is_invalid() {
+                let _ = CloseHandle(self.local_buf_handle);
             }
         }
     }
+}
+
+/// VK import 面(buffer 形态)。
+pub struct ShareInfo {
+    pub handle: u64,
+    pub size: u64,
+    pub width: u32,
+    pub height: u32,
+    pub row_pitch: u32,
 }
 
 struct Producer {
@@ -68,7 +78,7 @@ struct Producer {
     queue: ID3D12CommandQueue,
     allocator: ID3D12CommandAllocator,
     list: ID3D12GraphicsCommandList,
-    shared: Option<SharedTex>,
+    shared: Option<SharedBuf>,
 }
 
 // SAFETY: Producer 持有 D3D12 COM 指针(windows-rs 接口内为 *mut);仅经 SHARE 全局
@@ -81,24 +91,8 @@ fn slot() -> &'static Mutex<Option<Producer>> {
     SHARE.get_or_init(|| Mutex::new(None))
 }
 
-fn barrier_transition(
-    res: &ID3D12Resource,
-    before: D3D12_RESOURCE_STATES,
-    after: D3D12_RESOURCE_STATES,
-) -> D3D12_RESOURCE_BARRIER {
-    D3D12_RESOURCE_BARRIER {
-        Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-        Anonymous: D3D12_RESOURCE_BARRIER_0 {
-            Transition: std::mem::ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-                pResource: std::mem::ManuallyDrop::new(Some(res.clone())),
-                Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                StateBefore: before,
-                StateAfter: after,
-            }),
-        },
-        ..Default::default()
-    }
-}
+// 共享体改为线性 buffer 后不再需要资源状态迁移(D3D12 buffer 无 layout,恒等价
+// COMMON),原 barrier_transition helper 随之退役。
 
 impl Producer {
     fn new() -> Result<Self, String> {
@@ -131,86 +125,19 @@ impl Producer {
         }
     }
 
-    /// 创建/重建共享纹理 + upload 堆 + 共享 fence;返回 (dup_tex, dup_fence, is_heap)。
-    /// `min_alloc` = VK import 端图像内存需求(probe 实测,0 = 未知/无 vulkan);
-    /// `min_alloc > committed alloc` 时走共享堆 + placed resource 腿(committed 无法超尺寸)。
-    fn open(
-        &mut self,
-        width: u32,
-        height: u32,
-        target_pid: u32,
-        min_alloc: u64,
-    ) -> Result<(u64, u64, bool), String> {
+    /// 创建/重建共享 buffer + upload 堆 + 共享 fence;返回 (dup_buf, dup_fence)。
+    ///
+    /// 共享体是**线性 buffer** 而非纹理:两侧对同一张纹理的补齐规则不同
+    /// (960×540 实测 VK 需 2,457,600B vs D3D12 committed 2,228,224B,曾致
+    /// `VK_ERROR_DEVICE_LOST`),而线性 buffer 两侧字节数逐字一致,无需堆腿兜底。
+    fn open(&mut self, width: u32, height: u32, target_pid: u32) -> Result<(u64, u64), String> {
         self.shared = None; // 释放旧资源(GPU 已闲:调用方保证帧间)
         unsafe {
             // SAFETY: desc/heap 常量字段合法;CreateCommittedResource 出参经 Option 校验。
-            let tex_desc = D3D12_RESOURCE_DESC {
-                Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-                Width: width as u64,
-                Height: height,
-                DepthOrArraySize: 1,
-                MipLevels: 1,
-                Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
-                Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
-                Flags: D3D12_RESOURCE_FLAG_NONE,
-                ..Default::default()
-            };
-            let default_heap = D3D12_HEAP_PROPERTIES {
-                Type: D3D12_HEAP_TYPE_DEFAULT,
-                ..Default::default()
-            };
-            // VK import 需要 D3D12 分配字节数(RFC-0001 §4.2.2 同配方)。
-            let committed_alloc = self.device.GetResourceAllocationInfo(0, &[tex_desc]).SizeInBytes;
-            // 加堆腿判定:VK 需求(同 pitch 行补齐差异,960x540 实测 2,457,600 vs 2,228,224)
-            // 超过 committed 分配 → 共享堆尺寸 = max 并 64KiB 对齐,placed resource 在偏移 0。
-            let use_heap = min_alloc > committed_alloc;
-            let (texture, heap, alloc_size): (ID3D12Resource, Option<ID3D12Heap>, u64) = if use_heap {
-                let heap_size = min_alloc.next_multiple_of(65_536);
-                let heap_desc = D3D12_HEAP_DESC {
-                    SizeInBytes: heap_size,
-                    Properties: default_heap.clone(),
-                    Alignment: 0,
-                    Flags: D3D12_HEAP_FLAG_SHARED,
-                };
-                let mut heap: Option<ID3D12Heap> = None;
-                self.device
-                    .CreateHeap(&heap_desc, &mut heap)
-                    .map_err(|e| format!("CreateHeap({heap_size}): {e}"))?;
-                let heap = heap.ok_or("heap 为空")?;
-                let mut texture: Option<ID3D12Resource> = None;
-                self.device
-                    .CreatePlacedResource(
-                        &heap,
-                        0,
-                        &tex_desc,
-                        D3D12_RESOURCE_STATE_COPY_DEST,
-                        None,
-                        &mut texture,
-                    )
-                    .map_err(|e| format!("CreatePlacedResource: {e}"))?;
-                let texture = texture.ok_or("placed texture 为空")?;
-                (texture, Some(heap), heap_size)
-            } else {
-                let mut texture: Option<ID3D12Resource> = None;
-                self.device
-                    .CreateCommittedResource(
-                        &default_heap,
-                        D3D12_HEAP_FLAG_SHARED,
-                        &tex_desc,
-                        D3D12_RESOURCE_STATE_COPY_DEST,
-                        None,
-                        &mut texture,
-                    )
-                    .map_err(|e| format!("CreateCommittedResource(texture): {e}"))?;
-                (texture.ok_or("texture 为空")?, None, committed_alloc)
-            };
-
-            let row_pitch = ((width as usize) * 4).div_ceil(256) * 256;
-            let upload_size = (row_pitch * height as usize) as u64;
+            let (row_pitch, size) = shared_layout(width, height);
             let buf_desc = D3D12_RESOURCE_DESC {
                 Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-                Width: upload_size,
+                Width: size,
                 Height: 1,
                 DepthOrArraySize: 1,
                 MipLevels: 1,
@@ -220,6 +147,24 @@ impl Producer {
                 Flags: D3D12_RESOURCE_FLAG_NONE,
                 ..Default::default()
             };
+            let default_heap = D3D12_HEAP_PROPERTIES {
+                Type: D3D12_HEAP_TYPE_DEFAULT,
+                ..Default::default()
+            };
+            // D3D12 buffer 恒等价 COMMON 态(无 layout),跨 API 消费无需状态迁移。
+            let mut buffer: Option<ID3D12Resource> = None;
+            self.device
+                .CreateCommittedResource(
+                    &default_heap,
+                    D3D12_HEAP_FLAG_SHARED,
+                    &buf_desc,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    None,
+                    &mut buffer,
+                )
+                .map_err(|e| format!("CreateCommittedResource(shared buffer): {e}"))?;
+            let buffer = buffer.ok_or("shared buffer 为空")?;
+
             let upload_heap = D3D12_HEAP_PROPERTIES {
                 Type: D3D12_HEAP_TYPE_UPLOAD,
                 ..Default::default()
@@ -252,18 +197,12 @@ impl Producer {
                 CreateEventW(None, false, false, None).map_err(|e| format!("CreateEventW: {e}"))?;
 
             // 句柄移交:CreateSharedHandle 产 NT handle(可 DuplicateHandle);
-            // 本进程副本保留在 SharedTex(F1 wave.3 VK import 用),Drop 关闭。
-            // 加堆腿时句柄指向堆(D3D12_HEAP import;presenter 端自建 placed resource)。
-            // SAFETY: texture/heap/fence 存活;GENERIC_ALL 访问;DuplicateHandle 参数合法。
-            let tex_handle = if let Some(h) = &heap {
-                self.device
-                    .CreateSharedHandle(h, None, GENERIC_ALL_ACCESS, PCWSTR::null())
-                    .map_err(|e| format!("CreateSharedHandle(heap): {e}"))?
-            } else {
-                self.device
-                    .CreateSharedHandle(&texture, None, GENERIC_ALL_ACCESS, PCWSTR::null())
-                    .map_err(|e| format!("CreateSharedHandle(texture): {e}"))?
-            };
+            // 本进程副本保留在 SharedBuf(VK import 用),Drop 关闭。
+            // SAFETY: buffer/fence 存活;GENERIC_ALL 访问;DuplicateHandle 参数合法。
+            let tex_handle = self
+                .device
+                .CreateSharedHandle(&buffer, None, GENERIC_ALL_ACCESS, PCWSTR::null())
+                .map_err(|e| format!("CreateSharedHandle(buffer): {e}"))?;
             let fence_handle = self
                 .device
                 .CreateSharedHandle(&fence, None, GENERIC_ALL_ACCESS, PCWSTR::null())
@@ -295,34 +234,30 @@ impl Producer {
             // fence 本进程句柄即刻关闭(COM 引用持有本体);tex_handle 保留(VK import)。
             let _ = CloseHandle(fence_handle);
             let _ = CloseHandle(target);
-            ok1.map_err(|e| format!("DuplicateHandle(texture): {e}"))?;
+            ok1.map_err(|e| format!("DuplicateHandle(buffer): {e}"))?;
             ok2.map_err(|e| format!("DuplicateHandle(fence): {e}"))?;
 
-            self.shared = Some(SharedTex {
-                texture,
-                heap,
-                is_heap_handle: use_heap,
+            self.shared = Some(SharedBuf {
+                buffer,
                 upload,
                 upload_ptr: upload_ptr as *mut u8,
                 row_pitch,
+                size,
                 width,
                 height,
                 fence,
                 fence_value: 0,
                 fence_event,
-                in_copy_dest: true,
-                local_tex_handle: tex_handle,
-                alloc_size,
-                zc_transitioned: false,
+                local_buf_handle: tex_handle,
             });
-            Ok((dup_tex.0 as u64, dup_fence.0 as u64, use_heap))
+            Ok((dup_tex.0 as u64, dup_fence.0 as u64))
         }
     }
 
-    /// 写一帧 rgba8 → 共享纹理;fence 递增并等待 GPU 完成(有界 2s)。
+    /// 写一帧 rgba8 → 共享 buffer;fence 递增并等待 GPU 完成(有界 2s)。
     fn write(&mut self, rgba8: &[u8], width: u32, height: u32) -> Result<u64, String> {
         let Some(shared) = &mut self.shared else {
-            return Err("共享纹理未打开".into());
+            return Err("共享 buffer 未打开".into());
         };
         if shared.width != width || shared.height != height {
             return Err(format!(
@@ -332,6 +267,14 @@ impl Producer {
         }
         let w = width as usize;
         let h = height as usize;
+        // 紧凑 rgba8 长度校验(format=none 档 rgba8 为空,逐行拷贝会越界读)。
+        let need = w * h * 4;
+        if rgba8.len() < need {
+            return Err(format!(
+                "帧字节不足:{}B < {need}B({width}x{height} rgba8)",
+                rgba8.len()
+            ));
+        }
         unsafe {
             // SAFETY: upload_ptr 为 Map 得到的有效映射,大小 row_pitch*h;逐行拷贝不越界。
             for y in 0..h {
@@ -345,45 +288,9 @@ impl Producer {
                 .Reset(&self.allocator, None)
                 .map_err(|e| format!("list.Reset: {e}"))?;
 
-            if !shared.in_copy_dest {
-                self.list.ResourceBarrier(&[barrier_transition(
-                    &shared.texture,
-                    D3D12_RESOURCE_STATE_COPY_SOURCE,
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                )]);
-                shared.in_copy_dest = true;
-            }
-
-            let dst = D3D12_TEXTURE_COPY_LOCATION {
-                pResource: std::mem::ManuallyDrop::new(Some(shared.texture.clone())),
-                Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-                    SubresourceIndex: 0,
-                },
-            };
-            let src = D3D12_TEXTURE_COPY_LOCATION {
-                pResource: std::mem::ManuallyDrop::new(Some(shared.upload.clone())),
-                Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-                    PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
-                        Offset: 0,
-                        Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
-                            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                            Width: width,
-                            Height: height,
-                            Depth: 1,
-                            RowPitch: shared.row_pitch as u32,
-                        },
-                    },
-                },
-            };
-            self.list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
-            self.list.ResourceBarrier(&[barrier_transition(
-                &shared.texture,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_COPY_SOURCE,
-            )]);
-            shared.in_copy_dest = false;
+            // 共享体是 buffer:整块线性拷贝即可(D3D12 buffer 无 layout,免状态迁移)。
+            self.list
+                .CopyBufferRegion(&shared.buffer, 0, &shared.upload, 0, shared.size);
             self.list.Close().map_err(|e| format!("list.Close: {e}"))?;
             let cmd: ID3D12CommandList = self.list.cast().map_err(|e| format!("list cast: {e}"))?;
             self.queue.ExecuteCommandLists(&[Some(cmd)]);
@@ -406,35 +313,16 @@ impl Producer {
         }
     }
 
-    /// 零拷贝帧信号(F1 wave.3 方向 B):VK 已直渲进共享纹理(session 帧 fence 完成
-    /// 由 CPU 侧知悉),此处仅推进共享 fence 通知消费者;首次调用把纹理一次性迁移
-    /// 到 COPY_SOURCE(与 signal 同队列顺序提交,消费者见 fence ≥ v 时迁移已完成)。
+    /// 零拷贝帧信号(buffer 形态):VK 的 pack pass 已把本帧写进共享 buffer
+    /// (session 帧 fence 完成由 CPU 侧知悉,且上游帧末已录 EXTERNAL release),
+    /// 此处仅推进共享 fence 通知消费者。buffer 无 layout,无需任何状态迁移。
     /// 返回本帧 fence 值。
     fn signal(&mut self) -> Result<u64, String> {
         let Some(shared) = &mut self.shared else {
-            return Err("共享纹理未打开".into());
+            return Err("共享 buffer 未打开".into());
         };
         unsafe {
-            // SAFETY: 全部对象存活于 self;命令对按序配对;同队列序保证迁移先于信号。
-            if !shared.zc_transitioned {
-                self.allocator.Reset().map_err(|e| format!("allocator.Reset: {e}"))?;
-                self.list
-                    .Reset(&self.allocator, None)
-                    .map_err(|e| format!("list.Reset: {e}"))?;
-                if shared.in_copy_dest {
-                    self.list.ResourceBarrier(&[barrier_transition(
-                        &shared.texture,
-                        D3D12_RESOURCE_STATE_COPY_DEST,
-                        D3D12_RESOURCE_STATE_COPY_SOURCE,
-                    )]);
-                    shared.in_copy_dest = false;
-                }
-                self.list.Close().map_err(|e| format!("list.Close: {e}"))?;
-                let cmd: ID3D12CommandList =
-                    self.list.cast().map_err(|e| format!("list cast: {e}"))?;
-                self.queue.ExecuteCommandLists(&[Some(cmd)]);
-                shared.zc_transitioned = true;
-            }
+            // SAFETY: fence 存活于 self;Signal 仅入队序号,无资源引用。
             shared.fence_value += 1;
             let v = shared.fence_value;
             self.queue
@@ -457,21 +345,33 @@ impl Drop for Producer {
     }
 }
 
-/// 打开/重建共享纹理并把句柄移交 target_pid;`min_alloc` = VK import 端需求(probe 实测,
-/// 0 = 未知)。返回 (texHandle, fenceHandle, width, height, isHeapHandle)。
+/// 打开/重建共享 buffer 并把句柄移交 target_pid。
+/// 返回 (bufHandle, fenceHandle, width, height, rowPitch, size)。
 pub fn open(
     width: u32,
     height: u32,
     target_pid: u32,
-    min_alloc: u64,
-) -> Result<(u64, u64, u32, u32, bool), String> {
+) -> Result<(u64, u64, u32, u32, u32, u64), String> {
     let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
     if g.is_none() {
         *g = Some(Producer::new()?);
     }
     let p = g.as_mut().expect("producer 刚初始化");
-    let (t, f, heap) = p.open(width, height, target_pid, min_alloc)?;
-    Ok((t, f, width, height, heap))
+    let (t, f) = p.open(width, height, target_pid)?;
+    let (row_pitch, size) = shared_layout(width, height);
+    Ok((t, f, width, height, row_pitch as u32, size))
+}
+
+/// D3D12 adapter LUID(与 VK physical device LUID 对拍;producer 未初始化 = None)。
+pub fn adapter_luid() -> Option<[u8; 8]> {
+    let g = slot().lock().unwrap_or_else(|e| e.into_inner());
+    let p = g.as_ref()?;
+    // SAFETY: device 存活于 Producer;GetAdapterLuid 无副作用。
+    let luid = unsafe { p.device.GetAdapterLuid() };
+    let mut out = [0u8; 8];
+    out[..4].copy_from_slice(&luid.LowPart.to_ne_bytes());
+    out[4..].copy_from_slice(&luid.HighPart.to_ne_bytes());
+    Some(out)
 }
 
 /// 写一帧;返回 fence 值。共享未打开 = Ok(None)(不视为错误,canvas 腿照常)。
@@ -484,30 +384,28 @@ pub fn write_frame(rgba8: &[u8], width: u32, height: u32) -> Result<Option<u64>,
     p.write(rgba8, width, height).map(Some)
 }
 
-/// 是否已打开共享纹理(供 viewport.frame 决定是否随帧写入)。
+/// 是否已打开共享 buffer(供 viewport.frame 决定是否随帧写入)。
 pub fn is_open() -> bool {
     let g = slot().lock().unwrap_or_else(|e| e.into_inner());
     g.as_ref().is_some_and(|p| p.shared.is_some())
 }
 
-/// VK import 面(F1 wave.3 方向 B):(本进程 NT handle, allocation_size, width, height,
-/// is_heap)。未打开 = None。handle 生命周期随 SharedTex(close/重建即失效),调用方须
-/// 即取即用。is_heap=true 时句柄指向共享堆(D3D12_HEAP import,placed resource 偏移 0)。
-pub fn vk_import_info() -> Option<(u64, u64, u32, u32, bool)> {
+/// VK import 面(buffer 形态)。未打开 = None。handle 生命周期随 SharedBuf
+/// (close/重建即失效),调用方须即取即用。
+pub fn vk_import_info() -> Option<ShareInfo> {
     let g = slot().lock().unwrap_or_else(|e| e.into_inner());
     let p = g.as_ref()?;
     let s = p.shared.as_ref()?;
-    Some((
-        s.local_tex_handle.0 as u64,
-        s.alloc_size,
-        s.width,
-        s.height,
-        s.is_heap_handle,
-    ))
+    Some(ShareInfo {
+        handle: s.local_buf_handle.0 as u64,
+        size: s.size,
+        width: s.width,
+        height: s.height,
+        row_pitch: s.row_pitch as u32,
+    })
 }
 
-/// 零拷贝帧信号:仅推进共享 fence(首调用一次性迁移纹理到 COPY_SOURCE)。
-/// 共享未打开 = Ok(None)。
+/// 零拷贝帧信号:仅推进共享 fence。共享未打开 = Ok(None)。
 pub fn signal_frame() -> Result<Option<u64>, String> {
     let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
     let Some(p) = g.as_mut() else { return Ok(None) };
@@ -517,10 +415,39 @@ pub fn signal_frame() -> Result<Option<u64>, String> {
     p.signal().map(Some)
 }
 
-/// 关闭共享纹理(幂等)。
+/// 关闭共享 buffer(幂等)。
 pub fn close() {
     let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
     if let Some(p) = g.as_mut() {
         p.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shared_layout;
+
+    /// 共享体线性布局契约:行距 256B 对齐(D3D12 `CopyTextureRegion` 的
+    /// PLACED_FOOTPRINT 要求),总字节 = 行距 × 高。生产者(VK pack pass 按
+    /// row_words 写)与消费者(presenter 按 RowPitch 拷)共用本公式,任一侧漂移
+    /// 即接线硬错,故此处看门。
+    #[test]
+    fn shared_layout_contract() {
+        for (w, h) in [(128u32, 96u32), (64, 64), (512, 288), (960, 540), (1024, 540), (1920, 1080)]
+        {
+            let (row_pitch, size) = shared_layout(w, h);
+            assert_eq!(row_pitch % 256, 0, "{w}x{h}: 行距 {row_pitch} 未 256B 对齐");
+            assert!(
+                row_pitch >= (w as usize) * 4,
+                "{w}x{h}: 行距 {row_pitch} 容不下一行 rgba8"
+            );
+            assert!(
+                row_pitch < (w as usize) * 4 + 256,
+                "{w}x{h}: 行距 {row_pitch} 超出最小对齐冗余(公式漂移)"
+            );
+            assert_eq!(size, (row_pitch * h as usize) as u64, "{w}x{h}: 总字节 ≠ 行距×高");
+            // pack 着色器按 u32 步进写,行距须 4B 整除(256 对齐已蕴含,显式钉死)。
+            assert_eq!(row_pitch % 4, 0, "{w}x{h}: 行距非 4B 整除,pack row_words 会截断");
+        }
     }
 }

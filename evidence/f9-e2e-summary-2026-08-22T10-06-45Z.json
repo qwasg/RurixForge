@@ -1,0 +1,486 @@
+{
+  "spec": "full-auto-test / f9-full-journey",
+  "startedUtc": "2026-08-22T10:06:45.893Z",
+  "host": {
+    "origin": "http://127.0.0.1:3080",
+    "agentdOrigin": "http://127.0.0.1:8103"
+  },
+  "env": {
+    "entity": "JourneyBox-E2E-T100645Z",
+    "sceneRel": "projects/demo/Content/Scenes/e2e-journey-0822T100645Z.rxscene",
+    "sceneNewBaseline": 0,
+    "browserChannel": "msedge"
+  },
+  "prep": [
+    "构建产物齐",
+    "端口就绪",
+    "agentd pid=84032",
+    "host pid=78128"
+  ],
+  "notes": [
+    "不伪造空项目:scene_new 基线实体数如实记录;编辑器 ensureDefaultScene 可能加载 maze",
+    "D2/D3/D4 仍开:PIE/图加载走 MCP 或 Enter;保存显式 path;playtest 为测试夹具不是产品写文件面"
+  ],
+  "hygiene": {
+    "pageErrors": [],
+    "consoleErrors": []
+  },
+  "orphanCheck": {
+    "before": [],
+    "after": []
+  },
+  "finishedUtc": "2026-08-22T10:06:53.765Z",
+  "durationMs": 7872,
+  "tasks": [
+    {
+      "id": "A0",
+      "title": "API 基线 scene_new + health",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "host-health",
+          "pass": true,
+          "detail": "HTTP 200"
+        },
+        {
+          "name": "agentd-health",
+          "pass": true,
+          "detail": "status=200"
+        },
+        {
+          "name": "scene-new-ok",
+          "pass": true,
+          "detail": "entities=0"
+        }
+      ],
+      "screenshots": [],
+      "notes": [
+        "scene_new 后实体数=0(如实,不宣称空项目);resp={\"entityCount\":0,\"name\":\"f9-e2e-06-45Z\"}"
+      ],
+      "durationMs": 56
+    },
+    {
+      "id": "A1",
+      "title": "API 创建实体",
+      "verdict": "fail",
+      "assertions": [
+        {
+          "name": "unhandled-exception",
+          "pass": false,
+          "detail": "mcp mcp__engine-scene__entity_create isError: {\n  \"error\": \"host 返回错误:{\\\"code\\\":-32602,\\\"message\\\":\\\"invalid params: 组件 Script 缺字段 props\\\"}\",\n  \"hint\": \"engine-host 不在线;看门狗每 500ms 探测并自动重启\",\n  \"lastStartError\": null\n}"
+        }
+      ],
+      "screenshots": [],
+      "notes": [],
+      "durationMs": 6
+    },
+    {
+      "id": "A2",
+      "title": "API 赋材质 w4_mat",
+      "verdict": "fail",
+      "assertions": [
+        {
+          "name": "entity-id",
+          "pass": false,
+          "detail": "id=null"
+        }
+      ],
+      "screenshots": [],
+      "notes": [],
+      "durationMs": 1
+    },
+    {
+      "id": "A3",
+      "title": "API 挂 door_opener 逻辑图",
+      "verdict": "fail",
+      "assertions": [
+        {
+          "name": "entity-id",
+          "pass": false,
+          "detail": "id=null"
+        }
+      ],
+      "screenshots": [],
+      "notes": [],
+      "durationMs": 1
+    },
+    {
+      "id": "A4",
+      "title": "API scene_save 显式路径(绕 D3)",
+      "verdict": "fail",
+      "assertions": [
+        {
+          "name": "scene-file-exists",
+          "pass": true,
+          "detail": "bytes=64;save={\"bytes\":64,\"path\":\"D:\\\\游戏引擎\\\\projects/demo/Content/Scenes/e2e-journey-0822T100645Z.rxscene\"}"
+        },
+        {
+          "name": "scene-contains-entity",
+          "pass": false,
+          "detail": "hasName=false"
+        },
+        {
+          "name": "scene-contains-graph",
+          "pass": false,
+          "detail": "hasGraph=false"
+        }
+      ],
+      "screenshots": [],
+      "notes": [
+        "显式 path,避开 D3 缺省 data/scene.rxscene"
+      ],
+      "durationMs": 11
+    },
+    {
+      "id": "A5",
+      "title": "API PIE play_enter/state/exit(绕 D2)",
+      "verdict": "fail",
+      "assertions": [
+        {
+          "name": "play-running",
+          "pass": true,
+          "detail": "state=play_running;enter={\"state\":\"play_running\"}"
+        },
+        {
+          "name": "viewport-frame-nonzero",
+          "pass": false,
+          "detail": "nonZeroPixels=0"
+        },
+        {
+          "name": "play-back-edit",
+          "pass": true,
+          "detail": "state=edit"
+        }
+      ],
+      "screenshots": [],
+      "notes": [],
+      "durationMs": 338
+    },
+    {
+      "id": "A6",
+      "title": "API playtest 夹具矩阵(D4 标注)",
+      "verdict": "fail",
+      "assertions": [
+        {
+          "name": "playtest-http",
+          "pass": true,
+          "detail": "HTTP 200;{\"cases\":[{\"actual\":0,\"detail\":\"\",\"expected\":1,\"kind\":\"entity_count\",\"name\":\"实体计数含 journey 实体\",\"pass\":false},{\"actual\":null,\"detail\":\"实体「JourneyBox-E2E-T100645Z」不存在\",\"expected\":\"Content/Graphs/door_op"
+        },
+        {
+          "name": "playtest-ok",
+          "pass": false,
+          "detail": "passed=0 failed=2"
+        }
+      ],
+      "screenshots": [],
+      "notes": [
+        "夹具由测试基建写入临时目录,不是产品 workspace 写文件面;D4 仍开",
+        "report={\"ok\":false,\"passed\":0,\"failed\":2,\"cases\":[{\"actual\":0,\"detail\":\"\",\"expected\":1,\"kind\":\"entity_count\",\"name\":\"实体计数含 journey 实体\",\"pass\":false},{\"actual\":null,\"detail\":\"实体「JourneyBox-E2E-T100645Z」不存在\",\"expected\":\"Content/Graphs/door_opener.rxgraph\",\"kind\":\"component_field\",\"name\":\"journey 实体 Script.graphRef\",\"pass\":false}]}"
+      ],
+      "durationMs": 8
+    },
+    {
+      "id": "A7",
+      "title": "API project-pack 经 3080(无 UI)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "pack-http-3080",
+          "pass": true,
+          "detail": "HTTP 200;{\"closure\":[\"Content/Scenes/e2e-journey-0822T100645Z.rxscene\"],\"debugEngine\":true,\"files\":[{\"bytes\":64,\"path\":\"Content/Scenes/e2e-journey-0822T100645Z.rxscene\"},{\"bytes\":12162560,\"path\":\"bin/engine-host.exe\"},{\"bytes\":224,\"path\":\"pack-run.p"
+        },
+        {
+          "name": "pack-engine-host",
+          "pass": true,
+          "detail": "C:\\Users\\苍\\AppData\\Local\\Temp\\forge-f9-pack-2026-08-22T10-06-45Z\\bin\\engine-host.exe"
+        },
+        {
+          "name": "pack-run-script",
+          "pass": true,
+          "detail": "C:\\Users\\苍\\AppData\\Local\\Temp\\forge-f9-pack-2026-08-22T10-06-45Z\\pack-run.ps1"
+        }
+      ],
+      "screenshots": [],
+      "notes": [
+        "warnings=[];files=[{\"bytes\":64,\"path\":\"Content/Scenes/e2e-journey-0822T100645Z.rxscene\"},{\"bytes\":12162560,\"path\":\"bin/engine-host.exe\"},{\"bytes\":224,\"path\":\"pack-run.ps1\"}]"
+      ],
+      "durationMs": 14
+    },
+    {
+      "id": "U0",
+      "title": "基线壳三栏 + SSE",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "three-panes",
+          "pass": true,
+          "detail": "[{\"id\":\"pane-sessions\",\"n\":1},{\"id\":\"pane-chat\",\"n\":1},{\"id\":\"pane-main\",\"n\":1}]"
+        },
+        {
+          "name": "statusbar",
+          "pass": true,
+          "detail": "n=1"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U0-baseline.png"
+      ],
+      "notes": [],
+      "durationMs": 306
+    },
+    {
+      "id": "U1",
+      "title": "命令面板 Ctrl+K 打开设置",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "palette-open",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "settings-opened",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U1-command-palette.png"
+      ],
+      "notes": [],
+      "durationMs": 72
+    },
+    {
+      "id": "U2",
+      "title": "设置五页渲染 + 模型 availability",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "page-appearance",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "page-agent",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "page-models",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "page-skills",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "page-about",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "deepseek-availability-real",
+          "pass": true,
+          "detail": "deepseek=needs-key"
+        },
+        {
+          "name": "oai-availability-real",
+          "pass": true,
+          "detail": "oai=needs-key"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U2-settings-models.png"
+      ],
+      "notes": [],
+      "durationMs": 213
+    },
+    {
+      "id": "U3",
+      "title": "workbench + 底栏 + Inspector 预览",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "tab-plan",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "tab-todo",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "tab-editor",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "bottom-logs",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "bottom-output",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "bottom-metrics",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "ws-files",
+          "pass": true,
+          "detail": "n=26"
+        },
+        {
+          "name": "file-preview-nonempty",
+          "pass": true,
+          "detail": "len=78"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U3-workbench-inspector.png"
+      ],
+      "notes": [],
+      "durationMs": 529
+    },
+    {
+      "id": "U4",
+      "title": "资产右键浏览器禁用态",
+      "verdict": "pass-degraded",
+      "assertions": [
+        {
+          "name": "assets-panel",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U4-assets-nomenu.png"
+      ],
+      "notes": [
+        "右键菜单未弹出(可能需点资产行);记降级不充绿"
+      ],
+      "durationMs": 74
+    },
+    {
+      "id": "U5",
+      "title": "Composer 薄检(模式/模型菜单)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "mode-menu",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "model-menu",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U5-composer.png"
+      ],
+      "notes": [
+        "toast-stack 节点=1;未主动触发 toast,不充绿不编造"
+      ],
+      "durationMs": 100
+    },
+    {
+      "id": "U6",
+      "title": "UI 建会话 + chat 建实体(确定性 mock LLM)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "openai-compat-configured",
+          "pass": true,
+          "detail": "HTTP 200"
+        },
+        {
+          "name": "session-created",
+          "pass": true,
+          "detail": "sid=sess_1787393209073_83d6aa27"
+        },
+        {
+          "name": "session-pinned",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "run-completed",
+          "pass": true,
+          "detail": "status=completed;err="
+        },
+        {
+          "name": "tool-loop-entity-create",
+          "pass": true,
+          "detail": "[{\"name\":\"mcp__engine-scene__entity_create\",\"ok\":true,\"error\":null}]"
+        },
+        {
+          "name": "entity-list-has-ui",
+          "pass": true,
+          "detail": "Wall_5_4,Wall_2_5,Floor,Player,Key,Door,Goal,JourneyBox-E2E-T100645Z-UI"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U6-chat-create.png"
+      ],
+      "notes": [],
+      "durationMs": 318
+    },
+    {
+      "id": "U7",
+      "title": "编辑器出帧 + NodeGraph Enter 加载(绕 D2)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "viewport-stat",
+          "pass": true,
+          "detail": "{\"deviceName\":\"NVIDIA GeForce RTX 4070 Ti\",\"draws\":36,\"frames\":8,\"px\":67780}"
+        },
+        {
+          "name": "viewport-px",
+          "pass": true,
+          "detail": "px=67780"
+        },
+        {
+          "name": "graph-nodes",
+          "pass": true,
+          "detail": "nodesish=4"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f9-e2e-U7-editor-graph.png"
+      ],
+      "notes": [],
+      "durationMs": 1548
+    }
+  ],
+  "verdicts": {
+    "A0": "pass",
+    "A1": "fail",
+    "A2": "fail",
+    "A3": "fail",
+    "A4": "fail",
+    "A5": "fail",
+    "A6": "fail",
+    "A7": "pass",
+    "U0": "pass",
+    "U1": "pass",
+    "U2": "pass",
+    "U3": "pass",
+    "U4": "pass-degraded",
+    "U5": "pass",
+    "U6": "pass",
+    "U7": "pass"
+  },
+  "allGreen": false,
+  "gateGreen": false,
+  "orphanFree": true
+}

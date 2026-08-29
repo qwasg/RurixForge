@@ -115,6 +115,22 @@ fn tool_list() -> Value {
                 }
             },
             {
+                "name": "asset_set_description",
+                "description": "写入 .meta semantic 段(description/tags/source);缺 .meta 时自动补建",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "assetPath": { "type": "string" },
+                        "description": { "type": "string", "description": "文字简介" },
+                        "tags": { "type": "array", "items": { "type": "string" }, "description": "标签列表" },
+                        "source": { "type": "string", "enum": ["human", "agent-vision", "agent-facts"], "description": "描述来源(I-7 溯源)" },
+                        "model": { "type": "string", "description": "生成模型名(可选)" },
+                        "contentHash": { "type": "string", "description": "内容摘要 hash(可选,用于 stale 判定)" }
+                    },
+                    "required": ["assetPath", "description", "source"]
+                }
+            },
+            {
                 "name": "asset_thumbnail",
                 "description": "贴图缩略图(原图直出 data URL,前端 CSS 缩放);非贴图 → NO_THUMBNAIL(网格离屏渲染 = RD-F2-002)",
                 "inputSchema": {
@@ -228,14 +244,27 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
                 .into_iter()
                 .map(|rel| {
                     let meta_path = meta_path_for(&p.content_root(), &rel);
-                    let (guid, atype) = if meta_path.is_file() {
+                    let (guid, atype, description, tags) = if meta_path.is_file() {
                         match MetaDoc::load(&meta_path) {
-                            Ok(m) => (m.guid, m.atype),
-                            Err(_) => (String::new(), "unknown".into()),
+                            Ok(m) => {
+                                let description = m.description().unwrap_or("").to_string();
+                                let tags = m.tags().to_vec();
+                                (m.guid, m.atype, description, tags)
+                            }
+                            Err(_) => (String::new(), "unknown".into(), String::new(), Vec::new()),
                         }
-                    } else { (String::new(), "unknown".into()) };
+                    } else {
+                        (String::new(), "unknown".into(), String::new(), Vec::new())
+                    };
                     let size = p.content_root().join(&rel).metadata().ok().map(|m| m.len()).unwrap_or(0);
-                    json!({ "path": rel, "guid": guid, "type": atype, "size": size })
+                    json!({
+                        "path": rel,
+                        "guid": guid,
+                        "type": atype,
+                        "size": size,
+                        "description": description,
+                        "tags": tags
+                    })
                 })
                 .collect::<Vec<_>>();
             Ok(json!({ "assets": items }))
@@ -354,6 +383,26 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
             let p = lock(proj);
             match assetd::ops::set_meta(&p, asset_path, patch) {
                 Ok(()) => Ok(json!({})),
+                Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
+            }
+        }
+        "asset_set_description" => {
+            let asset_path = args.get("assetPath").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 assetPath"))?;
+            let description = args.get("description").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 description"))?;
+            let source = args.get("source").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 source"))?;
+            let tags: Vec<String> = args.get("tags")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let model = args.get("model").and_then(Value::as_str);
+            let content_hash = args.get("contentHash").and_then(Value::as_str);
+            let p = lock(proj);
+            match assetd::ops::set_description(
+                &p, asset_path, description, &tags, source, model, content_hash,
+            ) {
+                Ok(()) => Ok(json!({ "ok": true })),
                 Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
             }
         }

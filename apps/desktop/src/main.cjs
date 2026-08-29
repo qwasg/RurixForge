@@ -1164,6 +1164,17 @@ async function main() {
     });
     return r.canceled ? [] : r.filePaths;
   });
+  // 工作区选择器「本机目录…」:选一个已存在目录当工作区根(对话框内可现建文件夹),
+  // 返回绝对路径交 renderer 走 POST /api/forge/workspaces;取消 → null。
+  ipcMain.handle('workspace:pick-folder', async () => {
+    if (!mainWindow) return null;
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '选择工作区根目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return r.canceled || r.filePaths.length === 0 ? null : r.filePaths[0];
+  });
+
   // 在文件夹中显示:rel = Content 相对路径,主进程拼项目根(demo)后 showItemInFolder。
   ipcMain.on('assets:show-in-folder', (_e, rel) => {
     if (typeof rel !== 'string' || rel.includes('..') || rel.includes(':')) return;

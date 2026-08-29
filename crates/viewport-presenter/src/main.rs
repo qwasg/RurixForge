@@ -44,15 +44,15 @@ struct Dx {
     swapchain: Option<IDXGISwapChain3>,
     rtv_heap: ID3D12DescriptorHeap,
     rtv_size: u32,
+    /// 共享线性 buffer(生产者 VK pack pass 按 row_pitch 逐行写)。
     shared: Option<ID3D12Resource>,
-    /// 加堆腿(F1 wave.3):bind 的句柄指向共享堆时,本字段持有堆引用并自建
-    /// placed resource(堆须活过纹理;字段序在 shared 之后,drop 同序)。
-    shared_heap: Option<ID3D12Heap>,
     fence: Option<ID3D12Fence>,
     fence_event: HANDLE,
     seen_fence: u64,
     width: u32,
     height: u32,
+    /// 共享 buffer 行距(256B 对齐;PLACED_FOOTPRINT 拷贝用)。
+    row_pitch: u32,
     presented: u64,
 }
 
@@ -98,66 +98,52 @@ impl Dx {
                 rtv_heap,
                 rtv_size,
                 shared: None,
-            shared_heap: None,
-            fence: None,
+                fence: None,
                 fence_event,
                 seen_fence: 0,
                 width: 0,
                 height: 0,
+                row_pitch: 0,
                 presented: 0,
             })
         }
     }
 
-    /// 绑定共享纹理 + fence(各仅一次;重复 bind 先释放旧引用)。
-    /// `heap=true`(F1 wave.3 加堆腿):句柄指向共享堆,自建 placed resource
-    /// (desc 与 engine-host share.rs 生产者逐字一致,偏移 0,初态 COPY_SOURCE)。
-    fn bind(&mut self, tex_raw: usize, fence_raw: usize, width: u32, height: u32, heap: bool) -> Result<(), String> {
+    /// 绑定共享 buffer + fence(各仅一次;重复 bind 先释放旧引用)。
+    ///
+    /// 共享体是**线性 buffer** 而非纹理:两侧对同一张纹理的行/高补齐规则不同
+    /// (960×540 实测 VK 需 2,457,600B vs D3D12 committed 2,228,224B),曾致
+    /// `VK_ERROR_DEVICE_LOST`;线性 buffer 两侧字节数逐字一致。生产者(engine-host
+    /// 的 VK pack pass)按 `row_pitch` 逐行写,本侧按同一 `row_pitch` 以
+    /// PLACED_FOOTPRINT 拷进后台缓冲。
+    fn bind(
+        &mut self,
+        tex_raw: usize,
+        fence_raw: usize,
+        width: u32,
+        height: u32,
+        row_pitch: u32,
+    ) -> Result<(), String> {
         unsafe {
             // SAFETY: tex_raw/fence_raw 为 engine-host 经 DuplicateHandle 复制给本进程的
             // 有效句柄;OpenSharedHandle 成功即取得 COM 引用,失败原样返回 HRESULT。
             let tex_h = HANDLE(tex_raw as *mut c_void);
             let fence_h = HANDLE(fence_raw as *mut c_void);
             self.shared = None;
-            self.shared_heap = None;
-            let shared = if heap {
-                let mut sh: Option<ID3D12Heap> = None;
-                self.device
-                    .OpenSharedHandle(tex_h, &mut sh)
-                    .map_err(|e| format!("OpenSharedHandle(heap): {e}"))?;
-                let sh = sh.ok_or("OpenSharedHandle(heap) 返回空")?;
-                // desc 与 share.rs 生产者逐字一致(同驱动同 desc → 同布局)。
-                let desc = D3D12_RESOURCE_DESC {
-                    Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-                    Width: width as u64,
-                    Height: height,
-                    DepthOrArraySize: 1,
-                    MipLevels: 1,
-                    Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                    SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
-                    Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
-                    Flags: D3D12_RESOURCE_FLAG_NONE,
-                    ..Default::default()
-                };
-                let mut res: Option<ID3D12Resource> = None;
-                self.device
-                    .CreatePlacedResource(
-                        &sh,
-                        0,
-                        &desc,
-                        D3D12_RESOURCE_STATE_COPY_SOURCE,
-                        None,
-                        &mut res,
-                    )
-                    .map_err(|e| format!("CreatePlacedResource(consumer): {e}"))?;
-                self.shared_heap = Some(sh);
-                res.ok_or("CreatePlacedResource(consumer) 返回空")?
-            } else {
+            // 布局契约对拍:行距须 256B 对齐且容得下一行 rgba8,不符即 fail-closed
+            // (与 engine-host share.rs::shared_layout 同式;任一侧漂移即接线硬错)。
+            let expect = ((width as usize) * 4).div_ceil(256) * 256;
+            if row_pitch as usize != expect {
+                return Err(format!(
+                    "共享 buffer 行距不匹配:收到 {row_pitch},按 {width}x{height} 应为 {expect}"
+                ));
+            }
+            let shared = {
                 let mut sh: Option<ID3D12Resource> = None;
                 self.device
                     .OpenSharedHandle(tex_h, &mut sh)
-                    .map_err(|e| format!("OpenSharedHandle(texture): {e}"))?;
-                sh.ok_or("OpenSharedHandle(texture) 返回空")?
+                    .map_err(|e| format!("OpenSharedHandle(buffer): {e}"))?;
+                sh.ok_or("OpenSharedHandle(buffer) 返回空")?
             };
             let mut fence: Option<ID3D12Fence> = None;
             self.device
@@ -170,6 +156,7 @@ impl Dx {
             self.fence = Some(fence);
             self.width = width;
             self.height = height;
+            self.row_pitch = row_pitch;
             Ok(())
         }
     }
@@ -239,7 +226,31 @@ impl Dx {
                 ..Default::default()
             };
             self.list.ResourceBarrier(&[to_copy]);
-            self.list.CopyResource(&back, shared);
+            // 共享体是线性 buffer:按 PLACED_FOOTPRINT(256B 对齐行距)拷进后台缓冲。
+            let dst = D3D12_TEXTURE_COPY_LOCATION {
+                pResource: std::mem::ManuallyDrop::new(Some(back.clone())),
+                Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                    SubresourceIndex: 0,
+                },
+            };
+            let src = D3D12_TEXTURE_COPY_LOCATION {
+                pResource: std::mem::ManuallyDrop::new(Some(shared.clone())),
+                Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                    PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
+                        Offset: 0,
+                        Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
+                            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                            Width: self.width,
+                            Height: self.height,
+                            Depth: 1,
+                            RowPitch: self.row_pitch,
+                        },
+                    },
+                },
+            };
+            self.list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
             let to_present = D3D12_RESOURCE_BARRIER {
                 Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
                 Anonymous: D3D12_RESOURCE_BARRIER_0 {
@@ -277,7 +288,7 @@ impl Drop for Dx {
 // ─────────────────────────── 窗口线程 ───────────────────────────
 
 enum Cmd {
-    Bind { tex: usize, fence: usize, w: u32, h: u32, heap: bool },
+    Bind { tex: usize, fence: usize, w: u32, h: u32, row_pitch: u32 },
     Move { x: i32, y: i32, w: u32, h: u32 },
     Close,
 }
@@ -375,9 +386,9 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
         // 命令队列优先
         while let Ok(cmd) = rx.try_recv() {
             match cmd {
-                Cmd::Bind { tex, fence, w, h, heap } => {
+                Cmd::Bind { tex, fence, w, h, row_pitch } => {
                     let recreate = dx.width != w || dx.height != h || dx.swapchain.is_none();
-                    if let Err(e) = dx.bind(tex, fence, w, h, heap) {
+                    if let Err(e) = dx.bind(tex, fence, w, h, row_pitch) {
                         eprintln!("[presenter] bind 失败: {e}");
                         break 'outer;
                     }
@@ -430,30 +441,20 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
 
 // ─────────────────────────── stdin 命令协议 ───────────────────────────
 
-/// 逐行读取:`bind [tex|heap] <tex> <fence> <w> <h>` / `move <x> <y> <w> <h>` / `close`。
-/// 5 段旧式 = committed resource 句柄;6 段新式带句柄种类(F1 wave.3 加堆腿)。
+/// 逐行读取:`bind buf <handle> <fence> <w> <h> <rowPitch>` / `move <x> <y> <w> <h>` / `close`。
+/// 共享体为线性 buffer(见 `Dx::bind` 头注);旧的 `bind [tex|heap] ...` 五/六段形态
+/// 随纹理共享一并退役——收到即返回 None,由调用方如实报错,不做静默兼容。
 /// 容忍 BOM(PowerShell 5.1 重定向 stdin 默认 UTF-8 带 BOM)。
 fn parse_cmd(line: &str) -> Option<Cmd> {
     let line = line.trim().trim_start_matches('\u{feff}');
     let parts: Vec<&str> = line.split_whitespace().collect();
     match parts.first().copied()? {
-        "bind" if parts.len() == 5 => Some(Cmd::Bind {
-            tex: parts[1].parse().ok()?,
-            fence: parts[2].parse().ok()?,
-            w: parts[3].parse().ok()?,
-            h: parts[4].parse().ok()?,
-            heap: false,
-        }),
-        "bind" if parts.len() == 6 => Some(Cmd::Bind {
-            heap: match parts[1] {
-                "heap" => true,
-                "tex" => false,
-                _ => return None,
-            },
+        "bind" if parts.len() == 7 && parts[1] == "buf" => Some(Cmd::Bind {
             tex: parts[2].parse().ok()?,
             fence: parts[3].parse().ok()?,
             w: parts[4].parse().ok()?,
             h: parts[5].parse().ok()?,
+            row_pitch: parts[6].parse().ok()?,
         }),
         "move" if parts.len() == 5 => Some(Cmd::Move {
             x: parts[1].parse().ok()?,

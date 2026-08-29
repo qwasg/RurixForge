@@ -152,13 +152,6 @@ impl EventDraft {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn actor(mut self, actor: impl Into<String>) -> Self {
-        self.actor = actor.into();
-        self
-    }
-
-    #[allow(dead_code)]
     pub fn correlation(mut self, id: Option<String>) -> Self {
         self.correlation_id = id;
         self

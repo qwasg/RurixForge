@@ -1,0 +1,68 @@
+{
+  "spec": "browser-full-project-journey",
+  "executedAt": "2026-08-19T11:30:00Z",
+  "environment": {
+    "host": "http://127.0.0.1:3080 (client dist + /api/forge/* 代理)",
+    "agentd": "127.0.0.1:8103 /health ok",
+    "browser": "内置浏览器(browser_use)",
+    "gpu": "NVIDIA GeForce RTX 4070 Ti (canvas readback 轮询腿)"
+  },
+  "gateGreen": true,
+  "allGreen": false,
+  "pageErrors": 0,
+  "consoleErrors": 0,
+  "notes": "console 全程 0 error(巡检期 1 次 ERR_ABORTED 为主动重载中止在途轮询,良性留痕);截图 40 张落 evidence/f9-journey-*.png",
+  "inspection": {
+    "baseline": { "verdict": "pass", "evidence": "f9-journey-baseline-1.png", "note": "零白屏三栏渲染,SSE 连接" },
+    "shell.newAgent": { "verdict": "pass", "evidence": "f9-journey-shell-1.png" },
+    "shell.pin": { "verdict": "pass", "evidence": "f9-journey-shell-2.png" },
+    "shell.rename": { "verdict": "pass", "evidence": "f9-journey-shell-3.png" },
+    "shell.search": { "verdict": "pass", "evidence": "f9-journey-shell-4.png" },
+    "shell.folder": { "verdict": "pass", "evidence": "f9-journey-shell-5.png" },
+    "shell.menus": { "verdict": "pass", "evidence": "f9-journey-shell-6..9.png", "note": "四菜单展开;窗口三钮 DOM 取证=0(F8 浏览器态定型)" },
+    "shell.commandPalette": { "verdict": "pass", "evidence": "f9-journey-shell-10.png", "note": "Ctrl+K 14 命令,执行「打开设置」成功" },
+    "shell.statusBar": { "verdict": "pass", "evidence": "f9-journey-shell-11.png" },
+    "settings.appearance": { "verdict": "pass", "evidence": "f9-journey-settings-1.png,f9-journey-settings-2.png", "note": "light(#C96442/#FAF9F5)→dark(#E2886A/#1C1B18) computed 实测,data-theme 同步" },
+    "settings.agent": { "verdict": "pass", "evidence": "f9-journey-settings-3.png" },
+    "settings.models": { "verdict": "pass", "evidence": "f9-journey-settings-4.png", "note": "DeepSeek=available, OpenAI-Compat=needs-key, Mock=available(真实后端值)" },
+    "settings.skills": { "verdict": "pass", "evidence": "f9-journey-settings-5.png", "note": "13 技能" },
+    "settings.about": { "verdict": "pass", "evidence": "f9-journey-settings-6.png" },
+    "workbench.tabs": { "verdict": "pass", "evidence": "f9-journey-workbench-1..3.png", "note": "plan/todo/diff 空态诚实" },
+    "workbench.editorViewport": { "verdict": "pass", "evidence": "f9-journey-workbench-4.png", "note": "真实 GPU 帧 draws=36 frames 递进,非全黑" },
+    "bottomPanel.tabs": { "verdict": "pass", "evidence": "f9-journey-panel-1..3.png" },
+    "bottomPanel.dragResize": { "verdict": "degraded", "note": "4px 把手存在但无 a11y ref,合成事件被忽略,browser 工具无法驱动拖拽;记降级不充绿" },
+    "inspector.tree": { "verdict": "pass", "evidence": "f9-journey-inspector-1.png" },
+    "inspector.filePreview": { "verdict": "pass", "evidence": "f9-journey-panel-3.png", "note": "00_MASTER_INDEX.md 真实只读预览 7348B(非 toast)" },
+    "assets.disabledState": { "verdict": "pass", "evidence": "f9-journey-workbench-5.png", "note": "导入/在文件夹显示 disabled+「仅桌面端可用」,诚实禁用态" }
+  },
+  "journey": {
+    "session": "sess_1787138250714_0ea19aaa (journey 项目制作, PINNED)",
+    "step1.newSession": { "verdict": "pass", "evidence": "f9-journey-build-1-new-session.png", "backend": "pinned:true,titleManuallySet:true" },
+    "step2.createEntity": { "verdict": "pass", "evidence": "f9-journey-build-2-chat-create.png,f9-journey-build-2-viewport.png", "backend": "entity_list 36→37;JourneyBox#37 cube@[2,1,2];draws 36→37;deepseek live 工具循环 1 次成功" },
+    "step3.material": { "verdict": "pass", "evidence": "f9-journey-build-3-material.png", "backend": "entity_get#37 material=w4_mat guid;asset_refs 边存在" },
+    "step4.logicGraph": { "verdict": "pass", "evidence": "f9-journey-build-4-nodegraph.png", "backend": "Script.graphRef=Content/Graphs/door_opener.rxgraph;NodeGraph 4 节点渲染" },
+    "step5.saveScene": { "verdict": "pass", "evidence": "f9-journey-build-5-save.png", "backend": "Content/Scenes/journey.rxscene 20471B 含 JourneyBox+w4_mat guid+door_opener 引用" },
+    "step6.pie": { "verdict": "pass", "evidence": "f9-journey-build-6-pie-running.png,f9-journey-build-6-pie-viewport.png", "backend": "play_state edit→play_running→edit;物理 steps 8213→11641;nonZeroPixels 159825→354529" },
+    "step7.playtest": { "verdict": "pass-degraded", "evidence": "f9-journey-build-7-playtest.png", "backend": "tests/maze/matrix.json ok:true passed:6 failed:0 389ms", "note": "降级:journey 专属矩阵无法创建(缺陷 D4),复用 maze 矩阵;跑后 journey 场景 37 实体恢复" },
+    "step8.pack": { "verdict": "pass-degraded", "evidence": "f9-journey-build-8-pack-done.png", "backend": "16 文件 12,858,355B warnings:[];bin/engine-host.exe 12,153,856B;pack-run.ps1", "note": "降级:host 代理缺 /api/forge/project 前缀(缺陷 D5),经 8103 同源直连完成" }
+  },
+  "defects": [
+    { "id": "D1", "severity": "中", "title": "Hierarchy 面板不同步 MCP 侧新建实体", "detail": "Agent 经 MCP 创建的 JourneyBox#37 不进 Hierarchy(后端 37 实体/draws 37 正确,面板止于 Player#33)" },
+    { "id": "D2", "severity": "中", "title": "中央区布局溢出致按钮被挤出可视区", "detail": "chat 展开时 Viewport 头部 Play/Pause/Stop rect 负坐标点击静默无效;NodeGraph「加载」同理(Enter 键生效)" },
+    { "id": "D3", "severity": "低", "title": "Save Scene 无可见确认且写缺省路径", "detail": "写 projects/demo/data/scene.rxscene 而非项目 Content 源场景" },
+    { "id": "D4", "severity": "中", "title": "无 workspace 写文件端点/agent 无通用文件写工具", "detail": "journey 专属 playtest 矩阵无法经产品面创建;agent 诚实拒绝未伪造(与诚实设计一致)" },
+    { "id": "D5", "severity": "高", "title": "host forgeProxy 缺 /api/forge/project 前缀", "detail": "3080 单源调 project-pack 404;agentd 路由正常(直连 8103 成功),缺口在 host 代理层" },
+    { "id": "D6", "severity": "中", "title": "pack 闭包漏 guid 引用资产", "detail": "collect_closure 只递归 Content/ 前缀字符串,JourneyBox 以 guid 引用的 w4_mat.rxmat 未入包且 warnings 为空未提示" },
+    { "id": "D7", "severity": "低", "title": "资产右键菜单主题/本地化泄漏", "detail": "深色主题下白底(bg-white)且条目英文;菜单面板下缘弹出时向下裁切未翻转" },
+    { "id": "D8", "severity": "观察", "title": "editor Console 条 host.crashed +77/host.restarted +68", "detail": "引擎宿主大量崩溃重启记录,出帧未受影响,建议后续排查" }
+  ],
+  "orphanCheck": "电池结束核查:agentd(8103)/host(3080)为本测试会话主线有意拉起,结束后由主线停止;无其他孤儿进程",
+  "fixes": {
+    "note": "checklist 复验衍生修复(spec 第七步流程),均经 live 复验 PASS",
+    "D1": { "title": "Hierarchy 同步", "fix": "editorStore.refreshSummary entityCount 漂移即 reload+EditorView 1s 轮询", "verify": "client vitest 235/235;live:MCP 建 ReverifyProbe 后 3s 面板 36→37 自动同步", "files": ["packages/client/src/lib/editorStore.ts", "packages/client/src/views/EditorView.tsx", "packages/client/test/editorStore.test.ts", "packages/client/test/editorView.test.tsx"] },
+    "D5": { "title": "host 代理 /api/forge/project 前缀", "fix": "forgeProxy PROXY_PREFIXES +'/api/forge/project'", "verify": "host vitest 27/27;live:3080 单源 POST project/pack 200", "files": ["packages/host/src/plugins/forgeProxy.ts", "packages/host/test/forgeProxy.test.ts"] },
+    "D6": { "title": "pack 闭包 guid 引用", "fix": "pack.rs guid→.meta 索引解析+字节读可读性(另挖出二进制资产误判不可读潜伏缺陷并修)", "verify": "cargo 112/112;f6-w4 冒烟 PASS;live:复打出包 17 项含 w4_mat.rxmat+f2w4_dot.png warnings=0", "files": ["crates/forge-agentd/src/pack.rs", "crates/forge-agentd/Cargo.toml"] },
+    "reverifyScreenshot": "复验阶段截图命令持续超时(IDE 命令桥 60s),未产出复验截图,快照日志辅证 c:\\Users\\苍\\AppData\\Local\\Temp\\trae\\browser-logs\\snapshot-2026-08-19T13-12-25-218Z.log;如实登记",
+    "openDefects": "D2(中央区布局溢出)/D3(Save Scene 缺省路径)/D4(无 workspace 写端点)/D7(右键菜单主题泄漏)/D8(host.crashed 事件观察) 如实登记未修,建议立项回填"
+  }
+}

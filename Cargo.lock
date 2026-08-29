@@ -28,6 +28,7 @@ name = "assetd"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "forge-util",
  "image",
  "rurix-asset",
  "rurix-geom-build",
@@ -191,6 +192,7 @@ name = "code-forge-mcp"
 version = "0.1.0"
 dependencies = [
  "forge-logic",
+ "forge-util",
  "serde",
  "serde_json",
 ]
@@ -204,6 +206,17 @@ dependencies = [
  "serde",
  "termcolor",
  "unicode-width",
+]
+
+[[package]]
+name = "context-mcp"
+version = "0.1.0"
+dependencies = [
+ "assetd",
+ "forge-index",
+ "gend",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -245,6 +258,7 @@ dependencies = [
  "base64",
  "forge-logic",
  "forge-scene",
+ "forge-util",
  "naga",
  "openh264",
  "rurix-physics",
@@ -259,6 +273,7 @@ dependencies = [
 name = "engine-scene-mcp"
 version = "0.1.0"
 dependencies = [
+ "forge-util",
  "serde",
  "serde_json",
 ]
@@ -314,8 +329,10 @@ checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 name = "forge-agentd"
 version = "0.1.0"
 dependencies = [
+ "assetd",
  "axum",
  "base64",
+ "forge-store",
  "futures-util",
  "gend",
  "http-body-util",
@@ -325,6 +342,20 @@ dependencies = [
  "tokio",
  "tower",
  "ureq",
+]
+
+[[package]]
+name = "forge-index"
+version = "0.1.0"
+dependencies = [
+ "assetd",
+ "base64",
+ "forge-logic",
+ "forge-scene",
+ "forge-util",
+ "rurix-pkg",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -344,6 +375,24 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "forge-store"
+version = "0.1.0"
+dependencies = [
+ "assetd",
+ "forge-util",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "forge-util"
+version = "0.1.0"
+dependencies = [
+ "rurix-pkg",
 ]
 
 [[package]]
@@ -416,6 +465,7 @@ version = "0.1.0"
 dependencies = [
  "assetd",
  "base64",
+ "forge-util",
  "image",
  "serde",
  "serde_json",
@@ -1276,6 +1326,17 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "store-mcp"
+version = "0.1.0"
+dependencies = [
+ "assetd",
+ "forge-store",
+ "forge-util",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "strum"

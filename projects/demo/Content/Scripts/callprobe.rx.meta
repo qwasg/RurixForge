@@ -4,3 +4,12 @@ importer: rx
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: call_function 链路探针脚本:导出 add(f32,f32) 与 mixed(f32,i32) 两个测试函数
+  tags:
+  - 脚本
+  - 探针
+  - 测试夹具
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

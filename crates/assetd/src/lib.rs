@@ -97,6 +97,8 @@ impl AssetType {
             "jpg" | "jpeg" => (AssetType::Texture, "jpg"),
             "rxscene" => (AssetType::Scene, "scene"),
             "rxmat" => (AssetType::Material, "material"),
+            "rx" => (AssetType::Script, "rx"),
+            "rxgraph" => (AssetType::Script, "rxgraph"),
             _ => return None,
         })
     }

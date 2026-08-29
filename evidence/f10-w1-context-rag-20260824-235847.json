@@ -1,0 +1,72 @@
+{
+    "gates":  [
+                  {
+                      "detail":  "error=INDEX_NOT_BUILT",
+                      "gate":  "fixture.unbuilt-explicit",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "docs=113 tier=lexical",
+                      "gate":  "fixture.build-lexical",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "hits=8 note非空=True",
+                      "gate":  "fixture.search-hit-with-tier-note",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "items=1",
+                      "gate":  "fixture.describe-batch-missing",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "ok=True",
+                      "gate":  "fixture.set-description-ok",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "docs=113",
+                      "gate":  "fixture.rebuild",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "top=Scripts/door.rx",
+                      "gate":  "fixture.search-hits-description",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "totalMissing=0",
+                      "gate":  "fixture.missing-cleared",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "docCount=113",
+                      "gate":  "fixture.status-built",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "docs=224 tier=lexical durationMs=73",
+                      "gate":  "demo.build",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "missing=0 docCount=224",
+                      "gate":  "demo.descriptions-covered",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "top1=Meshes/f5w2_chair2.gltf",
+                      "gate":  "demo.search-chair",
+                      "pass":  true
+                  },
+                  {
+                      "detail":  "hits=0 top=",
+                      "gate":  "demo.search-graph-kind-filter",
+                      "pass":  false
+                  }
+              ],
+    "wave":  "f10-w1-context-rag",
+    "failed":  "门失败: demo.search-graph-kind-filter",
+    "at":  "2026-08-24T15:58:54Z"
+}

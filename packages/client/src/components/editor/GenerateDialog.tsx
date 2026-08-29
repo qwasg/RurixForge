@@ -46,43 +46,43 @@ export default function GenerateDialog() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" data-gen-dialog>
-      <div className="flex w-[360px] flex-col rounded-lg border border-line bg-white p-3 shadow-md">
+      <div className="flex w-[360px] flex-col rounded-lg border border-edge-strong bg-shell-panel p-3 shadow-md">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-ink">生成图像候选</span>
+          <span className="text-sm font-medium text-fg">生成图像候选</span>
           <button type="button" title="关闭" className={iconBtn} onClick={closeDialog}>
             <X size={13} strokeWidth={1.8} />
           </button>
         </div>
-        <p className="mt-0.5 text-2xs text-muted-faint">
+        <p className="mt-0.5 text-2xs text-fg-4">
           目标文件夹:Content/{destFolder}(Accept 后入管线,provenance 自动记录)
         </p>
 
-        <label className="mt-2 block text-2xs text-muted">Prompt(必填)</label>
+        <label className="mt-2 block text-2xs text-fg-3">Prompt(必填)</label>
         <textarea
           data-gen-prompt
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={2}
           placeholder="wood 木纹"
-          className="mt-0.5 w-full resize-none rounded-md border border-line bg-white px-2 py-1 text-xs text-ink outline-none placeholder:text-muted-faint focus:border-ink"
+          className="mt-0.5 w-full resize-none rounded-md border border-edge-strong bg-shell-panel px-2 py-1 text-xs text-fg outline-none placeholder:text-fg-4 focus:border-fg-4"
         />
 
-        <label className="mt-1.5 block text-2xs text-muted">Negative prompt(可选)</label>
+        <label className="mt-1.5 block text-2xs text-fg-3">Negative prompt(可选)</label>
         <input
           data-gen-negative
           value={negativePrompt}
           onChange={(e) => setNegativePrompt(e.target.value)}
-          className="mt-0.5 w-full rounded-md border border-line bg-white px-2 py-1 text-xs text-ink outline-none focus:border-ink"
+          className="mt-0.5 w-full rounded-md border border-edge-strong bg-shell-panel px-2 py-1 text-xs text-fg outline-none focus:border-fg-4"
         />
 
         <div className="mt-1.5 flex gap-2">
           <div className="flex-1">
-            <label className="block text-2xs text-muted">尺寸</label>
+            <label className="block text-2xs text-fg-3">尺寸</label>
             <select
               data-gen-size
               value={size}
               onChange={(e) => setSize(Number(e.target.value) as (typeof SIZES)[number])}
-              className="mt-0.5 w-full rounded-md border border-line bg-white px-1.5 py-1 text-xs text-ink outline-none"
+              className="mt-0.5 w-full rounded-md border border-edge-strong bg-shell-panel px-1.5 py-1 text-xs text-fg outline-none"
             >
               {SIZES.map((s) => (
                 <option key={s} value={s}>
@@ -92,12 +92,12 @@ export default function GenerateDialog() {
             </select>
           </div>
           <div className="flex-1">
-            <label className="block text-2xs text-muted">候选数(1-4)</label>
+            <label className="block text-2xs text-fg-3">候选数(1-4)</label>
             <select
               data-gen-n
               value={n}
               onChange={(e) => setN(Number(e.target.value))}
-              className="mt-0.5 w-full rounded-md border border-line bg-white px-1.5 py-1 text-xs text-ink outline-none"
+              className="mt-0.5 w-full rounded-md border border-edge-strong bg-shell-panel px-1.5 py-1 text-xs text-fg outline-none"
             >
               {[1, 2, 3, 4].map((v) => (
                 <option key={v} value={v}>
@@ -108,13 +108,13 @@ export default function GenerateDialog() {
           </div>
         </div>
 
-        <label className="mt-1.5 block text-2xs text-muted">后端(仅列已配置)</label>
+        <label className="mt-1.5 block text-2xs text-fg-3">后端(仅列已配置)</label>
         <select
           data-gen-backend
           value={backendValue}
           onChange={(e) => setBackend(e.target.value)}
           disabled={configured.length === 0}
-          className="mt-0.5 w-full rounded-md border border-line bg-white px-1.5 py-1 text-xs text-ink outline-none disabled:text-muted-faint"
+          className="mt-0.5 w-full rounded-md border border-edge-strong bg-shell-panel px-1.5 py-1 text-xs text-fg outline-none disabled:text-fg-4"
         >
           {configured.map((b) => (
             <option key={b.id} value={b.id}>
@@ -125,18 +125,18 @@ export default function GenerateDialog() {
         </select>
 
         {backendsError && (
-          <p className="mt-1.5 text-2xs text-red-600" data-gen-error>
+          <p className="mt-1.5 text-2xs text-danger" data-gen-error>
             后端清单拉取失败:{backendsError}
           </p>
         )}
         {noBackend && (
-          <p className="mt-1.5 text-2xs text-accent-blue" data-gen-error>
+          <p className="mt-1.5 text-2xs text-info" data-gen-error>
             GEN_BACKEND_NOT_CONFIGURED:无已配置生成后端。请到 设置 → Generation 配置
             (data/gen-backends.json),配置后重试。
           </p>
         )}
         {lastError && (
-          <p className="mt-1.5 text-2xs text-red-600" data-gen-error>
+          <p className="mt-1.5 text-2xs text-danger" data-gen-error>
             {lastErrorCode ? `${lastErrorCode}:` : ''}
             {lastError}
             {lastErrorCode === 'GEN_BACKEND_NOT_CONFIGURED' &&
@@ -147,7 +147,7 @@ export default function GenerateDialog() {
         <div className="mt-2.5 flex justify-end gap-1.5">
           <button
             type="button"
-            className="rounded-md px-3 py-1 text-xs text-muted hover:text-ink-soft"
+            className="rounded-md px-3 py-1 text-xs text-fg-3 hover:text-fg-2"
             onClick={closeDialog}
           >
             取消
@@ -158,8 +158,8 @@ export default function GenerateDialog() {
             disabled={!prompt.trim() || busy || noBackend}
             onClick={submit}
             className={cn(
-              'rounded-md px-3 py-1 text-xs text-white',
-              !prompt.trim() || busy || noBackend ? 'cursor-not-allowed bg-muted-faint' : 'bg-ink',
+              'rounded-md px-3 py-1 text-xs text-fg-inv',
+              !prompt.trim() || busy || noBackend ? 'cursor-not-allowed bg-fg-4' : 'bg-fg',
             )}
           >
             {busy ? '生成中…' : '生成候选'}
@@ -171,4 +171,4 @@ export default function GenerateDialog() {
 }
 
 const iconBtn =
-  'flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-ink-soft';
+  'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2';

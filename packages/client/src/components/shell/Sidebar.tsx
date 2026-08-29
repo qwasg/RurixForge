@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  BookOpen,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -9,13 +10,16 @@ import {
   Search,
   Settings,
   Sparkles,
+  Store,
   Trash2,
-  X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useOverlayStore } from '@/lib/overlayStore';
 import { useSessionStore, type ForgeSession } from '@/lib/sessionStore';
-import { IBtn, Kbd, SecHead, StatusDot } from './primitives';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
+import { displayRoot, useWorkspaceStore } from '@/lib/workspaceStore';
+import { IBtn, Kbd, PaneToggleBtn, SecHead, StatusDot } from './primitives';
+import WorkspacePicker from './WorkspacePicker';
 
 /**
  * F7 wave.3 会话侧栏(参考 ui/sidebar.rs,真实数据 = sessionStore):
@@ -23,7 +27,11 @@ import { IBtn, Kbd, SecHead, StatusDot } from './primitives';
  * PINNED 区;CHAT FOLDERS(内联建文件夹/组头折叠/组内 12 条上限 + More(N)/收起;
  * 无文件夹时单一「会话」组);会话行 = 6×6 状态点(activeRunId→accent 脉冲,否则 idle 灰)
  * + 标题(12.4px 截断)+ 相对时间(mono 10px)+ hover pin/移入文件夹/trash 三钮
- * + 双击内联重命名(PATCH title);底部用户卡(占位「本地用户」+ 齿轮开设置)。
+ * + 双击内联重命名(PATCH title);底部工作区选择器(WorkspacePicker)+ 用户卡
+ * (占位「本地用户」+ 齿轮开设置)。
+ *
+ * 2026-08-25 用户拍板:WORKSPACES 区块由会话列上方搬到用户卡上方,收起态只留一条触发条,
+ * 工作区行/新建表单随之迁入 WorkspacePicker 面板(会话按 activeWorkspaceId 过滤的逻辑不变)。
  *
  * 差异留痕:参考的 workspace 分组依赖 workspaceRoot 字段(本仓会话模型未落地),
  * 本波仅 chat-folders 分组 + 单一「会话」组,workspace 分组缺失如实留档。
@@ -204,7 +212,11 @@ export default function Sidebar() {
   const create = useSessionStore((st) => st.create);
   const createFolder = useSessionStore((st) => st.createFolder);
   const removeFolder = useSessionStore((st) => st.removeFolder);
+  const workspaces = useWorkspaceStore((st) => st.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((st) => st.activeWorkspaceId);
   const openSettings = useOverlayStore((st) => st.open);
+  const openTab = useWorkbenchStore((st) => st.openTab);
+  const activeTabId = useWorkbenchStore((st) => st.activeTabId);
 
   const [query, setQuery] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -212,13 +224,23 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [showAll, setShowAll] = useState<ReadonlySet<string>>(new Set());
 
+  const workspaceFilter = (workspaceId?: string | null) =>
+    activeWorkspaceId === null || workspaceId === activeWorkspaceId;
+
+  const visibleFolders = useMemo(
+    () => folders.filter((f) => workspaceFilter(f.workspaceId)),
+    [folders, activeWorkspaceId],
+  );
+
   const groups = useMemo<Group[]>(() => {
     const q = query.trim().toLowerCase();
     const matched = sessions.filter(
       (s) =>
-        !s.pinned && (q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)),
+        workspaceFilter(s.workspaceId) &&
+        !s.pinned &&
+        (q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)),
     );
-    const folderIds = new Set(folders.map((f) => f.id));
+    const folderIds = new Set(visibleFolders.map((f) => f.id));
     const byFolder = new Map<string, ForgeSession[]>();
     const unfiled: ForgeSession[] = [];
     for (const s of matched) {
@@ -230,7 +252,7 @@ export default function Sidebar() {
         unfiled.push(s);
       }
     }
-    const out: Group[] = folders.map((f) => ({
+    const out: Group[] = visibleFolders.map((f) => ({
       key: `folder:${f.id}`,
       label: f.name,
       folderId: f.id,
@@ -238,14 +260,17 @@ export default function Sidebar() {
     }));
     out.push({ key: 'plain', label: '会话', folderId: null, sessions: unfiled });
     return out;
-  }, [sessions, folders, query]);
+  }, [sessions, visibleFolders, query, activeWorkspaceId]);
 
   const pinned = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sessions.filter(
-      (s) => s.pinned && (q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)),
+      (s) =>
+        workspaceFilter(s.workspaceId) &&
+        s.pinned &&
+        (q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)),
     );
-  }, [sessions, query]);
+  }, [sessions, query, activeWorkspaceId]);
 
   const toggleCollapsed = (key: string) =>
     setCollapsed((prev) => {
@@ -270,6 +295,7 @@ export default function Sidebar() {
     void createFolder(name);
   };
 
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
   const empty = pinned.length === 0 && groups.every((g) => g.sessions.length === 0);
 
   return (
@@ -287,6 +313,7 @@ export default function Sidebar() {
           />
           <Kbd label="/" />
         </div>
+        <PaneToggleBtn kind="sessions" className="h-7 w-7" />
         <button
           type="button"
           data-testid="sidebar-new-agent"
@@ -297,6 +324,34 @@ export default function Sidebar() {
           <span className="min-w-0 flex-1">New Agent</span>
           <Kbd label="Ctrl+Shift+N" />
         </button>
+        {/*
+          F11(D-025):两个大类入口。不新增常驻面板(I-3 七区冻结),点击开 workbench tab
+          ——与 plan/todo/proposals 同承载路径。activeTabId 命中时高亮,重复点击不重复开。
+        */}
+        <button
+          type="button"
+          data-testid="sidebar-asset-store"
+          onClick={() => openTab('store')}
+          className={cn(
+            'flex h-7 items-center gap-2 rounded-md px-2 text-left text-[12.4px] text-fg-2 transition-colors hover:bg-shell-hover',
+            activeTabId === 'store' && 'bg-shell-active',
+          )}
+        >
+          <Store size={13} className="shrink-0 text-fg-3" />
+          <span className="min-w-0 flex-1">资产商店</span>
+        </button>
+        <button
+          type="button"
+          data-testid="sidebar-skills"
+          onClick={() => openTab('skills')}
+          className={cn(
+            'flex h-7 items-center gap-2 rounded-md px-2 text-left text-[12.4px] text-fg-2 transition-colors hover:bg-shell-hover',
+            activeTabId === 'skills' && 'bg-shell-active',
+          )}
+        >
+          <BookOpen size={13} className="shrink-0 text-fg-3" />
+          <span className="min-w-0 flex-1">Skill 管理</span>
+        </button>
       </div>
 
       {/* body */}
@@ -306,6 +361,7 @@ export default function Sidebar() {
             后端未连接
           </div>
         )}
+
         {empty && !offline && (
           <p className="p-3.5 text-[12px] text-fg-4">暂无会话，可点击「New Agent」创建。</p>
         )}
@@ -425,14 +481,22 @@ export default function Sidebar() {
         })}
       </div>
 
+      {/* 工作区选择器:贴在用户卡上方,展开时把自己顶上去、面板落在空隙里 */}
+      <WorkspacePicker />
+
       {/* foot:用户卡(占位)+ 设置齿轮 */}
       <div className="flex shrink-0 items-center gap-2 border-t border-edge p-2">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-acc text-[12px] text-fg-inv">
           本
         </span>
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate text-[12px] text-fg">我的空间</span>
-          <span className="truncate text-[10.5px] text-fg-4">本地用户</span>
+          <span className="truncate text-[12px] text-fg">{activeWorkspace?.name ?? '我的空间'}</span>
+          <span
+            title={activeWorkspace ? displayRoot(activeWorkspace.root) : undefined}
+            className="truncate text-[10.5px] text-fg-4"
+          >
+            {activeWorkspace ? displayRoot(activeWorkspace.root) : '本地用户'}
+          </span>
         </span>
         <IBtn title="设置" testId="sidebar-settings" onClick={() => openSettings('settings')}>
           <Settings size={13} />

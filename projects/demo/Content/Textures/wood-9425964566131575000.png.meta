@@ -10,3 +10,13 @@ provenance:
     seed: 9425964566131575118
     sourceRefs: []
 build_state: current
+semantic:
+  description: 512x512 生成式木纹贴图,密集竖条木板拼贴、橙棕色调(gen-image 产物);可作木质表面 albedo
+  tags:
+  - 木纹
+  - 生成素材
+  - albedo
+  - gen-image
+  source: agent-vision
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

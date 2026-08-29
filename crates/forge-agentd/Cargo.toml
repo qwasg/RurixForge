@@ -10,6 +10,10 @@ serde.workspace = true
 serde_json.workspace = true
 # F5 wave.3:gen 配置 REST 面(gen-backends.json / keystore.json 读写,R-5 密钥不出)。
 gend = { path = "../gend" }
+# F9 D6:pack 闭包 guid 引用解析——复用 assetd MetaDoc::load 读 .meta guid 索引。
+assetd = { path = "../assetd" }
+# F11(D-025):资产商店 REST 面内嵌 registry 内核(源/搜索/安装长任务/个人库/发布)。
+forge-store = { path = "../forge-store" }
 # io-util:stdin/stdout 异步读写(MCP stdio 客户端与测试所需)
 tokio = { workspace = true, features = ["io-util"] }
 # RD-F1-002:DeepSeek 官方 API HTTPS 调用(rustls 纯 Rust TLS,与 gend 同 feature 面;body 自序列化)。

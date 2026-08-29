@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Activity, ChevronDown, ChevronRight, Logs, ScrollText, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useChatStore, type ForgeEventWire } from '@/lib/chatStore';
@@ -72,7 +72,7 @@ function hhmmss(ts: string | undefined): string {
 function LogsView() {
   const eventsRing = useChatStore((st) => st.eventsRing);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const events = eventsRing.slice(-120).reverse();
+  const events = useMemo(() => eventsRing.slice(-120).reverse(), [eventsRing]);
   if (events.length === 0) {
     return <div className="px-3 py-2 text-[11px] text-fg-4">（暂无事件）</div>;
   }
@@ -116,7 +116,7 @@ function LogsView() {
 
 function OutputView() {
   const eventsRing = useChatStore((st) => st.eventsRing);
-  const events = eventsRing.slice(-200).reverse();
+  const events = useMemo(() => eventsRing.slice(-200).reverse(), [eventsRing]);
   if (events.length === 0) {
     return <div className="px-3 py-2 text-[11px] text-fg-4">（无输出）</div>;
   }
@@ -142,11 +142,14 @@ function MetricsView() {
   const activeRunId = useChatStore((st) => st.activeRunId);
 
   // Tool calls = 消息时间线工具块计数(含成功/失败/进行中,如实口径)
-  const toolCalls = messages.reduce(
-    (n, m) => n + m.blocks.filter((b) => b.kind === 'tool').length,
-    0,
+  const toolCalls = useMemo(
+    () => messages.reduce((n, m) => n + m.blocks.filter((b) => b.kind === 'tool').length, 0),
+    [messages],
   );
-  const done = todos.filter((t) => t.status === 'completed' || t.status === 'done').length;
+  const done = useMemo(
+    () => todos.filter((t) => t.status === 'completed' || t.status === 'done').length,
+    [todos],
+  );
 
   const card = (label: string, value: string, testId: string) => (
     <div

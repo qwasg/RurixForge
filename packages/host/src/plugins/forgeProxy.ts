@@ -34,12 +34,19 @@ const PROXY_PREFIXES = [
   // F7 wave.1:agent 事件基座(会话 CRUD/fork/revert + SSE 流 + chat-folders + design-snapshot)
   '/api/forge/sessions',
   '/api/forge/chat-folders',
+  '/api/forge/workspaces',
   '/api/forge/design-snapshot',
   // F7 wave.2:turn 执行事件化(runs 控制 + todos REST;ask:execute 在 sessions 前缀内)
   '/api/forge/runs',
   '/api/forge/todos',
   // F7 wave.5:工作区文件树只读面(Inspector;llm/key 在已有 /api/forge/llm 前缀内,无需新增)
   '/api/forge/workspace',
+  // F9(D5):project 面(pack 引用闭包打包;agentd 已注册路由,host 代理补前缀缺口)
+  '/api/forge/project',
+  // F11(D-025):资产商店面(源 CRUD / 搜索 / 详情 / 安装长任务 / 已装清单 / 个人库 / 发布)
+  '/api/forge/store',
+  // 素材创作隐藏会话
+  '/api/forge/studio',
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
@@ -52,9 +59,20 @@ export function proxyMatches(pathname: string): boolean {
  * 长生命周期端点判定(导出供单测;pathname 不含 query)。
  * F7 wave.1 原名 isStreamPath(仅 SSE);wave.2 改名 isLongLivedPath 留痕——
  * ask:execute turn 可能远超 15s(16 迭代 × 60s 上限),与 events/stream 并列豁免。
+ * 素材创作波:gen/video(适配器超时 300s)与 gen/audio(120s)远超 15s,并列豁免。
+ * F11(D-F11-C):store/install 与 uninstall 含逐文件下载 + 校验 + 走 assetd 构建链,
+ * 大包远超 15s——这也是安装不走 MCP 的同一理由(mcp.rs CALL_TIMEOUT 10s 接不住)。
  */
 export function isLongLivedPath(pathname: string): boolean {
-  return pathname.endsWith('/events/stream') || pathname.endsWith('/ask:execute');
+  return (
+    pathname.endsWith('/events/stream') ||
+    pathname.endsWith('/ask:execute') ||
+    pathname === '/api/forge/gen/video' ||
+    pathname === '/api/forge/gen/audio' ||
+    pathname === '/api/forge/store/install' ||
+    pathname === '/api/forge/store/uninstall' ||
+    pathname === '/api/forge/store/publish'
+  );
 }
 
 /** 上游超时毫秒:长生命周期端点 0(不限时),其余 15s(导出供单测)。 */

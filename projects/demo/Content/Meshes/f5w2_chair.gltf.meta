@@ -13,3 +13,13 @@ provenance:
     sourceRefs:
     - .forge/tmp/gen/f5w2-gen-chair.gltf
 build_state: current
+semantic:
+  description: 椅子网格(F5 wave.2 生成接入验收的用户自备产物),Main 场景 W4Tri 实体经 MeshRenderer 引用
+  tags:
+  - 椅子
+  - 家具
+  - 网格
+  - gen-model
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

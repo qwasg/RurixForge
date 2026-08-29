@@ -205,6 +205,14 @@ describe('<ActivitySegment />', () => {
     expect(screen.getByTestId('tool-detail-args').textContent).toContain('"name": "e1"');
     expect(screen.getByText('完成 · 34ms')).toBeInTheDocument();
   });
+
+  it('工具行展开显示 result', () => {
+    const blocks: ChatBlock[] = [toolBlock({ toolCallId: 'c8', ok: true, durationMs: 9, result: 'wrote a.txt' })];
+    render(<ActivitySegment blocks={blocks} indices={[0]} />);
+    fireEvent.click(screen.getByTestId('activity-segment'));
+    fireEvent.click(screen.getByTestId('tool-line-c8'));
+    expect(screen.getByTestId('tool-detail-result').textContent).toContain('wrote a.txt');
+  });
 });
 
 describe('<SubagentRow />', () => {

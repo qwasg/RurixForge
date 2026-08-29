@@ -18,7 +18,9 @@ description: AI 生成素材补缺。当任务涉及「生成贴图 / 生成模�
 - `mcp__gen-image__gen_image`:文生图,产 n(1..4)候选落 .forge/tmp/gen/(带 dataUrl 缩略图)。
 - `mcp__gen-image__gen_texture_set`:材质纹理组逐 map 生成并自动入管线(Content/Textures/)。
 - `mcp__gen-image__gen_accept`:候选正式入管线(Content/<destFolder>/ + .meta provenance origin=gen-image)。
-- `mcp__gen-model__gen_mesh` / `gen_mesh_refine` / `gen_accept`:模型侧(text2mesh 无后端时显式 GEN_BACKEND_NOT_CONFIGURED)。
+- `mcp__gen-model__gen_mesh` / `gen_mesh_refine` / `gen_accept`:模型侧,默认走 meshy(文生 3D 两阶段 preview→refine,或给 imageRef 走图生 3D,产物 glb)。
+  - **注意工期**:3D 是异步任务制,一次生成 1–3 分钟,超过 MCP 调用 10s 上限。agent 侧要生成 3D 请改调 REST `POST /api/forge/gen/mesh`(同参数面,字段名 targetPolycount/texture/textureResolution/imageDataUrl),拿到 fileRef 后再用 `mcp__gen-model__gen_accept` 入库。
+  - 省额度技巧:只要形体不要贴图时传 `texture: false`,止于 preview 阶段。
 - 前端链路:Assets 面板右键「Generate...」对话框 + 候选挑拣 modal;设置页 Generation tab 配置后端。
 
 ## 分步骤执行流程

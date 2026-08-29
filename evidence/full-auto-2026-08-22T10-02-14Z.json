@@ -1,0 +1,168 @@
+{
+  "spec": "full-auto-test",
+  "profile": "stack",
+  "startedUtc": "2026-08-22T10:02:14.816Z",
+  "finishedUtc": "2026-08-22T10:06:04.503Z",
+  "durationMs": 229687,
+  "layers": [
+    {
+      "id": "build",
+      "title": "一次构建七二进制+client/host",
+      "verdict": "fail",
+      "exit": 1,
+      "durationMs": 27361,
+      "report": null,
+      "detail": "命令失败(exit=101): cargo build -p forge-agentd -p engine-scene-mcp -p engine-host -p asset-pipeline-mcp -p code-forge-mcp -p gen-image-mcp -p gen-model-mcp\n\n   Compiling gen-image-mcp v0.1.0 (D:\\游戏引擎\\crates\\mcp\\gen-image-mcp)\n   Compiling gen-model-mcp v0.1.0 (D:\\游戏引擎\\crates\\mcp\\gen-model-mcp)\nwarning: `rurix-rt` (lib) generated 6 warnings\nerror: could not compile `rurix-rt` (lib) due to 2 previous errors; 6 warnings emitted\nwarning: build failed, waiting for other jobs to finish...\nwarning: `asset-pipeline-mcp` (bin \"asset-pipeline-mcp\") generated 2 warnings (run `cargo fix --bin \"asset-pipeline-mcp\" -p asset-pipeline-mcp` to apply 2 suggestions)\nwarning: variable does not need to be mutable\n   --> crates\\forge-agentd\\src\\main.rs:764:9\n    |\n764 |     let mut session = match mcp::FreshSessio"
+    },
+    {
+      "id": "typecheck",
+      "title": "pnpm -r typecheck",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 4670,
+      "report": null,
+      "detail": "packages/protocol typecheck$ tsc --noEmit -p tsconfig.json | apps/desktop typecheck: Done | packages/protocol typecheck: Done | packages/client typecheck: Done | packages/host typecheck$ tsc --noEmit -p tsconfig.json | packages/host typecheck: Done"
+    },
+    {
+      "id": "vitest",
+      "title": "pnpm -r test",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 39345,
+      "report": null,
+      "detail": "packages/host test:  ✓ test/browserStatic.test.ts (5 tests) 3181ms | packages/host test:  Test Files  5 passed (5) | packages/host test:       Tests  27 passed (27) | packages/host test:    Start at  18:03:22 | packages/host test:    Duration  3.62s (transform 149ms, setup 0ms, collect 403ms, tests 3.34s, environment 1ms, prepare 735ms) | packages/host test: Done"
+    },
+    {
+      "id": "cargo",
+      "title": "cargo test --workspace",
+      "verdict": "fail",
+      "exit": 101,
+      "durationMs": 7462,
+      "report": null,
+      "detail": "Some errors have detailed explanations: E0422, E0425. | For more information about an error, try `rustc --explain E0422`. | warning: `rurix-rt` (lib) generated 6 warnings | error: could not compile `rurix-rt` (lib) due to 2 previous errors; 6 warnings emitted | warning: build failed, waiting for other jobs to finish... | warning: `forge-agentd` (bin \"forge-agentd\" test) generated 1 warning (run `cargo fix --bin \"forge-agentd\" -p forge-agentd --tests` to apply 1 suggestion)"
+    },
+    {
+      "id": "go",
+      "title": "go -C gateway-go test ./...",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 11677,
+      "report": null,
+      "detail": "ok  \tforge-gateway\t(cached)"
+    },
+    {
+      "id": "f0",
+      "title": "f0-stack-smoke (gateway 8102 JWT)",
+      "verdict": "fail",
+      "exit": 1,
+      "durationMs": 5829,
+      "report": null,
+      "detail": "[18:03:50] jwt minted (len=124) | [18:03:50] == mcp__engine-scene__scene_summary 经 gateway+agentd 工具循环 == | [18:03:51] mcp/call => 200 {\"content\":[{\"text\":\"{\\n  \\\"entityCount\\\": 0,\\n  \\\"events\\\": 1,\\n  \\\"name\\\": \\\"Untitled\\\",\\n  \\\"physics\\\": {\\n    \\\"backend\\\": \\\"jolt\\\",\\n    \\\"dtFixed\\\": 0.01666666753590107,\\n    \\\"stepErrors\\\": 0,\\n    \\\"steps\\\": 0\\n  },\\n  \\\"playState\\\": \\\"edit\\\",\\n  \\\"render\\\": {\\n    \\\"frames\\\": 0,\\n    \\\"lastNonZeroPixels\\\": 0,\\n    \\\"lastTris\\\": 0\\n  }\\n}\",\"type\":\"text\"}]"
+    },
+    {
+      "id": "f4-w3-logic-smoke",
+      "title": "scripts/f4-w3-logic-smoke.ps1",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 4174,
+      "report": null,
+      "detail": "[18:03:54] 规范序 PASS(第 20 帧 Begin;input@1 < contact@3 < update@5) | [18:03:54] 接触 Begin 进环 PASS(on_contact_begin 派发到 player 探针图) | [18:03:54] == play 态 component_set Script 热重载 == | [18:03:54] 热重载 PASS(logic.start 重发,黑板重置) | [18:03:54] play_exit PASS(state=edit) | [18:03:54] F4 wave.3 logic 栈级冒烟 PASS"
+    },
+    {
+      "id": "f5-w1-gen-backends-smoke",
+      "title": "scripts/f5-w1-gen-backends-smoke.ps1",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 7780,
+      "report": null,
+      "detail": "[18:04:00] == gen_accept → Textures/f5w1_wood == | [18:04:00] gen_accept PASS(assetPath=Textures/f5w1_wood.png;provenance origin/backendId/prompt/seed/generatedAt 全字段) | [18:04:00] == remote 条目 + keystore 假密钥(红线扫描)== | [18:04:00] gen_backends_list 红线 PASS(remote configured=true;响应无密钥子串) | [18:04:02] remote 假端点 PASS(如实 GEN_BACKEND_ERROR:连接拒绝不伪装成功;错误无密钥) | [18:04:02] F5 wave.1 gen-image 后端配置门冒烟 PASS(G-F5-1)"
+    },
+    {
+      "id": "f6-w1-playtest-smoke",
+      "title": "scripts/f6-w1-playtest-smoke.ps1",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 3922,
+      "report": null,
+      "detail": "[18:04:04] == SSIM 腿:viewport_frame 实拍生成 golden == | [18:04:05] golden 落盘 tests/playtest/golden/fixture.png(960 x 540,nonZeroPixels=8360) | [18:04:06]   同视角 ssim actual=1.0 detail=ssim=1.000000, threshold=0.999 | [18:04:06]   异视角 ssim actual=0.9748989891655903 detail=ssim=0.974899, threshold=0.999 | [18:04:06] SSIM 腿 PASS(同视角过 ssim=1.0;异视角红 ssim=0.9748989891655903) | [18:04:06] F6 wave.1 playtest 工具门冒烟 PASS(G-F6-1)"
+    },
+    {
+      "id": "f6-w2-maze-matrix-smoke",
+      "title": "scripts/f6-w2-maze-matrix-smoke.ps1",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 3993,
+      "report": null,
+      "detail": "[18:04:10]   RED 必红-玩家错位: 断言失败(transform_near): actual=[2.0,0.4000000059604645,4.0] expected=[0.0,0.4,0.0] maxDeviation=4.000000, tolerance=0.3 | [18:04:10]   RED 必红-门已开(未拿钥匙): 断言失败(transform_near): actual=[6.0,1.0,8.0] expected=[6.0,-2.0,8.0] maxDeviation=3.000000, tolerance=0.3 | [18:04:10] swarm 红子矩阵 PASS(errors=2 如实标红) | [18:04:10] == SKILL 工具面对齐 == | [18:04:10] SKILL 声明 12 引擎工具全部存在(mcp/tools 共 75 个) | [18:04:10] F6 wave.2 回归矩阵门冒烟 PASS(G-F6-2)"
+    },
+    {
+      "id": "f6-w4-pack-smoke",
+      "title": "scripts/f6-w4-pack-smoke.ps1",
+      "verdict": "fail",
+      "exit": 1,
+      "durationMs": 4136,
+      "report": null,
+      "detail": "[18:04:12] == cargo build engine-host + forge-agentd == | [18:04:14] FAIL: cargo build 失败(exit=101)"
+    },
+    {
+      "id": "f7-w1-events-smoke",
+      "title": "scripts/f7-w1-events-smoke.ps1",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 42082,
+      "report": null,
+      "detail": "[18:04:56]   PASS availability 两态合法(deepseek=available openai-compat=needs-key) | [18:04:56]   PASS 响应面无密钥串(R-5) | [18:04:56]   PASS 空 sessionId → null/[]/0 三态 | [18:04:56] ================================ | [18:04:56] SUMMARY: pass=38 fail=0 | [18:04:56] F7 wave.1 事件基座冒烟 PASS(G-F7-1)"
+    },
+    {
+      "id": "f7-w2-turn-smoke",
+      "title": "scripts/f7-w2-turn-smoke.ps1",
+      "verdict": "fail",
+      "exit": 1,
+      "durationMs": 4261,
+      "report": null,
+      "detail": "[18:05:00]   cargo: error: could not compile `rurix-rt` (lib) due to 2 previous errors; 6 warnings emitted | [18:05:00]   cargo: warning: build failed, waiting for other jobs to finish... | [18:05:00]   cargo: warning: `forge-agentd` (bin \"forge-agentd\") generated 4 warnings (run `cargo fix --bin \"forge-agentd\" -p forge-agentd` to apply 1 suggestion) | [18:05:00] FATAL: cargo build 失败(exit=101) | [18:05:00] SUMMARY: pass=0 fail=0 fatal=1 | [18:05:00] F7 wave.2 turn 冒烟 FAIL"
+    },
+    {
+      "id": "f8",
+      "title": "F8 浏览器八任务矩阵",
+      "verdict": "pass",
+      "exit": 0,
+      "durationMs": 10191,
+      "report": "evidence/f8-w4-matrix-2026-08-22T10-05-01Z.json",
+      "detail": "[10:05:11]   T7: pass (243ms, 断言 4/4) | [10:05:11]   T8: pass (415ms, 断言 7/7) | [10:05:11]   hygiene: pageErrors=0 consoleErrors=0 | [10:05:11]   orphanCheck.after=[](空=零孤儿) | [10:05:11]   allGreen=false gateGreen=true | [10:05:11] exit=0"
+    },
+    {
+      "id": "f9",
+      "title": "F9 全项目 journey",
+      "verdict": "fail",
+      "exit": 1,
+      "durationMs": 52359,
+      "report": "evidence/f9-e2e-summary-2026-08-22T10-05-11Z.json",
+      "detail": "[10:06:04]   U5: pass (96ms, 断言 2/2) | [10:06:04]   U6: fail (15178ms, 断言 3/4) | [10:06:04]   U7: fail (918ms, 断言 2/3) | [10:06:04]   hygiene pageErrors=0 consoleErrors=0 | [10:06:04]   allGreen=false gateGreen=false orphanFree=true | [10:06:04] exit=1 summary=evidence\\f9-e2e-summary-2026-08-22T10-05-11Z.json"
+    }
+  ],
+  "skipped": [
+    {
+      "id": "f3-w4-settings",
+      "reason": "已退役,断言面不存在"
+    },
+    {
+      "id": "desktop-electron",
+      "reason": "f7-w3/w4/w5 f5-w3 f4-w4-nodegraph f6-w3 与 F8/F9 重叠,本波不编入"
+    },
+    {
+      "id": "f6-w5-perf",
+      "reason": "本机 60fps 门,不作默认硬门"
+    },
+    {
+      "id": "rd-f1-002",
+      "reason": "真 LLM live,无 key 也会 SKIP,不进默认硬门"
+    }
+  ],
+  "orphanCheck": {
+    "after": []
+  },
+  "allGreen": false,
+  "gateGreen": false,
+  "orphanFree": true
+}

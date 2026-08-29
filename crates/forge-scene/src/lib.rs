@@ -198,7 +198,68 @@ pub const REGISTRY: &[ComponentSpec] = &[
             FieldSpec { name: "extents", ty: "[f32;3]" },
         ],
     },
+    // IDE 三分类:Category = 显式分类覆盖(一组件一分类;缺省由 classify() 推断)。
+    ComponentSpec {
+        name: "Category",
+        fields: &[FieldSpec {
+            name: "category",
+            ty: "enum:role|map|interaction",
+        }],
+    },
 ];
+
+/// 实体分类常量(role=角色 / map=地图 / interaction=交互)。
+pub const CAT_ROLE: &str = "role";
+pub const CAT_MAP: &str = "map";
+pub const CAT_INTERACTION: &str = "interaction";
+
+/// 推断实体分类:Category 组件(显式) > Tag/RigidBody > Trigger/Script > 默认 map。
+/// 计算字段,不入 .rxscene 持久化;entity.list / scene.index 附加返回。
+pub fn classify(e: &Entity) -> &'static str {
+    if let Some(c) = e.component("Category") {
+        if c.enabled {
+            if let Some(v) = c.props.get("category").and_then(|v| v.as_str()) {
+                return match v {
+                    CAT_ROLE => CAT_ROLE,
+                    CAT_MAP => CAT_MAP,
+                    CAT_INTERACTION => CAT_INTERACTION,
+                    _ => CAT_MAP,
+                };
+            }
+        }
+    }
+    if let Some(c) = e.component("Tag") {
+        if c.enabled {
+            if c.props.get("tag").and_then(|v| v.as_str()) == Some("player") {
+                return CAT_ROLE;
+            }
+        }
+    }
+    if let Some(c) = e.component("RigidBody") {
+        if c.enabled {
+            if let Some(kind) = c.props.get("kind").and_then(|v| v.as_str()) {
+                if kind == "dynamic" || kind == "kinematic" {
+                    return CAT_ROLE;
+                }
+            }
+        }
+    }
+    if let Some(c) = e.component("Trigger") {
+        if c.enabled {
+            return CAT_INTERACTION;
+        }
+    }
+    if let Some(c) = e.component("Script") {
+        if c.enabled {
+            let module = c.props.get("module").and_then(|v| v.as_str()).unwrap_or("");
+            let graph_ref = c.props.get("graphRef").and_then(|v| v.as_str()).unwrap_or("");
+            if !module.is_empty() || !graph_ref.is_empty() {
+                return CAT_INTERACTION;
+            }
+        }
+    }
+    CAT_MAP
+}
 
 /// 按名查注册项。
 pub fn find_spec(ctype: &str) -> Option<&'static ComponentSpec> {
@@ -481,12 +542,21 @@ mod tests {
     }
 
     #[test]
-    fn registry_lists_seven_types_with_fields() {
+    fn registry_lists_eight_types_with_fields() {
         let v = list_types_json();
         let arr = v.as_array().unwrap();
-        assert_eq!(arr.len(), 7);
+        assert_eq!(arr.len(), 8);
         let names: Vec<&str> = arr.iter().filter_map(|t| t["name"].as_str()).collect();
-        for want in ["MeshRenderer", "RigidBody", "Light", "Camera", "Script", "Tag", "Trigger"] {
+        for want in [
+            "MeshRenderer",
+            "RigidBody",
+            "Light",
+            "Camera",
+            "Script",
+            "Tag",
+            "Trigger",
+            "Category",
+        ] {
             assert!(names.contains(&want), "注册表缺 {want}");
         }
         let rb = arr.iter().find(|t| t["name"] == "RigidBody").unwrap();
@@ -540,6 +610,95 @@ mod tests {
         assert!(validate_props("Trigger", &json!({"kind": "sphere", "extents": [2.0, 2.0, 2.0]})).is_err());
         assert!(validate_props("Trigger", &json!({"kind": "box", "extents": [2.0, 2.0]})).is_err());
         assert!(validate_props("Trigger", &json!({"kind": "box"})).is_err());
+    }
+
+    #[test]
+    fn category_validate() {
+        assert!(validate_props("Category", &json!({"category": "role"})).is_ok());
+        assert!(validate_props("Category", &json!({"category": "map"})).is_ok());
+        assert!(validate_props("Category", &json!({"category": "interaction"})).is_ok());
+        assert!(validate_props("Category", &json!({"category": "bad"})).is_err());
+        assert!(validate_props("Category", &json!({})).is_err());
+    }
+
+    #[test]
+    fn classify_rules() {
+        let mesh_only = Entity {
+            id: 1,
+            name: "Wall".into(),
+            transform: Transform::default(),
+            components: vec![Component::new("MeshRenderer", json!({"mesh": "cube", "material": ""}))],
+        };
+        assert_eq!(classify(&mesh_only), CAT_MAP);
+
+        let player_tag = Entity {
+            id: 2,
+            name: "Player".into(),
+            transform: Transform::default(),
+            components: vec![
+                Component::new("MeshRenderer", json!({"mesh": "cube", "material": ""})),
+                Component::new("Tag", json!({"tag": "player"})),
+            ],
+        };
+        assert_eq!(classify(&player_tag), CAT_ROLE);
+
+        let dynamic_body = Entity {
+            id: 3,
+            name: "Enemy".into(),
+            transform: Transform::default(),
+            components: vec![Component::new("RigidBody", json!({"kind": "dynamic", "mass": 1.0}))],
+        };
+        assert_eq!(classify(&dynamic_body), CAT_ROLE);
+
+        let trigger_script = Entity {
+            id: 4,
+            name: "Key".into(),
+            transform: Transform::default(),
+            components: vec![
+                Component::new("Trigger", json!({"kind": "box", "extents": [1.0, 1.0, 1.0]})),
+                Component::new(
+                    "Script",
+                    json!({"module": "", "graphRef": "Content/Graphs/key.rxgraph", "props": {}}),
+                ),
+            ],
+        };
+        assert_eq!(classify(&trigger_script), CAT_INTERACTION);
+
+        let explicit = Entity {
+            id: 5,
+            name: "Decor".into(),
+            transform: Transform::default(),
+            components: vec![
+                Component::new("MeshRenderer", json!({"mesh": "cube", "material": ""})),
+                Component::new("Script", json!({"module": "", "graphRef": "g.rxgraph", "props": {}})),
+                Component::new("Category", json!({"category": "map"})),
+            ],
+        };
+        assert_eq!(classify(&explicit), CAT_MAP);
+    }
+
+    #[test]
+    fn classify_maze_scene() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../projects/demo/Content/Scenes/maze.rxscene");
+        if !path.exists() {
+            return;
+        }
+        let scene = Scene::load(&path).unwrap();
+        let mut roles = 0usize;
+        let mut maps = 0usize;
+        let mut interactions = 0usize;
+        for e in &scene.entities {
+            match classify(e) {
+                CAT_ROLE => roles += 1,
+                CAT_MAP => maps += 1,
+                CAT_INTERACTION => interactions += 1,
+                _ => {}
+            }
+        }
+        assert_eq!(roles, 1, "maze 须 1 个角色(Player)");
+        assert_eq!(interactions, 3, "maze 须 3 个交互(Key/Door/Goal)");
+        assert_eq!(maps, 32, "maze 须 32 个地图(Wall*/Floor)");
     }
 
     #[test]

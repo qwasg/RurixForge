@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+forge-util = { path = "../forge-util" }
 # gen_accept 复用 assetd 导入链(08 §6.2:产物落 .forge/tmp/gen/ 后走 asset_import 同链)。
 assetd = { path = "../assetd" }
 serde.workspace = true

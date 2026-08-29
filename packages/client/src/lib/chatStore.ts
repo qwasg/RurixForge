@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { apiGet, apiPatch, apiPost } from './forgeApi';
-import { useSessionStore } from './sessionStore';
+import { notifyAgentToolSettled } from './editorSync';
+import { useSessionStore, type ForgeSession } from './sessionStore';
 import { useToastStore } from './toastStore';
 import { subscribeSessionEvents, type SseSubscription } from './sseClient';
-import { bareName, mcpOf, type ChatBlock } from './timeline';
+import { bareName, mcpOf, toolStatus, type BlockStatus, type ChatBlock } from './timeline';
 
 /**
  * F7 wave.4 chatStore(参考 lib.rs ChatStore::apply_event 语义移植;G-F7-4)。
@@ -17,10 +18,9 @@ import { bareName, mcpOf, type ChatBlock } from './timeline';
  *   事件到达时 upsert 替换(同文 runId=null 匹配)。
  * - SSE:selectSession 快照回放 → latestSeq 起订;stream.gap → 重拉快照全量重放再续订。
  *
- * 差异留痕:①参考还有 token.delta/reasoning.delta/subagent.* 事件,本仓事件面无(组件就绪,
- * 自然不触发,不伪造);②editAndResend 在 revert 后显式 resync(重拉快照+新连接续订)——
- * 服务端 SSE live 去重按「seq>已发上限」,revert 截断致 seq 回退后旧连接会滤掉新事件
- * (参考 revert_to 同样在 revert 后 api.snapshot 重拉);③思考块/子代理 work 为简形 string[]。
+ * 对齐参考仓 apply_event,并修其裂缝:继续收 agent.message 终稿;收 args.delta /
+ * stream.reset;todo_write 与 write_todos 都当里程碑;token/reasoning 合帧(测试同步刷)。
+ * 瞬时事件不落盘。permission.requested 走 toast,不进气泡。
  */
 
 export interface ForgeEventWire {
@@ -65,16 +65,47 @@ export interface TodoItem {
   description?: string | null;
 }
 
+/** reasoning_effort 档(id 即后端实发的 API 值)。 */
+export interface ModelEffortOption {
+  id: string;
+  label: string;
+}
+
+/** 上下文窗口档(tokens 即计量环分母)。 */
+export interface ModelContextOption {
+  id: string;
+  label: string;
+  tokens: number;
+}
+
+/**
+ * 模型条目 + 规格能力面(agentd modelspec.rs CATALOG 下发)。
+ * 能力字段全可选:后端若未升级(旧快照)则退化为「只有模型选择」的形态,菜单三档整体禁用。
+ */
 export interface SnapshotModel {
   id: string;
   label: string;
   provider?: string;
   availability?: string;
+  /** 菜单分组标题(DeepSeek / 本地 / 自定义渠道)。 */
+  group?: string;
+  supportsThinking?: boolean;
+  /** 空数组 = 该渠道不收 reasoning_effort(如 deepseek),Effort 行禁用。 */
+  effortOptions?: ModelEffortOption[];
+  defaultEffort?: string | null;
+  contextOptions?: ModelContextOption[];
+  defaultContext?: string;
 }
 
 interface DesignSnapshot {
   sessions?: unknown[];
-  activeSession?: { id: string; selectedModelId?: string | null } | null;
+  activeSession?: {
+    id: string;
+    selectedModelId?: string | null;
+    thinkingEnabled?: boolean;
+    reasoningEffort?: string | null;
+    contextOptionId?: string | null;
+  } | null;
   events?: ForgeEventWire[];
   todos?: TodoItem[];
   run?: { id: string; status: string } | null;
@@ -94,14 +125,35 @@ interface ChatState {
   activeRunId: string | null;
   todos: TodoItem[];
   tokens: TokenTotals;
+  /**
+   * 最近一次 agent.usage 的 promptTokens(0 = 本会话无实测)。
+   * tokens.prompt 是跨轮累计,衡量不了「当前上下文有多满」——最后一次 usage 的 prompt
+   * 才是最近一轮真实送进模型的上下文体量,Composer 上下文环用它校准基线。
+   */
+  lastPromptTokens: number;
   latestSeq: number;
   models: SnapshotModel[];
   defaultModelId: string | null;
   selectedModelId: string | null;
+  /**
+   * 模型规格三档的会话级选择(落库同源 agentd DebugSession)。
+   * 只存「选择」,不存归一结果:换模型后旧档位是否仍适用由 resolveModelSpec 现算
+   * (与后端 modelspec::resolve 同规则)。
+   */
+  thinkingEnabled: boolean;
+  reasoningEffort: string | null;
+  contextOptionId: string | null;
   /** 快照加载中(切换会话骨架态)。 */
   hydrating: boolean;
-  /** SubagentOverlay 目标子代理块 id(参考 subagent_overlay;本仓事件面不触发,组件就绪)。 */
+  /**
+   * 当前已回放/订阅的会话 id。调用方据此跳过重复 selectSession——
+   * 重复调用会 reset() 抹掉刚 push 的乐观回显(全屏主页「无会话直接发」会撞上)。
+   */
+  currentSessionId: string | null;
+  /** SubagentOverlay 目标子代理块 id。 */
   subagentOverlayId: string | null;
+  /** auto 权限挂起的审批(toast + 设置页)。 */
+  pendingPermission: { id: string; tool: string } | null;
   /**
    * F7 wave.5:原始事件环(底部面板 Agent Logs/Output 数据源;cap 200 FIFO,
    * Agent Logs 取末 120 条,Output 取末 200 条;applyEvent 全类型入环,reset 清空)。
@@ -111,15 +163,28 @@ interface ChatState {
   applyEvent: (evt: ForgeEventWire) => void;
   selectSession: (id: string | null) => Promise<void>;
   resync: () => Promise<void>;
-  sendMessage: (text: string, mode: string) => Promise<void>;
+  /** skills:选中技能名(F11:ask:execute 结构化字段,后端按名注入 SKILL.md 全文;空/缺省 = 不发该字段)。 */
+  sendMessage: (text: string, mode: string, skills?: string[]) => Promise<void>;
   cancelRun: () => Promise<void>;
   editAndResend: (msgId: string, newText: string) => Promise<void>;
   pickModel: (modelId: string) => Promise<void>;
+  setThinking: (on: boolean) => Promise<void>;
+  pickEffort: (effortId: string) => Promise<void>;
+  pickContext: (contextId: string) => Promise<void>;
   openSubagent: (id: string | null) => void;
+  resolvePermission: (allow: boolean) => Promise<void>;
   /** 清空原始事件环(底部面板 trash 钮;不影响消息/待办)。 */
   clearEventsRing: () => void;
   reset: () => void;
 }
+
+/**
+ * 模型规格四项(模型 / Thinking / Effort / Context)。这四个 state 键与会话 PATCH 的 wire 键
+ * 逐字同名,故 patchSpec 可以拿同一个对象既做乐观更新又做请求体。
+ */
+type SpecPatch = Partial<
+  Pick<ChatState, 'selectedModelId' | 'thinkingEnabled' | 'reasoningEffort' | 'contextOptionId'>
+>;
 
 const MAX_SEEN = 4096;
 /** eventsRing 上限(Agent Logs 取末 120,Output 取末 200 → 环容 200)。 */
@@ -152,11 +217,179 @@ function runIdOf(evt: ForgeEventWire): string | null {
   return payloadStr(evt, 'runId') ?? (evt.correlationId || null);
 }
 
+function parentOf(evt: ForgeEventWire): string | undefined {
+  return payloadStr(evt, 'parentToolCallId');
+}
+
+const COALESCE_STREAM =
+  typeof requestAnimationFrame === 'function' &&
+  !(typeof process !== 'undefined' && process.env?.VITEST);
+
+type SubagentBlock = Extract<ChatBlock, { kind: 'subagent' }>;
+type ToolBlock = Extract<ChatBlock, { kind: 'tool' }>;
+
+function prettyArgs(raw: unknown): string {
+  if (raw === undefined) return '';
+  if (typeof raw === 'string') return raw;
+  try {
+    return JSON.stringify(raw, null, 2);
+  } catch {
+    return String(raw);
+  }
+}
+
+function appendTextDelta(blocks: ChatBlock[], delta: string): void {
+  const last = blocks[blocks.length - 1];
+  if (last?.kind === 'text' && !last.final) {
+    blocks[blocks.length - 1] = { ...last, text: last.text + delta };
+  } else {
+    blocks.push({ kind: 'text', text: delta, final: false });
+  }
+}
+
+function appendReasoningDelta(blocks: ChatBlock[], delta: string): void {
+  const last = blocks[blocks.length - 1];
+  if (last?.kind === 'reasoning') {
+    blocks[blocks.length - 1] = { ...last, text: last.text + delta };
+  } else {
+    blocks.push({ kind: 'reasoning', text: delta });
+  }
+}
+
+function resetStreamingBlocks(blocks: ChatBlock[]): void {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const b = blocks[i];
+    if (b.kind === 'text' && !b.final) blocks.splice(i, 1);
+    else if (b.kind === 'subagent') {
+      const work = [...b.work];
+      resetStreamingBlocks(work);
+      blocks[i] = { ...b, work };
+    }
+  }
+}
+
+function ensureSubagent(blocks: ChatBlock[], id: string, patch?: Partial<SubagentBlock>): SubagentBlock {
+  const idx = blocks.findIndex((b) => b.kind === 'subagent' && b.id === id);
+  if (idx >= 0) {
+    const cur = blocks[idx] as SubagentBlock;
+    const next = { ...cur, ...patch, work: patch?.work ?? cur.work };
+    blocks[idx] = next;
+    return next;
+  }
+  const created: SubagentBlock = {
+    kind: 'subagent',
+    id,
+    label: patch?.label ?? '子代理任务',
+    status: patch?.status ?? 'running',
+    summary: patch?.summary,
+    prompt: patch?.prompt,
+    parentToolCallId: patch?.parentToolCallId,
+    work: patch?.work ?? [],
+  };
+  blocks.push(created);
+  return created;
+}
+
+function targetBlocks(root: ChatBlock[], parentId: string | undefined): ChatBlock[] {
+  if (!parentId) return root;
+  ensureSubagent(root, parentId);
+  const idx = root.findIndex((b) => b.kind === 'subagent' && b.id === parentId);
+  if (idx < 0) return root;
+  const cur = root[idx] as SubagentBlock;
+  const work = [...cur.work];
+  root[idx] = { ...cur, work };
+  return work;
+}
+
+function settleToolOrSub(
+  blocks: ChatBlock[],
+  callId: string | undefined,
+  patch: Partial<ToolBlock> & { subStatus?: BlockStatus; subSummary?: string },
+): boolean {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const b = blocks[i];
+    if (b.kind === 'subagent' && (callId ? b.id === callId : b.status === 'running')) {
+      blocks[i] = {
+        ...b,
+        status: patch.subStatus ?? (patch.ok === false ? 'error' : 'done'),
+        summary: patch.subSummary ?? patch.error ?? b.summary,
+      };
+      return true;
+    }
+    if (
+      b.kind === 'tool' &&
+      (callId ? b.toolCallId === callId : b.ok === undefined && b.error === undefined)
+    ) {
+      blocks[i] = { ...b, ...patch };
+      return true;
+    }
+    if (b.kind === 'subagent') {
+      const work = [...b.work];
+      if (settleToolOrSub(work, callId, patch)) {
+        blocks[i] = { ...b, work };
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export const useChatStore = create<ChatState>((set, get) => {
   // 非响应式内部态(去重集/SSE 句柄,不进 zustand state 防多余渲染)
   const seenKeys = new Set<string>();
   const seenOrder: string[] = [];
+  /** UI 融合波 C3:toolCallId → 工具名(invoked 记录,completed/failed 载荷无 name,查后删)。 */
+  const toolNames = new Map<string, string>();
+  const streamBuf = new Map<string, { token: string; reasoning: string }>();
+  let streamRaf: number | null = null;
   let sse: SseSubscription | null = null;
+
+  const streamKey = (runId: string | null, parent?: string) => `${runId ?? ''}\0${parent ?? ''}`;
+
+  const applyStreamChunk = (runId: string | null, parent: string | undefined, kind: 'token' | 'reasoning', text: string) => {
+    let messages = get().messages;
+    messages = mutateAssistant(messages, runId, (m) => {
+      const dest = targetBlocks(m.blocks, parent);
+      if (kind === 'token') appendTextDelta(dest, text);
+      else appendReasoningDelta(dest, text);
+    });
+    set({ messages: normalize(messages) });
+  };
+
+  const flushStreamNow = () => {
+    if (streamRaf != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(streamRaf);
+      streamRaf = null;
+    }
+    if (streamBuf.size === 0) return;
+    const pending = [...streamBuf.entries()];
+    streamBuf.clear();
+    for (const [key, buf] of pending) {
+      const [runId, parent] = key.split('\0');
+      const rid = runId === '' ? null : runId;
+      const pid = parent === '' ? undefined : parent;
+      if (buf.reasoning) applyStreamChunk(rid, pid, 'reasoning', buf.reasoning);
+      if (buf.token) applyStreamChunk(rid, pid, 'token', buf.token);
+    }
+  };
+
+  const enqueueStream = (runId: string | null, parent: string | undefined, kind: 'token' | 'reasoning', text: string) => {
+    const key = streamKey(runId, parent);
+    const cur = streamBuf.get(key) ?? { token: '', reasoning: '' };
+    if (kind === 'token') cur.token += text;
+    else cur.reasoning += text;
+    streamBuf.set(key, cur);
+    if (!COALESCE_STREAM) {
+      flushStreamNow();
+      return;
+    }
+    if (streamRaf == null) {
+      streamRaf = requestAnimationFrame(() => {
+        streamRaf = null;
+        flushStreamNow();
+      });
+    }
+  };
 
   const markSeen = (evt: ForgeEventWire): boolean => {
     const key = evt.id
@@ -291,11 +524,16 @@ export const useChatStore = create<ChatState>((set, get) => {
       activeRunId: null,
       todos: snap.todos ?? [],
       tokens: { prompt: 0, completion: 0, total: 0 },
+      lastPromptTokens: 0,
       latestSeq: snap.latestSeq ?? 0,
       models: snap.models?.models ?? [],
       defaultModelId: snap.models?.defaultModelId ?? null,
       selectedModelId: snap.activeSession?.selectedModelId ?? null,
+      thinkingEnabled: snap.activeSession?.thinkingEnabled ?? false,
+      reasoningEffort: snap.activeSession?.reasoningEffort ?? null,
+      contextOptionId: snap.activeSession?.contextOptionId ?? null,
       hydrating: false,
+      pendingPermission: null,
     });
     for (const evt of snap.events ?? []) get().applyEvent(evt);
     // 快照回放后 run 仍在运行(进程重启前状态) → activeRunId 如实回填
@@ -320,20 +558,66 @@ export const useChatStore = create<ChatState>((set, get) => {
     });
   };
 
+  /**
+   * 模型规格落库:先乐观改本地态 → PATCH 会话 → 用响应回写 sessionStore 会话面;
+   * 失败只回滚本次改动的项 + toast。无会话时只改本地态——全屏主页首屏尚无会话,
+   * 发送时新建的会话起于该模型默认档(与后端 modelspec::resolve 回落同口径)。
+   */
+  const patchSpec = async (patch: SpecPatch, failLabel: string): Promise<void> => {
+    const sid = useSessionStore.getState().activeSessionId;
+    const st = get();
+    const prev = Object.fromEntries(
+      Object.keys(patch).map((k) => [k, st[k as keyof SpecPatch]]),
+    ) as SpecPatch;
+    set(patch);
+    if (!sid) return;
+    try {
+      const r = await apiPatch<{ session: ForgeSession }>(
+        `/api/forge/sessions/${encodeURIComponent(sid)}`,
+        patch,
+      );
+      useSessionStore.setState((s) => ({
+        sessions: s.sessions.map((x) => (x.id === sid ? { ...x, ...r.session } : x)),
+      }));
+    } catch (err) {
+      set(prev);
+      toastError(err, failLabel);
+    }
+  };
+
   return {
     messages: [],
     activeRunId: null,
     todos: [],
     tokens: { prompt: 0, completion: 0, total: 0 },
+    lastPromptTokens: 0,
     latestSeq: 0,
     models: [],
     defaultModelId: null,
     selectedModelId: null,
+    thinkingEnabled: false,
+    reasoningEffort: null,
+    contextOptionId: null,
     hydrating: false,
+    currentSessionId: null,
     subagentOverlayId: null,
+    pendingPermission: null,
     eventsRing: [],
 
     openSubagent: (id) => set({ subagentOverlayId: id }),
+
+    resolvePermission: async (allow) => {
+      const pending = get().pendingPermission;
+      if (!pending) return;
+      try {
+        await apiPost(
+          `/api/forge/permissions/${encodeURIComponent(pending.id)}/${allow ? 'approve' : 'deny'}`,
+          {},
+        );
+      } catch (err) {
+        toastError(err, allow ? '批准失败' : '拒绝失败');
+      }
+    },
 
     clearEventsRing: () => set({ eventsRing: [] }),
 
@@ -341,6 +625,9 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (!markSeen(evt)) return;
       // 全类型入原始事件环(底部面板 Agent Logs/Output 数据源;在去重后、语义 switch 前)。
       set((st) => ({ eventsRing: ringPush(st.eventsRing, evt) }));
+      const isDelta =
+        evt.type === 'agent.token.stream.delta' || evt.type === 'agent.reasoning.delta';
+      if (!isDelta) flushStreamNow();
       const time = hhmm(evt.ts);
       let messages = get().messages;
       switch (evt.type) {
@@ -375,13 +662,13 @@ export const useChatStore = create<ChatState>((set, get) => {
           const runId = runIdOf(evt);
           const name = payloadStr(evt, 'name') ?? 'tool';
           const toolCallId = payloadStr(evt, 'toolCallId') ?? `tool-${evt.seq}`;
-          const rawArgs = evt.payload?.args;
-          const args =
-            rawArgs === undefined ? '' : JSON.stringify(rawArgs, null, 2);
+          const parent = parentOf(evt);
+          toolNames.set(toolCallId, name);
+          const args = prettyArgs(evt.payload?.args);
           messages = mutateAssistant(messages, runId, (m) => {
             m.status = 'streaming';
+            const dest = targetBlocks(m.blocks, parent);
             if (bareName(name) === 'task') {
-              // name==="task" → subagent 块(本仓事件面不产生,组件就绪)
               const a = (evt.payload?.args ?? {}) as Record<string, unknown>;
               const prompt = typeof a.prompt === 'string' ? a.prompt : '';
               const label =
@@ -389,13 +676,20 @@ export const useChatStore = create<ChatState>((set, get) => {
                 (typeof a.title === 'string' && a.title) ||
                 prompt.split('\n').find((l) => l.trim() !== '')?.trim() ||
                 '子代理任务';
-              m.blocks.push({ kind: 'subagent', id: toolCallId, label, status: 'running', work: [] });
+              ensureSubagent(parent ? dest : m.blocks, toolCallId, {
+                label,
+                prompt,
+                status: 'running',
+                parentToolCallId: parent,
+                work: [],
+              });
             } else {
-              m.blocks.push({
+              dest.push({
                 kind: 'tool',
                 toolCallId,
                 name,
                 args,
+                status: 'running',
                 mcp: mcpOf(name),
               });
             }
@@ -403,33 +697,139 @@ export const useChatStore = create<ChatState>((set, get) => {
           break;
         }
         case 'agent.tool.completed':
-        case 'agent.tool.failed': {
-          const failed = evt.type === 'agent.tool.failed';
+        case 'agent.tool.failed':
+        case 'agent.tool.denied': {
+          const failed = evt.type !== 'agent.tool.completed';
           const runId = runIdOf(evt);
           const callId = payloadStr(evt, 'toolCallId');
           const durationMs =
             typeof evt.payload?.durationMs === 'number' ? (evt.payload.durationMs as number) : undefined;
           const error = failed
-            ? payloadStr(evt, 'error') ?? '工具执行失败'
+            ? payloadStr(evt, 'error') ?? (evt.type === 'agent.tool.denied' ? '工具被拒绝' : '工具执行失败')
             : undefined;
+          const result = failed
+            ? undefined
+            : payloadStr(evt, 'output') ?? payloadStr(evt, 'outputPreview');
           messages = mutateAssistant(messages, runId, (m) => {
-            // 倒序找 toolCallId 匹配块;无 id 时退最后一个 running 工具块(参考同口径)
-            for (let i = m.blocks.length - 1; i >= 0; i -= 1) {
-              const b = m.blocks[i];
-              if (b.kind === 'subagent' && (callId ? b.id === callId : b.status === 'running')) {
-                m.blocks[i] = { ...b, status: failed ? 'error' : 'done', summary: error };
-                return;
+            settleToolOrSub(m.blocks, callId, {
+              ok: !failed,
+              error,
+              durationMs,
+              result,
+              status: failed ? 'error' : 'done',
+              subStatus: failed ? 'error' : 'done',
+              subSummary: error,
+            });
+          });
+          const settledName = callId ? toolNames.get(callId) : undefined;
+          if (callId) toolNames.delete(callId);
+          if (settledName !== undefined) notifyAgentToolSettled(settledName);
+          break;
+        }
+        case 'agent.token.stream.delta': {
+          const delta = payloadStr(evt, 'delta') ?? payloadStr(evt, 'text') ?? '';
+          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'token', delta);
+          return;
+        }
+        case 'agent.reasoning.delta': {
+          const delta = payloadStr(evt, 'delta') ?? payloadStr(evt, 'text') ?? '';
+          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'reasoning', delta);
+          return;
+        }
+        case 'agent.reasoning': {
+          const text = payloadStr(evt, 'text') ?? '';
+          const runId = runIdOf(evt);
+          messages = mutateAssistant(messages, runId, (m) => {
+            const dest = targetBlocks(m.blocks, parentOf(evt));
+            const last = dest[dest.length - 1];
+            if (last?.kind === 'reasoning') dest[dest.length - 1] = { kind: 'reasoning', text };
+            else dest.push({ kind: 'reasoning', text });
+          });
+          break;
+        }
+        case 'agent.tool.args.delta': {
+          const runId = runIdOf(evt);
+          const callId = payloadStr(evt, 'toolCallId');
+          const name = payloadStr(evt, 'name') ?? 'tool';
+          const delta = payloadStr(evt, 'delta') ?? '';
+          const parent = parentOf(evt);
+          messages = mutateAssistant(messages, runId, (m) => {
+            const dest = targetBlocks(m.blocks, parent);
+            let found = false;
+            for (let i = dest.length - 1; i >= 0; i -= 1) {
+              const b = dest[i];
+              if (b.kind === 'tool' && (callId ? b.toolCallId === callId : toolStatus(b) === 'running')) {
+                dest[i] = { ...b, args: (b.args || '') + delta };
+                found = true;
+                break;
               }
-              if (
-                b.kind === 'tool' &&
-                (callId ? b.toolCallId === callId : b.ok === undefined && b.error === undefined)
-              ) {
-                m.blocks[i] = { ...b, ok: !failed, error, durationMs };
-                return;
-              }
+            }
+            if (!found) {
+              dest.push({
+                kind: 'tool',
+                toolCallId: callId ?? `tool-${evt.seq}`,
+                name,
+                args: delta,
+                status: 'running',
+                mcp: mcpOf(name),
+              });
             }
           });
           break;
+        }
+        case 'agent.stream.reset': {
+          const runId = runIdOf(evt);
+          streamBuf.delete(streamKey(runId, parentOf(evt)));
+          messages = mutateAssistant(messages, runId, (m) => {
+            resetStreamingBlocks(targetBlocks(m.blocks, parentOf(evt)));
+          });
+          break;
+        }
+        case 'subagent.started': {
+          const runId = runIdOf(evt) ?? payloadStr(evt, 'parentRunId') ?? null;
+          const id = payloadStr(evt, 'subRunId') ?? payloadStr(evt, 'parentToolCallId') ?? `sub-${evt.seq}`;
+          const prompt = payloadStr(evt, 'prompt') ?? '';
+          const label = payloadStr(evt, 'description') ?? payloadStr(evt, 'label') ?? '子代理任务';
+          messages = mutateAssistant(messages, runId, (m) => {
+            ensureSubagent(m.blocks, id, {
+              label,
+              prompt,
+              status: 'running',
+              parentToolCallId: payloadStr(evt, 'parentToolCallId') ?? id,
+            });
+          });
+          break;
+        }
+        case 'subagent.completed':
+        case 'subagent.failed': {
+          const runId = runIdOf(evt) ?? payloadStr(evt, 'parentRunId') ?? null;
+          const id = payloadStr(evt, 'subRunId') ?? payloadStr(evt, 'parentToolCallId');
+          const failed = evt.type === 'subagent.failed';
+          const summary = payloadStr(evt, 'summary') ?? payloadStr(evt, 'error');
+          messages = mutateAssistant(messages, runId, (m) => {
+            if (id) {
+              ensureSubagent(m.blocks, id, {
+                status: failed ? 'error' : 'done',
+                summary,
+              });
+            }
+          });
+          break;
+        }
+        case 'permission.requested': {
+          const id = payloadStr(evt, 'id');
+          const tool = payloadStr(evt, 'tool') ?? 'tool';
+          if (id) set({ pendingPermission: { id, tool } });
+          useToastStore.getState().push('warning', `工具 ${tool} 需要批准`);
+          return;
+        }
+        case 'permission.resolved': {
+          const id = payloadStr(evt, 'id');
+          const allowed = evt.payload?.allowed === true;
+          const pending = get().pendingPermission;
+          if (pending && pending.id === id) set({ pendingPermission: null });
+          useToastStore.getState().push(allowed ? 'success' : 'info', allowed ? '已批准工具执行' : '已拒绝工具执行');
+          return;
         }
         case 'agent.message': {
           const runId = runIdOf(evt);
@@ -489,12 +889,14 @@ export const useChatStore = create<ChatState>((set, get) => {
           const p = evt.payload ?? {};
           const num = (k: string) => (typeof p[k] === 'number' ? (p[k] as number) : 0);
           const t = get().tokens;
+          const prompt = num('promptTokens');
           set({
             tokens: {
-              prompt: t.prompt + num('promptTokens'),
+              prompt: t.prompt + prompt,
               completion: t.completion + num('completionTokens'),
               total: t.total + num('totalTokens'),
             },
+            lastPromptTokens: prompt > 0 ? prompt : get().lastPromptTokens,
           });
           return;
         }
@@ -538,6 +940,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       const token = (selectToken += 1);
       closeSse();
       get().reset();
+      set({ currentSessionId: id });
       if (!id) return;
       set({ hydrating: true });
       let snap: DesignSnapshot;
@@ -570,7 +973,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       }
     },
 
-    sendMessage: async (text, mode) => {
+    sendMessage: async (text, mode, skills) => {
       const sid = useSessionStore.getState().activeSessionId;
       const trimmed = text.trim();
       if (trimmed === '') return;
@@ -595,6 +998,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         await apiPost(`/api/forge/sessions/${encodeURIComponent(sid)}/ask:execute`, {
           userInput: trimmed,
           mode,
+          ...(skills !== undefined && skills.length > 0 ? { skills } : {}),
         });
         // 响应体不等:UI 由 SSE 事件驱动(参考 send 语义)
       } catch (err) {
@@ -653,42 +1057,40 @@ export const useChatStore = create<ChatState>((set, get) => {
       await get().sendMessage(text, msg.mode ?? 'build');
     },
 
-    pickModel: async (modelId) => {
-      const sid = useSessionStore.getState().activeSessionId;
-      const prev = get().selectedModelId;
-      set({ selectedModelId: modelId });
-      if (!sid) return;
-      try {
-        const r = await apiPatch<{ session: { id: string; selectedModelId?: string | null } }>(
-          `/api/forge/sessions/${encodeURIComponent(sid)}`,
-          { selectedModelId: modelId },
-        );
-        // 同步 sessionStore 会话面(selectedModelId 落库)
-        useSessionStore.setState((st) => ({
-          sessions: st.sessions.map((s) =>
-            s.id === sid ? { ...s, selectedModelId: r.session.selectedModelId ?? null } : s,
-          ),
-        }));
-      } catch (err) {
-        set({ selectedModelId: prev });
-        toastError(err, '切换模型失败');
-      }
-    },
+    pickModel: (modelId) => patchSpec({ selectedModelId: modelId }, '切换模型失败'),
+
+    setThinking: (on) => patchSpec({ thinkingEnabled: on }, '切换思考模式失败'),
+
+    pickEffort: (effortId) => patchSpec({ reasoningEffort: effortId }, '切换推理强度失败'),
+
+    pickContext: (contextId) => patchSpec({ contextOptionId: contextId }, '切换上下文规格失败'),
 
     reset: () => {
       seenKeys.clear();
       seenOrder.length = 0;
+      toolNames.clear();
+      streamBuf.clear();
+      if (streamRaf != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(streamRaf);
+        streamRaf = null;
+      }
       set({
         messages: [],
         activeRunId: null,
         todos: [],
         tokens: { prompt: 0, completion: 0, total: 0 },
+        lastPromptTokens: 0,
         latestSeq: 0,
         models: [],
         defaultModelId: null,
         selectedModelId: null,
+        thinkingEnabled: false,
+        reasoningEffort: null,
+        contextOptionId: null,
         hydrating: false,
+        currentSessionId: null,
         eventsRing: [],
+        pendingPermission: null,
       });
     },
   };

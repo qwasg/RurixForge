@@ -136,7 +136,7 @@ describe('BottomPanel · Metrics', () => {
 });
 
 describe('BottomPanel · 开关与拖拽', () => {
-  it('Ctrl+J 开关(App 全局快捷键) + statusbar 钮', async () => {
+  it('Ctrl+J 开关(App 全局快捷键) + titlebar 钮', async () => {
     vi.stubGlobal(
       'fetch',
       mockForgeBackend(
@@ -159,8 +159,8 @@ describe('BottomPanel · 开关与拖拽', () => {
     // Ctrl+J 关
     fireEvent.keyDown(window, { key: 'j', ctrlKey: true });
     expect(screen.queryByTestId('bottom-panel')).not.toBeInTheDocument();
-    // statusbar 钮开
-    fireEvent.click(screen.getByTestId('statusbar-bottom-toggle'));
+    // titlebar 钮开
+    fireEvent.click(screen.getByTestId('titlebar-bottom-toggle'));
     expect(await screen.findByTestId('bottom-panel')).toBeInTheDocument();
     expect(useWorkbenchStore.getState().bottomOpen).toBe(true);
   });

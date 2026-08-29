@@ -16,6 +16,10 @@ fn terr(code: &str, message: impl Into<String>) -> ToolError {
     ToolError { code: code.to_string(), message: message.into() }
 }
 
+fn confine_rel(root: &Path, rel: &str) -> Result<std::path::PathBuf, ToolError> {
+    forge_util::pathutil::confine_under(&[root], rel).map_err(|e| terr("PATH_OUTSIDE_ROOT", e))
+}
+
 /// 解析 GraphDoc;失败 → ok:false + 单条 GRAPH_SCHEMA(校验语义,非工具级错误)。
 fn parse_doc(v: &Value) -> Result<GraphDoc, Value> {
     serde_json::from_value(v.clone()).map_err(|e| {
@@ -47,7 +51,7 @@ pub fn validate(args: &Value, root: &Path) -> TResult<Value> {
         }
     } else {
         let rel = args["path"].as_str().ok_or_else(|| terr("USAGE", "path 须为字符串"))?;
-        let p = root.join(rel);
+        let p = confine_rel(root, rel)?;
         let text = std::fs::read_to_string(&p)
             .map_err(|_| terr("GRAPH_NOT_FOUND", format!("图文件不存在: {rel}")))?;
         match parse_doc(&serde_json::from_str::<Value>(&text).map_err(|e| {
@@ -98,7 +102,7 @@ pub fn get(args: &Value, root: &Path) -> TResult<Value> {
         .get("path")
         .and_then(Value::as_str)
         .ok_or_else(|| terr("USAGE", "缺 path"))?;
-    let p = root.join(rel);
+    let p = confine_rel(root, rel)?;
     let text = std::fs::read_to_string(&p)
         .map_err(|_| terr("GRAPH_NOT_FOUND", format!("图文件不存在: {rel}")))?;
     let graph: Value = serde_json::from_str(&text)
@@ -222,6 +226,14 @@ mod tests {
         let root = tmp_root("getnf");
         let e = get(&json!({ "path": "Content/Graphs/ghost.rxgraph" }), &root).unwrap_err();
         assert_eq!(e.code, "GRAPH_NOT_FOUND");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn get_rejects_path_escape() {
+        let root = tmp_root("escape");
+        let e = get(&json!({ "path": "../secret.rxgraph" }), &root).unwrap_err();
+        assert_eq!(e.code, "PATH_OUTSIDE_ROOT");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { apiDelete, apiGet, apiPatch, apiPost } from './forgeApi';
 import { useToastStore } from './toastStore';
+import { useWorkspaceStore } from './workspaceStore';
 
 /**
  * F7 wave.3 会话事实源(agentd sessions/chat-folders REST,wave.1/2 产物)。
@@ -14,6 +15,10 @@ export interface ForgeSession {
   status: string;
   agentKind: string;
   selectedModelId: string | null;
+  /** 模型规格三档(agentd modelspec.rs;chatStore 的同名 state 是它的会话内镜像)。 */
+  thinkingEnabled: boolean;
+  reasoningEffort: string | null;
+  contextOptionId: string | null;
   webSearchEnabled: boolean;
   activeRunId: string | null;
   createdAt: string;
@@ -21,6 +26,7 @@ export interface ForgeSession {
   pinned: boolean;
   titleManuallySet: boolean;
   folderId?: string | null;
+  workspaceId?: string | null;
 }
 
 export interface ChatFolder {
@@ -28,6 +34,7 @@ export interface ChatFolder {
   name: string;
   createdAt: string;
   updatedAt: string;
+  workspaceId?: string | null;
 }
 
 interface SessionState {
@@ -45,6 +52,7 @@ interface SessionState {
   togglePin: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   moveToFolder: (id: string, folderId: string | null) => Promise<void>;
+  setAgentKind: (id: string, agentKind: string) => Promise<void>;
   fork: (id: string) => Promise<ForgeSession | null>;
   createFolder: (name: string) => Promise<ChatFolder | null>;
   removeFolder: (id: string) => Promise<void>;
@@ -78,8 +86,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   create: async (title) => {
     try {
+      const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
       const r = await apiPost<{ session: ForgeSession }>('/api/forge/sessions', {
         title: title ?? '',
+        ...(workspaceId ? { workspaceId } : {}),
       });
       set((st) => ({
         sessions: [r.session, ...st.sessions],
@@ -150,6 +160,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
+  setAgentKind: async (id, agentKind) => {
+    const prev = get().sessions;
+    set((st) => ({
+      sessions: st.sessions.map((s) => (s.id === id ? { ...s, agentKind } : s)),
+    }));
+    try {
+      const r = await apiPatch<{ session: ForgeSession }>(`/api/forge/sessions/${id}`, {
+        agentKind,
+      });
+      set((st) => ({
+        sessions: st.sessions.map((s) => (s.id === id ? r.session : s)),
+      }));
+    } catch (err) {
+      set({ sessions: prev });
+      toastError(err, '切换代理类型失败');
+    }
+  },
+
   moveToFolder: async (id, folderId) => {
     const prev = get().sessions;
     set((st) => ({
@@ -187,8 +215,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const trimmed = name.trim();
     if (trimmed === '') return null;
     try {
+      const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
       const r = await apiPost<{ folder: ChatFolder }>('/api/forge/chat-folders', {
         name: trimmed,
+        ...(workspaceId ? { workspaceId } : {}),
       });
       set((st) => ({ folders: [...st.folders, r.folder] }));
       return r.folder;

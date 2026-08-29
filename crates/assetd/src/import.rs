@@ -49,7 +49,9 @@ pub fn import_assets(
     project.ensure_dirs()?;
     let content_root = project.content_root();
     let dest_rel = normalize_rel(dest_folder)?;
-    let dest_abs = content_root.join(&dest_rel);
+    let dest_abs = project
+        .resolve_content_path(&dest_rel)
+        .unwrap_or_else(|_| content_root.join(&dest_rel));
     std::fs::create_dir_all(&dest_abs)?;
 
     let mut imported = Vec::new();

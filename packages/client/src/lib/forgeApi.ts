@@ -7,6 +7,7 @@ const TOOL_PREFIX = 'mcp__engine-scene__';
 const ASSET_TOOL_PREFIX = 'mcp__asset-pipeline__';
 const CODE_TOOL_PREFIX = 'mcp__code-forge__';
 const GEN_TOOL_PREFIX = 'mcp__gen-image__';
+const GEN_MODEL_TOOL_PREFIX = 'mcp__gen-model__';
 
 /** 结构化 API 错误(code 来自 host/agentd,或 TOOL_ERROR / BAD_RESPONSE) */
 export class ForgeApiError extends Error {
@@ -134,6 +135,89 @@ export async function callGenTool<T = unknown>(
   return callToolWithPrefix(GEN_TOOL_PREFIX, name, args);
 }
 
+/** 调用 gen-model 工具(name 不带前缀,内部补 mcp__gen-model__;素材创作波 3D 网格链)。 */
+export async function callModelGenTool<T = unknown>(
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<T> {
+  return callToolWithPrefix(GEN_MODEL_TOOL_PREFIX, name, args);
+}
+
+// ---------- 素材创作波:媒体生成 REST 面(agentd gen/video、gen/audio;预留 API 端口) ----------
+
+/** 产物附带的供应商渲染预览图(label = 视角名 front/right/back/left)。 */
+export interface MediaPreview {
+  label: string;
+  fileRef: string;
+  mime: string;
+  dataUrl: string;
+}
+
+/**
+ * 媒体产物(fileRef = .forge/tmp/gen/ 项目相对路径)。
+ * dataUrl 只对浏览器可内联的类型给出(png/mp4/mp3/wav);glb 数 MB,不内联。
+ */
+export interface MediaArtifact {
+  fileRef: string;
+  ext: string;
+  mime: string;
+  dataUrl?: string;
+  previews?: MediaPreview[];
+  meta?: Record<string, unknown>;
+}
+
+export interface MediaGenResponse {
+  backendId: string;
+  artifacts: MediaArtifact[];
+}
+
+/** POST /api/forge/gen/video(未配置后端 → 501 GEN_BACKEND_NOT_CONFIGURED,如实抛出)。 */
+export async function apiGenVideo(payload: {
+  prompt: string;
+  aspect?: string;
+  resolution?: string;
+  durationSec?: number;
+  backend?: string;
+}): Promise<MediaGenResponse> {
+  return apiPost<MediaGenResponse>('/api/forge/gen/video', payload);
+}
+
+/** POST /api/forge/gen/audio(mode: tts | music;未配置后端 → 501,如实抛出)。 */
+export async function apiGenAudio(payload: {
+  mode: 'tts' | 'music';
+  prompt: string;
+  voice?: string;
+  format?: string;
+  lyrics?: string;
+  instrumental?: boolean;
+  backend?: string;
+}): Promise<MediaGenResponse> {
+  return apiPost<MediaGenResponse>('/api/forge/gen/audio', payload);
+}
+
+/**
+ * POST /api/forge/gen/mesh(文/图生 3D,默认 meshy;未配置后端 → 501,如实抛出)。
+ * 走 REST 而非 MCP:3D 供应商是异步任务制,单次生成常达数分钟,MCP 子进程调用 10s 就断。
+ * imageDataUrl 给了即走图生 3D,此时 prompt 转作贴图引导。
+ */
+export async function apiGenMesh(payload: {
+  prompt?: string;
+  imageDataUrl?: string;
+  targetPolycount?: number;
+  texture?: boolean;
+  pbr?: boolean;
+  textureResolution?: string;
+  texturePrompt?: string;
+  modelType?: string;
+  aiModel?: string;
+  topology?: string;
+  poseMode?: string;
+  timeoutSec?: number;
+  backend?: string;
+}): Promise<MediaGenResponse> {
+  return apiPost<MediaGenResponse>('/api/forge/gen/mesh', payload);
+}
+
 /** 非 MCP 的 agentd REST GET(/api/forge/*  plain JSON,非信封)。 */
 export async function apiGet<T = unknown>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -145,24 +229,102 @@ export async function apiGet<T = unknown>(path: string): Promise<T> {
   return body as T;
 }
 
-/** F8 wave.1:workspace/file 只读文本预览响应(agentd 端点同形)。 */
+/** F8 wave.1:workspace/file 文本响应(agentd 端点同形;F9 起含 modifiedAt 冲突令牌)。 */
 export interface WorkspaceFileResp {
   path: string;
   name: string;
   size: number;
   content: string;
   truncated: boolean;
+  /** F9:纳秒级 RFC3339 mtime 令牌(PUT 时经 baseModifiedAt 原样回传做乐观并发)。 */
+  modifiedAt: string;
+}
+
+export interface WsEntry {
+  name: string;
+  kind: 'dir' | 'file';
+  relPath: string;
+  size: number;
+  modifiedAt: string;
+  hidden: boolean;
+}
+
+export interface WorkspaceTreeResp {
+  path: string;
+  entries: WsEntry[];
+  total: number;
+  truncated: boolean;
+}
+
+function workspaceQuery(path: string, workspaceId?: string | null): string {
+  const params = new URLSearchParams();
+  params.set('path', path);
+  if (workspaceId) params.set('workspaceId', workspaceId);
+  return params.toString();
+}
+
+/** GET /api/forge/workspace/tree?path=&workspaceId= */
+export async function apiWorkspaceTree(
+  path: string,
+  workspaceId?: string | null,
+): Promise<WorkspaceTreeResp> {
+  return apiGet<WorkspaceTreeResp>(`/api/forge/workspace/tree?${workspaceQuery(path, workspaceId)}`);
 }
 
 /** F8 wave.1:GET /api/forge/workspace/file?path=(窄封装;错误码 ForgeApiError.code 如实)。 */
-export async function apiWorkspaceFile(path: string): Promise<WorkspaceFileResp> {
-  return apiGet<WorkspaceFileResp>(`/api/forge/workspace/file?path=${encodeURIComponent(path)}`);
+export async function apiWorkspaceFile(
+  path: string,
+  workspaceId?: string | null,
+): Promise<WorkspaceFileResp> {
+  return apiGet<WorkspaceFileResp>(`/api/forge/workspace/file?${workspaceQuery(path, workspaceId)}`);
+}
+
+/** F9:workspace/file 写回响应(agentd 端点同形;modifiedAt = 下次写的新基线)。 */
+export interface WorkspaceFileWriteResp {
+  path: string;
+  name: string;
+  size: number;
+  modifiedAt: string;
+}
+
+/**
+ * F9:PUT /api/forge/workspace/file(文件编辑器落盘;窄封装)。
+ * baseModifiedAt = GET/上次 PUT 返回的 modifiedAt 原样回传;
+ * 磁盘已被外部改写 → 409 FILE_CONFLICT(错误码 ForgeApiError.code 如实)。
+ */
+export async function apiWorkspaceFileWrite(
+  path: string,
+  content: string,
+  baseModifiedAt: string,
+  workspaceId?: string | null,
+): Promise<WorkspaceFileWriteResp> {
+  return apiPut<WorkspaceFileWriteResp>('/api/forge/workspace/file', {
+    path,
+    content,
+    baseModifiedAt,
+    ...(workspaceId ? { workspaceId } : {}),
+  });
 }
 
 /** 非 MCP 的 agentd REST POST(plain JSON)。 */
 export async function apiPost<T = unknown>(path: string, payload: unknown): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = (await res.json()) as unknown;
+  if (!res.ok) {
+    const err = (body as { error?: { code?: string; message?: string } })?.error;
+    throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return body as T;
+}
+
+/** 非 MCP 的 agentd REST PUT(plain JSON;F9 workspace/file 写回)。 */
+export async function apiPut<T = unknown>(path: string, payload: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -214,6 +376,8 @@ export interface OpenAiCompatStatus {
   baseUrl: string;
   model: string;
   keyConfigured: boolean;
+  /** 该端点后接的模型是否收图片(端点探不出来,由用户声明);为真才把工具产出的图回注给模型 */
+  vision?: boolean;
 }
 
 /** GET /api/forge/llm/openai-compat/status(响应面无 key)。 */
@@ -221,11 +385,79 @@ export async function getOpenAiCompatStatus(): Promise<OpenAiCompatStatus> {
   return apiGet<OpenAiCompatStatus>('/api/forge/llm/openai-compat/status');
 }
 
-/** POST /api/forge/llm/openai-compat/config {baseUrl, model, key?}(key 省略 = 只改 baseUrl/model)。 */
+/** POST /api/forge/llm/openai-compat/config {baseUrl, model, key?, vision?}(key/vision 省略 = 保留既有)。 */
 export async function postOpenAiCompatConfig(payload: {
   baseUrl: string;
   model: string;
   key?: string;
+  vision?: boolean;
 }): Promise<OpenAiCompatStatus & { ok: boolean }> {
   return apiPost<OpenAiCompatStatus & { ok: boolean }>('/api/forge/llm/openai-compat/config', payload);
+}
+
+/** F10:embedding 渠道状态面(RAG 向量档;响应与 openai-compat 同形态,绝无 key)。 */
+export interface EmbeddingStatus {
+  configured: boolean;
+  baseUrl: string;
+  model: string;
+  keyConfigured: boolean;
+}
+
+/** GET /api/forge/llm/embedding/status(响应面无 key)。 */
+export async function getEmbeddingStatus(): Promise<EmbeddingStatus> {
+  return apiGet<EmbeddingStatus>('/api/forge/llm/embedding/status');
+}
+
+/** POST /api/forge/llm/embedding/config {baseUrl, model, key?}(key 省略 = 只改 baseUrl/model)。 */
+export async function postEmbeddingConfig(payload: {
+  baseUrl: string;
+  model: string;
+  key?: string;
+}): Promise<EmbeddingStatus & { ok: boolean }> {
+  return apiPost<EmbeddingStatus & { ok: boolean }>('/api/forge/llm/embedding/config', payload);
+}
+
+/** 删除 skill 的两种结局:真删掉,或被治理门拦下并给出待批提案号。 */
+export type SkillDeleteOutcome =
+  | { deleted: boolean }
+  | { proposalRequired: true; proposalId: string; message: string };
+
+/**
+ * F11:skill 删除(409 GOV_PROPOSAL_REQUIRED 时把 proposalId 一并带出,供 UI 走批准流)。
+ * ForgeApiError 只带 code/message/status,装不下 proposalId,故此处自行解析响应体;
+ * 409 但响应体未给 proposalId 时仍按错误抛出(不编造提案号)。
+ */
+export async function apiDeleteSkill(name: string): Promise<SkillDeleteOutcome> {
+  const res = await fetch(`/api/forge/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const text = await res.text();
+  let body: unknown = null;
+  if (text !== '') {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new ForgeApiError('BAD_RESPONSE', `响应非 JSON(HTTP ${res.status})`, res.status);
+    }
+  }
+  const err = (body as { error?: { code?: string; message?: string; proposalId?: string } } | null)
+    ?.error;
+  if (
+    res.status === 409 &&
+    err?.code === 'GOV_PROPOSAL_REQUIRED' &&
+    typeof err.proposalId === 'string' &&
+    err.proposalId !== ''
+  ) {
+    return {
+      proposalRequired: true,
+      proposalId: err.proposalId,
+      message: err.message ?? '删除技能须先批准提案',
+    };
+  }
+  if (!res.ok) {
+    throw new ForgeApiError(
+      err?.code ?? `HTTP_${res.status}`,
+      err?.message ?? `HTTP ${res.status}`,
+      res.status,
+    );
+  }
+  return { deleted: (body as { deleted?: boolean } | null)?.deleted === true };
 }

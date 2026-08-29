@@ -1,0 +1,347 @@
+{
+  "at": "2026-08-25T07:41:21.707Z",
+  "wave": "f11-store-journey",
+  "ports": {
+    "agentd": 8123,
+    "host": 3090
+  },
+  "tasks": [
+    {
+      "id": "S1",
+      "title": "Sidebar 两个入口 → workbench tab",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "sidebar-asset-store 可见",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "sidebar-skills 可见",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "点资产商店开 store tab",
+          "pass": true,
+          "detail": "store"
+        },
+        {
+          "name": "点 Skill 管理开 skills tab",
+          "pass": true,
+          "detail": "store,skills"
+        },
+        {
+          "name": "skills tab 激活",
+          "pass": true,
+          "detail": "skills"
+        },
+        {
+          "name": "重复点击不重复开 tab",
+          "pass": true,
+          "detail": "count=1"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S1-entries.png"
+      ],
+      "notes": [],
+      "durationMs": 324
+    },
+    {
+      "id": "S2",
+      "title": "发现页:搜索 / 过滤 / 坏源如实上报",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "三个种子包渲染为卡片",
+          "pass": true,
+          "detail": "cards=3"
+        },
+        {
+          "name": "starter-props 卡片在",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "不可达源有错误横幅",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "横幅列出坏源与错误码",
+          "pass": true,
+          "detail": "brokenSTORE_SOURCE_UNREACHABLE源 broken 索引不可读(Z:/no-such-registry-xyz\\index.json): 系统找不到指定的路径。 (os error 3)"
+        },
+        {
+          "name": "类型过滤只剩 skill 包",
+          "pass": true,
+          "detail": "count=1"
+        },
+        {
+          "name": "中文关键词命中木质包",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S2-discover.png"
+      ],
+      "notes": [],
+      "durationMs": 265
+    },
+    {
+      "id": "S3",
+      "title": "详情页:版本 / 许可证 / 文件清单",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "文件清单三条",
+          "pass": true,
+          "detail": "files=3"
+        },
+        {
+          "name": "许可证展示",
+          "pass": true,
+          "detail": "CC0-1.0"
+        },
+        {
+          "name": "免费包标「免费」",
+          "pass": true,
+          "detail": "价格：免费"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S3-detail.png"
+      ],
+      "notes": [],
+      "durationMs": 145
+    },
+    {
+      "id": "S4",
+      "title": "安装:进度 → completed → 已安装 → 更新检查",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "后端已装记录出现",
+          "pass": true,
+          "detail": "{\"assetPaths\":[\"Meshes/starter_chair.gltf\",\"Textures/starter_dot.png\",\"Materials/starter_red.rxmat\"],\"installedAt\":\"2026-08-25T07:41:07Z\",\"kind\":\"asset-pack\",\"p"
+        },
+        {
+          "name": "落地三个资产",
+          "pass": true,
+          "detail": "Meshes/starter_chair.gltf,Textures/starter_dot.png,Materials/starter_red.rxmat"
+        },
+        {
+          "name": ".meta provenance.origin=store-install",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ".meta 带 packageId 溯源",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "已安装页出现该包",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "旧版包显示「更新到 1.1.0」",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S4-installed.png",
+        "evidence\\f11-journey-S4-updates.png"
+      ],
+      "notes": [],
+      "durationMs": 3261
+    },
+    {
+      "id": "S5",
+      "title": "卸载 Proposal 两阶段(I-6)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "出现内联确认条(非模态)",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "未用 <dialog>(非模态纪律)",
+          "pass": true,
+          "detail": "dialog=0"
+        },
+        {
+          "name": "被 409 拦下并显示提案号",
+          "pass": true,
+          "detail": "卸载属破坏性操作，已创建提案 prop_1，批准后自动重发。"
+        },
+        {
+          "name": "批准前文件未删",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "批准后卸载完成(记录消失)",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "资产文件已删",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ".meta 已删",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S5-uninstall-proposal.png",
+        "evidence\\f11-journey-S5-uninstall-done.png"
+      ],
+      "notes": [],
+      "durationMs": 711
+    },
+    {
+      "id": "S6",
+      "title": "个人资产库:收藏 / 去重 / 装进项目 / 移出",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "收藏成功",
+          "pass": true,
+          "detail": "items=1"
+        },
+        {
+          "name": "同内容不长第二条(内容寻址去重)",
+          "pass": true,
+          "detail": "items=1"
+        },
+        {
+          "name": "装进项目(Misc/)",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "移出个人库",
+          "pass": true,
+          "detail": "items=0"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S6-library.png"
+      ],
+      "notes": [],
+      "durationMs": 1291
+    },
+    {
+      "id": "S7",
+      "title": "Skill 管理:列表 / 新建 / 编辑 / 校验",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "既有技能全部列出(≥13)",
+          "pass": true,
+          "detail": "rows=13"
+        },
+        {
+          "name": "新建落盘",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "新建技能进列表",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "缺省模板自身通过校验",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "编辑内容已落盘",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S7-skills.png"
+      ],
+      "notes": [],
+      "durationMs": 3785
+    },
+    {
+      "id": "S8",
+      "title": "Skill 删除两阶段 + Composer 技能菜单按启停过滤",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "禁用技能不出现在 Composer 菜单(修既有缺陷)",
+          "pass": true,
+          "detail": "count=0"
+        },
+        {
+          "name": "启用技能仍在菜单里",
+          "pass": true,
+          "detail": "count=1"
+        },
+        {
+          "name": "删除确认为内联条(非模态)",
+          "pass": true,
+          "detail": "dialog=0"
+        },
+        {
+          "name": "被 409 拦下并显示提案号",
+          "pass": true,
+          "detail": "已创建提案 prop_2，需批准后才能删除。"
+        },
+        {
+          "name": "批准前技能目录还在",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "批准后技能目录被删",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "技能从清单消失",
+          "pass": true,
+          "detail": ""
+        }
+      ],
+      "screenshots": [
+        "evidence\\f11-journey-S8-composer-skills.png",
+        "evidence\\f11-journey-S8-skill-delete-proposal.png"
+      ],
+      "notes": [],
+      "durationMs": 1793
+    }
+  ],
+  "totals": {
+    "total": 8,
+    "pass": 8,
+    "fail": 0
+  },
+  "hygiene": {
+    "pageErrors": 2,
+    "pageErrorSamples": [
+      "console: Failed to load resource: the server responded with a status of 409 (Conflict)",
+      "console: Failed to load resource: the server responded with a status of 409 (Conflict)"
+    ]
+  },
+  "orphans": [],
+  "orphanFree": true,
+  "degraded": [
+    "https 社区源(HttpSource)未做真实网络实测,官方源为仓内 file:// 驱动"
+  ],
+  "gateGreen": true
+}

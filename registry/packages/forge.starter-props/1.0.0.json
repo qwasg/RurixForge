@@ -1,0 +1,54 @@
+{
+    "id":  "forge.starter-props",
+    "name":  "入门示例道具包",
+    "version":  "1.0.0",
+    "kind":  "asset-pack",
+    "description":  "三类资产各一件(网格/贴图/材质),用于验证商店安装链路与按扩展名分流落地。",
+    "publisher":  {
+                      "id":  "rurixforge",
+                      "name":  "RurixForge 官方",
+                      "url":  "https://github.com/rurixforge"
+                  },
+    "tags":  [
+                 "示例",
+                 "道具",
+                 "入门"
+             ],
+    "license":  {
+                    "id":  "CC0-1.0",
+                    "url":  "https://creativecommons.org/publicdomain/zero/1.0/"
+                },
+    "pricing":  {
+                    "amount":  0,
+                    "currency":  "CNY"
+                },
+    "engineVersion":  "\u003e=0.1.0",
+    "dependencies":  [
+
+                     ],
+    "files":  [
+                  {
+                      "path":  "starter_chair.gltf",
+                      "sha256":  "625cfe10aa247f636c0ad394c771ecdbc5d4ed2d101429ceb3c3277df7aba4b1",
+                      "size":  440
+                  },
+                  {
+                      "path":  "starter_dot.png",
+                      "sha256":  "1a304f04d6f5a13a83988b695f06917e3f45aee73564e3575c285ec6faf250fe",
+                      "size":  129
+                  },
+                  {
+                      "path":  "starter_red.rxmat",
+                      "sha256":  "0ec5ad5dd40d89bfac31ff7554901b930095949ea02f45b4a2e0aa00f9763a72",
+                      "size":  142
+                  }
+              ],
+    "preview":  {
+                    "thumbnail":  null,
+                    "screenshots":  [
+
+                                    ]
+                },
+    "createdAt":  "2026-08-25T07:12:52Z",
+    "updatedAt":  "2026-08-25T07:12:52Z"
+}

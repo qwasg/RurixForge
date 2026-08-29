@@ -4,3 +4,12 @@ importer: gltf
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 最小三角形网格夹具(单三角形),资产管线与渲染冒烟用
+  tags:
+  - 测试夹具
+  - 三角形
+  - 冒烟
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

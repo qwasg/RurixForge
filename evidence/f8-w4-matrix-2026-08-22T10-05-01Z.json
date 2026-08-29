@@ -1,0 +1,410 @@
+{
+  "contract": "F8 wave.4 / G-F8-4",
+  "startedUtc": "2026-08-22T10:05:01.816Z",
+  "host": {
+    "origin": "http://127.0.0.1:3080",
+    "agentdOrigin": "http://127.0.0.1:8103"
+  },
+  "env": {
+    "deepseekAvailability": "needs-key",
+    "browserChannel": "msedge",
+    "viewportDevice": "NVIDIA GeForce RTX 4070 Ti"
+  },
+  "prep": [
+    "构建产物齐(7 二进制 + client dist + host dist)",
+    "端口 8103/3080 已就绪(占用处置见上日志)",
+    "agentd pid=31944 /health ok",
+    "host pid=83348 /api/forge/health ok",
+    "scene_new(f8-w4-e2e) 已执行(编辑器打开时 ensureDefaultScene 将自动加载 maze 默认场景)",
+    "shell 渲染 + __forgeShell seam 就绪"
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "建会话→Mock 模型→发消息→SSE 驱动 UI 断言",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "session-created-ui",
+          "pass": true,
+          "detail": "sid=sess_1787393104360_880340f1"
+        },
+        {
+          "name": "model-mock-selected",
+          "pass": true,
+          "detail": "selectedModelId=mock"
+        },
+        {
+          "name": "user-card-dom",
+          "pass": true,
+          "detail": "userTexts=[\"说一句你好\"]"
+        },
+        {
+          "name": "assistant-card-dom",
+          "pass": true,
+          "detail": "count=1"
+        },
+        {
+          "name": "assistant-model-mock",
+          "pass": true,
+          "detail": "label=mock"
+        },
+        {
+          "name": "assistant-text-mock-echo",
+          "pass": true,
+          "detail": "mock:已收到「说一句你好」(无 LLM 密钥,真实工具循环未启用;配 FORGE_LLM_API_KEY 或 keystore[deepseek] 后走 deepseek)"
+        },
+        {
+          "name": "assistant-status-completed",
+          "pass": true,
+          "detail": "status=completed"
+        },
+        {
+          "name": "no-stream-caret",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "terminal-dot-done",
+          "pass": true,
+          "detail": "{\"found\":true,\"same\":true}"
+        },
+        {
+          "name": "backend-event-sequence",
+          "pass": true,
+          "detail": "session.created,session.updated,composer.user.message,agent.started,agent.message,agent.completed"
+        },
+        {
+          "name": "backend-run-completed",
+          "pass": true,
+          "detail": "latestSeq=6"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T1-mock-chat.png"
+      ],
+      "notes": [],
+      "durationMs": 268
+    },
+    {
+      "id": "T2",
+      "title": "deepseek live 发消息(available 实测 / 否则 annotated-mock)",
+      "verdict": "annotated-mock",
+      "assertions": [
+        {
+          "name": "deepseek-needs-key-menu-disabled",
+          "pass": true,
+          "detail": "disabled=true;title=未配置 Key"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T2-deepseek-needs-key.png"
+      ],
+      "notes": [
+        "availability=needs-key(design-snapshot);未配置 Key 诚实禁用态,deepseek live 腿 annotated-mock 不充绿"
+      ],
+      "durationMs": 91
+    },
+    {
+      "id": "T3",
+      "title": "编辑器视图浏览器出帧(canvas readback 轮询腿)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "viewport-not-degraded",
+          "pass": true,
+          "detail": "degradedPanels=0"
+        },
+        {
+          "name": "frame-stat-visible",
+          "pass": true,
+          "detail": "{\"deviceName\":\"NVIDIA GeForce RTX 4070 Ti\",\"draws\":36,\"frames\":3,\"px\":127109}"
+        },
+        {
+          "name": "device-name-real",
+          "pass": true,
+          "detail": "NVIDIA GeForce RTX 4070 Ti"
+        },
+        {
+          "name": "frames-increasing",
+          "pass": true,
+          "detail": "frames 3 → 7"
+        },
+        {
+          "name": "baseline-recorded",
+          "pass": true,
+          "detail": "px=127109;实体数=36"
+        },
+        {
+          "name": "canvas-pixels-nonzero",
+          "pass": true,
+          "detail": "{\"ok\":true,\"nonBg\":506,\"total\":740,\"w\":320,\"h\":581}"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T3-editor-frame.png"
+      ],
+      "notes": [
+        "基线:实体数=36(编辑器 ensureDefaultScene 自动加载 maze),px=127109;T4 后复测腿断言 px>0"
+      ],
+      "durationMs": 2372
+    },
+    {
+      "id": "T4",
+      "title": "chat 指令创建实体(agent 工具循环真 engine 链)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "entity-tool-declared",
+          "pass": true,
+          "detail": "mcp__engine-scene__entity_create"
+        },
+        {
+          "name": "openai-compat-configured",
+          "pass": true,
+          "detail": "HTTP 200"
+        },
+        {
+          "name": "openai-compat-status",
+          "pass": true,
+          "detail": "{\"configured\":true}"
+        },
+        {
+          "name": "run-completed",
+          "pass": true,
+          "detail": "status=completed;err="
+        },
+        {
+          "name": "tool-loop-entity-create",
+          "pass": true,
+          "detail": "[{\"name\":\"mcp__engine-scene__entity_create\",\"ok\":true,\"error\":null}]"
+        },
+        {
+          "name": "model-label-oai",
+          "pass": true,
+          "detail": "model=e2e-deterministic-llm"
+        },
+        {
+          "name": "activity-segment-dom",
+          "pass": true,
+          "detail": "segments=1"
+        },
+        {
+          "name": "tool-line-create-entity",
+          "pass": true,
+          "detail": "创建实体 · E2E-Cube-T100501Z"
+        },
+        {
+          "name": "entity-list-contains-new",
+          "pass": true,
+          "detail": "Wall_0_0,Wall_0_1,Wall_0_2,Wall_0_3,Wall_0_4,Wall_0_5,Wall_0_6,Wall_6_0,Wall_6_1,Wall_6_2,Wall_6_3,Wall_6_4,Wall_6_5,Wall_6_6,Wall_1_0,Wall_2_0,Wall_3_0,Wall_4_0,Wall_5_0,Wall_1_6,Wall_2_6,Wall_3_6,Wall_4_6,Wall_5_6,Wall_2_2,Wall_4_2,Wall_2_3,Wall_2_4,Wall_4_4,Wall_5_4,Wall_2_5,Floor,Player,Key,Door,Goal,E2E-Cube-T100501Z"
+        },
+        {
+          "name": "viewport-nonzero-pixels",
+          "pass": true,
+          "detail": "px=127109(T3 基线 127109)"
+        },
+        {
+          "name": "oai-server-saw-requests",
+          "pass": true,
+          "detail": "[{\"at\":\"2026-08-22T10:05:07.541Z\",\"path\":\"/v1/chat/completions\",\"model\":\"e2e-deterministic-llm\",\"toolsCount\":75,\"hasAuthorization\":true,\"hasToolRole\":false},{\"at\":\"2026-08-22T10:05:07.614Z\",\"path\":\"/v1/chat/completions\",\"model\":\"e2e-deterministic-llm\",\"toolsCount\":75,\"hasAuthorization\":true,\"hasToolRole\":true}]"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T4-entity-created-chat.png",
+        "evidence\\f8-w4-T4-entity-viewport-pixels.png"
+      ],
+      "notes": [
+        "openai-compat → 内置确定性 mock OpenAI(仅 LLM 决策桩);agent 工具循环/MCP/engine 链全真;请求面=2 发",
+        "px:T3 基线 127109(maze 自动加载)→ 实体创建后 127109(场景含 maze 实体 + 新建 E2E-Cube-T100501Z)"
+      ],
+      "durationMs": 747
+    },
+    {
+      "id": "T5",
+      "title": "multitask 碰撞体 swarm(工具段「集群执行」+ completed)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "mode-chip-multitask",
+          "pass": true,
+          "detail": "Multitask"
+        },
+        {
+          "name": "run-completed",
+          "pass": true,
+          "detail": "status=completed;err="
+        },
+        {
+          "name": "swarm-tool-ok",
+          "pass": true,
+          "detail": "[{\"name\":\"swarm.execute\",\"ok\":true,\"error\":null}]"
+        },
+        {
+          "name": "summary-text",
+          "pass": true,
+          "detail": "swarm 分片聚合:4 片,共 37 项,成功 37,失败 0"
+        },
+        {
+          "name": "activity-segment-dom",
+          "pass": true,
+          "detail": "segments=2"
+        },
+        {
+          "name": "tool-line-swarm-verb",
+          "pass": true,
+          "detail": "集群执行"
+        },
+        {
+          "name": "swarm-shards-done",
+          "pass": true,
+          "detail": "shards=4"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T5-multitask-swarm.png"
+      ],
+      "notes": [],
+      "durationMs": 221
+    },
+    {
+      "id": "T6",
+      "title": "提案批准流(pending → 批准 → approved)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "proposal-created",
+          "pass": true,
+          "detail": "HTTP 200"
+        },
+        {
+          "name": "status-pending-before",
+          "pass": true,
+          "detail": "status=pending"
+        },
+        {
+          "name": "status-approved-ui",
+          "pass": true,
+          "detail": "status=approved"
+        },
+        {
+          "name": "status-approved-backend",
+          "pass": true,
+          "detail": "backend=approved"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T6-proposal-approved.png"
+      ],
+      "notes": [],
+      "durationMs": 118
+    },
+    {
+      "id": "T7",
+      "title": "设置主题切换(data-theme + --accent computed)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "dark-data-theme",
+          "pass": true,
+          "detail": "{\"theme\":\"dark\",\"accent\":\"#E2886A\"}"
+        },
+        {
+          "name": "dark-accent-changed",
+          "pass": true,
+          "detail": "#C96442 → #E2886A"
+        },
+        {
+          "name": "light-data-theme",
+          "pass": true,
+          "detail": "{\"theme\":\"light\",\"accent\":\"#C96442\"}"
+        },
+        {
+          "name": "light-accent-changed",
+          "pass": true,
+          "detail": "#E2886A → #C96442"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T7-theme-dark.png",
+        "evidence\\f8-w4-T7-theme-light.png"
+      ],
+      "notes": [
+        "主题已复原 mode=light"
+      ],
+      "durationMs": 243
+    },
+    {
+      "id": "T8",
+      "title": "会话管理(fork/重命名/置顶/删除)",
+      "verdict": "pass",
+      "assertions": [
+        {
+          "name": "session-created",
+          "pass": true,
+          "detail": "sid=sess_1787393107048_d529d056"
+        },
+        {
+          "name": "fork-ui-branch-title",
+          "pass": true,
+          "detail": "forkId=sess_1787393108399_94674143"
+        },
+        {
+          "name": "fork-backend-title",
+          "pass": true,
+          "detail": "分支 · 新会话"
+        },
+        {
+          "name": "rename-backend",
+          "pass": true,
+          "detail": "title=F8W4 改名会话;manual=true"
+        },
+        {
+          "name": "pin-backend",
+          "pass": true,
+          "detail": "pinned=true"
+        },
+        {
+          "name": "pin-ui-section",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "delete-backend-404",
+          "pass": true,
+          "detail": "HTTP 404"
+        }
+      ],
+      "screenshots": [
+        "evidence\\f8-w4-T8-forked.png",
+        "evidence\\f8-w4-T8-pinned.png",
+        "evidence\\f8-w4-T8-deleted.png"
+      ],
+      "notes": [],
+      "durationMs": 415
+    }
+  ],
+  "hygiene": {
+    "pageErrors": [],
+    "consoleErrors": []
+  },
+  "orphanCheck": {
+    "before": [],
+    "after": []
+  },
+  "finishedUtc": "2026-08-22T10:05:11.688Z",
+  "durationMs": 9872,
+  "verdicts": {
+    "T1": "pass",
+    "T2": "annotated-mock",
+    "T3": "pass",
+    "T4": "pass",
+    "T5": "pass",
+    "T6": "pass",
+    "T7": "pass",
+    "T8": "pass"
+  },
+  "allGreen": false,
+  "gateGreen": true,
+  "orphanFree": true
+}

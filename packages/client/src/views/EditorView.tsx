@@ -1,166 +1,87 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
+  FlaskConical,
   FolderOpen,
   Move,
+  PanelBottom,
   Pause,
   Play,
-  Plus,
   Redo2,
-  RefreshCw,
   Rotate3d,
   Save,
   Scaling,
-  Search,
   Square,
   StepForward,
-  Trash2,
   Undo2,
-  X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { consoleLevel, filterEvents, typeCounts } from '@/lib/consoleUtils';
 import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
 import AssetsPanel from '@/components/editor/AssetsPanel';
+import DesignBoardView from '@/components/editor/DesignBoardView';
 import NodeGraphView from '@/components/editor/NodeGraphView';
+import StudioBoardView from '@/components/studio/StudioBoardView';
 import { useGraphStore } from '@/lib/graphStore';
-import {
-  useEditorStore,
-  type EntityData,
-  type GizmoMode,
-  type PlayState,
-  type WorkbenchTab,
-} from '@/lib/editorStore';
+import { useEditorStore, type CenterTab, type GizmoMode, type PlayState } from '@/lib/editorStore';
 
 /**
  * 编辑器视图:07 §1 七区骨架。
- * A Hierarchy / B Assets(F2 占位)/ C Viewport(+G NodeGraph 同位页签)/
- * D Inspector / E Workbench。
+ * C Viewport(+G NodeGraph 同位页签)/ B Assets 底栏。
  * F7 wave.3(D-F7-B):F Chat dock 移除——agent 对话统一由壳内对话列承接;
  * 本视图作为壳内 workbench 的「编辑器」tab 内容嵌入(游戏原生内部逻辑零改动)。
+ * UI 融合波(2026-08-20 用户拍板大面积优化):旧 ink/muted/line/panel 静态 token
+ * 全域迁壳语义 token(fg/edge/shell/acc/dot),亮暗主题打通。
+ * 响应式波(2026-08-24 用户拍板):A Hierarchy / D Inspector 迁壳右栏(见 RightPane)。
+ * 底栏波(2026-08-24 用户拍板):E Workbench(Console/Problems/Metrics)整块退役,
+ * 其位让给 B Assets 横向底栏;场景级操作(Undo/Redo/Save/Load/Playtest)并入视口工具条。
+ * Assets 不再与视口争宽度,故宽度分档收放一并退役,仅留工具条手动开合(持久化)。
+ * 画板波(2026-08-24):新增第三同位页签「画板」(DesignBoardView)——角色/地图节点
+ * 自由拉线,交互描述写在线上,画好流程图一键交给 AI 制作素材与代码。
  */
 
 const iconBtn =
-  'flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-ink-soft disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted';
-
-// ---------- A Hierarchy ----------
-
-function HierarchyRow({ entity }: { entity: EntityData }) {
-  const selectedId = useEditorStore((s) => s.selectedId);
-  const selectEntity = useEditorStore((s) => s.selectEntity);
-  const renameEntity = useEditorStore((s) => s.renameEntity);
-  const destroyEntity = useEditorStore((s) => s.destroyEntity);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(entity.name);
-
-  const commit = () => {
-    setEditing(false);
-    const name = draft.trim();
-    if (name !== '' && name !== entity.name) void renameEntity(entity.id, name);
-    else setDraft(entity.name);
-  };
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      title={entity.name}
-      onClick={() => selectEntity(entity.id)}
-      onDoubleClick={() => {
-        setDraft(entity.name);
-        setEditing(true);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') selectEntity(entity.id);
-      }}
-      className={cn(
-        'group/entity flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-[3px] text-sm text-ink-soft transition-colors hover:bg-panel-hover',
-        selectedId === entity.id && 'bg-panel-active',
-      )}
-    >
-      {editing ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
-            if (e.key === 'Escape') {
-              setDraft(entity.name);
-              setEditing(false);
-            }
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="min-w-0 flex-1 rounded border border-line bg-white px-1 py-px text-sm text-ink outline-none"
-        />
-      ) : (
-        <span className="min-w-0 flex-1 truncate">{entity.name}</span>
-      )}
-      <span className="shrink-0 text-2xs text-muted-faint">#{entity.id}</span>
-      <button
-        type="button"
-        title="Destroy entity"
-        className="hidden h-[18px] w-[18px] shrink-0 place-items-center rounded text-muted-faint hover:bg-panel-active hover:text-muted group-hover/entity:grid"
-        onClick={(e) => {
-          e.stopPropagation();
-          void destroyEntity(entity.id);
-        }}
-      >
-        <Trash2 size={12} strokeWidth={1.8} />
-      </button>
-    </div>
-  );
-}
-
-function HierarchyPanel() {
-  const entities = useEditorStore((s) => s.entities);
-  const createEntity = useEditorStore((s) => s.createEntity);
-  const [filter, setFilter] = useState('');
-  const shown = entities.filter((e) => e.name.toLowerCase().includes(filter.trim().toLowerCase()));
-
-  return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Hierarchy">
-      <div className="flex shrink-0 items-center justify-between px-2 pb-1 pt-2">
-        <span className="text-2xs text-muted-faint">Hierarchy</span>
-        <button
-          type="button"
-          title="Create entity"
-          className={iconBtn}
-          onClick={() => void createEntity()}
-        >
-          <Plus size={13} strokeWidth={1.8} />
-        </button>
-      </div>
-      <div className="shrink-0 px-2 pb-1">
-        <div className="flex items-center gap-1.5 rounded-md border border-line bg-white px-2 py-1">
-          <Search size={12} className="shrink-0 text-muted-faint" />
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter entities..."
-            className="min-w-0 flex-1 bg-transparent text-xs text-ink outline-none placeholder:text-muted-faint"
-          />
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-1">
-        {shown.map((e) => (
-          <HierarchyRow key={e.id} entity={e} />
-        ))}
-        {shown.length === 0 && (
-          <p className="px-2 pt-2 text-xs text-muted-faint">
-            {entities.length === 0 ? '场景为空,点 + 新建实体' : '无匹配实体'}
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
+  'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-3';
 
 // ---------- B Assets(F2 wave.3 全量) ----------
 // AssetsPanel 已迁至 components/editor/AssetsPanel.tsx:网格/列表、类型过滤、搜索、
 // 拖拽实例化、右键六菜单、buildState 角标。
 
 // ---------- C Viewport / G NodeGraph ----------
+
+/** 场景级操作:Undo/Redo/Save/Load + playtest(原挂 Workbench tab 条右侧,底栏波并入视口工具条)。 */
+function SceneActions() {
+  const undo = useEditorStore((s) => s.undo);
+  const redo = useEditorStore((s) => s.redo);
+  const saveScene = useEditorStore((s) => s.saveScene);
+  const loadScene = useEditorStore((s) => s.loadScene);
+  const runPlaytest = useEditorStore((s) => s.runPlaytest);
+
+  return (
+    <>
+      <button type="button" title="Undo" className={iconBtn} onClick={() => void undo()}>
+        <Undo2 size={13} strokeWidth={1.8} />
+      </button>
+      <button type="button" title="Redo" className={iconBtn} onClick={() => void redo()}>
+        <Redo2 size={13} strokeWidth={1.8} />
+      </button>
+      <span className="mx-0.5 h-4 w-px bg-edge-strong" />
+      <button type="button" title="Save Scene" className={iconBtn} onClick={() => void saveScene()}>
+        <Save size={13} strokeWidth={1.8} />
+      </button>
+      <button type="button" title="Load Scene" className={iconBtn} onClick={() => void loadScene()}>
+        <FolderOpen size={13} strokeWidth={1.8} />
+      </button>
+      <span className="mx-0.5 h-4 w-px bg-edge-strong" />
+      <button
+        type="button"
+        title="Run maze playtest(结果走 toast)"
+        className={iconBtn}
+        onClick={() => void runPlaytest('tests/maze/matrix.json')}
+      >
+        <FlaskConical size={13} strokeWidth={1.8} />
+      </button>
+    </>
+  );
+}
 
 const GIZMOS: Array<{ mode: GizmoMode; title: string; icon: typeof Move }> = [
   { mode: 'translate', title: 'Move (W)', icon: Move },
@@ -219,10 +140,18 @@ function PlayControls() {
 }
 
 const PIE_DOT: Record<PlayState, string> = {
-  edit: 'bg-muted-faint',
-  play_running: 'bg-accent-green',
-  play_paused: 'bg-accent-blue',
+  edit: 'bg-dot-idle',
+  play_running: 'bg-dot-done',
+  play_paused: 'bg-info',
 };
+
+/** 中央区同位页签(画板波:+「画板」自由流程图;素材创作波:+「素材创作」AI 创作板) */
+const CENTER_TABS: Array<{ id: CenterTab; label: string }> = [
+  { id: 'viewport', label: 'Viewport' },
+  { id: 'nodegraph', label: 'NodeGraph' },
+  { id: 'design', label: '画板' },
+  { id: 'studio', label: '素材创作' },
+];
 
 function ViewportPanel() {
   const centerTab = useEditorStore((s) => s.centerTab);
@@ -231,43 +160,58 @@ function ViewportPanel() {
   const setGizmo = useEditorStore((s) => s.setGizmo);
   const playState = useEditorStore((s) => s.playState);
   const sceneName = useEditorStore((s) => s.sceneName);
+  const panes = useEditorStore((s) => s.editorPanes);
+  const togglePane = useEditorStore((s) => s.toggleEditorPane);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Viewport">
-      {/* 顶部工具条:Viewport/NodeGraph 页签 + gizmo + PIE 控制(F7:Chat 开关移除,对话入壳对话列) */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-line-soft px-2 py-1">
-        <span className="flex items-center gap-0.5 rounded-md bg-panel p-0.5">
-          {(['viewport', 'nodegraph'] as const).map((t) => (
+      {/* 顶部工具条:Assets 显隐 + Viewport/NodeGraph 页签 + gizmo + PIE 控制 + 场景操作
+          (F7:Chat 开关移除,对话入壳对话列;底栏波:场景操作从 Workbench tab 条并入此处) */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-edge px-2 py-1">
+        <button
+          type="button"
+          title={panes.assets ? '隐藏 Assets 底栏' : '显示 Assets 底栏'}
+          aria-label={panes.assets ? '隐藏 Assets 底栏' : '显示 Assets 底栏'}
+          data-testid="editor-toggle-assets"
+          className={cn(iconBtn, panes.assets && 'bg-shell-active text-fg')}
+          onClick={() => togglePane('assets')}
+        >
+          <PanelBottom size={13} strokeWidth={1.8} />
+        </button>
+        <span className="h-4 w-px bg-edge-strong" />
+        <span className="flex items-center gap-0.5 rounded-md bg-shell-sunk p-0.5">
+          {CENTER_TABS.map((t) => (
             <button
-              key={t}
+              key={t.id}
               type="button"
-              onClick={() => setCenterTab(t)}
+              onClick={() => setCenterTab(t.id)}
               className={cn(
                 'rounded px-2 py-0.5 text-xs capitalize transition-colors',
-                centerTab === t ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink-soft',
+                centerTab === t.id ? 'bg-shell-panel text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2',
               )}
             >
-              {t === 'viewport' ? 'Viewport' : 'NodeGraph'}
+              {t.label}
             </button>
           ))}
         </span>
-        <span className="h-4 w-px bg-line" />
+        <span className="h-4 w-px bg-edge-strong" />
         <span className="flex items-center gap-0.5" aria-label="Gizmo">
           {GIZMOS.map(({ mode, title, icon: Icon }) => (
             <button
               key={mode}
               type="button"
               title={title}
-              className={cn(iconBtn, gizmo === mode && 'bg-panel-active text-ink')}
+              className={cn(iconBtn, gizmo === mode && 'bg-shell-active text-fg')}
               onClick={() => setGizmo(mode)}
             >
               <Icon size={13} strokeWidth={1.8} />
             </button>
           ))}
         </span>
-        <span className="h-4 w-px bg-line" />
+        <span className="h-4 w-px bg-edge-strong" />
         <PlayControls />
         <span className="flex-1" />
+        <SceneActions />
       </div>
 
       {centerTab === 'viewport' ? (
@@ -282,424 +226,30 @@ function ViewportPanel() {
             <span className="truncate text-2xs text-white/40">{sceneName || 'Untitled'}</span>
           </div>
         </div>
-      ) : (
+      ) : centerTab === 'nodegraph' ? (
         /* G NodeGraph 同位页签(F4 wave.4):图查看/微调/保存 */
         <NodeGraphView />
+      ) : centerTab === 'design' ? (
+        /* 画板同位页签(画板波):角色/地图节点拉线,交互在线上,交给 AI 制作 */
+        <DesignBoardView />
+      ) : (
+        /* 素材创作同位页签(素材创作波):大纲/原画/贴图/UI/3D/视频/音频 AI 创作板 */
+        <StudioBoardView />
       )}
     </section>
   );
 }
 
-// ---------- E Workbench ----------
-
-const WORKBENCH_TABS: WorkbenchTab[] = ['console', 'problems', 'output', 'terminal', 'logs', 'metrics'];
-
-function ConsoleBody() {
-  const events = useEditorStore((s) => s.events);
-  const lastError = useEditorStore((s) => s.lastError);
-  // 过滤/清空为本地视图态(F6 wave.3 D-F6-F;不动 host 事件环)。
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const [clearedBefore, setClearedBefore] = useState(0);
-  const counts = typeCounts(events);
-  const shown = filterEvents(events, hidden, clearedBefore);
-  const toggle = (t: string) =>
-    setHidden((h) => {
-      const next = new Set(h);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      return next;
-    });
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line-soft px-2 py-1">
-        {counts.map(({ type, count }) => (
-          <button
-            key={type}
-            type="button"
-            title={hidden.has(type) ? '显示该类型' : '隐藏该类型'}
-            onClick={() => toggle(type)}
-            className={cn(
-              'rounded-full border px-1.5 py-px text-2xs transition-colors',
-              hidden.has(type)
-                ? 'border-line text-muted-faint line-through'
-                : 'border-line-soft text-muted hover:text-ink-soft',
-            )}
-          >
-            {type} ×{count}
-          </button>
-        ))}
-        <span className="flex-1" />
-        <button
-          type="button"
-          title="清空(本地视图,不动 host 事件环)"
-          onClick={() => setClearedBefore(events.length)}
-          className="rounded border border-line-soft px-1.5 py-px text-2xs text-muted hover:text-ink-soft"
-        >
-          清空
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 font-mono text-2xs text-ink-soft">
-        {lastError && <p className="py-0.5 text-accent-blue">[client] {lastError}</p>}
-        {shown.length === 0 && <p className="py-1 text-muted-faint">暂无 host 事件</p>}
-        {shown.map((e, i) => {
-          const { ts, event, role, summary, ...rest } = e as Record<string, unknown>;
-          const lv = consoleLevel(e as Record<string, unknown>);
-          return (
-            <p key={i} className="truncate py-px" title={JSON.stringify(e)}>
-              <span className="text-muted-faint">{typeof ts === 'string' ? ts : ''}</span>{' '}
-              <span
-                className={cn(
-                  lv === 'error' && 'font-semibold text-red-600',
-                  lv === 'playtest' && 'text-accent-blue',
-                )}
-              >
-                {typeof event === 'string' ? event : 'event'}
-              </span>{' '}
-              <span className="text-muted">
-                {typeof summary === 'string' ? summary : JSON.stringify(rest)}
-              </span>
-            </p>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** Metrics tab(F6 wave.3 D-F6-F):scene_summary 帧统计轮询 + 60 采样环(文本表 + 迷你条形,不引图表库)。 */
-function MetricsBody() {
-  const stats = useEditorStore((s) => s.stats);
-  const playState = useEditorStore((s) => s.playState);
-  const history = useEditorStore((s) => s.metricsHistory);
-  const refreshSummary = useEditorStore((s) => s.refreshSummary);
-  useEffect(() => {
-    void refreshSummary();
-    const t = setInterval(() => void refreshSummary(), 1000);
-    return () => clearInterval(t);
-  }, [refreshSummary]);
-  const series: Array<{ label: string; values: number[] }> = [
-    { label: 'frames', values: history.frames },
-    { label: 'lastTris', values: history.tris },
-    { label: 'nonZeroPixels', values: history.nonZero },
-  ];
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1 font-mono text-2xs text-ink-soft">
-      <p className="py-0.5">
-        <span className="text-muted">playState:</span> {playState}
-        <span className="ml-3 text-muted">当前:</span>{' '}
-        {stats ? `frames=${stats.frames} tris=${stats.lastTris} nonZero=${stats.lastNonZeroPixels}` : '—'}
-      </p>
-      {series.map(({ label, values }) => {
-        const max = Math.max(1, ...values);
-        const recent = values.slice(-8);
-        return (
-          <div key={label} className="flex items-center gap-2 py-0.5">
-            <span className="w-20 shrink-0 text-muted">{label}</span>
-            <span className="flex h-4 flex-1 items-end gap-px" title={JSON.stringify(values.slice(-20))}>
-              {values.map((v, i) => (
-                <span
-                  key={i}
-                  className="w-1 bg-accent-blue/70"
-                  style={{ height: `${Math.max(2, Math.round((v / max) * 16))}px` }}
-                />
-              ))}
-            </span>
-            <span className="w-40 shrink-0 truncate text-right text-muted">
-              {recent.length > 0 ? recent.join(' ') : '—'}
-            </span>
-          </div>
-        );
-      })}
-      {history.frames.length === 0 && <p className="py-1 text-muted-faint">采样中…</p>}
-    </div>
-  );
-}
-
-function WorkbenchPanel() {
-  const workbenchTab = useEditorStore((s) => s.workbenchTab);
-  const setWorkbenchTab = useEditorStore((s) => s.setWorkbenchTab);
-  const undo = useEditorStore((s) => s.undo);
-  const redo = useEditorStore((s) => s.redo);
-  const saveScene = useEditorStore((s) => s.saveScene);
-  const loadScene = useEditorStore((s) => s.loadScene);
-  const loadEvents = useEditorStore((s) => s.loadEvents);
-
-  return (
-    <section
-      className="flex h-[190px] shrink-0 flex-col border-t border-line bg-white"
-      aria-label="Workbench"
-    >
-      <div className="flex shrink-0 items-center gap-0.5 border-b border-line-soft px-2">
-        {WORKBENCH_TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setWorkbenchTab(t)}
-            className={cn(
-              'border-b-2 px-2 py-1.5 text-xs capitalize transition-colors',
-              workbenchTab === t
-                ? 'border-ink text-ink'
-                : 'border-transparent text-muted hover:text-ink-soft',
-            )}
-          >
-            {t}
-          </button>
-        ))}
-        <span className="flex-1" />
-        {/* 场景级操作:Undo/Redo/Save/Load */}
-        <button type="button" title="Undo" className={iconBtn} onClick={() => void undo()}>
-          <Undo2 size={13} strokeWidth={1.8} />
-        </button>
-        <button type="button" title="Redo" className={iconBtn} onClick={() => void redo()}>
-          <Redo2 size={13} strokeWidth={1.8} />
-        </button>
-        <span className="mx-0.5 h-4 w-px bg-line" />
-        <button type="button" title="Save Scene" className={iconBtn} onClick={() => void saveScene()}>
-          <Save size={13} strokeWidth={1.8} />
-        </button>
-        <button type="button" title="Load Scene" className={iconBtn} onClick={() => void loadScene()}>
-          <FolderOpen size={13} strokeWidth={1.8} />
-        </button>
-        {workbenchTab === 'console' && (
-          <>
-          <button
-            type="button"
-            title="Run maze playtest(报告行注入 Console)"
-            className={iconBtn}
-            onClick={() => void useEditorStore.getState().runPlaytest('tests/maze/matrix.json')}
-          >
-            <Play size={12} strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            title="Refresh events"
-            className={iconBtn}
-            onClick={() => void loadEvents()}
-          >
-            <RefreshCw size={12} strokeWidth={1.8} />
-          </button>
-          </>
-        )}
-      </div>
-      {workbenchTab === 'console' ? (
-        <ConsoleBody />
-      ) : workbenchTab === 'metrics' ? (
-        <MetricsBody />
-      ) : (
-        <div className="flex flex-1 items-center justify-center">
-          <p className="text-xs text-muted-faint">{workbenchTab} 占位(F 后续里程碑承接)</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ---------- D Inspector ----------
-
-/** 数字单元格:失焦/回车提交;外部值变化时回填 */
-function NumCell({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
-
-  const commit = () => {
-    const n = Number(draft);
-    if (draft.trim() === '' || Number.isNaN(n)) setDraft(String(value));
-    else if (n !== value) onCommit(n);
-  };
-
-  return (
-    <input
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        if (e.key === 'Escape') setDraft(String(value));
-      }}
-      className="w-full min-w-0 rounded border border-line bg-white px-1 py-px font-mono text-2xs text-ink outline-none focus:border-muted-faint"
-    />
-  );
-}
-
-/** 一组向量行(Translation/Rotation/Scale) */
-function VecRow({
-  label,
-  values,
-  labels,
-  onCommit,
-}: {
-  label: string;
-  values: number[];
-  labels: string[];
-  onCommit: (next: number[]) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1 px-2 py-0.5">
-      <span className="w-[62px] shrink-0 text-2xs text-muted">{label}</span>
-      <span className="flex min-w-0 flex-1 items-center gap-0.5">
-        {values.map((v, i) => (
-          <span key={i} className="flex min-w-0 flex-1 items-center gap-0.5">
-            <span className="text-2xs text-muted-faint">{labels[i]}</span>
-            <NumCell
-              value={v}
-              onCommit={(n) => {
-                const next = [...values];
-                next[i] = n;
-                onCommit(next);
-              }}
-            />
-          </span>
-        ))}
-      </span>
-    </div>
-  );
-}
-
-function InspectorPanel() {
-  const entities = useEditorStore((s) => s.entities);
-  const selectedId = useEditorStore((s) => s.selectedId);
-  const renameEntity = useEditorStore((s) => s.renameEntity);
-  const setTransform = useEditorStore((s) => s.setTransform);
-  const componentTypes = useEditorStore((s) => s.componentTypes);
-  const loadComponentTypes = useEditorStore((s) => s.loadComponentTypes);
-  const addComponent = useEditorStore((s) => s.addComponent);
-  const removeComponent = useEditorStore((s) => s.removeComponent);
-  const setComponentEnabled = useEditorStore((s) => s.setComponentEnabled);
-
-  const entity = entities.find((e) => e.id === selectedId) ?? null;
-  const [nameDraft, setNameDraft] = useState('');
-  useEffect(() => setNameDraft(entity?.name ?? ''), [entity?.id, entity?.name]);
-  useEffect(() => {
-    if (componentTypes.length === 0) void loadComponentTypes();
-  }, [componentTypes.length, loadComponentTypes]);
-
-  const commitName = () => {
-    const name = nameDraft.trim();
-    if (entity && name !== '' && name !== entity.name) void renameEntity(entity.id, name);
-    else setNameDraft(entity?.name ?? '');
-  };
-
-  const addable = componentTypes.filter((t) => !entity?.components.some((c) => c.type === t.name));
-
-  return (
-    <aside
-      className="flex w-[280px] shrink-0 flex-col border-l border-line-soft bg-white"
-      aria-label="Inspector"
-    >
-      <div className="shrink-0 px-2 pb-1 pt-2">
-        <span className="text-2xs text-muted-faint">Inspector</span>
-      </div>
-      {!entity ? (
-        <p className="px-3 pt-2 text-xs text-muted-faint">在 Hierarchy 选中实体以编辑属性</p>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-          {/* 实体名 */}
-          <div className="px-2 pb-1">
-            <input
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              onBlur={commitName}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-              className="w-full rounded-md border border-line bg-white px-2 py-1 text-sm text-ink outline-none focus:border-muted-faint"
-            />
-          </div>
-
-          {/* Transform 节(rotation 为 xyzw 四元数,与后端数据模型一致) */}
-          <div className="border-t border-line-soft py-1">
-            <p className="px-2 py-0.5 text-2xs font-medium text-ink-soft">Transform</p>
-            <VecRow
-              label="Position"
-              values={entity.transform.translation}
-              labels={['x', 'y', 'z']}
-              onCommit={(next) => void setTransform(entity.id, { translation: next })}
-            />
-            <VecRow
-              label="Rotation"
-              values={entity.transform.rotation}
-              labels={['x', 'y', 'z', 'w']}
-              onCommit={(next) => void setTransform(entity.id, { rotation: next })}
-            />
-            <VecRow
-              label="Scale"
-              values={entity.transform.scale}
-              labels={['x', 'y', 'z']}
-              onCommit={(next) => void setTransform(entity.id, { scale: next })}
-            />
-          </div>
-
-          {/* 组件分节 */}
-          {entity.components.map((c) => (
-            <div key={c.type} className="border-t border-line-soft py-1">
-              <div className="flex items-center gap-1.5 px-2 py-0.5">
-                <input
-                  type="checkbox"
-                  checked={c.enabled}
-                  title="enabled"
-                  onChange={(e) => void setComponentEnabled(entity.id, c.type, e.target.checked)}
-                  className="h-3 w-3 shrink-0 accent-ink"
-                />
-                <span className="min-w-0 flex-1 truncate text-2xs font-medium text-ink-soft">
-                  {c.type}
-                </span>
-                <button
-                  type="button"
-                  title="Remove component"
-                  className={iconBtn}
-                  onClick={() => void removeComponent(entity.id, c.type)}
-                >
-                  <X size={11} strokeWidth={1.8} />
-                </button>
-              </div>
-              <div className="px-2 pl-7 font-mono text-2xs text-muted">
-                {Object.keys(c.props).length === 0 && <p className="text-muted-faint">(无属性)</p>}
-                {Object.entries(c.props).map(([k, v]) => (
-                  <p key={k} className="truncate py-px" title={JSON.stringify(v)}>
-                    <span className="text-muted-faint">{k}</span>: {JSON.stringify(v)}
-                  </p>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {/* Add Component(注册表驱动) */}
-          <div className="border-t border-line-soft px-2 py-2">
-            <select
-              value=""
-              title="Add Component"
-              onChange={(e) => {
-                const t = e.target.value;
-                if (t !== '') void addComponent(entity.id, t);
-              }}
-              className="w-full rounded-md border border-line bg-white px-2 py-1 text-xs text-ink-soft outline-none"
-            >
-              <option value="" disabled>
-                + Add Component
-              </option>
-              {addable.map((t) => (
-                <option key={t.name} value={t.name}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-// ---------- 七区总装 ----------
+// ---------- 总装 ----------
 
 export default function EditorView() {
   const loadEntities = useEditorStore((s) => s.loadEntities);
   const refreshSummary = useEditorStore((s) => s.refreshSummary);
   const refreshPlayState = useEditorStore((s) => s.refreshPlayState);
-  const loadEvents = useEditorStore((s) => s.loadEvents);
   const ensureDefaultScene = useEditorStore((s) => s.ensureDefaultScene);
   const centerTab = useEditorStore((s) => s.centerTab);
   const selectedId = useEditorStore((s) => s.selectedId);
+  const panes = useEditorStore((s) => s.editorPanes);
   const loadGraphForSelected = useGraphStore((s) => s.loadForSelectedEntity);
 
   // 进视图即拉一次真实数据;空场景 → 默认加载迷宫(打开即见真实工程,非空壳)
@@ -707,8 +257,14 @@ export default function EditorView() {
     void ensureDefaultScene().then(() => loadEntities());
     void refreshSummary();
     void refreshPlayState();
-    void loadEvents();
-  }, [ensureDefaultScene, loadEntities, refreshSummary, refreshPlayState, loadEvents]);
+  }, [ensureDefaultScene, loadEntities, refreshSummary, refreshPlayState]);
+
+  // F9(D1):MCP 侧(agent 聊天)实体变更同步腿——周期 scene_summary;
+  // entityCount 漂移时 refreshSummary 内真实重拉 entity_list,Hierarchy 随之刷新。
+  useEffect(() => {
+    const t = setInterval(() => void refreshSummary(), 1000);
+    return () => clearInterval(t);
+  }, [refreshSummary]);
 
   // F4 wave.4:切到 NodeGraph 页签,或页签可见时选中实体变化 → 按 Script.graphRef 载图(无 → 空态)
   useEffect(() => {
@@ -716,21 +272,20 @@ export default function EditorView() {
   }, [centerTab, selectedId, loadGraphForSelected]);
 
   return (
-    <div className="flex h-full min-h-0 bg-white">
-      {/* 左列:A Hierarchy + B Assets */}
-      <div className="flex w-[240px] shrink-0 flex-col border-r border-line-soft bg-panel">
-        <HierarchyPanel />
-        <AssetsPanel />
-      </div>
+    // min-w 320:极窄下兜底横向滚动,防视口 0 宽压溃
+    <div className="flex h-full min-h-0 min-w-[320px] flex-col overflow-x-auto bg-shell-bg">
+      {/* C Viewport(G NodeGraph 同位) */}
+      <ViewportPanel />
 
-      {/* 中列:C Viewport(G NodeGraph 同位)+ E Workbench */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <ViewportPanel />
-        <WorkbenchPanel />
-      </div>
-
-      {/* D Inspector */}
-      <InspectorPanel />
+      {/* B Assets 底栏(占旧 Workbench 位;工具条 PanelBottom 钮开合,偏好持久化) */}
+      {panes.assets && (
+        <div
+          data-testid="editor-pane-assets"
+          className="flex h-[190px] shrink-0 flex-col border-t border-edge bg-shell-sunk"
+        >
+          <AssetsPanel />
+        </div>
+      )}
     </div>
   );
 }

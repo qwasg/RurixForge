@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
+import { Maximize2, Minimize2, PanelLeft, PanelRight } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { PANE_CLAMP, useWorkbenchStore, type PaneKind } from '@/lib/workbenchStore';
 
 /**
  * F7 wave.3 壳 primitives(参考 ui/mod.rs:status_dot/kbd/sec_head/ibtn/menu_item)。
@@ -41,6 +43,99 @@ export function SecHead({
       <span className="uppercase">{label}</span>
       {children}
     </div>
+  );
+}
+
+/** 栏头图标钮底样(折叠 / 缩小共用) */
+const PANE_BTN =
+  'flex shrink-0 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2';
+
+/** 面板折叠钮(侧栏图标,替代 9px 分隔条胶囊) */
+export function PaneToggleBtn({ kind, className }: { kind: PaneKind; className?: string }) {
+  const togglePane = useWorkbenchStore((st) => st.togglePane);
+  const Icon = kind === 'inspector' ? PanelRight : PanelLeft;
+  return (
+    <button
+      type="button"
+      title="折叠"
+      aria-label={`折叠 ${kind}`}
+      data-testid={`pane-toggle-${kind}`}
+      onClick={() => togglePane(kind)}
+      className={cn(PANE_BTN, className)}
+    >
+      <Icon size={14} strokeWidth={1.75} />
+    </button>
+  );
+}
+
+/**
+ * 对话缩小/还原钮(2026-08-25 用户拍板,坐在对话列头折叠钮左侧):
+ * 缩小 → 对话收成主区左下角浮窗 + 会话栏一并收起;再点还原回三栏对话列。
+ */
+export function ChatMiniBtn({ className }: { className?: string }) {
+  const chatMini = useWorkbenchStore((st) => st.chatMini);
+  const setChatMini = useWorkbenchStore((st) => st.setChatMini);
+  const label = chatMini ? '还原对话窗口' : '缩小对话窗口';
+  const Icon = chatMini ? Maximize2 : Minimize2;
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      data-testid="chat-mini-toggle"
+      onClick={() => setChatMini(!chatMini)}
+      className={cn(PANE_BTN, className)}
+    >
+      <Icon size={13} strokeWidth={1.75} />
+    </button>
+  );
+}
+
+/**
+ * 栏宽拖拽条(2026-08-25 用户拍板「四个区的分界线要能自由拉」):
+ * 骑在 1px 分栏线上的 5px 透明热区,绝对定位不占位——拉的是相邻定宽栏,
+ * 主区吃剩下的宽度,所以三条线覆盖会话栏/对话列/主区/右栏四个区。
+ * 宽度 clamp 在 store 里(PANE_CLAMP),双击回默认宽。
+ * side = 热区贴哪侧:定宽栏在左(会话栏/对话列)贴右缘,在右(右栏)贴左缘,拖动方向随之取反。
+ */
+export function PaneResizer({ kind, side }: { kind: PaneKind; side: 'left' | 'right' }) {
+  const setPaneW = useWorkbenchStore((st) => st.setPaneW);
+  const [dragging, setDragging] = useState(false);
+
+  const onDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault(); // 顺带压掉拖拽期间的选中高亮
+      const startX = e.clientX;
+      const startW = useWorkbenchStore.getState().paneW[kind];
+      const dir = side === 'right' ? 1 : -1;
+      setDragging(true);
+      const onMove = (ev: MouseEvent) => setPaneW(kind, startW + dir * (ev.clientX - startX));
+      const onUp = () => {
+        setDragging(false);
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    },
+    [kind, setPaneW, side],
+  );
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`拖动改栏宽 ${kind}`}
+      title="拖动改栏宽,双击回默认宽"
+      data-testid={`pane-resize-${kind}`}
+      onMouseDown={onDragStart}
+      onDoubleClick={() => setPaneW(kind, PANE_CLAMP[kind].def)}
+      className={cn(
+        'absolute top-0 z-20 h-full w-[5px] cursor-col-resize bg-transparent transition-colors hover:bg-acc-ring',
+        side === 'right' ? '-right-[2px]' : '-left-[2px]',
+        dragging && 'bg-acc-ring',
+      )}
+    />
   );
 }
 

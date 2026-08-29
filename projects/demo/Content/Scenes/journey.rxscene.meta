@@ -1,0 +1,12 @@
+guid: 81d222f5-47a3-47eb-b771-2c3341fbf499
+type: scene
+importer: scene
+semantic:
+  description: 全流程 journey 验收场景(F9 制作旅程产物)
+  tags:
+  - 场景
+  - journey
+  - 验收
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

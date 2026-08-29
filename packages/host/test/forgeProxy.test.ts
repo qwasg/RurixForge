@@ -212,6 +212,60 @@ describe('forgeProxy', () => {
     );
   });
 
+  it('F9(D5):/api/forge/project 前缀命中并透传(pack 浏览器单源 404 缺口修复)', async () => {
+    // 纯函数前缀面(含边界:相似串不命中)
+    expect(proxyMatches('/api/forge/project')).toBe(true);
+    expect(proxyMatches('/api/forge/project/pack')).toBe(true);
+    expect(proxyMatches('/api/forge/projectx')).toBe(false);
+    // fetch 级透传:POST /api/forge/project/pack 方法与 body 原样到上游
+    const payload = JSON.stringify({ scene: 'Content/Scenes/journey.rxscene' });
+    const res = await fetch(`${base}/api/forge/project/pack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+    const hit = recorded.find((r) => r.url === '/api/forge/project/pack');
+    expect(hit).toBeDefined();
+    expect(hit!.method).toBe('POST');
+    expect(hit!.body).toBe(payload);
+  });
+
+  it('F11(D-025):/api/forge/store 前缀命中并透传;install/uninstall/publish 走长连接豁免', async () => {
+    // 纯函数前缀面(含边界:相似串不命中)
+    expect(proxyMatches('/api/forge/store')).toBe(true);
+    expect(proxyMatches('/api/forge/store/search')).toBe(true);
+    expect(proxyMatches('/api/forge/store/tasks/task_1')).toBe(true);
+    expect(proxyMatches('/api/forge/storex')).toBe(false);
+    // 长任务豁免:下载 + 校验 + assetd 构建链远超 15s(D-F11-C);查询面仍走 15s
+    expect(isLongLivedPath('/api/forge/store/install')).toBe(true);
+    expect(isLongLivedPath('/api/forge/store/uninstall')).toBe(true);
+    expect(isLongLivedPath('/api/forge/store/publish')).toBe(true);
+    expect(isLongLivedPath('/api/forge/store/search')).toBe(false);
+    expect(upstreamTimeoutMs('/api/forge/store/install')).toBe(0);
+    expect(upstreamTimeoutMs('/api/forge/store/search')).toBe(15_000);
+    // fetch 级透传:POST /api/forge/store/install 方法与 body 原样到上游
+    const payload = JSON.stringify({ sourceId: 'official', pkgId: 'forge.starter-props', version: '1.0.0' });
+    const res = await fetch(`${base}/api/forge/store/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+    const hit = recorded.find((r) => r.url === '/api/forge/store/install');
+    expect(hit).toBeDefined();
+    expect(hit!.method).toBe('POST');
+    expect(hit!.body).toBe(payload);
+  });
+
+  it('素材创作:/api/forge/studio 前缀命中;sessions 走普通超时,ask:execute 仍豁免', () => {
+    expect(proxyMatches('/api/forge/studio')).toBe(true);
+    expect(proxyMatches('/api/forge/studio/sessions')).toBe(true);
+    expect(proxyMatches('/api/forge/studiox')).toBe(false);
+    expect(isLongLivedPath('/api/forge/studio/sessions')).toBe(false);
+    expect(isLongLivedPath('/api/forge/sessions/sess_1/ask:execute')).toBe(true);
+  });
+
   it('上游不可达 → 502 UPSTREAM_UNREACHABLE', async () => {
     // 独立 server 指向一个已关闭的端口
     const dead = http.createServer();

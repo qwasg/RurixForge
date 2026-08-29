@@ -1,0 +1,240 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - generic "RurixForge" [ref=f1e6]: 铸
+      - navigation [ref=f1e7]:
+        - button "File" [ref=f1e9] [cursor=pointer]
+        - button "Edit" [ref=f1e11] [cursor=pointer]
+        - button "View" [ref=f1e13] [cursor=pointer]
+        - button "Help" [ref=f1e15] [cursor=pointer]
+      - generic [ref=f1e17]:
+        - button "切换底部面板" [ref=f1e18] [cursor=pointer]
+        - button "切换会话栏" [ref=f1e21] [cursor=pointer]
+        - button "切换对话栏" [ref=f1e24] [cursor=pointer]
+        - button "切换 Inspector" [ref=f1e27] [cursor=pointer]
+    - button "搜索会话、文件、命令… Ctrl K" [ref=f1e31] [cursor=pointer]:
+      - generic [ref=f1e35]: 搜索会话、文件、命令…
+      - generic [ref=f1e36]: Ctrl K
+  - generic [ref=f1e37]:
+    - generic [ref=f1e416]:
+      - generic [ref=f1e417]:
+        - generic [ref=f1e418]:
+          - textbox "搜索会话…" [ref=f1e422]
+          - generic [ref=f1e423]: /
+        - button "折叠 sessions" [ref=f1e424] [cursor=pointer]
+        - button "New Agent Ctrl+Shift+N" [ref=f1e427] [cursor=pointer]:
+          - generic [ref=f1e430]: New Agent
+          - generic [ref=f1e431]: Ctrl+Shift+N
+      - generic [ref=f1e432]:
+        - generic [ref=f1e433]:
+          - generic [ref=f1e444]: WORKSPACES
+          - button "新建工作区" [ref=f1e446] [cursor=pointer]
+        - button "全部" [ref=f1e448] [cursor=pointer]
+        - generic [ref=f1e460]: PINNED
+        - button "新会话 2h 取消置顶 移入文件夹 删除会话" [ref=f1e464] [cursor=pointer]:
+          - generic [ref=f1e466]: 新会话
+          - generic [ref=f1e467]: 2h
+          - generic [ref=f1e468]:
+            - button "取消置顶" [ref=f1e469]
+            - button "移入文件夹" [ref=f1e474]
+            - button "删除会话" [ref=f1e477]
+        - button "journey 项目制作 2d 取消置顶 移入文件夹 删除会话" [ref=f1e481] [cursor=pointer]:
+          - generic [ref=f1e483]: journey 项目制作
+          - generic [ref=f1e484]: 2d
+          - generic [ref=f1e485]:
+            - button "取消置顶" [ref=f1e486]
+            - button "移入文件夹" [ref=f1e491]
+            - button "删除会话" [ref=f1e494]
+        - button "F9 巡检会话 5d 取消置顶 移入文件夹 删除会话" [ref=f1e498] [cursor=pointer]:
+          - generic [ref=f1e500]: F9 巡检会话
+          - generic [ref=f1e501]: 5d
+          - generic [ref=f1e502]:
+            - button "取消置顶" [ref=f1e503]
+            - button "移入文件夹" [ref=f1e508]
+            - button "删除会话" [ref=f1e511]
+        - button "冒烟A-改 6d 取消置顶 移入文件夹 删除会话" [ref=f1e515] [cursor=pointer]:
+          - generic [ref=f1e517]: 冒烟A-改
+          - generic [ref=f1e518]: 6d
+          - generic [ref=f1e519]:
+            - button "取消置顶" [ref=f1e520]
+            - button "移入文件夹" [ref=f1e525]
+            - button "删除会话" [ref=f1e528]
+        - generic [ref=f1e532]:
+          - generic [ref=f1e535]: CHAT FOLDERS
+          - button "新建文件夹" [ref=f1e537] [cursor=pointer]
+        - generic [ref=f1e540]:
+          - button "会话" [ref=f1e541] [cursor=pointer]
+          - button "新会话 2h 置顶 移入文件夹 删除会话" [ref=f1e547] [cursor=pointer]:
+            - generic [ref=f1e549]: 新会话
+            - generic [ref=f1e550]: 2h
+            - generic [ref=f1e551]:
+              - button "置顶" [ref=f1e552]
+              - button "移入文件夹" [ref=f1e555]
+              - button "删除会话" [ref=f1e558]
+          - button "新会话 12h 置顶 移入文件夹 删除会话" [ref=f1e562] [cursor=pointer]:
+            - generic [ref=f1e564]: 新会话
+            - generic [ref=f1e565]: 12h
+            - generic [ref=f1e566]:
+              - button "置顶" [ref=f1e567]
+              - button "移入文件夹" [ref=f1e570]
+              - button "删除会话" [ref=f1e573]
+          - button "新会话 13h 置顶 移入文件夹 删除会话" [ref=f1e577] [cursor=pointer]:
+            - generic [ref=f1e579]: 新会话
+            - generic [ref=f1e580]: 13h
+            - generic [ref=f1e581]:
+              - button "置顶" [ref=f1e582]
+              - button "移入文件夹" [ref=f1e585]
+              - button "删除会话" [ref=f1e588]
+          - button "新会话 13h 置顶 移入文件夹 删除会话" [ref=f1e592] [cursor=pointer]:
+            - generic [ref=f1e594]: 新会话
+            - generic [ref=f1e595]: 13h
+            - generic [ref=f1e596]:
+              - button "置顶" [ref=f1e597]
+              - button "移入文件夹" [ref=f1e600]
+              - button "删除会话" [ref=f1e603]
+          - button "帮我进行全项目探索并给出优化案 2d 置顶 移入文件夹 删除会话" [ref=f1e607] [cursor=pointer]:
+            - generic [ref=f1e609]: 帮我进行全项目探索并给出优化案
+            - generic [ref=f1e610]: 2d
+            - generic [ref=f1e611]:
+              - button "置顶" [ref=f1e612]
+              - button "移入文件夹" [ref=f1e615]
+              - button "删除会话" [ref=f1e618]
+          - button "你好 2d 置顶 移入文件夹 删除会话" [ref=f1e622] [cursor=pointer]:
+            - generic [ref=f1e624]: 你好
+            - generic [ref=f1e625]: 2d
+            - generic [ref=f1e626]:
+              - button "置顶" [ref=f1e627]
+              - button "移入文件夹" [ref=f1e630]
+              - button "删除会话" [ref=f1e633]
+          - button "新会话 2d 置顶 移入文件夹 删除会话" [ref=f1e637] [cursor=pointer]:
+            - generic [ref=f1e639]: 新会话
+            - generic [ref=f1e640]: 2d
+            - generic [ref=f1e641]:
+              - button "置顶" [ref=f1e642]
+              - button "移入文件夹" [ref=f1e645]
+              - button "删除会话" [ref=f1e648]
+          - button "新会话 2d 置顶 移入文件夹 删除会话" [ref=f1e652] [cursor=pointer]:
+            - generic [ref=f1e654]: 新会话
+            - generic [ref=f1e655]: 2d
+            - generic [ref=f1e656]:
+              - button "置顶" [ref=f1e657]
+              - button "移入文件夹" [ref=f1e660]
+              - button "删除会话" [ref=f1e663]
+          - button "冒烟B-gap 2d 置顶 移入文件夹 删除会话" [ref=f1e667] [cursor=pointer]:
+            - generic [ref=f1e669]: 冒烟B-gap
+            - generic [ref=f1e670]: 2d
+            - generic [ref=f1e671]:
+              - button "置顶" [ref=f1e672]
+              - button "移入文件夹" [ref=f1e675]
+              - button "删除会话" [ref=f1e678]
+          - button "冒烟A-改 2d 置顶 移入文件夹 删除会话" [ref=f1e682] [cursor=pointer]:
+            - generic [ref=f1e684]: 冒烟A-改
+            - generic [ref=f1e685]: 2d
+            - generic [ref=f1e686]:
+              - button "置顶" [ref=f1e687]
+              - button "移入文件夹" [ref=f1e690]
+              - button "删除会话" [ref=f1e693]
+          - button "分支 · 冒烟A-改 2d 置顶 移入文件夹 删除会话" [ref=f1e697] [cursor=pointer]:
+            - generic [ref=f1e699]: 分支 · 冒烟A-改
+            - generic [ref=f1e700]: 2d
+            - generic [ref=f1e701]:
+              - button "置顶" [ref=f1e702]
+              - button "移入文件夹" [ref=f1e705]
+              - button "删除会话" [ref=f1e708]
+          - button "w5 workbench 冒烟 5d 置顶 移入文件夹 删除会话" [ref=f1e712] [cursor=pointer]:
+            - generic [ref=f1e714]: w5 workbench 冒烟
+            - generic [ref=f1e715]: 5d
+            - generic [ref=f1e716]:
+              - button "置顶" [ref=f1e717]
+              - button "移入文件夹" [ref=f1e720]
+              - button "删除会话" [ref=f1e723]
+          - button "More (70)" [ref=f1e727] [cursor=pointer]
+      - generic [ref=f1e730]:
+        - generic [ref=f1e731]: 本
+        - generic [ref=f1e732]:
+          - generic [ref=f1e733]: 我的空间
+          - generic [ref=f1e734]: 本地用户
+        - button "设置" [ref=f1e735] [cursor=pointer]
+    - generic [ref=f1e40]:
+      - generic [ref=f1e739]:
+        - button "缩小对话窗口" [active] [ref=f1e740] [cursor=pointer]
+        - button "折叠 chat" [ref=f1e110] [cursor=pointer]
+      - paragraph [ref=f1e115]: 选择左侧会话或点击 New Agent
+      - generic [ref=f1e52]:
+        - generic [ref=f1e53]:
+          - button "模式菜单" [ref=f1e54] [cursor=pointer]
+          - textbox "描述任务…" [ref=f1e116]
+          - button "发送" [disabled] [ref=f1e58]
+        - generic [ref=f1e61]:
+          - button "选择技能" [ref=f1e62] [cursor=pointer]
+          - button "选择模型" [ref=f1e66] [cursor=pointer]:
+            - generic [ref=f1e69]: default
+          - button "上下文窗口占用" [ref=f1e72] [cursor=pointer]:
+            - generic [ref=f1e76]: 12%
+          - button "语音输入" [ref=f1e77] [cursor=pointer]
+    - generic [ref=f1e122]:
+      - generic [ref=f1e123]: 个人工作区
+      - generic [ref=f1e124]: 从右侧工作区打开文件，或打开编辑器后开始搭建场景。
+      - generic [ref=f1e125]:
+        - button "新建会话" [ref=f1e126] [cursor=pointer]
+        - button "打开编辑器" [ref=f1e129] [cursor=pointer]
+        - button "回到全屏对话" [ref=f1e135] [cursor=pointer]
+    - generic [ref=f1e139]:
+      - generic [ref=f1e140]:
+        - generic [ref=f1e141]:
+          - button "工作区" [ref=f1e142] [cursor=pointer]
+          - button "层级" [ref=f1e148] [cursor=pointer]
+          - button "属性" [ref=f1e152] [cursor=pointer]
+          - button "资产" [ref=f1e154] [cursor=pointer]
+        - button "折叠 inspector" [ref=f1e159] [cursor=pointer]
+      - generic [ref=f1e163]:
+        - textbox "搜索工作区…" [ref=f1e169]
+        - generic [ref=f1e170]:
+          - button ".git" [ref=f1e171] [cursor=pointer]
+          - button ".playwright-cli" [ref=f1e177] [cursor=pointer]
+          - button ".tmp-frames" [ref=f1e183] [cursor=pointer]
+          - button ".trae" [ref=f1e189] [cursor=pointer]
+          - button "apps" [ref=f1e195] [cursor=pointer]
+          - button "crates" [ref=f1e201] [cursor=pointer]
+          - button "data" [ref=f1e207] [cursor=pointer]
+          - button "evidence" [ref=f1e213] [cursor=pointer]
+          - button "gateway-go" [ref=f1e219] [cursor=pointer]
+          - button "milestones" [ref=f1e225] [cursor=pointer]
+          - button "node_modules" [ref=f1e231] [cursor=pointer]
+          - button "packages" [ref=f1e237] [cursor=pointer]
+          - button "projects" [ref=f1e243] [cursor=pointer]
+          - button "scripts" [ref=f1e249] [cursor=pointer]
+          - button "shots" [ref=f1e255] [cursor=pointer]
+          - button "skills" [ref=f1e261] [cursor=pointer]
+          - button "target" [ref=f1e267] [cursor=pointer]
+          - button "tests" [ref=f1e273] [cursor=pointer]
+          - button "tools" [ref=f1e279] [cursor=pointer]
+          - button ".gitignore" [ref=f1e285] [cursor=pointer]
+          - button "00_MASTER_INDEX.md" [ref=f1e290] [cursor=pointer]
+          - button "01_PRODUCT_VISION.md" [ref=f1e295] [cursor=pointer]
+          - button "02_SYSTEM_ARCHITECTURE.md" [ref=f1e300] [cursor=pointer]
+          - button "03_ENGINE_LAYER.md" [ref=f1e305] [cursor=pointer]
+          - button "04_AGENT_BACKEND.md" [ref=f1e310] [cursor=pointer]
+          - button "05_MCP_PROJECTS.md" [ref=f1e315] [cursor=pointer]
+          - button "06_SKILLS_LIBRARY.md" [ref=f1e320] [cursor=pointer]
+          - button "07_FRONTEND_IDE.md" [ref=f1e325] [cursor=pointer]
+          - button "08_ASSET_PIPELINE.md" [ref=f1e330] [cursor=pointer]
+          - button "09_ENTITY_SCENE_MODEL.md" [ref=f1e335] [cursor=pointer]
+          - button "10_INTERACTION_LOGIC.md" [ref=f1e340] [cursor=pointer]
+          - button "11_API_CONTRACTS.md" [ref=f1e345] [cursor=pointer]
+          - button "12_SECURITY_PERMISSIONS.md" [ref=f1e350] [cursor=pointer]
+          - button "13_ROADMAP.md" [ref=f1e355] [cursor=pointer]
+          - button "14_DECISION_LOG.md" [ref=f1e360] [cursor=pointer]
+          - button "agentd-err.log" [ref=f1e365] [cursor=pointer]
+          - button "agentd-out.log" [ref=f1e370] [cursor=pointer]
+          - button "build-err.log" [ref=f1e375] [cursor=pointer]
+          - button "build-out.log" [ref=f1e380] [cursor=pointer]
+          - button "Cargo.lock" [ref=f1e385] [cursor=pointer]
+          - button "Cargo.toml" [ref=f1e390] [cursor=pointer]
+          - button "package.json" [ref=f1e395] [cursor=pointer]
+          - button "pnpm-lock.yaml" [ref=f1e400] [cursor=pointer]
+          - button "pnpm-workspace.yaml" [ref=f1e405] [cursor=pointer]
+          - button "tsconfig.base.json" [ref=f1e410] [cursor=pointer]
+  - contentinfo [ref=f1e98]:
+    - generic [ref=f1e99]: host 在线
+    - generic [ref=f1e101]: Live · deepseek-chat

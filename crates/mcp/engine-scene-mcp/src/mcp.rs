@@ -195,6 +195,11 @@ fn tool_list() -> Value {
                 "inputSchema": { "type": "object", "properties": {} }
             },
             {
+                "name": "scene_index",
+                "description": "场景分类索引:按 角色(role)/地图(map)/交互(interaction) 分组返回实体 id/name 列表与计数",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
                 "name": "scene_save",
                 "description": "保存编辑态场景(缺省 <cwd>/data/scene.rxscene;规范字节,确定性)",
                 "inputSchema": {
@@ -367,6 +372,34 @@ fn lock(s: &Mutex<Supervisor>) -> MutexGuard<'_, Supervisor> {
 
 /// 资产项目根 = <workspace>/projects/demo(照 forge-agentd asset_project_root 先例;
 /// CARGO_MANIFEST_DIR = crates/mcp/engine-scene-mcp,上三级 = workspace 根)。
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("CARGO_MANIFEST_DIR 上三级须存在")
+        .to_path_buf()
+}
+
+fn confine_scene_args(mut args: Value) -> Result<Value, Value> {
+    let Some(path) = args.get("path").and_then(Value::as_str).map(str::to_string) else {
+        return Ok(args);
+    };
+    let project = std::env::var("FORGE_PROJECT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| project_root());
+    let ws = workspace_root();
+    match forge_util::pathutil::confine_under(&[&project, &ws], &path) {
+        Ok(p) => {
+            args["path"] = json!(p.to_string_lossy());
+            Ok(args)
+        }
+        Err(e) => Ok(tool_wrap(
+            &json!({ "error": "PATH_OUTSIDE_ROOT", "message": e }),
+            true,
+        )),
+    }
+}
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -471,6 +504,7 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "transform_get" => "transform.get",
         "transform_batch_set" => "transform.batchSet",
         "scene_graph_dump" => "scene.graph_dump",
+        "scene_index" => "scene.index",
         "scene_save" => "scene.save",
         "scene_load" => "scene.load",
         "scene_diff" => "scene.diff",
@@ -536,6 +570,13 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
             }
             let method = passthrough_method(name).expect("component_set/entity_create 必有映射");
             Ok(host_tool(sup, method, args))
+        }
+        "scene_save" | "scene_load" | "scene_diff" => {
+            let method = passthrough_method(name).expect("scene_* 必有映射");
+            match confine_scene_args(args) {
+                Ok(args) => Ok(host_tool(sup, method, args)),
+                Err(wrapped) => Ok(wrapped),
+            }
         }
         other => match passthrough_method(other) {
             Some(method) => Ok(host_tool(sup, method, args)),

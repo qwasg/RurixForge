@@ -16,7 +16,7 @@ use rurix_physics::{
 };
 use serde_json::{json, Value};
 
-use crate::timeutil::utc_now_iso8601;
+use forge_util::timeutil::utc_now_iso8601;
 
 /// 固定步长(秒),与 WorldDesc.dt_fixed 位级一致(step 只收此值)。
 pub const DT_FIXED: f32 = 1.0 / 60.0;
@@ -809,6 +809,7 @@ pub fn dispatch(state: &Mutex<HostState>, req: &Value) -> Value {
 const GAME_ALLOWED: &[&str] = &[
     "host.ping",
     "scene.summary",
+    "scene.index",
     "events.drain",
     "entity.get",
     "entity.list",
@@ -849,6 +850,7 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         })),
         "scene.new" => scene_new(st, params),
         "scene.summary" => Ok(scene_summary(st)),
+        "scene.index" => Ok(scene_index(st)),
         "scene.graph_dump" => Ok(scene_graph_dump(st)),
         "render.once" => Ok(render_once(st)),
         "events.drain" => {
@@ -859,7 +861,9 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "entity.destroy" => entity_destroy(st, params),
         "entity.rename" => entity_rename(st, params),
         "entity.get" => entity_get(st, params),
-        "entity.list" => Ok(json!({ "entities": st.active().entities.iter().map(|e| json!(e)).collect::<Vec<_>>() })),
+        "entity.list" => Ok(json!({
+            "entities": st.active().entities.iter().map(entity_json_with_category).collect::<Vec<_>>()
+        })),
         "entity.batchApply" => entity_batch_apply(st, params),
         "component.add" => component_add(st, params),
         "component.remove" => component_remove(st, params),
@@ -898,6 +902,58 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
 
 // ---------- F0 既有方法 ----------
 
+/// 实体 JSON + 计算字段 category(不入 .rxscene)。
+fn entity_json_with_category(e: &Entity) -> Value {
+    let mut v = serde_json::to_value(e).unwrap_or(Value::Null);
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("category".into(), json!(forge_scene::classify(e)));
+    }
+    v
+}
+
+/// 场景图全量转储(F3 debug 三件套之一):实体 id/name/transform/组件快照单次调用,
+/// 供 debug-scene-issue skill 与问题诊断一次性取全量场景态(免逐 entity.get 往返)。
+fn scene_graph_dump(st: &HostState) -> Value {
+    let s = st.active();
+    json!({
+        "name": s.name,
+        "playState": st.play.as_str(),
+        "entityCount": s.entities.len(),
+        "entities": s.entities.iter().map(entity_json_with_category).collect::<Vec<_>>(),
+    })
+}
+
+/// 场景分类索引:按 role/map/interaction 分组,供 IDE 层级树与 agent 概览。
+fn scene_index(st: &HostState) -> Value {
+    let s = st.active();
+    let mut role = Vec::new();
+    let mut map = Vec::new();
+    let mut interaction = Vec::new();
+    for e in &s.entities {
+        let entry = json!({ "id": e.id, "name": e.name });
+        match forge_scene::classify(e) {
+            forge_scene::CAT_ROLE => role.push(entry),
+            forge_scene::CAT_INTERACTION => interaction.push(entry),
+            _ => map.push(entry),
+        }
+    }
+    let role_len = role.len();
+    let map_len = map.len();
+    let interaction_len = interaction.len();
+    json!({
+        "groups": {
+            "role": role,
+            "map": map,
+            "interaction": interaction,
+        },
+        "counts": {
+            "role": role_len,
+            "map": map_len,
+            "interaction": interaction_len,
+        },
+    })
+}
+
 fn scene_new(st: &mut HostState, params: &Value) -> HResult {
     let name = match params.get("name") {
         None | Some(Value::Null) => "Untitled".to_string(),
@@ -915,18 +971,6 @@ fn scene_new(st: &mut HostState, params: &Value) -> HResult {
     push_event(st, "scene.created", json!({ "name": name }));
     let s = st.scene.summary();
     Ok(json!({ "name": s.name, "entityCount": s.entity_count }))
-}
-
-/// 场景图全量转储(F3 debug 三件套之一):实体 id/name/transform/组件快照单次调用,
-/// 供 debug-scene-issue skill 与问题诊断一次性取全量场景态(免逐 entity.get 往返)。
-fn scene_graph_dump(st: &HostState) -> Value {
-    let s = st.active();
-    json!({
-        "name": s.name,
-        "playState": st.play.as_str(),
-        "entityCount": s.entities.len(),
-        "entities": s.entities.iter().map(|e| json!(e)).collect::<Vec<_>>(),
-    })
 }
 
 fn scene_summary(st: &HostState) -> Value {
@@ -1131,27 +1175,29 @@ fn viewport_pick(st: &mut HostState, params: &Value) -> HResult {
     }
 }
 
-/// viewport.shareOpen:创建/重建 D3D12 共享纹理,句柄 DuplicateHandle 移交 pid 进程。
-/// F1 wave.3 加堆腿:先探 VK import 内存需求,> committed 分配时共享堆 + placed resource。
+/// viewport.shareOpen:创建/重建 D3D12 共享 buffer,句柄 DuplicateHandle 移交 pid 进程。
+/// 共享体为线性 buffer(见 share.rs 头注:纹理两侧补齐规则不一致会致设备丢失),
+/// 消费者按 `rowPitch` 的 PLACED_FOOTPRINT 从 buffer 拷进自己的纹理。
 fn viewport_share_open(params: &Value) -> HResult {
     let pid = params
         .get("pid")
         .and_then(Value::as_u64)
         .ok_or((-32602, "invalid params: 缺 pid".to_string()))? as u32;
     let (w, h) = viewport_size(params)?;
-    let min_alloc = crate::viewport::probe_import_min_alloc(w, h).unwrap_or(0);
-    crate::share::open(w, h, pid, min_alloc)
-        .map(|(tex, fence, w, h, is_heap)| {
+    crate::share::open(w, h, pid)
+        .map(|(buf, fence, w, h, row_pitch, size)| {
             json!({
-                "texHandle": tex,
+                "texHandle": buf,
                 "fenceHandle": fence,
                 "width": w,
                 "height": h,
                 "format": "rgba8",
-                "handleKind": if is_heap { "heap" } else { "resource" },
+                "handleKind": "buffer",
+                "rowPitch": row_pitch,
+                "bufferSize": size,
             })
         })
-        .map_err(|e| (-32000, format!("共享纹理打开失败: {e}")))
+        .map_err(|e| (-32000, format!("共享 buffer 打开失败: {e}")))
 }
 
 // ---------- entity.* ----------
@@ -1170,7 +1216,7 @@ fn entity_create(st: &mut HostState, params: &Value) -> HResult {
     .map_err(|e| (-32000, e))?;
     push_event(st, "entity.created", json!({ "id": id, "name": name }));
     let e = st.active().entity(id).expect("刚创建的实体须存在");
-    Ok(json!({ "id": id, "entity": json!(e) }))
+    Ok(json!({ "id": id, "entity": entity_json_with_category(e) }))
 }
 
 fn entity_destroy(st: &mut HostState, params: &Value) -> HResult {
@@ -1199,7 +1245,7 @@ fn entity_get(st: &HostState, params: &Value) -> HResult {
         .active()
         .entity(id)
         .ok_or((-32000, format!("实体 {id} 不存在")))?;
-    Ok(json!(e))
+    Ok(entity_json_with_category(e))
 }
 
 fn entity_batch_apply(st: &mut HostState, params: &Value) -> HResult {
@@ -1426,39 +1472,52 @@ fn transform_batch_set(st: &mut HostState, params: &Value) -> HResult {
 /// 避免随进程 CWD 漂移。
 /// F7 wave.5 回归修复:此前「相对一律项目根」使 workspace 相对路径双前缀(projects/demo/
 /// projects/demo/...)→ scene_load os error 3,console-metrics 场景回归;恢复双契约。
-fn resolve_scene_path(s: &str) -> PathBuf {
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace 根")
+        .to_path_buf()
+}
+
+fn resolve_scene_path(s: &str) -> Result<PathBuf, (i64, String)> {
+    if forge_util::pathutil::looks_escaped(s) {
+        return Err((-32602, format!("PATH_OUTSIDE_ROOT: {s}")));
+    }
     let p = PathBuf::from(s);
     if p.is_absolute() {
-        return p;
+        return Ok(p);
     }
     let first = p
         .components()
         .next()
         .map(|c| c.as_os_str().to_string_lossy().into_owned());
-    if first.as_deref() == Some("projects") {
-        return PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(2)
-            .expect("workspace 根")
-            .join(p);
+    let resolved = if first.as_deref() == Some("projects") {
+        workspace_root().join(&p)
+    } else {
+        // F8 wave.5 回归修复(f6-w1):workspace 相对路径(tests/...等,playtest 矩阵契约
+        // 「workspace 相对或绝对」)在 workspace 根下存在时按 workspace 根解析;否则按项目根。
+        let ws = workspace_root().join(&p);
+        if ws.exists() {
+            ws
+        } else {
+            project_root().join(p)
+        }
+    };
+    let project = project_root();
+    let ws = workspace_root();
+    if forge_util::pathutil::is_inside(&project, &resolved)
+        || forge_util::pathutil::is_inside(&ws, &resolved)
+    {
+        return Ok(resolved);
     }
-    // F8 wave.5 回归修复(f6-w1):workspace 相对路径(tests/...等,playtest 矩阵契约
-    // 「workspace 相对或绝对」)在 workspace 根下存在时按 workspace 根解析;否则按项目根。
-    let ws = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace 根")
-        .join(&p);
-    if ws.exists() {
-        return ws;
-    }
-    project_root().join(p)
+    Err((-32602, format!("PATH_OUTSIDE_ROOT: {s}")))
 }
 
 fn scene_save(st: &HostState, params: &Value) -> HResult {
     let path = match params.get("path") {
         None | Some(Value::Null) => default_scene_path(),
-        Some(Value::String(s)) => resolve_scene_path(s),
+        Some(Value::String(s)) => resolve_scene_path(s)?,
         Some(_) => return param_err("invalid params: path 须为字符串"),
     };
     if let Some(dir) = path.parent() {
@@ -1478,7 +1537,7 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
         return domain_err("play 态禁止 scene.load,请先 play.exit");
     }
     let path = match params.get("path") {
-        Some(Value::String(s)) => resolve_scene_path(s),
+        Some(Value::String(s)) => resolve_scene_path(s)?,
         _ => return param_err("invalid params: path 必填且须为字符串"),
     };
     let scene = Scene::load(&path).map_err(|e| (-32000, e.to_string()))?;
@@ -1492,7 +1551,7 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
 fn scene_diff(st: &HostState, params: &Value) -> HResult {
     let path = match params.get("path") {
         None | Some(Value::Null) => default_scene_path(),
-        Some(Value::String(s)) => resolve_scene_path(s),
+        Some(Value::String(s)) => resolve_scene_path(s)?,
         Some(_) => return param_err("invalid params: path 须为字符串"),
     };
     let cur = st.scene.to_json().map_err(|e| (-32000, e.to_string()))?;
@@ -2059,8 +2118,76 @@ mod tests {
             assert!(msg.contains("game 模式禁编辑面"), "{m}: {msg}");
         }
         // 只读 + input 子集放行。
-        for m in ["host.ping", "play.state", "scene.summary", "entity.list", "component.listTypes"] {
+        for m in [
+            "host.ping",
+            "play.state",
+            "scene.summary",
+            "scene.index",
+            "entity.list",
+            "component.listTypes",
+        ] {
             call(&st, m, json!({}));
         }
+    }
+
+    /// IDE 三分类:entity.list 附 category;scene.index 分组计数。
+    #[test]
+    fn scene_index_and_entity_category() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "cat" }));
+        call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "Player",
+                "components": [
+                    { "type": "MeshRenderer", "props": { "mesh": "cube", "material": "" } },
+                    { "type": "Tag", "props": { "tag": "player" } }
+                ]
+            }),
+        );
+        call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "Wall",
+                "components": [
+                    { "type": "MeshRenderer", "props": { "mesh": "cube", "material": "" } }
+                ]
+            }),
+        );
+        call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "Key",
+                "components": [
+                    { "type": "Trigger", "props": { "kind": "box", "extents": [1.0, 1.0, 1.0] } },
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/door.rxgraph", "props": {} } }
+                ]
+            }),
+        );
+        let list = call(&st, "entity.list", json!({}));
+        let ents = list["entities"].as_array().unwrap();
+        assert_eq!(ents.len(), 3);
+        let player = ents.iter().find(|e| e["name"] == "Player").unwrap();
+        assert_eq!(player["category"], "role");
+        let wall = ents.iter().find(|e| e["name"] == "Wall").unwrap();
+        assert_eq!(wall["category"], "map");
+        let key = ents.iter().find(|e| e["name"] == "Key").unwrap();
+        assert_eq!(key["category"], "interaction");
+
+        let idx = call(&st, "scene.index", json!({}));
+        assert_eq!(idx["counts"]["role"], 1);
+        assert_eq!(idx["counts"]["map"], 1);
+        assert_eq!(idx["counts"]["interaction"], 1);
+        assert_eq!(idx["groups"]["role"][0]["name"], "Player");
+    }
+
+    #[test]
+    fn scene_path_rejects_dotdot() {
+        assert!(resolve_scene_path("../secret.rxscene").is_err());
+        assert!(resolve_scene_path("\\\\server\\share\\a.rxscene").is_err());
     }
 }

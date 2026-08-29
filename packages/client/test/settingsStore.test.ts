@@ -73,4 +73,22 @@ describe('workbenchStore 底部面板', () => {
     expect(useWorkbenchStore.getState().tabs.length).toBe(2);
     expect(useWorkbenchStore.getState().activeTabId).toBe('plan');
   });
+
+  it('openFile 按 path 单例:重开=激活;关闭后个人工作区空态', () => {
+    const st = useWorkbenchStore.getState();
+    st.openFile('07_FRONTEND_IDE.md');
+    st.openFile('crates/foo.rs');
+    expect(useWorkbenchStore.getState().tabs.map((t) => t.id)).toEqual([
+      'file:07_FRONTEND_IDE.md',
+      'file:crates/foo.rs',
+    ]);
+    expect(useWorkbenchStore.getState().activeTabId).toBe('file:crates/foo.rs');
+    useWorkbenchStore.getState().openFile('07_FRONTEND_IDE.md');
+    expect(useWorkbenchStore.getState().tabs.length).toBe(2);
+    expect(useWorkbenchStore.getState().activeTabId).toBe('file:07_FRONTEND_IDE.md');
+    useWorkbenchStore.getState().closeTab('file:07_FRONTEND_IDE.md');
+    useWorkbenchStore.getState().closeTab('file:crates/foo.rs');
+    expect(useWorkbenchStore.getState().tabs).toEqual([]);
+    expect(useWorkbenchStore.getState().activeTabId).toBeNull();
+  });
 });

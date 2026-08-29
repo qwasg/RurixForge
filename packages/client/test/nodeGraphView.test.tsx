@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import HierarchyPanel from '@/components/editor/HierarchyPanel';
 import NodeGraphView from '@/components/editor/NodeGraphView';
 import EditorView from '@/views/EditorView';
 import { useGraphStore, type GraphDoc } from '@/lib/graphStore';
@@ -40,9 +41,15 @@ const initialGraph = useGraphStore.getState();
 const initialEditor = useEditorStore.getState();
 
 beforeEach(() => {
+  globalThis.localStorage.clear(); // 含无限画布视口位置(forge:nodeGraphView),测试间不串
   useGraphStore.setState(initialGraph, true);
   useEditorStore.setState(initialEditor, true);
 });
+
+/** jsdom 无 PointerEvent 构造器:用同名类型的 MouseEvent 承载 */
+function pointer(type: string, init: MouseEventInit = {}): MouseEvent {
+  return new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+}
 
 afterEach(() => {
   cleanup();
@@ -82,6 +89,23 @@ describe('<NodeGraphView />', () => {
     expect(screen.getByText('event.on_trigger_enter')).toBeInTheDocument();
     expect(screen.getByText('transform.rotate_tween')).toBeInTheDocument();
     expect((screen.getByTestId('exposed-openSpeed') as HTMLInputElement).value).toBe('90');
+  });
+
+  it('无限画布:空白处拖拽平移世界层,HUD 倍率随缩放更新', () => {
+    seedLoaded();
+    render(<NodeGraphView />);
+    const world = screen.getByTestId('graph-world');
+    expect(world.style.transform).toBe('translate(0px, 0px) scale(1)');
+
+    fireEvent(screen.getByTestId('graph-canvas'), pointer('pointerdown', { button: 0, clientX: 10, clientY: 10 }));
+    fireEvent(window, pointer('pointermove', { clientX: 50, clientY: 35 }));
+    fireEvent(window, pointer('pointerup'));
+    expect(world.style.transform).toBe('translate(40px, 25px) scale(1)');
+
+    fireEvent.click(screen.getByTestId('graph-zoom-out'));
+    expect(screen.getByTestId('graph-zoom-reset')).toHaveTextContent('83%');
+    fireEvent.click(screen.getByTestId('graph-zoom-reset'));
+    expect(world.style.transform).toBe('translate(0px, 0px) scale(1)');
   });
 
   it('常量内联编辑:点击 const → input,回车提交 editConst 并置 dirty', () => {
@@ -146,8 +170,8 @@ describe('<NodeGraphView />', () => {
     expect(strip).toHaveTextContent('n2');
     expect(strip).toHaveTextContent('flow.branch.condition 悬空');
     // 错误节点红框
-    expect(container.querySelector('[data-graph-node="n2"]')?.className).toContain('border-red-500');
-    expect(container.querySelector('[data-graph-node="n1"]')?.className).not.toContain('border-red-500');
+    expect(container.querySelector('[data-graph-node="n2"]')?.className).toContain('border-danger');
+    expect(container.querySelector('[data-graph-node="n1"]')?.className).not.toContain('border-danger');
     // 校验不过不落盘:graph_create 零调用,dirty 保持
     const tools = fetchMock.mock.calls.map((c) =>
       (JSON.parse((c[1] as { body: string }).body) as { tool: string }).tool,
@@ -194,7 +218,13 @@ describe('<NodeGraphView />', () => {
       }),
     );
 
-    const { container } = render(<EditorView />);
+    // 层级已迁壳右栏(RightPane),这里与之并排渲染以走真实点选路径
+    const { container } = render(
+      <>
+        <HierarchyPanel />
+        <EditorView />
+      </>,
+    );
     // 选中 Door(带 Script.graphRef)
     fireEvent.click(await screen.findByText('Door'));
     // 切 NodeGraph 页签 → loadForSelectedEntity → graph_get

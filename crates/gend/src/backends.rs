@@ -38,9 +38,10 @@ pub trait GenBackend {
     fn generate(&self, req: &GenRequest, cfg: &GenConfig, keys: &Keystore) -> Result<Vec<GenCandidate>>;
 }
 
-/// 注册表(wave.1 两条目:local-mock + remote-openai-compatible)。
+/// 注册表(wave.1 两条目)。**顺序即缺省优先级**:真实远程后端排在占位生成器之前,
+/// 两者同时 enabled 时缺省走真实出图,占位只兜远程不具备的能力(texture-set/variations)。
 pub fn registry() -> Vec<Box<dyn GenBackend>> {
-    vec![Box::new(LocalMock), Box::new(RemoteOpenAi)]
+    vec![Box::new(RemoteOpenAi), Box::new(LocalMock)]
 }
 
 /// 按 id 查适配器。

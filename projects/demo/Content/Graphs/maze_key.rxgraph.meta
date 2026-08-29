@@ -4,3 +4,12 @@ importer: rxgraph
 provenance:
   origin: user-import
 build_state: current
+semantic:
+  description: 迷宫钥匙图:玩家进触发区后钥匙下沉(move_tween [0,-10,0])并广播 key_taken 消息
+  tags:
+  - 节点图
+  - 迷宫
+  - 钥匙
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

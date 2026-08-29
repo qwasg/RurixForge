@@ -11,10 +11,14 @@
 pub mod accept;
 pub mod backends;
 pub mod config;
+pub mod embed;
 pub mod keystore;
+pub mod media;
 pub mod mock;
 pub mod remote;
-pub mod timeutil;
+// timeutil 已抽至 forge-util(三份逐字重复合并);重导出保 gend::timeutil 路径兼容
+// (gen-image-mcp / gen-model-mcp 经此引用,不改其源码)。
+pub use forge_util::timeutil;
 pub mod tmpstore;
 
 use std::fmt;

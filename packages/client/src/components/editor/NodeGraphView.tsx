@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Save } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import {
@@ -8,12 +8,16 @@ import {
   type GraphValue,
   type ValueSource,
 } from '@/lib/graphStore';
+import { useCanvasViewport, type WorldRect } from '@/lib/useCanvasViewport';
+import CanvasHud from './CanvasHud';
 
 /**
  * NodeGraph 面板(07 §1 G 区,与 Viewport 同位页签;10 §5)。
  * 只做查看/微调(常量、暴露属性默认值)/保存;从零生成与拖线重连走 Chat agent
  * (logic-blueprint-gen),本面板不做拖新节点/拖线连接。
  * 渲染数据全部来自 graph_get 真实响应;保存即 graph_validate 全图校验,不过不落盘。
+ * 画布 = 无限画布(useCanvasViewport,与画板同一套):空白处/中键拖拽平移、
+ * 滚轮平移、Ctrl + 滚轮缩放,大图不再被容器包围盒裁死。
  */
 
 const NODE_W = 140;
@@ -23,9 +27,9 @@ const ROW_H = 18; // 输入行高
 
 /** 节点头色条:event.* 绿 / flow.* 蓝 / 其余灰(照 UE 蓝图直觉) */
 function headerBar(type: string): string {
-  if (type.startsWith('event.')) return 'bg-accent-green';
-  if (type.startsWith('flow.')) return 'bg-accent-blue';
-  return 'bg-muted-faint';
+  if (type.startsWith('event.')) return 'bg-sage';
+  if (type.startsWith('flow.')) return 'bg-info';
+  return 'bg-fg-4';
 }
 
 /** 值 → 显示文本(字符串不加引号,其余 JSON 形态) */
@@ -81,7 +85,7 @@ function ConstCell({
             setEditing(false);
           }
         }}
-        className="w-full min-w-0 rounded border border-line bg-white px-1 py-px font-mono text-2xs text-ink outline-none focus:border-muted-faint"
+        className="w-full min-w-0 rounded border border-edge-strong bg-shell-panel px-1 py-px font-mono text-2xs text-fg outline-none focus:border-fg-4"
       />
     );
   }
@@ -101,7 +105,7 @@ function ConstCell({
           setEditing(true);
         }
       }}
-      className="cursor-text truncate rounded px-1 font-mono text-ink-soft hover:bg-panel-hover"
+      className="cursor-text truncate rounded px-1 font-mono text-fg-2 hover:bg-shell-hover"
     >
       {valueText(value)}
     </span>
@@ -112,17 +116,17 @@ function ConstCell({
 function InputRow({ nodeId, pin, src }: { nodeId: string; pin: string; src: ValueSource }) {
   return (
     <div className="flex h-[18px] items-center gap-1 text-2xs">
-      <span className="shrink-0 text-muted">{pin}</span>
+      <span className="shrink-0 text-fg-3">{pin}</span>
       <span className="min-w-0 flex-1 truncate text-right">
         {'const' in src ? (
           <ConstCell nodeId={nodeId} pin={pin} value={src.const} />
         ) : 'ref' in src ? (
-          <span className="truncate font-mono text-accent-blue" title={`暴露属性 ${src.ref}`}>
+          <span className="truncate font-mono text-info" title={`暴露属性 ${src.ref}`}>
             = {src.ref}
           </span>
         ) : (
           <span
-            className="truncate font-mono text-muted-faint"
+            className="truncate font-mono text-fg-4"
             title={`数据边 ← ${src.node}.${src.pin}`}
           >
             ← {src.node}.{src.pin}
@@ -141,20 +145,20 @@ function NodeCard({ node, hasError }: { node: GraphNode; hasError: boolean }) {
     <div
       data-graph-node={node.id}
       className={cn(
-        'absolute select-none rounded-md border bg-white shadow-composer',
-        hasError ? 'border-red-500' : 'border-line',
+        'absolute select-none rounded-md border bg-shell-panel shadow-composer',
+        hasError ? 'border-danger' : 'border-edge-strong',
       )}
       style={{ left: node.pos[0], top: node.pos[1], width: NODE_W }}
     >
       <div className={cn('h-[3px] rounded-t-md', headerBar(node.type))} />
       <div
-        className="truncate px-1.5 text-2xs font-medium leading-[20px] text-ink"
+        className="truncate px-1.5 text-2xs font-medium leading-[20px] text-fg"
         title={`${node.type} (${node.id})`}
       >
         {node.type}
       </div>
       {inputs.length > 0 && (
-        <div className="border-t border-line-soft px-1.5 py-0.5">
+        <div className="border-t border-edge px-1.5 py-0.5">
           {inputs.map(([pin, src]) => (
             <InputRow key={pin} nodeId={node.id} pin={pin} src={src} />
           ))}
@@ -179,9 +183,9 @@ function ExposedPropRow({ prop }: { prop: ExposedProp }) {
 
   return (
     <div className="flex items-center gap-1 px-2 py-0.5">
-      <span className="min-w-0 flex-1 truncate text-2xs text-ink-soft" title={prop.name}>
+      <span className="min-w-0 flex-1 truncate text-2xs text-fg-2" title={prop.name}>
         {prop.name}
-        <span className="ml-1 text-muted-faint">{prop.kind}</span>
+        <span className="ml-1 text-fg-4">{prop.kind}</span>
       </span>
       <input
         data-testid={`exposed-${prop.name}`}
@@ -192,7 +196,7 @@ function ExposedPropRow({ prop }: { prop: ExposedProp }) {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           if (e.key === 'Escape') setDraft(valueText(prop.default));
         }}
-        className="w-[64px] shrink-0 rounded border border-line bg-white px-1 py-px font-mono text-2xs text-ink outline-none focus:border-muted-faint"
+        className="w-[64px] shrink-0 rounded border border-edge-strong bg-shell-panel px-1 py-px font-mono text-2xs text-fg outline-none focus:border-fg-4"
       />
     </div>
   );
@@ -225,6 +229,16 @@ function execEdgeLines(nodes: GraphNode[], edges: Array<{ from: [string, string]
     });
   }
   return out;
+}
+
+/** 节点包围盒(世界坐标):适应内容用 */
+function nodeRects(nodes: GraphNode[]): WorldRect[] {
+  return nodes.map((n) => ({
+    x: n.pos[0],
+    y: n.pos[1],
+    w: NODE_W,
+    h: BAR_H + TITLE_H + Object.keys(n.inputs ?? {}).length * ROW_H,
+  }));
 }
 
 /** 数据边(inputs 内 node+pin 引用,虚线贝塞尔) */
@@ -264,32 +278,34 @@ export default function NodeGraphView() {
   const save = useGraphStore((s) => s.save);
 
   const [pathDraft, setPathDraft] = useState('');
+  const vp = useCanvasViewport({
+    storageKey: 'forge:nodeGraphView',
+    panExclude: '[data-graph-node]',
+  });
 
   const errorNodeIds = new Set(errors.map((e) => e.nodeId).filter((x): x is string => !!x));
   const execLines = graph ? execEdgeLines(graph.nodes, graph.edges) : [];
   const dataLines = graph ? dataEdgeLines(graph.nodes) : [];
-  const canvasW = graph
-    ? Math.max(640, ...graph.nodes.map((n) => n.pos[0] + NODE_W + 80))
-    : 640;
-  const canvasH = graph
-    ? Math.max(
-        360,
-        ...graph.nodes.map(
-          (n) => n.pos[1] + BAR_H + TITLE_H + Object.keys(n.inputs ?? {}).length * ROW_H + 90,
-        ),
-      )
-    : 360;
+  const rects = graph ? nodeRects(graph.nodes) : [];
+  const rectsRef = useRef(rects);
+  rectsRef.current = rects;
+
+  // 换图时若上次的视口停在空白处,把新图找回来(仍在视野内则保留用户的平移/缩放)
+  const ensureContentVisible = vp.ensureContentVisible;
+  useEffect(() => {
+    if (rectsRef.current.length > 0) ensureContentVisible(rectsRef.current);
+  }, [graph?.id, ensureContentVisible]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-panel" aria-label="NodeGraph">
+    <div className="flex min-h-0 flex-1 flex-col bg-shell-sunk" aria-label="NodeGraph">
       {/* 顶栏:图名/路径/dirty 点 + 路径输入 + 重载/保存 + 状态行 */}
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-line-soft bg-white px-2 py-1">
-        <span className="shrink-0 text-2xs text-muted-faint">NodeGraph</span>
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-edge bg-shell-panel px-2 py-1">
+        <span className="shrink-0 text-2xs text-fg-4">NodeGraph</span>
         {graph && (
-          <span className="flex min-w-0 items-center gap-1 text-2xs text-ink-soft">
+          <span className="flex min-w-0 items-center gap-1 text-2xs text-fg-2">
             <span className="truncate font-medium">{graph.name}</span>
-            <span className="truncate text-muted-faint">{graphPath}</span>
-            {dirty && <span title="未保存修改" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />}
+            <span className="truncate text-fg-4">{graphPath}</span>
+            {dirty && <span title="未保存修改" className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />}
           </span>
         )}
         <input
@@ -301,14 +317,14 @@ export default function NodeGraphView() {
             if (e.key === 'Enter') void loadByPath(pathDraft);
           }}
           placeholder="Content/Graphs/xxx.rxgraph"
-          className="w-[220px] shrink-0 rounded-md border border-line bg-white px-2 py-0.5 font-mono text-2xs text-ink outline-none placeholder:text-muted-faint focus:border-muted-faint"
+          className="w-[220px] shrink-0 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 font-mono text-2xs text-fg outline-none placeholder:text-fg-4 focus:border-fg-4"
         />
         <button
           type="button"
           data-graph-load
           disabled={loading || pathDraft.trim() === ''}
           onClick={() => void loadByPath(pathDraft)}
-          className="shrink-0 rounded-md border border-line bg-white px-2 py-0.5 text-2xs text-ink-soft transition-colors hover:bg-panel-hover disabled:opacity-40"
+          className="shrink-0 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 text-2xs text-fg-2 transition-colors hover:bg-shell-hover disabled:opacity-40"
         >
           加载
         </button>
@@ -317,7 +333,7 @@ export default function NodeGraphView() {
           title="重载"
           disabled={loading || !graph || !graphPath}
           onClick={() => graphPath && void loadByPath(graphPath)}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-ink-soft disabled:opacity-40 disabled:hover:bg-transparent"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <RefreshCw size={12} strokeWidth={1.8} />
         </button>
@@ -326,35 +342,47 @@ export default function NodeGraphView() {
           title="保存"
           disabled={loading || !graph || !dirty}
           onClick={() => void save()}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-ink-soft disabled:opacity-40 disabled:hover:bg-transparent"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <Save size={12} strokeWidth={1.8} />
         </button>
         <span className="flex-1" />
         {/* 状态行:错误红 / 保存成功绿 / 加载中灰,简朴如实 */}
         {lastError ? (
-          <span className="truncate text-2xs text-red-600" title={lastError}>
+          <span className="truncate text-2xs text-danger" title={lastError}>
             {lastError}
           </span>
         ) : lastSaved ? (
-          <span className="truncate text-2xs text-accent-green">已保存 {lastSaved}</span>
+          <span className="truncate text-2xs text-sage">已保存 {lastSaved}</span>
         ) : loading ? (
-          <span className="text-2xs text-muted-faint">加载中…</span>
+          <span className="text-2xs text-fg-4">加载中…</span>
         ) : null}
       </div>
 
       {graph ? (
         <div className="flex min-h-0 flex-1">
-          {/* 画布:SVG 网格 + 边,HTML 节点卡片(交互编辑) */}
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="relative" style={{ width: canvasW, height: canvasH }}>
-              <svg width={canvasW} height={canvasH} className="absolute inset-0">
-                <defs>
-                  <pattern id="ng-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#efedea" strokeWidth="1" />
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#ng-grid)" />
+          {/* 无限画布:容器画网格 + 承接平移/缩放,世界层放边与节点卡片 */}
+          <div
+            ref={vp.ref}
+            data-testid="graph-canvas"
+            className={cn(
+              'relative min-h-0 flex-1 touch-none overflow-hidden',
+              vp.panning ? 'cursor-grabbing' : 'cursor-grab',
+            )}
+            style={vp.gridStyle}
+            onPointerDown={vp.onPointerDown}
+          >
+            <div
+              data-testid="graph-world"
+              className="absolute left-0 top-0 h-0 w-0"
+              style={vp.worldStyle}
+            >
+              <svg
+                width="1"
+                height="1"
+                aria-hidden
+                className="pointer-events-none absolute left-0 top-0 overflow-visible"
+              >
                 {dataLines.map((l) => {
                   const dx = Math.max(40, Math.abs(l.x2 - l.x1) / 2);
                   return (
@@ -386,13 +414,19 @@ export default function NodeGraphView() {
                 <NodeCard key={n.id} node={n} hasError={errorNodeIds.has(n.id)} />
               ))}
             </div>
+
+            <CanvasHud
+              vp={vp}
+              prefix="graph"
+              onFit={rects.length > 0 ? () => vp.fitTo(rects) : undefined}
+            />
           </div>
 
           {/* 暴露属性表(default 可编辑) */}
-          <aside className="w-[190px] shrink-0 overflow-y-auto border-l border-line-soft bg-white">
-            <p className="px-2 pb-1 pt-2 text-2xs text-muted-faint">Exposed</p>
+          <aside className="w-[190px] shrink-0 overflow-y-auto border-l border-edge bg-shell-panel">
+            <p className="px-2 pb-1 pt-2 text-2xs text-fg-4">Exposed</p>
             {graph.exposedProps.length === 0 && (
-              <p className="px-2 text-2xs text-muted-faint">(无暴露属性)</p>
+              <p className="px-2 text-2xs text-fg-4">(无暴露属性)</p>
             )}
             {graph.exposedProps.map((p) => (
               <ExposedPropRow key={p.name} prop={p} />
@@ -401,7 +435,7 @@ export default function NodeGraphView() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 items-center justify-center">
-          <p className="max-w-[440px] px-4 text-center text-xs leading-5 text-muted-faint">
+          <p className="max-w-[440px] px-4 text-center text-xs leading-5 text-fg-4">
             未加载图:在 Hierarchy 选中带 Script 组件(graphRef)的实体,或在上方输入图路径加载。
             <br />
             从零生成走 Chat agent(logic-blueprint-gen);本面板定位 = 审阅 / 微调 / 改常量(10 §5)。
@@ -413,10 +447,10 @@ export default function NodeGraphView() {
       {errors.length > 0 && (
         <div
           data-testid="graph-errors"
-          className="max-h-[96px] shrink-0 overflow-y-auto border-t border-line-soft bg-white px-2 py-1"
+          className="max-h-[96px] shrink-0 overflow-y-auto border-t border-edge bg-shell-panel px-2 py-1"
         >
           {errors.map((e, i) => (
-            <p key={i} className="truncate py-px font-mono text-2xs text-red-600" title={e.message}>
+            <p key={i} className="truncate py-px font-mono text-2xs text-danger" title={e.message}>
               [{e.code}]{e.nodeId ? ` ${e.nodeId}` : ''} {e.message}
             </p>
           ))}

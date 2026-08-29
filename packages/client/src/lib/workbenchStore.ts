@@ -6,23 +6,56 @@ import { create } from 'zustand';
  * clamp:侧栏 200–360(默认 256)/ 对话列 300–560(默认 360)/ Inspector 240–420(默认 288)。
  */
 
-/** F7 wave.5:内建 tab 种类(editor=游戏编辑器;plan/todo/proposals=本仓语义适配页)。 */
-export type TabKind = 'editor' | 'plan' | 'todo' | 'proposals';
+/**
+ * F7 wave.5:内建 tab 种类(editor=游戏编辑器;plan/todo/proposals=本仓语义适配页)。
+ * F11(D-025):store=资产商店、skills=Skill 管理——两个大类不新增常驻面板(I-3 冻结),
+ * 沿用既有 workbench tab 承载,入口在 Sidebar 导航按钮。
+ */
+export type BuiltinTabKind = 'editor' | 'plan' | 'todo' | 'proposals' | 'store' | 'skills';
+/** 工作区 tab:内建页 + 工作区文件编辑器(F9 起可编辑,原只读预览;Cursor 式,按 path 多开)。 */
+export type TabKind = BuiltinTabKind | 'file';
 
 export interface WorkbenchTab {
   id: string;
   kind: TabKind;
   title: string;
+  /** kind=file 时为工作区相对路径。 */
+  path?: string;
+  /** F9:未保存改动标记(文件编辑器写入;tabbar 圆点 + 关闭拦截消费)。 */
+  dirty?: boolean;
 }
 
 /** 内建 tab 元信息(id=kind,单例)。 */
-export const BUILTIN_TABS: Record<Exclude<TabKind, 'editor'>, { title: string }> = {
+export const BUILTIN_TABS: Record<Exclude<BuiltinTabKind, 'editor'>, { title: string }> = {
   plan: { title: 'Plan' },
   todo: { title: 'Todo' },
   proposals: { title: '提案' },
+  store: { title: '资产商店' },
+  skills: { title: 'Skill 管理' },
 };
 
+/** 文件预览 tab id(同一 path 单例)。 */
+export function fileTabId(path: string): string {
+  return `file:${path}`;
+}
+
+export function fileTabTitle(path: string): string {
+  const name = path.replace(/\\/g, '/').split('/').pop();
+  return name && name !== '' ? name : path;
+}
+
 export type PaneKind = 'sessions' | 'chat' | 'inspector';
+
+/**
+ * 右栏承载页(2026-08-24):工作区文件树 / 场景层级 / 实体属性三选一。
+ * 编辑器 tab 激活时层级接管右栏(编辑器内不再另开层级/属性列,省出宽度给视口),
+ * 切走/关掉编辑器回落文件树;手动切换在下次 tab 变更前保持。
+ */
+export type RightTab = 'files' | 'hierarchy' | 'properties' | 'asset';
+
+function rightTabFor(kind: TabKind | null | undefined): RightTab {
+  return kind === 'editor' ? 'hierarchy' : 'files';
+}
 
 /** 底部面板 tab(参考 BottomPanelTab;Terminal/Problems 无后端面不落,RD-F7-002)。 */
 export type BottomTab = 'logs' | 'output' | 'metrics';
@@ -37,9 +70,18 @@ export const PANE_CLAMP: Record<PaneKind, { min: number; max: number; def: numbe
 
 const PANE_KEY = 'forge:paneSizes';
 
+/** 缩小态浮窗的落点(相对壳主体区左上角,px)。 */
+export interface MiniPos {
+  x: number;
+  y: number;
+}
+
 interface PanePersist {
   w: Record<PaneKind, number>;
   collapsed: Record<PaneKind, boolean>;
+  chatMini: boolean;
+  sessionsBeforeMini: boolean;
+  miniPos: MiniPos | null;
 }
 
 function clampW(kind: PaneKind, w: number): number {
@@ -47,10 +89,21 @@ function clampW(kind: PaneKind, w: number): number {
   return Math.min(c.max, Math.max(c.min, Math.round(w)));
 }
 
+function readMiniPos(v: unknown): MiniPos | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const { x, y } = v as Partial<MiniPos>;
+  if (typeof x !== 'number' || typeof y !== 'number') return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
 function loadPanes(): PanePersist {
   const def: PanePersist = {
     w: { sessions: PANE_CLAMP.sessions.def, chat: PANE_CLAMP.chat.def, inspector: PANE_CLAMP.inspector.def },
     collapsed: { sessions: false, chat: false, inspector: false },
+    chatMini: false,
+    sessionsBeforeMini: false,
+    miniPos: null,
   };
   try {
     const raw = globalThis.localStorage?.getItem(PANE_KEY);
@@ -67,15 +120,33 @@ function loadPanes(): PanePersist {
         chat: parsed.collapsed?.chat === true,
         inspector: parsed.collapsed?.inspector === true,
       },
+      chatMini: parsed.chatMini === true,
+      sessionsBeforeMini: parsed.sessionsBeforeMini === true,
+      miniPos: readMiniPos(parsed.miniPos),
     };
   } catch {
     return def;
   }
 }
 
-function persistPanes(s: { paneW: Record<PaneKind, number>; collapsed: Record<PaneKind, boolean> }): void {
+function persistPanes(s: {
+  paneW: Record<PaneKind, number>;
+  collapsed: Record<PaneKind, boolean>;
+  chatMini: boolean;
+  sessionsBeforeMini: boolean;
+  miniPos: MiniPos | null;
+}): void {
   try {
-    globalThis.localStorage?.setItem(PANE_KEY, JSON.stringify({ w: s.paneW, collapsed: s.collapsed }));
+    globalThis.localStorage?.setItem(
+      PANE_KEY,
+      JSON.stringify({
+        w: s.paneW,
+        collapsed: s.collapsed,
+        chatMini: s.chatMini,
+        sessionsBeforeMini: s.sessionsBeforeMini,
+        miniPos: s.miniPos,
+      }),
+    );
   } catch {
     // 写不进静默
   }
@@ -84,23 +155,61 @@ function persistPanes(s: { paneW: Record<PaneKind, number>; collapsed: Record<Pa
 interface WorkbenchState {
   tabs: WorkbenchTab[];
   activeTabId: string | null;
+  /** F9:待确认关闭的 dirty tab(closeTab 拦截后挂此,编辑器内联确认条接管)。 */
+  pendingCloseTabId: string | null;
+  /** 右栏当前页(随激活 tab 自动切换,可手动覆盖)。 */
+  rightTab: RightTab;
   paneW: Record<PaneKind, number>;
   collapsed: Record<PaneKind, boolean>;
+  /**
+   * 对话缩小态(2026-08-25 用户拍板):对话脱离三栏流,收成贴主区左下角的浮窗,
+   * 主区拿回整片宽度;缩小时顺手收起会话栏,还原时把会话栏放回缩小前的样子。
+   */
+  chatMini: boolean;
+  /** 进缩小态前的会话栏折叠态,供还原时回填。 */
+  sessionsBeforeMini: boolean;
+  /**
+   * 浮窗被拖到的落点(相对主体区左上角);null = 没搬过,仍贴主区左下角随会话栏让位。
+   * 一旦搬过就按落点定死(不再跟会话栏走),还原/再缩小都回到这个位置。
+   */
+  miniPos: MiniPos | null;
   /** 底部面板开关(Ctrl+J;持久化 forge:bottomPanel)。 */
   bottomOpen: boolean;
   /** 底部面板高(clamp 120–520,默认 260;持久化)。 */
   bottomH: number;
   bottomTab: BottomTab;
+  /**
+   * 全屏对话主页(Codex 式,2026-08-24 用户拍板):workbench 没有 tab 时对话接管整屏。
+   * 手动「进入工作台」置 true 暂避;开任一 tab 复位,关光 tab 后重新回主页。
+   * 不持久化——tabs 本身也不持久化,刷新即回主页当落地页。
+   */
+  homeDismissed: boolean;
 
   openEditor: () => void;
-  openTab: (kind: TabKind) => void;
+  openTab: (kind: BuiltinTabKind) => void;
+  /** 工作区文件 → 个人工作区 tab(已开则激活)。 */
+  openFile: (path: string) => void;
+  /** 关闭 tab(F9:dirty tab 先拦截 → 激活 + 挂 pendingCloseTabId,不直接关)。 */
   closeTab: (id: string) => void;
+  /** 无条件关闭(dirty 确认后/干净 tab;原 closeTab 语义)。 */
+  forceCloseTab: (id: string) => void;
+  /** 取消 dirty 关闭确认。 */
+  cancelCloseTab: () => void;
+  /** F9:文件编辑器同步未保存标记。 */
+  setTabDirty: (id: string, dirty: boolean) => void;
   activateTab: (id: string) => void;
+  setRightTab: (t: RightTab) => void;
   setPaneW: (kind: PaneKind, w: number) => void;
   togglePane: (kind: PaneKind) => void;
+  /** 进/出对话缩小态(连带会话栏收起与回填)。 */
+  setChatMini: (v: boolean) => void;
+  toggleChatMini: () => void;
+  /** 挪浮窗;传 null = 归位到默认左下角。调用方负责 clamp 进可视区。 */
+  setMiniPos: (pos: MiniPos | null) => void;
   toggleBottom: () => void;
   setBottomH: (h: number) => void;
   setBottomTab: (t: BottomTab) => void;
+  setHomeDismissed: (v: boolean) => void;
 }
 
 const BOTTOM_KEY = 'forge:bottomPanel';
@@ -148,11 +257,17 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
   return {
     tabs: [],
     activeTabId: null,
+    pendingCloseTabId: null,
+    rightTab: 'files',
     paneW: panes.w,
     collapsed: panes.collapsed,
+    chatMini: panes.chatMini,
+    sessionsBeforeMini: panes.sessionsBeforeMini,
+    miniPos: panes.miniPos,
     bottomOpen: bottom.open,
     bottomH: bottom.h,
     bottomTab: bottom.tab,
+    homeDismissed: false,
 
     openEditor: () => {
       get().openTab('editor');
@@ -161,27 +276,70 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
     openTab: (kind) => {
       const { tabs } = get();
       const title = kind === 'editor' ? '编辑器' : BUILTIN_TABS[kind].title;
+      const rightTab = rightTabFor(kind);
       if (!tabs.some((t) => t.id === kind)) {
-        set({ tabs: [...tabs, { id: kind, kind, title }], activeTabId: kind });
+        set({ tabs: [...tabs, { id: kind, kind, title }], activeTabId: kind, rightTab, homeDismissed: false });
       } else {
-        set({ activeTabId: kind });
+        set({ activeTabId: kind, rightTab, homeDismissed: false });
+      }
+    },
+
+    openFile: (path) => {
+      const id = fileTabId(path);
+      const { tabs } = get();
+      if (!tabs.some((t) => t.id === id)) {
+        set({
+          tabs: [...tabs, { id, kind: 'file', title: fileTabTitle(path), path }],
+          activeTabId: id,
+          rightTab: 'files',
+          homeDismissed: false,
+        });
+      } else {
+        set({ activeTabId: id, rightTab: 'files', homeDismissed: false });
       }
     },
 
     closeTab: (id) => {
-      const { tabs, activeTabId } = get();
+      const tab = get().tabs.find((t) => t.id === id);
+      if (tab?.dirty === true) {
+        // dirty 拦截:激活该 tab 并挂确认(编辑器内联确认条:保存/放弃/取消)。
+        set({ activeTabId: id, rightTab: rightTabFor(tab.kind), pendingCloseTabId: id });
+        return;
+      }
+      get().forceCloseTab(id);
+    },
+
+    forceCloseTab: (id) => {
+      const { tabs, activeTabId, pendingCloseTabId } = get();
       const idx = tabs.findIndex((t) => t.id === id);
       const next = tabs.filter((t) => t.id !== id);
       let nextActive = activeTabId;
       if (activeTabId === id) {
         nextActive = next.length === 0 ? null : (next[Math.min(idx, next.length - 1)]?.id ?? null);
       }
-      set({ tabs: next, activeTabId: nextActive });
+      set({
+        tabs: next,
+        activeTabId: nextActive,
+        rightTab: rightTabFor(next.find((t) => t.id === nextActive)?.kind ?? null),
+        pendingCloseTabId: pendingCloseTabId === id ? null : pendingCloseTabId,
+      });
+    },
+
+    cancelCloseTab: () => set({ pendingCloseTabId: null }),
+
+    setTabDirty: (id, dirty) => {
+      const { tabs } = get();
+      const tab = tabs.find((t) => t.id === id);
+      if (!tab || (tab.dirty === true) === dirty) return;
+      set({ tabs: tabs.map((t) => (t.id === id ? { ...t, dirty } : t)) });
     },
 
     activateTab: (id) => {
-      if (get().tabs.some((t) => t.id === id)) set({ activeTabId: id });
+      const tab = get().tabs.find((t) => t.id === id);
+      if (tab) set({ activeTabId: id, rightTab: rightTabFor(tab.kind) });
     },
+
+    setRightTab: (t) => set({ rightTab: t }),
 
     setPaneW: (kind, w) => {
       set((st) => {
@@ -198,6 +356,33 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
         const next = { ...st, collapsed };
         persistPanes(next);
         return { collapsed };
+      });
+    },
+
+    setChatMini: (v) => {
+      set((st) => {
+        if (st.chatMini === v) return {};
+        const sessionsBeforeMini = v ? st.collapsed.sessions : st.sessionsBeforeMini;
+        // 缩小态下对话必须可见(命令面板可能在对话栏已折叠时进来),故一并放开 chat。
+        const collapsed = {
+          ...st.collapsed,
+          chat: false,
+          sessions: v ? true : st.sessionsBeforeMini,
+        };
+        const next = { ...st, chatMini: v, sessionsBeforeMini, collapsed };
+        persistPanes(next);
+        return { chatMini: v, sessionsBeforeMini, collapsed };
+      });
+    },
+
+    toggleChatMini: () => get().setChatMini(!get().chatMini),
+
+    setMiniPos: (pos) => {
+      set((st) => {
+        const miniPos = pos === null ? null : { x: Math.round(pos.x), y: Math.round(pos.y) };
+        if (st.miniPos?.x === miniPos?.x && st.miniPos?.y === miniPos?.y) return {};
+        persistPanes({ ...st, miniPos });
+        return { miniPos };
       });
     },
 
@@ -225,5 +410,12 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
         return { bottomTab: t };
       });
     },
+
+    setHomeDismissed: (v) => set({ homeDismissed: v }),
   };
 });
+
+/** 全屏对话主页是否接管整屏(workbench 无 tab 且未手动暂避)。 */
+export function useHomeMode(): boolean {
+  return useWorkbenchStore((st) => st.tabs.length === 0 && !st.homeDismissed);
+}

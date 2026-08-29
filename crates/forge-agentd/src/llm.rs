@@ -38,7 +38,13 @@ const HTTP_TIMEOUT_SECS: u64 = 60;
 
 pub(crate) const SYSTEM_PROMPT: &str = "你是 RurixForge 游戏引擎编辑器的内置助手。\
 用户用中文描述场景编辑/资产管理/代码工具意图,你应优先调用提供的工具完成实际操作,而不是只描述步骤。\
-工具调用参数严格遵循各工具的 inputSchema;实体创建等操作完成后可用一句话如实汇报结果(成功/失败/数量),不得伪造执行结果。";
+工具调用参数严格遵循各工具的 inputSchema;实体创建等操作完成后可用一句话如实汇报结果(成功/失败/数量),不得伪造执行结果。\
+场景实体按三类索引:角色(role)=可操控/动态体,地图(map)=静态场景元素,交互(interaction)=带 Script/Trigger 的可交互物;\
+可用 scene_index 一次概览分组,entity_list 返回各实体 category 字段;需覆盖分类时给实体加 Category 组件(category=role|map|interaction)。\
+检索优先纪律(F10):工作区已建语义索引——找素材/实体/逻辑图/代码/文档先用 context_search 定位\
+(返回 tier 如实标注 lexical 词法档或 hybrid 混合档),命中不足再 asset_list/entity_list 全量遍历;\
+若返回 INDEX_NOT_BUILT 先调 context_index_build。资产缺文字简介时用 asset_describe_batch 领取待办、\
+撰写后 asset_set_description 回写(source 溯源如实:看过缩略图 agent-vision,仅凭事实 agent-facts)。";
 
 #[derive(Deserialize)]
 pub struct ChatRequest {
@@ -145,15 +151,35 @@ pub fn to_openai_tools(mcp_tools: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+/// 单轮实发的模型规格(会话三档经 modelspec::resolve 现算而来;Default = 原 F8 行为)。
+/// 只带真正进请求体的两项:上下文窗口档不是 chat.completions 参数,不到这一层。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RequestSpec {
+    /// 模型名覆盖(deepseek 思考开 → deepseek-reasoner);None = 用渠道默认名。
+    pub model: Option<String>,
+    /// reasoning_effort 实发值;None = 请求体不含该字段(行为与规格波之前逐字节一致)。
+    pub reasoning_effort: Option<String>,
+}
+
 /// chat.completions 请求体组装(纯函数,便于「密钥不进 body」扫描测试;F8:model 参数化)。
-fn build_request_body(model: &str, messages: &[Value], tools: &[Value]) -> Value {
-    json!({
-        "model": model,
+/// 规格波:spec.model 覆盖渠道默认模型名;reasoning_effort 仅在有值时出现在 body 里。
+fn build_request_body(
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    spec: &RequestSpec,
+) -> Value {
+    let mut body = json!({
+        "model": spec.model.as_deref().unwrap_or(model),
         "messages": messages,
         "tools": tools,
         "tool_choice": "auto",
         "stream": false,
-    })
+    });
+    if let Some(effort) = &spec.reasoning_effort {
+        body["reasoning_effort"] = json!(effort);
+    }
+    body
 }
 
 /// LLM 侧失败(上行 HTTP / 协议 / 工具面不可用);消息保证不含密钥。
@@ -217,8 +243,13 @@ fn post_chat_completions(
 
 /// 单次 DeepSeek chat.completions 调用(阻塞,调用方须 spawn_blocking)。
 /// 错误消息只带 HTTP 状态码/传输错误,不回显请求体与头(R-5)。
-fn chat_completions(key: &str, messages: &[Value], tools: &[Value]) -> Result<Value, LlmError> {
-    let body = build_request_body(DEEPSEEK_MODEL, messages, tools);
+fn chat_completions(
+    key: &str,
+    messages: &[Value],
+    tools: &[Value],
+    spec: &RequestSpec,
+) -> Result<Value, LlmError> {
+    let body = build_request_body(DEEPSEEK_MODEL, messages, tools, spec);
     post_chat_completions(DEEPSEEK_URL, "DeepSeek", key, &body)
 }
 
@@ -230,9 +261,10 @@ fn chat_completions_openai_compat(
     key: &str,
     messages: &[Value],
     tools: &[Value],
+    spec: &RequestSpec,
 ) -> Result<Value, LlmError> {
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    let body = build_request_body(model, messages, tools);
+    let body = build_request_body(model, messages, tools, spec);
     post_chat_completions(&url, "openai-compat", key, &body)
 }
 
@@ -241,6 +273,173 @@ fn read_body(resp: ureq::Response) -> Result<Vec<u8>, std::io::Error> {
     let mut buf = Vec::new();
     resp.into_reader().read_to_end(&mut buf)?;
     Ok(buf)
+}
+
+/// SSE stream:true 调用,边读边回传 StreamDelta,再合成非流式 chat.completions JSON 供 parse_step_response。
+fn chat_completions_stream(
+    url: &str,
+    provider_label: &str,
+    model: &str,
+    key: &str,
+    messages: &[Value],
+    tools: &[Value],
+    spec: &RequestSpec,
+    sink: Option<&StreamSink>,
+) -> Result<Value, LlmError> {
+    use std::io::{BufRead, BufReader};
+    let mut body = build_request_body(model, messages, tools, spec);
+    body["stream"] = json!(true);
+    body["stream_options"] = json!({ "include_usage": true });
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS.max(180)))
+        .build();
+    let resp = agent
+        .post(url)
+        .set("Authorization", &format!("Bearer {key}"))
+        .set("Content-Type", "application/json")
+        .send_string(&body.to_string());
+    let resp = match resp {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, r)) => {
+            let detail = read_body(r)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                .and_then(|v| {
+                    v.get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "无详情".to_string());
+            if let Some(s) = sink {
+                s(StreamDelta::Reset);
+            }
+            return Err(LlmError(format!("{provider_label} HTTP {code}: {detail}")));
+        }
+        Err(ureq::Error::Transport(t)) => {
+            if let Some(s) = sink {
+                s(StreamDelta::Reset);
+            }
+            return Err(LlmError(format!("{provider_label} 连接失败: {t}")));
+        }
+    };
+    let reader = BufReader::new(resp.into_reader());
+    let mut content = String::new();
+    let mut reasoning = String::new();
+    let mut tool_acc: std::collections::BTreeMap<u32, (String, String, String)> =
+        std::collections::BTreeMap::new();
+    let mut usage = json!({});
+    for line in reader.lines() {
+        let line = line.map_err(|e| LlmError(format!("读 {provider_label} 流失败: {e}")))?;
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(':') {
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data == "[DONE]" {
+            break;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(data) else {
+            continue;
+        };
+        if let Some(u) = v.get("usage") {
+            usage = u.clone();
+        }
+        let Some(choice) = v
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|a| a.first())
+        else {
+            continue;
+        };
+        let Some(delta) = choice.get("delta") else {
+            continue;
+        };
+        if let Some(t) = delta.get("content").and_then(|x| x.as_str()) {
+            if !t.is_empty() {
+                content.push_str(t);
+                if let Some(s) = sink {
+                    s(StreamDelta::Text(t.to_string()));
+                }
+            }
+        }
+        if let Some(t) = delta
+            .get("reasoning_content")
+            .or_else(|| delta.get("reasoning"))
+            .and_then(|x| x.as_str())
+        {
+            if !t.is_empty() {
+                reasoning.push_str(t);
+                if let Some(s) = sink {
+                    s(StreamDelta::Reasoning(t.to_string()));
+                }
+            }
+        }
+        if let Some(tcs) = delta.get("tool_calls").and_then(|x| x.as_array()) {
+            for tc in tcs {
+                let idx = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as u32;
+                let entry = tool_acc.entry(idx).or_insert_with(|| {
+                    (
+                        tc.get("id")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        String::new(),
+                        String::new(),
+                    )
+                });
+                if let Some(id) = tc.get("id").and_then(|x| x.as_str()) {
+                    if !id.is_empty() {
+                        entry.0 = id.to_string();
+                    }
+                }
+                if let Some(name) = tc
+                    .pointer("/function/name")
+                    .and_then(|x| x.as_str())
+                {
+                    entry.1.push_str(name);
+                }
+                if let Some(args) = tc
+                    .pointer("/function/arguments")
+                    .and_then(|x| x.as_str())
+                {
+                    entry.2.push_str(args);
+                    if let Some(s) = sink {
+                        s(StreamDelta::ToolArgs {
+                            index: idx,
+                            tool_call_id: entry.0.clone(),
+                            name: entry.1.clone(),
+                            delta: args.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    let tool_calls: Vec<Value> = tool_acc
+        .into_iter()
+        .map(|(_, (id, name, arguments))| {
+            json!({
+                "id": id,
+                "type": "function",
+                "function": { "name": name, "arguments": arguments },
+            })
+        })
+        .collect();
+    let mut message = json!({ "role": "assistant", "content": content });
+    if !reasoning.is_empty() {
+        message["reasoning_content"] = json!(reasoning);
+    }
+    if !tool_calls.is_empty() {
+        message["tool_calls"] = json!(tool_calls);
+    }
+    Ok(json!({
+        "choices": [{ "message": message }],
+        "usage": usage,
+    }))
 }
 
 /// 截断到 max 字符(按 char 边界,防 UTF-8 切断)。
@@ -283,7 +482,8 @@ async fn run_deepseek_loop(
         .await
         .map_err(|e| LlmError(format!("MCP 工具面拉取失败: {e}")))?;
     let tools = to_openai_tools(&mcp_tools);
-    let step = deepseek_step(key);
+    // llm/chat 是无会话的调试路由,没有规格三档可解析 → 默认 spec(行为同规格波之前)。
+    let step = deepseek_step(key, &RequestSpec::default());
     let execute = mcp_executor();
     let out = run_tool_loop(
         SYSTEM_PROMPT,
@@ -292,9 +492,13 @@ async fn run_deepseek_loop(
             tools,
             step: step.as_ref(),
             execute: execute.as_ref(),
+            // llm/chat 是 deepseek 专用调试路由,该渠道无视觉面。
+            vision: false,
             sink: None,
             forbidden: None,
             cancelled: None,
+            stream: None,
+            preamble: None,
         },
     )
     .await?;
@@ -321,13 +525,54 @@ pub struct StepOutcome {
 }
 
 /// provider 步进(可注入;单测用 scripted fake,禁止网络/子进程):
-/// (messages, openai tools) → assistant message + usage。
+/// (messages, openai tools, 可选 stream sink) → assistant message + usage。
 pub type StepFn =
-    dyn Fn(Vec<Value>, Vec<Value>) -> BoxFut<Result<StepOutcome, LlmError>> + Send + Sync;
+    dyn Fn(Vec<Value>, Vec<Value>, Option<StreamSink>) -> BoxFut<Result<StepOutcome, LlmError>>
+        + Send
+        + Sync;
+
+/// 工具反馈:回注文本 + 可选图片(data URI)。
+/// 图片单列而不并进文本:base64 一进文本就会被 TOOL_FEEDBACK_MAX 截成废串,还白烧 token。
+/// 从 &str/String 可直接 into(),既有 executor 构造点无需改写语义。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ToolFeedback {
+    pub text: String,
+    /// data:image/...;base64,... 形态;仅在模型有视觉面时才会进上行消息。
+    pub images: Vec<String>,
+}
+
+impl From<String> for ToolFeedback {
+    fn from(text: String) -> Self {
+        ToolFeedback { text, images: Vec::new() }
+    }
+}
+
+impl From<&str> for ToolFeedback {
+    fn from(text: &str) -> Self {
+        ToolFeedback { text: text.to_string(), images: Vec::new() }
+    }
+}
 
 /// 工具执行器(可注入;单测假成功/假失败):(name, args) → (ok, feedback)。
 /// 失败以 (false, 原因) 表达——工具错误不打断循环(RD-F1-002 原语义)。
-pub type ExecFn = dyn Fn(String, Value) -> BoxFut<(bool, String)> + Send + Sync;
+pub type ExecFn = dyn Fn(String, Value) -> BoxFut<(bool, ToolFeedback)> + Send + Sync;
+
+/// 流式增量(经 StepFn 第三参回传;agent 侧转 ephemeral 事件)。
+#[derive(Debug, Clone)]
+pub enum StreamDelta {
+    Text(String),
+    Reasoning(String),
+    ToolArgs {
+        index: u32,
+        tool_call_id: String,
+        name: String,
+        delta: String,
+    },
+    Reset,
+}
+
+/// 流式回调(Arc,可进 spawn_blocking)。
+pub type StreamSink = std::sync::Arc<dyn Fn(StreamDelta) + Send + Sync>;
 
 /// 工具循环事件(sink;llm/chat 传 None = 零事件 = 原行为;agent.rs 接 EventBus)。
 #[derive(Debug)]
@@ -341,6 +586,7 @@ pub enum LoopEvent {
         name: String,
         tool_call_id: String,
         duration_ms: u64,
+        output: String,
     },
     ToolFailed {
         name: String,
@@ -348,7 +594,22 @@ pub enum LoopEvent {
         tool_call_id: String,
         duration_ms: u64,
     },
+    ToolDenied {
+        name: String,
+        error: String,
+        tool_call_id: String,
+    },
+    Reasoning(String),
     Usage(Usage),
+    TextDelta(String),
+    ReasoningDelta(String),
+    ToolArgsDelta {
+        index: u32,
+        tool_call_id: String,
+        name: String,
+        delta: String,
+    },
+    StreamReset,
 }
 
 /// 工具循环结果。
@@ -365,12 +626,19 @@ pub struct ToolLoopCfg<'a> {
     pub tools: Vec<Value>,
     pub step: &'a StepFn,
     pub execute: &'a ExecFn,
+    /// 该模型是否收图片。false 时工具产出的图片一律不进上行消息(见 vision_enabled)。
+    pub vision: bool,
     /// 事件汇。
     pub sink: Option<&'a (dyn Fn(LoopEvent) + Send + Sync)>,
     /// 禁用工具判定(plan 模式写工具门):命中 → 不执行,该调用 TOOL_FORBIDDEN 收尾。
     pub forbidden: Option<&'a (dyn Fn(&str) -> bool + Send + Sync)>,
     /// 取消令牌判定(每迭代开头检查一次)。
     pub cancelled: Option<&'a (dyn Fn() -> bool + Send + Sync)>,
+    /// 流式增量(生产 ask:execute 传入;llm/chat 与旧单测传 None)。
+    pub stream: Option<StreamSink>,
+    /// F10 预检索上下文:Some(非空) = 在 system 与 user 之间插入第三条 role:system
+    /// 「工作区上下文」消息(不污染 system prompt 本体);None/空 = 原两条消息行为。
+    pub preamble: Option<String>,
 }
 
 /// chat.completions 响应 → StepOutcome(message + usage;usage 缺省 None;F8:provider 标签参数化)。
@@ -397,32 +665,73 @@ fn parse_step_response(resp: &Value, provider_label: &str) -> Result<StepOutcome
 }
 
 /// deepseek 步进工厂(阻塞 HTTP 走 spawn_blocking;R-5:密钥只进请求头,闭包不外泄)。
-pub fn deepseek_step(key: &str) -> Box<StepFn> {
+/// spec 承载会话规格(思考开 → spec.model = deepseek-reasoner);默认 spec = 原 F8 行为。
+pub fn deepseek_step(key: &str, spec: &RequestSpec) -> Box<StepFn> {
     let key = key.to_string();
-    Box::new(move |messages, tools| {
+    let spec = spec.clone();
+    Box::new(move |messages, tools, stream| {
         let key = key.clone();
+        let spec = spec.clone();
         Box::pin(async move {
-            let resp =
-                tokio::task::spawn_blocking(move || chat_completions(&key, &messages, &tools))
-                    .await
-                    .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
+            let resp = tokio::task::spawn_blocking(move || {
+                if let Some(sink) = stream {
+                    chat_completions_stream(
+                        DEEPSEEK_URL,
+                        "DeepSeek",
+                        DEEPSEEK_MODEL,
+                        &key,
+                        &messages,
+                        &tools,
+                        &spec,
+                        Some(&sink),
+                    )
+                } else {
+                    chat_completions(&key, &messages, &tools, &spec)
+                }
+            })
+            .await
+            .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
             parse_step_response(&resp, "DeepSeek")
         })
     })
 }
 
 /// openai-compat 步进工厂(F8 wave.2;同 deepseek 形态:spawn_blocking + Bearer 头,闭包不外泄)。
-pub fn openai_compat_step(base_url: &str, model: &str, key: &str) -> Box<StepFn> {
+/// spec 承载会话规格(思考开 + 该渠道收 reasoning_effort → body 带该字段)。
+pub fn openai_compat_step(
+    base_url: &str,
+    model: &str,
+    key: &str,
+    spec: &RequestSpec,
+) -> Box<StepFn> {
     let base_url = base_url.to_string();
     let model = model.to_string();
     let key = key.to_string();
-    Box::new(move |messages, tools| {
+    let spec = spec.clone();
+    Box::new(move |messages, tools, stream| {
         let base_url = base_url.clone();
         let model = model.clone();
         let key = key.clone();
+        let spec = spec.clone();
         Box::pin(async move {
             let resp = tokio::task::spawn_blocking(move || {
-                chat_completions_openai_compat(&base_url, &model, &key, &messages, &tools)
+                if let Some(sink) = stream {
+                    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+                    chat_completions_stream(
+                        &url,
+                        "openai-compat",
+                        &model,
+                        &key,
+                        &messages,
+                        &tools,
+                        &spec,
+                        Some(&sink),
+                    )
+                } else {
+                    chat_completions_openai_compat(
+                        &base_url, &model, &key, &messages, &tools, &spec,
+                    )
+                }
             })
             .await
             .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
@@ -438,7 +747,7 @@ pub(crate) fn mock_reply_text(input: &str) -> String {
 
 /// mock 步进:首轮即终稿,不产工具调用,无 usage(无密钥恒绿 seam,不触网不触 MCP)。
 pub fn mock_step() -> Box<StepFn> {
-    Box::new(|messages, _tools| {
+    Box::new(|messages, _tools, stream| {
         // 取末条 user 消息作输入(与 llm/chat mock 文案同源)。
         let input = messages
             .iter()
@@ -449,27 +758,75 @@ pub fn mock_step() -> Box<StepFn> {
             .unwrap_or("")
             .to_string();
         Box::pin(async move {
+            let text = mock_reply_text(&input);
+            if let Some(sink) = stream {
+                for chunk in text.chars().collect::<Vec<_>>().chunks(8) {
+                    sink(StreamDelta::Text(chunk.iter().collect()));
+                }
+            }
             Ok(StepOutcome {
-                message: json!({ "role": "assistant", "content": mock_reply_text(&input) }),
+                message: json!({ "role": "assistant", "content": text }),
                 usage: None,
             })
         })
     })
 }
 
+/// 单次工具最多回注几张图(视觉模型的图片 token 昂贵,四向预览即上限)。
+const TOOL_IMAGE_MAX: usize = 4;
+/// 单张回注图上限(超限跳过——宁可少一张,不可把上行请求撑爆)。
+const TOOL_IMAGE_MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+/// 工具结果里的图片约定:顶层 `imageRefs[]` = 项目相对 png 路径。
+/// 走路径而非内联 base64,是为了不让几 MB 的图占满 MCP stdio 管道与工具文本。
+fn extract_tool_images(text: &str) -> Vec<String> {
+    use base64::Engine as _;
+    let Ok(doc) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    let Some(refs) = doc.get("imageRefs").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let root = mcp::asset_project_root();
+    let project = assetd::project::ForgeProject::load(&root)
+        .unwrap_or_else(|_| assetd::project::ForgeProject::with_defaults(root.clone()));
+    let mut out = Vec::new();
+    for r in refs.iter().filter_map(Value::as_str).take(TOOL_IMAGE_MAX) {
+        let Ok(abs) = gend::tmpstore::resolve_project_file(&project, r) else {
+            continue;
+        };
+        match std::fs::metadata(&abs) {
+            Ok(m) if m.len() <= TOOL_IMAGE_MAX_BYTES => {}
+            _ => continue,
+        }
+        let Ok(bytes) = std::fs::read(&abs) else { continue };
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        out.push(format!("data:image/png;base64,{b64}"));
+    }
+    out
+}
+
 /// 生产 executor:进程内 mcp::call_tool(RD-F1-002 原语义:ok = !isError;错误不打断循环)。
 pub fn mcp_executor() -> Box<ExecFn> {
-    Box::new(|name, args| {
+    mcp_executor_in(mcp::default_project_root())
+}
+
+/// 按项目根选 MCP 连接池的生产 executor。
+pub fn mcp_executor_in(project_root: std::path::PathBuf) -> Box<ExecFn> {
+    Box::new(move |name, args| {
+        let root = project_root.clone();
         Box::pin(async move {
-            match mcp::call_tool(&name, Some(args)).await {
+            match mcp::call_tool_in(&root, &name, Some(args)).await {
                 Ok(result) => {
                     let is_err = result
                         .get("isError")
                         .and_then(Value::as_bool)
                         .unwrap_or(false);
-                    (!is_err, envelope_text(&result))
+                    let text = envelope_text(&result);
+                    let images = if is_err { Vec::new() } else { extract_tool_images(&text) };
+                    (!is_err, ToolFeedback { text, images })
                 }
-                Err(e) => (false, format!("工具调用失败: {e}")),
+                Err(e) => (false, format!("工具调用失败: {e}").into()),
             }
         })
     })
@@ -482,10 +839,12 @@ pub async fn run_tool_loop(
     user_text: &str,
     cfg: ToolLoopCfg<'_>,
 ) -> Result<ToolLoopOutcome, LlmError> {
-    let mut messages = vec![
-        json!({ "role": "system", "content": system_prompt }),
-        json!({ "role": "user", "content": user_text }),
-    ];
+    let mut messages = vec![json!({ "role": "system", "content": system_prompt })];
+    // F10:预检索上下文作独立 system 消息插在 system 与 user 之间(空串视同 None)。
+    if let Some(p) = cfg.preamble.as_deref().filter(|p| !p.is_empty()) {
+        messages.push(json!({ "role": "system", "content": p }));
+    }
+    messages.push(json!({ "role": "user", "content": user_text }));
     let mut records: Vec<ToolCallRecord> = Vec::new();
     let mut iters_done = 0usize;
 
@@ -499,11 +858,22 @@ pub async fn run_tool_loop(
                 cancelled: true,
             });
         }
-        let out = (cfg.step)(messages.clone(), cfg.tools.clone()).await?;
+        let out = (cfg.step)(messages.clone(), cfg.tools.clone(), cfg.stream.clone()).await?;
         if let (Some(sink), Some(u)) = (cfg.sink, out.usage) {
             sink(LoopEvent::Usage(u));
         }
         let msg = out.message;
+        if let Some(r) = msg
+            .get("reasoning_content")
+            .or_else(|| msg.get("reasoning"))
+            .and_then(Value::as_str)
+        {
+            if !r.is_empty() {
+                if let Some(sink) = cfg.sink {
+                    sink(LoopEvent::Reasoning(r.to_string()));
+                }
+            }
+        }
 
         let Some(calls) = tool_calls_of(&msg).cloned() else {
             // 无工具调用:终止,文本即最终答复。
@@ -512,6 +882,12 @@ pub async fn run_tool_loop(
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
+            // 无 live stream 时把终稿切成 delta(mock/scripted);有 HTTP 流则步进内已发过。
+            if cfg.stream.is_none() {
+                if let Some(sink) = cfg.sink {
+                    emit_text_chunks(sink, &content);
+                }
+            }
             return Ok(ToolLoopOutcome {
                 text: content,
                 records,
@@ -523,6 +899,9 @@ pub async fn run_tool_loop(
 
         // assistant 消息(含 tool_calls)原样回注,再逐项执行工具并回注 role:tool。
         messages.push(msg);
+        // 本轮工具产出的图片。攒到 calls 循环之后统一发:tool 消息必须紧跟 assistant
+        // 逐个配对 tool_call_id,中间插一条 user 会打断配对。
+        let mut pending_images: Vec<(String, String)> = Vec::new();
         for c in &calls {
             let call_id = c.get("id").and_then(Value::as_str).unwrap_or("").to_string();
             let name = c
@@ -576,26 +955,42 @@ pub async fn run_tool_loop(
                         name: name.clone(),
                         tool_call_id: call_id.clone(),
                         duration_ms,
+                        output: feedback.text.clone(),
+                    });
+                } else if feedback.text.starts_with("TOOL_FORBIDDEN") {
+                    sink(LoopEvent::ToolDenied {
+                        name: name.clone(),
+                        error: truncate_chars(&feedback.text, 200),
+                        tool_call_id: call_id.clone(),
                     });
                 } else {
                     sink(LoopEvent::ToolFailed {
                         name: name.clone(),
-                        error: truncate_chars(&feedback, 200),
+                        error: truncate_chars(&feedback.text, 200),
                         tool_call_id: call_id.clone(),
                         duration_ms,
                     });
                 }
             }
+            // 无视觉面的模型不该收到图:发过去只会被拒或被当成噪声。
+            if cfg.vision {
+                for img in &feedback.images {
+                    pending_images.push((name.clone(), img.clone()));
+                }
+            }
             records.push(ToolCallRecord {
                 name,
                 ok,
-                summary: truncate_chars(&feedback, 200),
+                summary: truncate_chars(&feedback.text, 200),
             });
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": call_id,
-                "content": truncate_chars(&feedback, TOOL_FEEDBACK_MAX),
+                "content": truncate_chars(&feedback.text, TOOL_FEEDBACK_MAX),
             }));
+        }
+        if !pending_images.is_empty() {
+            messages.push(tool_image_message(&pending_images));
         }
     }
     // 轮数耗尽:如实标注,不伪造收尾。
@@ -605,6 +1000,39 @@ pub async fn run_tool_loop(
         iters: MAX_ITERS,
         cancelled: false,
     })
+}
+
+/// 工具产出的图片 → 一条 user 多模态消息(chat.completions 的 tool 消息只收字符串,
+/// 图片只能另起一条 user;这是 OpenAI 兼容面的通行做法)。
+fn tool_image_message(images: &[(String, String)]) -> Value {
+    let mut blocks: Vec<Value> = Vec::new();
+    let names: Vec<&str> = {
+        let mut v: Vec<&str> = images.iter().map(|(n, _)| n.as_str()).collect();
+        v.dedup();
+        v
+    };
+    blocks.push(json!({
+        "type": "text",
+        "text": format!(
+            "以下 {} 张图片是上一步工具({})的产出渲染,供你据实判断,不要凭空描述未出现的内容。",
+            images.len(),
+            names.join("、")
+        ),
+    }));
+    for (_, url) in images {
+        blocks.push(json!({ "type": "image_url", "image_url": { "url": url } }));
+    }
+    json!({ "role": "user", "content": blocks })
+}
+
+fn emit_text_chunks(sink: &(dyn Fn(LoopEvent) + Send + Sync), text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    for chunk in chars.chunks(8) {
+        sink(LoopEvent::TextDelta(chunk.iter().collect()));
+    }
 }
 
 /// POST /api/forge/llm/chat 处理:provider 分派。
@@ -699,6 +1127,10 @@ pub(crate) struct OpenAiCompatFile {
     pub base_url: String,
     #[serde(default)]
     pub model: String,
+    /// 该端点后面接的模型是否收图片。无法从端点探知(同一个 baseUrl 可以换任意模型),
+    /// 故由用户在渠道配置里声明;缺省 false = 不发图,宁可少一项能力也不发出会被拒的请求。
+    #[serde(default)]
+    pub vision: bool,
 }
 
 /// 配置 JSON 读-改-写串行锁(同 sessions/todos 纪律;整文件原子写)。
@@ -748,6 +1180,7 @@ pub(crate) struct OpenAiCompatStatus {
     pub base_url: String,
     pub model: String,
     pub key_configured: bool,
+    pub vision: bool,
 }
 
 pub(crate) fn openai_compat_status() -> OpenAiCompatStatus {
@@ -759,7 +1192,15 @@ pub(crate) fn openai_compat_status() -> OpenAiCompatStatus {
         base_url: file.base_url,
         model: file.model,
         key_configured,
+        vision: file.vision,
     }
+}
+
+/// 该 provider 能否收图片。判定看「实际要调的渠道」而非会话选了什么名字。
+/// deepseek chat 与本地 mock 都没有视觉面 → 恒 false(发过去只会被拒或当噪声);
+/// openai-compat 端点背后接什么模型只有人知道 → 读渠道配置里用户声明的那一位。
+pub(crate) fn provider_vision(provider: &Provider) -> bool {
+    matches!(provider, Provider::OpenAiCompat { .. }) && load_openai_compat_file().vision
 }
 
 /// provider 解析:baseUrl+model+key 全齐 → Some;任一缺 → None(调用方走显式 NOT_CONFIGURED)。
@@ -773,7 +1214,7 @@ pub(crate) fn resolve_openai_compat() -> Option<(String, String, String)> {
 
 /// 未配置步进:首轮即 Err(显式 OPENAI_COMPAT_NOT_CONFIGURED;agent.rs 选中未配齐分支复用)。
 pub fn openai_compat_not_configured_step() -> Box<StepFn> {
-    Box::new(|_m, _t| {
+    Box::new(|_m, _t, _s| {
         Box::pin(async move {
             Err(LlmError(format!(
                 "{OPENAI_COMPAT_NOT_CONFIGURED}: openai-compat 渠道未配齐(baseUrl/model/key 缺一);请在 设置→模型 页配置"
@@ -794,6 +1235,9 @@ pub struct OpenAiCompatConfigRequest {
     /// API Key;可省略 = 只改 baseUrl/model;非空 → 写 keystore["openai-compat"](永不回显)。
     #[serde(default)]
     key: Option<String>,
+    /// 该模型是否收图片;省略 = 保留既有(免得只改 baseUrl 的请求把它悄悄关掉)。
+    #[serde(default)]
+    vision: Option<bool>,
 }
 
 /// POST /api/forge/llm/openai-compat/config {baseUrl, model, key?}。
@@ -828,6 +1272,7 @@ pub async fn set_openai_compat_config(
         let file = OpenAiCompatFile {
             base_url: base_url.clone(),
             model: model.clone(),
+            vision: req.vision.unwrap_or_else(|| load_openai_compat_file().vision),
         };
         if let Err(e) = save_openai_compat_file(&file) {
             return (
@@ -854,11 +1299,12 @@ pub async fn set_openai_compat_config(
         "baseUrl": st.base_url,
         "model": st.model,
         "keyConfigured": st.key_configured,
+        "vision": st.vision,
     }))
     .into_response()
 }
 
-/// GET /api/forge/llm/openai-compat/status → {configured, baseUrl, model, keyConfigured}(无 key)。
+/// GET /api/forge/llm/openai-compat/status → {configured, baseUrl, model, keyConfigured, vision}(无 key)。
 pub async fn openai_compat_status_handler() -> axum::Json<Value> {
     let st = openai_compat_status();
     axum::Json(json!({
@@ -866,6 +1312,7 @@ pub async fn openai_compat_status_handler() -> axum::Json<Value> {
         "baseUrl": st.base_url,
         "model": st.model,
         "keyConfigured": st.key_configured,
+        "vision": st.vision,
     }))
 }
 
@@ -903,11 +1350,33 @@ mod tests {
         let key = "sk-test-SECRET-assembly";
         let messages = vec![json!({ "role": "user", "content": "hi" })];
         let tools = to_openai_tools(&[json!({ "name": "t", "description": "d" })]);
-        let body = build_request_body(DEEPSEEK_MODEL, &messages, &tools);
+        let body = build_request_body(DEEPSEEK_MODEL, &messages, &tools, &RequestSpec::default());
         let body_text = body.to_string();
         assert!(!body_text.contains(key), "请求体含密钥子串: {body_text}");
         assert_eq!(body["model"], DEEPSEEK_MODEL);
         assert_eq!(body["tool_choice"], "auto");
+    }
+
+    /// 规格波:默认 spec 的 body 与规格波之前逐键一致(不多出 reasoning_effort);
+    /// 有 spec 时 model 被覆盖、reasoning_effort 如实出现。
+    #[test]
+    fn request_body_carries_spec_only_when_set() {
+        let messages = vec![json!({ "role": "user", "content": "hi" })];
+        let tools: Vec<Value> = Vec::new();
+        let plain = build_request_body(DEEPSEEK_MODEL, &messages, &tools, &RequestSpec::default());
+        assert!(
+            plain.get("reasoning_effort").is_none(),
+            "默认 spec 不该给请求体加字段"
+        );
+        assert_eq!(plain.as_object().unwrap().len(), 5);
+
+        let spec = RequestSpec {
+            model: Some("deepseek-reasoner".to_string()),
+            reasoning_effort: Some("xhigh".to_string()),
+        };
+        let body = build_request_body(DEEPSEEK_MODEL, &messages, &tools, &spec);
+        assert_eq!(body["model"], "deepseek-reasoner");
+        assert_eq!(body["reasoning_effort"], "xhigh");
     }
 
     #[test]
@@ -951,7 +1420,7 @@ mod tests {
         let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
             messages,
         )));
-        Box::new(move |_msgs, tools| {
+        Box::new(move |_msgs, tools, _s| {
             tools_seen.lock().unwrap().push(tools.len());
             let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
             Box::pin(async move {
@@ -989,7 +1458,13 @@ mod tests {
                     format!("completed:{name}:{duration_ms}")
                 }
                 LoopEvent::ToolFailed { name, error, .. } => format!("failed:{name}:{error}"),
+                LoopEvent::ToolDenied { name, error, .. } => format!("denied:{name}:{error}"),
+                LoopEvent::Reasoning(_) => return,
                 LoopEvent::Usage(u) => format!("usage:{}", u.total_tokens),
+                LoopEvent::TextDelta(_)
+                | LoopEvent::ReasoningDelta(_)
+                | LoopEvent::ToolArgsDelta { .. }
+                | LoopEvent::StreamReset => return,
             };
             log2.lock().unwrap().push(s);
         };
@@ -1007,7 +1482,7 @@ mod tests {
             seen.clone(),
         );
         let execute: Box<ExecFn> = Box::new(|name, _args| {
-            Box::pin(async move { (true, format!("{name} ok")) })
+            Box::pin(async move { (true, format!("{name} ok").into()) })
         });
         let (sink, log) = collect_sink();
         let out = run_tool_loop(
@@ -1017,9 +1492,12 @@ mod tests {
                 tools: vec![json!({"type":"function"})],
                 step: step.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink),
                 forbidden: None,
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1041,6 +1519,116 @@ mod tests {
         );
     }
 
+    // ---------- 工具产出图片的多模态回注 ----------
+
+    /// 用捕获 messages 的 step 跑一轮工具调用,返回工具执行后那一轮的上行消息序列。
+    /// (scripted_step 只记录 tools 数量,看不到消息体,故这里另起一个捕获 step。)
+    async fn messages_after_tool_with_images(vision: bool) -> Vec<Value> {
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<Value>>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_step = seen.clone();
+        let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+            vec![tool_call_msg("mcp__gen-model__gen_mesh", "{}"), final_msg("好了")],
+        )));
+        let step: Box<StepFn> = Box::new(move |msgs, _t, _s| {
+            seen_step.lock().unwrap().push(msgs);
+            let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
+            Box::pin(async move { Ok(StepOutcome { message: next, usage: None }) })
+        });
+        let execute: Box<ExecFn> = Box::new(|_n, _a| {
+            Box::pin(async move {
+                (
+                    true,
+                    ToolFeedback {
+                        text: r#"{"candidates":[{"meshFileRef":"a.glb"}]}"#.to_string(),
+                        images: vec![
+                            "data:image/png;base64,AAA".to_string(),
+                            "data:image/png;base64,BBB".to_string(),
+                        ],
+                    },
+                )
+            })
+        });
+        run_tool_loop(
+            "sys",
+            "生成一个木桶",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision,
+                sink: None,
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+            },
+        )
+        .await
+        .unwrap();
+        // 末轮 step 的入参 = 工具执行后的完整消息序列。
+        let calls = seen.lock().unwrap().clone();
+        calls.last().cloned().unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn tool_images_become_user_image_blocks_when_vision_on() {
+        let msgs = messages_after_tool_with_images(true).await;
+        let last = msgs.last().expect("末条应是图片消息");
+        assert_eq!(last["role"], "user");
+        let blocks = last["content"].as_array().expect("content 应为多模态块数组");
+        // 首块文字交代来历,其后每图一块。
+        assert_eq!(blocks[0]["type"], "text");
+        assert!(blocks[0]["text"].as_str().unwrap().contains("gen_mesh"));
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[1]["type"], "image_url");
+        assert_eq!(blocks[1]["image_url"]["url"], "data:image/png;base64,AAA");
+        assert_eq!(blocks[2]["image_url"]["url"], "data:image/png;base64,BBB");
+        // 图片不进 tool 消息:base64 会被 4000 字符截断成废串,还白烧 token。
+        let tool_msg = msgs.iter().find(|m| m["role"] == "tool").expect("须有 tool 消息");
+        assert!(tool_msg["content"].is_string());
+        assert!(!tool_msg["content"].as_str().unwrap().contains("base64"));
+        // tool 消息必须紧跟 assistant,图片消息排在其后(否则 tool_call 配对被打断)。
+        let tool_idx = msgs.iter().position(|m| m["role"] == "tool").unwrap();
+        assert_eq!(msgs[tool_idx - 1]["role"], "assistant");
+        assert_eq!(tool_idx, msgs.len() - 2);
+    }
+
+    #[tokio::test]
+    async fn tool_images_dropped_when_vision_off() {
+        let msgs = messages_after_tool_with_images(false).await;
+        // content 为数组即多模态块;assistant 那条本就没有 content(只有 tool_calls),
+        // 故判「不是数组」而非「是字符串」。
+        assert!(
+            msgs.iter().all(|m| !m["content"].is_array()),
+            "无视觉面的渠道不得出现多模态块: {msgs:?}"
+        );
+        assert_eq!(msgs.last().unwrap()["role"], "tool", "末条应是 tool,无追加图片消息");
+    }
+
+    /// 无 imageRefs 的普通结果不该被误判出图片;非法/越界路径静默跳过不炸。
+    #[test]
+    fn extract_tool_images_ignores_plain_and_bad_refs() {
+        assert!(extract_tool_images("not json").is_empty());
+        assert!(extract_tool_images(r#"{"ok":true}"#).is_empty());
+        assert!(extract_tool_images(r#"{"imageRefs":[]}"#).is_empty());
+        assert!(extract_tool_images(r#"{"imageRefs":["../../etc/passwd"]}"#).is_empty());
+        assert!(extract_tool_images(r#"{"imageRefs":[".forge/tmp/gen/nope.png"]}"#).is_empty());
+    }
+
+    #[test]
+    fn tool_image_message_shape() {
+        let m = tool_image_message(&[
+            ("gen_mesh".to_string(), "data:image/png;base64,X".to_string()),
+            ("gen_mesh".to_string(), "data:image/png;base64,Y".to_string()),
+        ]);
+        assert_eq!(m["role"], "user");
+        let blocks = m["content"].as_array().unwrap();
+        assert_eq!(blocks.len(), 3);
+        // 同一工具名去重,不重复罗列。
+        assert_eq!(blocks[0]["text"].as_str().unwrap().matches("gen_mesh").count(), 1);
+    }
+
     #[tokio::test]
     async fn loop_executor_failure_emits_failed_and_continues() {
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1057,9 +1645,12 @@ mod tests {
                 tools: vec![],
                 step: step.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink),
                 forbidden: None,
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1100,9 +1691,12 @@ mod tests {
                 tools: vec![],
                 step: step.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink),
                 forbidden: Some(&forbid),
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1144,9 +1738,12 @@ mod tests {
                 tools: vec![],
                 step: step.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink),
                 forbidden: None,
                 cancelled: Some(&cancelled),
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1160,7 +1757,7 @@ mod tests {
     #[tokio::test]
     async fn loop_usage_event_only_when_present() {
         // 带 usage 的 step 一轮终稿 → Usage 事件;无 usage(如 mock)→ 无事件。
-        let with_usage: Box<StepFn> = Box::new(|_m, _t| {
+        let with_usage: Box<StepFn> = Box::new(|_m, _t, _s| {
             Box::pin(async move {
                 Ok(StepOutcome {
                     message: final_msg("ok"),
@@ -1181,9 +1778,12 @@ mod tests {
                 tools: vec![],
                 step: with_usage.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink),
                 forbidden: None,
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1198,9 +1798,12 @@ mod tests {
                 tools: vec![],
                 step: mock.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink2),
                 forbidden: None,
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1257,6 +1860,7 @@ mod tests {
             base_url: "http://127.0.0.1:9100".to_string(),
             model: "qwen2.5-7b".to_string(),
             key: Some(secret.to_string()),
+            vision: None,
         }))
         .await;
         let (parts, body) = resp.into_parts();
@@ -1288,6 +1892,7 @@ mod tests {
             base_url: "http://127.0.0.1:9200".to_string(),
             model: "glm-4-air".to_string(),
             key: None,
+            vision: None,
         }))
         .await;
         let (parts, body) = resp.into_parts();
@@ -1322,6 +1927,7 @@ mod tests {
             base_url: "  ".to_string(),
             model: "m".to_string(),
             key: None,
+            vision: None,
         }))
         .await;
         let (parts, body) = resp.into_parts();
@@ -1334,6 +1940,7 @@ mod tests {
             base_url: "http://x".to_string(),
             model: "".to_string(),
             key: None,
+            vision: None,
         }))
         .await;
         let (parts, body) = resp.into_parts();
@@ -1360,9 +1967,12 @@ mod tests {
                 tools: vec![],
                 step: step.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: None,
                 forbidden: None,
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1380,6 +1990,7 @@ mod tests {
             save_openai_compat_file(&OpenAiCompatFile {
                 base_url: "http://127.0.0.1:1".to_string(),
                 model: "m".to_string(),
+                vision: false,
             })
             .unwrap();
         }
@@ -1467,13 +2078,18 @@ mod tests {
     async fn oai_mock_server_tool_loop_closed_round() {
         let (base_url, seen) = spawn_oai_mock_server().await;
         let secret = "sk-test-oai-REDLINE-mockhttp";
-        let step = openai_compat_step(&base_url, "qwen2.5-7b", secret);
+        // 规格波:顺带在这条真 HTTP 闭环里验证 reasoning_effort 确实进了实发请求体。
+        let spec = RequestSpec {
+            model: None,
+            reasoning_effort: Some("xhigh".to_string()),
+        };
+        let step = openai_compat_step(&base_url, "qwen2.5-7b", secret, &spec);
         // 假 executor:不触 MCP,记录调用。
         let executed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let executed2 = executed.clone();
         let execute: Box<ExecFn> = Box::new(move |name, _a| {
             executed2.lock().unwrap().push(name);
-            Box::pin(async move { (true, r#"{"ok":true,"entityId":42}"#.to_string()) })
+            Box::pin(async move { (true, r#"{"ok":true,"entityId":42}"#.into()) })
         });
         let (sink, log) = collect_sink();
         let out = run_tool_loop(
@@ -1483,9 +2099,12 @@ mod tests {
                 tools: to_openai_tools(&[json!({ "name": "mcp__engine-scene__entity_create", "description": "d" })]),
                 step: step.as_ref(),
                 execute: execute.as_ref(),
+                vision: false,
                 sink: Some(&sink),
                 forbidden: None,
                 cancelled: None,
+                stream: None,
+                preamble: None,
             },
         )
         .await
@@ -1515,6 +2134,7 @@ mod tests {
             assert_eq!(auth, &format!("Bearer {secret}"), "Bearer 头 = 配置 key");
             assert_eq!(body["model"], "qwen2.5-7b");
             assert_eq!(body["tool_choice"], "auto");
+            assert_eq!(body["reasoning_effort"], "xhigh", "会话规格未进实发请求体");
             assert!(!body.to_string().contains(secret), "请求体含密钥子串(R-5)");
         }
         let msgs2 = seen[1].3["messages"].as_array().unwrap();

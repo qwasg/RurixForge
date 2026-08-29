@@ -78,6 +78,32 @@
 `auth/login` `auth/logout` `auth/me` `auth/register` `auth/profile`、
 `terminal/sessions*`、`shells*`、`hooks*`、`openapi.json`、`design-snapshot`。
 
+### 2.7 资产商店 / 技能管理(F11,D-025)
+
+| 路由 | 方法 | 语义 |
+|---|---|---|
+| `/api/forge/store/sources` | GET/POST | 源清单 / 添加源(`{id,name,baseUrl,enabled,tokenRef?}`;`file://` 与 `https://` 双驱动) |
+| `/api/forge/store/sources/{id}` | PATCH/DELETE | 改源(启停/改名/换 token) / 删源 |
+| `/api/forge/store/search` | GET | 多源聚合搜索(`q` / `kind=asset-pack\|skill` / `sourceId?` / `page` / `pageSize`) |
+| `/api/forge/store/packages/{sourceId}/{pkgId}` | GET | 包详情 + 版本列表 |
+| `/api/forge/store/packages/{sourceId}/{pkgId}/{version}` | GET | 版本清单(manifest + `files[]`) |
+| `/api/forge/store/install` | POST | 安装(长任务,返回 `{taskId}`;`{sourceId,pkgId,version,destFolder?}`) |
+| `/api/forge/store/uninstall` | POST | 卸载(destructive,须 approved Proposal `kind=store.uninstall`) |
+| `/api/forge/store/tasks/{taskId}` | GET | 长任务进度(`{status,phase,done,total,error?}`) |
+| `/api/forge/store/installed` | GET | 已安装清单(项目级 `.forge/store/installed.json` + skills 侧) |
+| `/api/forge/store/updates` | GET | 更新检查(已安装 × 各源最新版本比对) |
+| `/api/forge/store/library` | GET/POST | 个人资产库列表 / 收藏进库(`{assetPath}` 或 `{fileRef}`) |
+| `/api/forge/store/library/{id}` | DELETE | 移出个人库 |
+| `/api/forge/store/library/{id}:install` | POST | 从个人库装进当前项目 |
+| `/api/forge/store/publish` | POST | 打包发布到指定源(`{sourceId,manifest,files[]}`) |
+| `/api/forge/skills` | POST | 新建 skill(`{name,content}`;frontmatter 须过 `06 §1` 校验) |
+| `/api/forge/skills/{name}` | GET/PUT/DELETE | 读全文 / 覆写全文 / 删除(destructive,须 approved Proposal `kind=skill.delete`) |
+| `/api/forge/skills/{name}:validate` | POST | 校验 SKILL.md 格式契约,返回 `{valid,errors[],warnings[]}` |
+
+`store_*` MCP 工具与上表同名同参一一对应(`05 §1.4`);长耗时的 `store_install` / `store_uninstall` 在 MCP 侧为异步提交(返 `taskId`)+ `store_task_status` 轮询,原因见 D-F11-C(MCP 子进程 10s 上限)。
+
+事件扩展(§3.2 补):`store.install.progress` `store.installed` `store.uninstalled` `agent.skills.injected`。
+
 ## 3. 事件契约(SSE)
 
 ### 3.1 信封(照搬 agentd)
@@ -99,6 +125,8 @@
 | 生成(扩展) | `gen.candidates.ready` `gen.accepted` |
 | 测试(扩展) | `playtest.result` |
 | 治理(扩展) | `proposal.created` `proposal.resolved` `permission.denied` |
+| 商店(F11) | `store.install.progress` `store.installed` `store.uninstalled` |
+| 技能(F11) | `agent.skills.injected` |
 
 ## 4. 核心 DTO(摘要)
 
@@ -135,5 +163,7 @@
 | 测试 | `TEST_*` | `TEST_TIMEOUT` `TEST_ASSERT_FAILED` |
 | 治理 | `GOV_*` | `GOV_PROPOSAL_REQUIRED` `GOV_PERMISSION_DENIED` `GOV_SWARM_SHARD_OVERLAP` |
 | 宿主 | `HOST_*` | `HOST_UNREACHABLE` `HOST_CRASHED` `HOST_GPU_LOST` |
+| 商店(F11) | `STORE_*` | `STORE_SOURCE_UNREACHABLE` `STORE_SOURCE_NOT_FOUND` `STORE_PACKAGE_NOT_FOUND` `STORE_VERSION_NOT_FOUND` `STORE_MANIFEST_INVALID` `STORE_CHECKSUM_MISMATCH` `STORE_ALREADY_INSTALLED` `STORE_NOT_INSTALLED` `STORE_DEPENDENCY_UNRESOLVED` `STORE_PAYMENT_REQUIRED` `STORE_TASK_NOT_FOUND` `STORE_PUBLISH_REJECTED` |
+| 技能(F11) | `SKILL_*` | `SKILL_NOT_FOUND` `SKILL_NAME_INVALID` `SKILL_ALREADY_EXISTS` `SKILL_FRONTMATTER_INVALID` `SKILL_BODY_INCOMPLETE` `SKILL_READONLY_DIR` |
 
 规则:新错误码进本表 + `forge-protocol` 枚举,同 PR;不允许字符串裸抛。

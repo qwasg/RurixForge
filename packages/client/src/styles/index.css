@@ -81,20 +81,20 @@
     background: var(--accent);
     border: 1px solid var(--accent);
   }
-  /* 黑色主按钮(New Automation / Browse Marketplace / Commit & Push) */
+  /* 主按钮(UI 融合波:反色自适应主题——亮=近黑底白字,暗=浅底深字) */
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-full bg-ink px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-black;
+    @apply inline-flex items-center gap-1.5 rounded-full bg-fg px-3.5 py-1.5 text-xs font-medium text-shell-bg transition-opacity hover:opacity-90;
   }
   /* 幽灵小按钮(Ask Agent / Show Details / New File / Load Diff) */
   .btn-ghost {
-    @apply inline-flex items-center gap-1 rounded-full border border-line bg-white px-3 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-panel-hover;
+    @apply inline-flex items-center gap-1 rounded-full border border-edge bg-shell-panel px-3 py-1 text-xs font-medium text-fg-2 transition-colors hover:bg-shell-hover;
   }
   /* 侧栏导航行 */
   .nav-row {
-    @apply flex w-full items-center gap-2 rounded-md px-2 py-[5px] text-left text-sm text-ink-soft transition-colors hover:bg-panel-hover;
+    @apply flex w-full items-center gap-2 rounded-md px-2 py-[5px] text-left text-sm text-fg-2 transition-colors hover:bg-shell-hover;
   }
   /* 圆角 chip(模型选择器、模式切换等) */
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-xs text-muted transition-colors hover:bg-panel-hover;
+    @apply inline-flex items-center gap-1 rounded-full border border-edge bg-shell-panel px-2.5 py-1 text-xs text-fg-3 transition-colors hover:bg-shell-hover;
   }
 }

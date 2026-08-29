@@ -144,3 +144,7 @@ generate(request) -> [candidate { meshFileRef(gltf), stats }]
 ## 7. 打包(本期最小)
 
 `project-pack`(F6,`13 §F6`):收集入口场景引用闭包 → 复制产物 + 源 → 独立目录 + 启动器(engine-host `--game` 模式,无编辑面)。资产加密/压缩打包不在本期。
+
+## Errata(只追加区)
+
+- **E-08-001(2026-08-25,F11 / D-025)**:§3.2 与 §6.4 的 `provenance.origin` 枚举 `user-import|gen-image|gen-model` 扩一值 **`store-install`**——资产商店安装的资产在原枚举下无合法取值,而 I-7 要求 provenance 强制写。`origin: store-install` 时 `detail` 形态为 `{ sourceId, sourceName, packageId, packageVersion, fileSha256, license, publisher, installedAt }`,许可证与发布者随资产落盘,导出/打包时一并携带(与生成资产同纪律:许可风险由用户承担,引擎在 About/导出清单中可汇总)。商店安装走与人工导入**完全相同**的构建链(`asset_import`,同 D-009 对生成资产的处置),不设旁路;安装前逐文件 sha256 校验,不符即拒(`STORE_CHECKSUM_MISMATCH`)不静默接受。个人资产库(`data/store/library/`)是跨项目的内容寻址收藏层,与项目 `Content/` 经显式双向操作流转,**不做自动同步**——保持「文件系统即真相」的单一事实源(裁决见 D-F11-B)。

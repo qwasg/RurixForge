@@ -6,18 +6,29 @@
 //! sse.rs(会话事件流 replay+gap+live+keep-alive)、snapshot.rs(design-snapshot 聚合)。
 
 mod agent;
+mod embedcfg;
+mod engine;
 mod events;
 mod llm;
 mod mcp;
+mod modelspec;
+mod native_tools;
+mod permission;
+mod profile;
 mod playtest;
 mod pack;
 mod proposals;
+mod resources;
+mod scope;
 mod sessions;
+mod skills;
 mod snapshot;
 mod sse;
+mod store;
 mod subagents;
 mod swarm;
 mod workspace;
+mod workspaces;
 
 use axum::{
     extract::{Path, State},
@@ -41,10 +52,14 @@ pub(crate) struct AppState {
     pub(crate) sessions: Arc<sessions::SessionStore>,
     /// F7:聊天文件夹存贮(data/agent-sessions/chat-folders.json)。
     pub(crate) folders: Arc<sessions::ChatFolderStore>,
+    /// 工作区存贮(data/agent-sessions/workspaces.json)。
+    pub(crate) workspaces: Arc<workspaces::WorkspaceStore>,
     /// F7 wave.2:run 注册表(内存,进程重启即空)+ 取消令牌。
     pub(crate) runs: Arc<agent::RunRegistry>,
     /// F7 wave.2:待办存贮(data/agent-sessions/todos.json 读-改-写)。
     pub(crate) todos: Arc<agent::TodoStore>,
+    /// 会话工具权限(bypass/plan/auto)。
+    pub(crate) permissions: Arc<permission::PermissionService>,
 }
 
 #[tokio::main]
@@ -85,9 +100,15 @@ fn build_app() -> Router {
         folders: Arc::new(sessions::ChatFolderStore::load(
             data_root.join("agent-sessions").join("chat-folders.json"),
         )),
+        workspaces: Arc::new(workspaces::WorkspaceStore::load(
+            data_root.join("agent-sessions").join("workspaces.json"),
+        )),
         runs: Arc::new(agent::RunRegistry::default()),
         todos: Arc::new(agent::TodoStore::load(
             data_root.join("agent-sessions").join("todos.json"),
+        )),
+        permissions: Arc::new(permission::PermissionService::load(
+            data_root.join("agent-sessions").join("permissions.json"),
         )),
     });
     Router::new()
@@ -118,11 +139,27 @@ fn build_app() -> Router {
             "/api/forge/sessions/{id}/ask:execute",
             post(agent::ask_execute),
         )
+        .route(
+            "/api/forge/studio/sessions",
+            post(sessions::ensure_studio_session),
+        )
         .route("/api/forge/sessions/{id}/todos", get(agent::list_todos))
         .route("/api/forge/runs/{id}", get(agent::get_run))
         .route("/api/forge/runs/{id}/cancel", post(agent::cancel_run))
         .route("/api/forge/todos", post(agent::create_todo))
         .route("/api/forge/todos/{id}", patch(agent::patch_todo))
+        .route(
+            "/api/forge/sessions/{id}/permission",
+            get(permission::get_permission).patch(permission::set_permission),
+        )
+        .route(
+            "/api/forge/permissions/{id}/approve",
+            post(permission::approve_permission),
+        )
+        .route(
+            "/api/forge/permissions/{id}/deny",
+            post(permission::deny_permission),
+        )
         .route(
             "/api/forge/chat-folders",
             get(sessions::list_chat_folders).post(sessions::create_chat_folder),
@@ -130,6 +167,14 @@ fn build_app() -> Router {
         .route(
             "/api/forge/chat-folders/{id}",
             patch(sessions::patch_chat_folder).delete(sessions::delete_chat_folder),
+        )
+        .route(
+            "/api/forge/workspaces",
+            get(workspaces::list_workspaces).post(workspaces::create_workspace),
+        )
+        .route(
+            "/api/forge/workspaces/{id}",
+            patch(workspaces::patch_workspace).delete(workspaces::delete_workspace),
         )
         .route("/api/forge/design-snapshot", get(snapshot::design_snapshot))
         .route("/api/forge/mcp/tools", get(mcp_tools))
@@ -141,10 +186,17 @@ fn build_app() -> Router {
         // F7 wave.5:工作区文件树只读面(Inspector 树;confined + 单层 + 截断如实)
         .route("/api/forge/workspace/tree", get(workspace::workspace_tree))
         // F8 wave.1:工作区文件只读文本端点(文件预览;confined + 尺寸上限 + 二进制拒绝)
-        .route("/api/forge/workspace/file", get(workspace::workspace_file))
+        // F9:PUT 写回(文件编辑器落盘;只改已存在文件 + baseModifiedAt 乐观并发 409)
+        .route(
+            "/api/forge/workspace/file",
+            get(workspace::workspace_file).put(workspace::workspace_file_write),
+        )
         // F8 wave.2:openai-compatible 通用渠道配置与状态
         .route("/api/forge/llm/openai-compat/config", post(llm::set_openai_compat_config))
         .route("/api/forge/llm/openai-compat/status", get(llm::openai_compat_status_handler))
+        // F10:embedding 渠道配置与状态(RAG 向量档;R-5 不回显 key)
+        .route("/api/forge/llm/embedding/config", post(embedcfg::set_embedding_config))
+        .route("/api/forge/llm/embedding/status", get(embedcfg::embedding_status_handler))
         .route("/api/forge/playtest/run", post(playtest_run))
         .route("/api/forge/project/pack", post(project_pack))
         .route(
@@ -152,15 +204,71 @@ fn build_app() -> Router {
             get(proposals_list).post(proposals_create),
         )
         .route("/api/forge/proposals/{id}", patch(proposals_patch))
-        .route("/api/forge/skills/list", get(skills_list))
-        .route("/api/forge/skills/{name}", get(skills_read))
-        .route("/api/forge/skills/config/write", post(skills_config_write))
+        // F11 wave.2:skill 生命周期面(06 §2)。
+        // 路由形态实测两条结论:
+        // ① 静态段 list/config 与参数段 {name} 同层可以共存——matchit 静态优先,不冲突;
+        // ② `{name}:validate` 写不进路由表——matchit 0.8 要求参数独占整个 path 段,参数与
+        //    静态字面量混排会 panic「Only one parameter is allowed per path segment」。
+        //    上面 ask:execute 之所以成立,是因为整段 `ask:execute` 全是静态字面量,没有参数。
+        // 对外契约仍保持 `{name}:validate` 冒号动作风格(与 ask:execute 一致):整段连冒号
+        // 动作一并作为 {name} 参数收下,由 skills_validate 在 handler 内剥后缀分派。
+        .route("/api/forge/skills/list", get(skills::skills_list))
+        .route("/api/forge/skills", post(skills::skills_create))
+        .route(
+            "/api/forge/skills/{name}",
+            get(skills::skills_read)
+                .put(skills::skills_update)
+                .delete(skills::skills_delete)
+                .post(skills::skills_validate),
+        )
+        .route("/api/forge/skills/config/write", post(skills::skills_config_write))
+        // F11(D-025):资产商店 REST 面。安装/卸载为长任务(提交返 taskId + tasks/{id} 轮询);
+        // 卸载走 Proposal 门(I-6),与 mcp_call 的 forced_asset_delete 同两阶段形态。
+        // library/{id}:install:matchit 不允许「参数 + 静态后缀」同段(实测 panic
+        // "Only one parameter is allowed per path segment"),故整段连冒号动作一并作为
+        // {id} 收下,由 library_post 在 handler 内剥后缀分派——与 skills/{name}:validate 同处置。
+        .route(
+            "/api/forge/store/sources",
+            get(store::sources_list).post(store::sources_create),
+        )
+        .route(
+            "/api/forge/store/sources/{id}",
+            axum::routing::patch(store::sources_patch).delete(store::sources_delete),
+        )
+        .route("/api/forge/store/search", get(store::search))
+        .route(
+            "/api/forge/store/packages/{source_id}/{pkg_id}",
+            get(store::package_detail),
+        )
+        .route(
+            "/api/forge/store/packages/{source_id}/{pkg_id}/{version}",
+            get(store::package_manifest),
+        )
+        .route("/api/forge/store/install", post(store::install))
+        .route("/api/forge/store/uninstall", post(store::uninstall))
+        .route("/api/forge/store/tasks/{task_id}", get(store::task_status))
+        .route("/api/forge/store/installed", get(store::installed_list))
+        .route("/api/forge/store/updates", get(store::updates))
+        .route(
+            "/api/forge/store/library",
+            get(store::library_list).post(store::library_add),
+        )
+        .route(
+            "/api/forge/store/library/{id}",
+            axum::routing::delete(store::library_remove).post(store::library_post),
+        )
+        .route("/api/forge/store/publish", post(store::publish))
         .route("/api/forge/subagents", get(subagents_list))
         .route("/api/forge/gen/backends", get(gen_backends_list))
         .route(
             "/api/forge/gen/backends/configure",
             post(gen_backends_configure),
         )
+        // 媒体生成 REST 面(视频/音频/3D;未配置显式 NOT_CONFIGURED)。
+        // gen/mesh 不能只靠 MCP:3D 供应商异步任务动辄数分钟,MCP 调用 10s 就断。
+        .route("/api/forge/gen/video", post(gen_video))
+        .route("/api/forge/gen/audio", post(gen_audio))
+        .route("/api/forge/gen/mesh", post(gen_mesh))
         .route("/api/forge/swarm/state", get(swarm_state))
         .route("/api/forge/swarm/seed-demo", post(swarm_seed_demo))
         .route("/api/forge/swarm/execute", post(swarm_execute))
@@ -326,166 +434,13 @@ async fn proposals_patch(
 }
 
 /// workspace 根(CARGO_MANIFEST_DIR 上两级)。
-fn workspace_root() -> std::path::PathBuf {
+pub(crate) fn workspace_root() -> std::path::PathBuf {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
         .ancestors()
         .nth(2)
         .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
         .to_path_buf()
-}
-
-/// skills 配置(data/skills-config.json):disabled 清单 + extraDirs 追加扫描目录(06 §2 目录配置)。
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-struct SkillsConfig {
-    #[serde(default)]
-    disabled: Vec<String>,
-    #[serde(default, rename = "extraDirs")]
-    extra_dirs: Vec<String>,
-}
-
-fn skills_config_path() -> std::path::PathBuf {
-    workspace_root().join("data").join("skills-config.json")
-}
-
-fn skills_config_load() -> SkillsConfig {
-    let p = skills_config_path();
-    match std::fs::read_to_string(&p) {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-            eprintln!("skills-config.json 损坏({e}),按缺省处理");
-            SkillsConfig::default()
-        }),
-        Err(_) => SkillsConfig::default(),
-    }
-}
-
-/// skills 扫描目录集:workspace skills/ + config.extraDirs(相对 workspace 根解析)。
-fn skills_dirs(cfg: &SkillsConfig) -> Vec<std::path::PathBuf> {
-    let root = workspace_root();
-    let mut dirs = vec![root.join("skills")];
-    for d in &cfg.extra_dirs {
-        dirs.push(root.join(d));
-    }
-    dirs
-}
-
-/// GET /api/forge/skills/list:扫 skills/<name>/SKILL.md frontmatter(06 §2);
-/// config.disabled 内 skill 标 enabled=false(07 §7.2 skills tab 启用/禁用数据源)。
-async fn skills_list() -> Json<Value> {
-    let cfg = skills_config_load();
-    let mut skills = Vec::new();
-    for dir in skills_dirs(&cfg) {
-        if let Ok(rd) = std::fs::read_dir(&dir) {
-            for ent in rd.flatten() {
-                let f = ent.path().join("SKILL.md");
-                if !f.is_file() {
-                    continue;
-                }
-                if let Ok(text) = std::fs::read_to_string(&f) {
-                    if let Some((name, description)) = parse_skill_frontmatter(&text) {
-                        let enabled = !cfg.disabled.iter().any(|d| d == &name);
-                        skills.push(json!({ "name": name, "description": description, "enabled": enabled }));
-                    }
-                }
-            }
-        }
-    }
-    skills.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-    skills.dedup_by(|a, b| a["name"].as_str() == b["name"].as_str());
-    Json(json!({ "skills": skills }))
-}
-
-/// GET /api/forge/skills/{name}:返回 SKILL.md 全文(read_skill 的 HTTP 面,06 §2)。
-async fn skills_read(Path(name): Path<String>) -> Response {
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-    {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": "skill 名须为小写英文+中划线(06 §1)" } })),
-        )
-            .into_response();
-    }
-    let cfg = skills_config_load();
-    for dir in skills_dirs(&cfg) {
-        let f = dir.join(&name).join("SKILL.md");
-        if f.is_file() {
-            return match std::fs::read_to_string(&f) {
-                Ok(content) => Json(json!({ "name": name, "content": content })).into_response(),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
-                )
-                    .into_response(),
-            };
-        }
-    }
-    (
-        StatusCode::NOT_FOUND,
-        Json(json!({ "error": { "code": "FORGE_NOT_FOUND", "message": format!("skill 不存在: {name}") } })),
-    )
-        .into_response()
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SkillsConfigWriteRequest {
-    /// 全量覆盖 disabled 清单;缺省 = 不变。
-    #[serde(default)]
-    disabled: Option<Vec<String>>,
-    #[serde(default)]
-    extra_dirs: Option<Vec<String>>,
-}
-
-/// POST /api/forge/skills/config/write:写 skills 配置(启用/禁用 + 目录配置,06 §2 管理 API)。
-/// disabled 名格式校验(小写英文+中划线);写盘后立即生效(list 读盘无缓存)。
-async fn skills_config_write(Json(req): Json<SkillsConfigWriteRequest>) -> Response {
-    let mut cfg = skills_config_load();
-    if let Some(disabled) = req.disabled {
-        for d in &disabled {
-            if !d
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-            {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": { "code": "FORGE_INVALID_ARGS", "message": format!("非法 skill 名: {d}") } })),
-                )
-                    .into_response();
-            }
-        }
-        cfg.disabled = disabled;
-    }
-    if let Some(dirs) = req.extra_dirs {
-        cfg.extra_dirs = dirs;
-    }
-    let p = skills_config_path();
-    if let Some(parent) = p.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
-            )
-                .into_response();
-        }
-    }
-    match std::fs::write(
-        &p,
-        serde_json::to_string_pretty(&cfg).expect("SkillsConfig 序列化失败"),
-    ) {
-        Ok(()) => Json(json!({
-            "written": true,
-            "disabled": cfg.disabled,
-            "extraDirs": cfg.extra_dirs,
-        }))
-        .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
-        )
-            .into_response(),
-    }
 }
 
 /// GET /api/forge/subagents:磁盘 profile 热加载清单(04 §6;改文件不重启生效)。
@@ -496,28 +451,6 @@ async fn subagents_list() -> Json<Value> {
         // 解析失败如实上报,不遮蔽(诚实优先)。
         "errors": errors,
     }))
-}
-
-/// 解析 SKILL.md frontmatter(--- 包裹的 name/description 两行)。
-fn parse_skill_frontmatter(text: &str) -> Option<(String, String)> {
-    let mut lines = text.lines();
-    if lines.next()?.trim() != "---" {
-        return None;
-    }
-    let mut name = None;
-    let mut desc = None;
-    for line in lines {
-        let line = line.trim();
-        if line == "---" {
-            break;
-        }
-        if let Some(v) = line.strip_prefix("name:") {
-            name = Some(v.trim().to_string());
-        } else if let Some(v) = line.strip_prefix("description:") {
-            desc = Some(v.trim().to_string());
-        }
-    }
-    Some((name?, desc?))
 }
 
 /// mock LLM provider seam(诚实标注,F0 恒绿)
@@ -978,26 +911,55 @@ async fn swarm_execute(
 
 /// GET /api/forge/gen/backends:注册表全量 + 真实 configured 判定;
 /// 只回 endpointSet 布尔,密钥值/endpoint 值不出(endpoint 属配置面,按契约只回布尔)。
+/// 素材创作波:聚合 media 注册表(video/audio/mesh 三远程骨架),capabilities.kinds 如实。
+/// enabled/model 为非密配置事实,一并回出——设置页表单据此预填,
+/// 否则「未知即默认」会把用户已存的开关/模型在下次保存时悄悄覆盖。
 async fn gen_backends_list() -> Json<Value> {
     let cfg = gend::config::GenConfig::load();
     let keys = gend::keystore::Keystore::load();
-    let list: Vec<Value> = gend::backends::registry()
+    // 条目非密事实:(enabled, endpointSet, model);条目缺失 = 全默认。
+    // keyConfigured 只回布尔(照 llm/openai-compat status 形态),密钥值永不出。
+    let facts = |id: &str| -> (bool, bool, Option<String>, bool) {
+        let key_set = keys.key_for(id).is_some();
+        match cfg.entry(id) {
+            Some(e) => (
+                e.enabled,
+                e.endpoint.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false),
+                e.model.clone(),
+                key_set,
+            ),
+            None => (false, false, None, key_set),
+        }
+    };
+    let mut list: Vec<Value> = gend::backends::registry()
         .iter()
         .map(|b| {
-            let endpoint_set = cfg
-                .entry(b.id())
-                .and_then(|e| e.endpoint.as_deref())
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
+            let (enabled, endpoint_set, model, key_configured) = facts(b.id());
             json!({
                 "id": b.id(),
                 "kind": b.kind(),
                 "configured": b.configured(&cfg, &keys),
+                "enabled": enabled,
                 "endpointSet": endpoint_set,
+                "keyConfigured": key_configured,
+                "model": model,
                 "capabilities": b.capabilities(),
             })
         })
         .collect();
+    list.extend(gend::media::media_registry().iter().map(|b| {
+        let (enabled, endpoint_set, model, key_configured) = facts(b.id());
+        json!({
+            "id": b.id(),
+            "kind": b.kind(),
+            "configured": b.configured(&cfg, &keys),
+            "enabled": enabled,
+            "endpointSet": endpoint_set,
+            "keyConfigured": key_configured,
+            "model": model,
+            "capabilities": b.capabilities(),
+        })
+    }));
     Json(json!({ "backends": list }))
 }
 
@@ -1009,32 +971,54 @@ struct GenConfigureRequest {
     enabled: bool,
     #[serde(default)]
     endpoint: Option<String>,
+    /// 模型名(素材创作波:media 后端 body.model 透传;缺省保留既有条目值)。
+    #[serde(default)]
+    model: Option<String>,
     /// 密钥:非空才写 data/keystore.json;永不进 gen-backends.json,永不在响应回显(R-5)。
     #[serde(default)]
     api_key: Option<String>,
 }
 
+/// 注册表条目统一视图(text2img 面 + media 面聚合;素材创作波):
+/// 按 id 查 kind 与 configured 判定,供 configure 路由跨两注册表工作。
+fn find_any_backend(id: &str) -> Option<(String, Box<dyn Fn(&gend::config::GenConfig, &gend::keystore::Keystore) -> bool>)> {
+    if let Some(b) = gend::backends::find(id) {
+        let kind = b.kind().to_string();
+        return Some((kind, Box::new(move |c, k| b.configured(c, k))));
+    }
+    if let Some(b) = gend::media::find_media(id) {
+        let kind = b.kind().to_string();
+        return Some((kind, Box::new(move |c, k| b.configured(c, k))));
+    }
+    None
+}
+
 /// POST /api/forge/gen/backends/configure:写 gen-backends.json 条目(读-改-写,保留其他
 /// 条目与 model 字段);apiKey 非空 → 写 keystore.json(读-改-写)。响应 {ok, configured}
 /// 不含 apiKey;非法 id → 400 GEN_UNKNOWN_BACKEND;kind 与注册表不符 → 400 GEN_BAD_PARAMS。
+/// 素材创作波:id 面放开 media 注册表(remote-video/audio/mesh-compatible)+ model 字段可写。
 async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Response {
-    let Some(backend) = gend::backends::find(&req.id) else {
+    let Some((backend_kind, backend_configured)) = find_any_backend(&req.id) else {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": { "code": "GEN_UNKNOWN_BACKEND", "message": format!("未知后端 id: {}", req.id) } })),
         )
             .into_response();
     };
-    if req.kind != backend.kind() {
+    if req.kind != backend_kind {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": { "code": "GEN_BAD_PARAMS", "message": format!("后端 {} kind 须为 {},实: {}", req.id, backend.kind(), req.kind) } })),
+            Json(json!({ "error": { "code": "GEN_BAD_PARAMS", "message": format!("后端 {} kind 须为 {},实: {}", req.id, backend_kind, req.kind) } })),
         )
             .into_response();
     }
-    // endpoint:Some(非空) 覆盖;缺省保留既有条目值。
+    // endpoint/model:Some(非空) 覆盖;缺省保留既有条目值。
     let endpoint = req
         .endpoint
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let model = req
+        .model
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let mut cfg = gend::config::GenConfig::load();
@@ -1043,7 +1027,7 @@ async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Respons
         kind: req.kind.clone(),
         enabled: req.enabled,
         endpoint,
-        model: None,
+        model,
     });
     if let Err(e) = cfg.save() {
         return (
@@ -1065,8 +1049,270 @@ async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Respons
     // 回读真实 configured(写盘后重载,不回显任何密钥)。
     let cfg2 = gend::config::GenConfig::load();
     let keys2 = gend::keystore::Keystore::load();
-    let configured = backend.configured(&cfg2, &keys2);
+    let configured = backend_configured(&cfg2, &keys2);
     Json(json!({ "ok": true, "id": req.id, "configured": configured })).into_response()
+}
+
+// ---------- 素材创作波:媒体生成 REST 面(gen/video、gen/audio;预留 API 端口) ----------
+
+/// GenError → HTTP 响应(错误码如实透传:BAD_PARAMS=400 / NOT_CONFIGURED=501 /
+/// RATE_LIMITED=429 / 其余(含后端 HTTP 失败)=502)。
+fn gen_error_response(e: gend::GenError) -> Response {
+    let status = match e.code {
+        gend::GEN_BAD_PARAMS => StatusCode::BAD_REQUEST,
+        gend::GEN_BACKEND_NOT_CONFIGURED => StatusCode::NOT_IMPLEMENTED,
+        gend::GEN_RATE_LIMITED => StatusCode::TOO_MANY_REQUESTS,
+        _ => StatusCode::BAD_GATEWAY,
+    };
+    (status, Json(json!({ "error": { "code": e.code, "message": e.message } }))).into_response()
+}
+
+/// 浏览器能内联播放/显示的产物类型(决定要不要在响应里附 base64 dataUrl)。
+fn inline_previewable(ext: &str) -> bool {
+    matches!(ext, "png" | "mp4" | "mp3" | "wav")
+}
+
+/// 产物 mime(白名单内扩展名;未知退 octet-stream)。
+fn artifact_mime(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "mp4" => "video/mp4",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "glb" => "model/gltf-binary",
+        _ => "application/octet-stream",
+    }
+}
+
+/// 媒体生成共路:后端解析 → 阻塞生成(spawn_blocking,ureq 同步)→ tmpstore 落盘
+/// (projects/demo,与 gen-image-mcp 同项目根)→ {backendId, artifacts:[{fileRef,ext,
+/// mime,dataUrl,meta}]}。密钥全程不出(R-5)。
+async fn run_media_generation(
+    kind: gend::media::MediaKind,
+    prompt: String,
+    params: Value,
+    backend: Option<String>,
+) -> Response {
+    // 图生 3D 只需参考图,prompt 可空;其余生成面仍以 prompt 为必要输入。
+    let has_image = params
+        .get("imageDataUrl")
+        .and_then(Value::as_str)
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if prompt.trim().is_empty() && !has_image {
+        return gen_error_response(gend::GenError::new(gend::GEN_BAD_PARAMS, "prompt 不可空"));
+    }
+    let joined = tokio::task::spawn_blocking(move || -> gend::Result<(String, Vec<Value>)> {
+        use base64::Engine as _;
+        let cfg = gend::config::GenConfig::load();
+        let keys = gend::keystore::Keystore::load();
+        let b = gend::media::resolve_backend(kind, backend.as_deref(), &cfg, &keys)?;
+        let req = gend::media::MediaRequest { kind, prompt: prompt.clone(), params };
+        let artifacts = b.generate(&req, &cfg, &keys)?;
+        let root = mcp::asset_project_root();
+        let project = assetd::project::ForgeProject::load(&root)
+            .unwrap_or_else(|_| assetd::project::ForgeProject::with_defaults(root.clone()));
+        let seed = gend::fnv1a64(prompt.as_bytes());
+        let mut out = Vec::new();
+        for (i, a) in artifacts.iter().enumerate() {
+            let sidecar = json!({
+                "backendId": b.id(),
+                "kind": kind.as_str(),
+                "prompt": prompt,
+                "meta": a.meta,
+                "generatedAt": gend::timeutil::utc_now_iso8601(),
+            });
+            let file_ref =
+                gend::tmpstore::save_artifact(&project, &a.bytes, &a.ext, seed, i as u32, &sidecar)?;
+            let mime = artifact_mime(&a.ext);
+            // 供应商预览图落盘(签名 URL 会过期)+ 随响应回 dataUrl 供前端直显。
+            let mut previews = Vec::new();
+            for p in &a.previews {
+                let r = gend::tmpstore::save_preview(&project, &file_ref, &p.label, &p.png)?;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&p.png);
+                previews.push(json!({
+                    "label": p.label,
+                    "fileRef": r,
+                    "mime": "image/png",
+                    "dataUrl": format!("data:image/png;base64,{b64}"),
+                }));
+            }
+            let mut item = json!({
+                "fileRef": file_ref,
+                "ext": a.ext,
+                "mime": mime,
+                "meta": a.meta,
+                "previews": previews,
+            });
+            // 内联 dataUrl 只给浏览器能直接播/显的类型。glb 动辄数 MB,base64 后再涨三分之一,
+            // 而前端对网格根本不读它——白塞一份就是白烧带宽与内存。
+            if inline_previewable(&a.ext) {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&a.bytes);
+                item["dataUrl"] = json!(format!("data:{mime};base64,{b64}"));
+            }
+            out.push(item);
+        }
+        Ok((b.id().to_string(), out))
+    })
+    .await;
+    match joined {
+        Ok(Ok((backend_id, artifacts))) => {
+            Json(json!({ "backendId": backend_id, "artifacts": artifacts })).into_response()
+        }
+        Ok(Err(e)) => gen_error_response(e),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": { "code": "INTERNAL", "message": format!("生成任务失败: {e}") } })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenVideoRequest {
+    prompt: String,
+    #[serde(default)]
+    aspect: Option<String>,
+    #[serde(default)]
+    resolution: Option<String>,
+    #[serde(default)]
+    duration_sec: Option<u64>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+/// POST /api/forge/gen/video:文生视频(remote-video-compatible 骨架;
+/// 未配置 → 501 GEN_BACKEND_NOT_CONFIGURED,诚实占位不伪造产物)。
+async fn gen_video(Json(req): Json<GenVideoRequest>) -> Response {
+    let mut params = json!({});
+    if let Some(a) = req.aspect.filter(|s| !s.trim().is_empty()) {
+        params["aspect"] = json!(a);
+    }
+    if let Some(r) = req.resolution.filter(|s| !s.trim().is_empty()) {
+        params["resolution"] = json!(r);
+    }
+    if let Some(d) = req.duration_sec {
+        params["durationSec"] = json!(d);
+    }
+    run_media_generation(gend::media::MediaKind::Video, req.prompt, params, req.backend).await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenAudioRequest {
+    /// tts | music。
+    mode: String,
+    prompt: String,
+    #[serde(default)]
+    voice: Option<String>,
+    #[serde(default)]
+    format: Option<String>,
+    #[serde(default)]
+    lyrics: Option<String>,
+    #[serde(default)]
+    instrumental: Option<bool>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+/// POST /api/forge/gen/audio:TTS(OpenAI /v1/audio/speech 真实格式)/ 音乐生成
+/// (remote-audio-compatible 骨架;未配置 → 501 GEN_BACKEND_NOT_CONFIGURED)。
+async fn gen_audio(Json(req): Json<GenAudioRequest>) -> Response {
+    let kind = match req.mode.as_str() {
+        "tts" => gend::media::MediaKind::Tts,
+        "music" => gend::media::MediaKind::Music,
+        other => {
+            return gen_error_response(gend::GenError::new(
+                gend::GEN_BAD_PARAMS,
+                format!("mode 须为 tts|music,实: {other}"),
+            ));
+        }
+    };
+    let mut params = json!({});
+    if let Some(v) = req.voice.filter(|s| !s.trim().is_empty()) {
+        params["voice"] = json!(v);
+    }
+    if let Some(f) = req.format.filter(|s| !s.trim().is_empty()) {
+        params["format"] = json!(f);
+    }
+    if let Some(l) = req.lyrics.filter(|s| !s.trim().is_empty()) {
+        params["lyrics"] = json!(l);
+    }
+    if let Some(i) = req.instrumental {
+        params["instrumental"] = json!(i);
+    }
+    run_media_generation(kind, req.prompt, params, req.backend).await
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenMeshRequest {
+    /// 文生 3D 描述;给了 imageDataUrl 时可空(转作贴图引导)。
+    #[serde(default)]
+    prompt: String,
+    /// 参考图:公网 URL 或 base64 data URI(给了即走图生 3D)。
+    #[serde(default)]
+    image_data_url: Option<String>,
+    #[serde(default)]
+    target_polycount: Option<u64>,
+    #[serde(default)]
+    texture: Option<bool>,
+    #[serde(default)]
+    pbr: Option<bool>,
+    #[serde(default)]
+    texture_resolution: Option<String>,
+    #[serde(default)]
+    texture_prompt: Option<String>,
+    #[serde(default)]
+    model_type: Option<String>,
+    #[serde(default)]
+    ai_model: Option<String>,
+    #[serde(default)]
+    topology: Option<String>,
+    #[serde(default)]
+    pose_mode: Option<String>,
+    /// 单阶段等待预算秒数(缺省 900)。
+    #[serde(default)]
+    timeout_sec: Option<u64>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+/// POST /api/forge/gen/mesh:文/图生 3D(默认 meshy;未配置 → 501 GEN_BACKEND_NOT_CONFIGURED)。
+///
+/// 与 video/audio 并列的直通路径。3D 供应商是异步任务制,单次生成常达数分钟,
+/// 而 MCP 子进程调用有 10s 上限——走 MCP 必然超时,故 3D 前端链路只能落在这条 REST 上。
+async fn gen_mesh(Json(req): Json<GenMeshRequest>) -> Response {
+    let mut params = json!({});
+    if let Some(v) = req.image_data_url.filter(|s| !s.trim().is_empty()) {
+        params["imageDataUrl"] = json!(v);
+    }
+    if let Some(n) = req.target_polycount {
+        params["targetPolycount"] = json!(n);
+    }
+    if let Some(b) = req.texture {
+        params["texture"] = json!(b);
+    }
+    if let Some(b) = req.pbr {
+        params["pbr"] = json!(b);
+    }
+    if let Some(n) = req.timeout_sec {
+        params["timeoutSec"] = json!(n);
+    }
+    for (key, val) in [
+        ("textureResolution", req.texture_resolution),
+        ("texturePrompt", req.texture_prompt),
+        ("modelType", req.model_type),
+        ("aiModel", req.ai_model),
+        ("topology", req.topology),
+        ("poseMode", req.pose_mode),
+    ] {
+        if let Some(v) = val.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+            params[key] = json!(v);
+        }
+    }
+    run_media_generation(gend::media::MediaKind::Mesh, req.prompt, params, req.backend).await
 }
 
 async fn unknown_route() -> Response {
@@ -1104,6 +1350,13 @@ mod tests {
             .unwrap()
     }
 
+    fn put_json(uri: &str, body: &str) -> Request<Body> {
+        Request::put(uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
     #[tokio::test]
     async fn health_ok() {
         let resp = build_app().oneshot(get("/health")).await.unwrap();
@@ -1124,7 +1377,34 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let tools = v["tools"].as_array().expect("tools 应为数组");
-        assert_eq!(tools.len(), 75);
+        // F10:+1 asset_set_description +6 context 六工具 = 83;F11:+12 store = 95;+library_search = 96。
+        assert_eq!(tools.len(), 96);
+        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_set_description"));
+        assert!(tools.iter().any(|t| t == "mcp__context__context_index_build"));
+        assert!(tools.iter().any(|t| t == "mcp__context__context_search"));
+        assert!(tools.iter().any(|t| t == "mcp__context__context_get"));
+        assert!(tools.iter().any(|t| t == "mcp__context__context_index_status"));
+        assert!(tools.iter().any(|t| t == "mcp__context__asset_describe_batch"));
+        // F11(D-025):store 十二工具须与 store-mcp 的 tool_list 逐一对上
+        // (store-mcp 侧有 tool_list_declares_twelve_tools_with_schema 守另一端)。
+        for t in [
+            "mcp__store__store_sources_list",
+            "mcp__store__store_search",
+            "mcp__store__store_info",
+            "mcp__store__store_installed_list",
+            "mcp__store__store_update_check",
+            "mcp__store__store_install",
+            "mcp__store__store_uninstall",
+            "mcp__store__store_task_status",
+            "mcp__store__library_list",
+            "mcp__store__library_search",
+            "mcp__store__library_add",
+            "mcp__store__library_remove",
+            "mcp__store__library_install",
+        ] {
+            assert!(tools.iter().any(|x| x == t), "KNOWN_TOOLS 缺 {t}");
+        }
+        assert!(tools.iter().any(|t| t == "mcp__context__asset_set_description"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__scene_summary"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__entity_batch_apply"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
@@ -2194,20 +2474,26 @@ mod tests {
 
     #[tokio::test]
     async fn skills_list_discovers_frontmatter() {
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let resp = build_app()
             .oneshot(get("/api/forge/skills/list"))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
-        let skills = v["skills"].as_array().expect("skills 应为数组");
+        let list = v["skills"].as_array().expect("skills 应为数组");
         // workspace skills/ 下至少有 asset-cleanup(wave.5 落地)。
         assert!(
-            skills.iter().any(|s| s["name"] == "asset-cleanup"),
-            "skills/list 未见 asset-cleanup: {skills:?}"
+            list.iter().any(|s| s["name"] == "asset-cleanup"),
+            "skills/list 未见 asset-cleanup: {list:?}"
         );
-        let sc = skills.iter().find(|s| s["name"] == "asset-cleanup").unwrap();
+        let sc = list.iter().find(|s| s["name"] == "asset-cleanup").unwrap();
         assert!(sc["description"].as_str().unwrap().contains("整理"));
+        // F11 wave.2 扩展字段:两键存量 skill 的可选项为空但字段齐备,builtin 判定为真。
+        assert_eq!(sc["builtin"], true, "仓内 skills/ 应判 builtin: {sc}");
+        assert!(sc["tags"].is_array() && sc["allowedTools"].is_array(), "{sc}");
+        assert_eq!(sc["version"], Value::Null);
+        assert_eq!(sc["dir"], "skills/asset-cleanup");
     }
 
     /// 集成:真实 spawn target/debug/engine-scene-mcp.exe 调 scene_summary。
@@ -2413,8 +2699,9 @@ mod tests {
         let v = json_body(resp).await;
         assert_eq!(v["errors"].as_array().unwrap().len(), 0, "profile 解析错误: {v}");
         let list = v["subagents"].as_array().unwrap();
-        assert_eq!(list.len(), 5, "内建五 profile(04 §6): {list:?}");
-        for name in ["asset-wrangler", "logic-programmer", "material-smith", "qa-tester", "scene-builder"] {
+        // 04 §6 内建五 profile + F10 asset-describer(素材语义化)= 6。
+        assert_eq!(list.len(), 6, "内建六 profile(04 §6 + F10): {list:?}");
+        for name in ["asset-describer", "asset-wrangler", "logic-programmer", "material-smith", "qa-tester", "scene-builder"] {
             let p = list.iter().find(|p| p["name"] == name).unwrap_or_else(|| panic!("缺 profile {name}"));
             assert!(p["description"].as_str().unwrap().len() > 4);
             assert!(p["tools"].as_array().unwrap().len() >= 2);
@@ -2454,6 +2741,7 @@ mod tests {
 
     #[tokio::test]
     async fn skills_read_full_text_and_guards() {
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let app = build_app();
         let ok = app
             .clone()
@@ -2470,6 +2758,10 @@ mod tests {
         .unwrap();
         assert_eq!(content, disk);
         assert!(content.starts_with("---"));
+        // F11 wave.2:结构化 frontmatter 与 builtin/path 一并回。
+        assert_eq!(v["front"]["name"], "asset-cleanup");
+        assert_eq!(v["builtin"], true);
+        assert_eq!(v["path"], "skills/asset-cleanup/SKILL.md");
 
         let missing = app
             .clone()
@@ -2477,16 +2769,246 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(missing).await["error"]["code"], "SKILL_NOT_FOUND");
         let bad = app
             .oneshot(get("/api/forge/skills/Bad_Name"))
             .await
             .unwrap();
         assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(bad).await["error"]["code"], "SKILL_NAME_INVALID");
+    }
+
+    // ---------- F11 wave.2:skill 生命周期(create/update/delete/validate) ----------
+
+    /// 临时技能目录 RAII 守卫:断言失败 panic 时也要清干净——仓内 13 篇真实技能
+    /// 绝不能被测试污染(new 时先清一次,自愈上轮崩溃残留)。
+    struct TempSkill(std::path::PathBuf);
+
+    impl TempSkill {
+        fn new(name: &str) -> Self {
+            let dir = skills::skills_root().join(name);
+            std::fs::remove_dir_all(&dir).ok();
+            TempSkill(dir)
+        }
+    }
+
+    impl Drop for TempSkill {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    #[tokio::test]
+    async fn skills_create_template_conflict_and_bad_name() {
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempSkill::new("zz-f11-create");
+        let app = build_app();
+        // 不给 content → 内置模板骨架,且模板自身可通过校验(零告警)。
+        let created = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-create"}"#))
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::OK);
+        let v = json_body(created).await;
+        assert_eq!(v["created"], true);
+        assert_eq!(v["warnings"].as_array().unwrap().len(), 0, "模板不该告警: {v}");
+        let disk = std::fs::read_to_string(tmp.0.join("SKILL.md")).unwrap();
+        assert!(disk.contains("## 执行流程") && disk.contains("## 失败回退"), "{disk}");
+        // 新建后立即出现在 list 与 read 面(扫描无缓存)。
+        let listed = json_body(app.clone().oneshot(get("/api/forge/skills/list")).await.unwrap()).await;
+        assert!(
+            listed["skills"].as_array().unwrap().iter().any(|s| s["name"] == "zz-f11-create"),
+            "新建技能未进清单"
+        );
+        // 重名 409。
+        let dup = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-create"}"#))
+            .await
+            .unwrap();
+        assert_eq!(dup.status(), StatusCode::CONFLICT);
+        assert_eq!(json_body(dup).await["error"]["code"], "SKILL_ALREADY_EXISTS");
+        // 非法名 400。
+        let bad = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills", r#"{"name":"Bad_Name"}"#))
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(bad).await["error"]["code"], "SKILL_NAME_INVALID");
+        // 给了 content 但缺三节 → 正文类错误码(与 frontmatter 类分开)。
+        let body_bad = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/skills",
+                r#"{"name":"zz-f11-badbody","content":"---\nname: zz-f11-badbody\ndescription: 当任务涉及 X 时使用。\n---\n只有一句。\n"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(body_bad.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(body_bad).await["error"]["code"], "SKILL_BODY_INCOMPLETE");
+        // frontmatter 坏 → frontmatter 类错误码。
+        let front_bad = app
+            .oneshot(post_json(
+                "/api/forge/skills",
+                r#"{"name":"zz-f11-badfront","content":"没有 frontmatter\n执行流程 输出约束 失败回退\n"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(front_bad.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(front_bad).await["error"]["code"], "SKILL_FRONTMATTER_INVALID");
+        assert!(!skills::skills_root().join("zz-f11-badbody").exists(), "校验失败不得落盘");
+    }
+
+    #[tokio::test]
+    async fn skills_update_writes_and_404s() {
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempSkill::new("zz-f11-update");
+        let app = build_app();
+        app.clone()
+            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-update"}"#))
+            .await
+            .unwrap();
+        let next = skills::skill_template("zz-f11-update").replace("## 目标", "## 目标(已改)");
+        let payload = json!({ "content": next }).to_string();
+        let updated = app
+            .clone()
+            .oneshot(put_json("/api/forge/skills/zz-f11-update", &payload))
+            .await
+            .unwrap();
+        assert_eq!(updated.status(), StatusCode::OK);
+        assert_eq!(json_body(updated).await["updated"], true);
+        assert!(
+            std::fs::read_to_string(tmp.0.join("SKILL.md")).unwrap().contains("## 目标(已改)"),
+            "更新未落盘"
+        );
+        // 不存在 404。
+        let missing = app
+            .clone()
+            .oneshot(put_json("/api/forge/skills/zz-f11-nope", r#"{"content":"x"}"#))
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        // 校验不过不落盘(原文保持)。
+        let bad = app
+            .oneshot(put_json(
+                "/api/forge/skills/zz-f11-update",
+                r#"{"content":"---\nname: zz-f11-update\ndescription: 当任务涉及 X。\n---\n空。\n"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            std::fs::read_to_string(tmp.0.join("SKILL.md")).unwrap().contains("## 目标(已改)"),
+            "校验失败竟覆盖了原文"
+        );
+    }
+
+    /// 删除是 destructive:无 approved Proposal 一律 409,批准后同一调用才真删(I-6)。
+    #[tokio::test]
+    async fn skills_delete_requires_proposal() {
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempSkill::new("zz-f11-delete");
+        // 同一 app 实例贯穿三步:Proposal 存贮挂在 state 上,换 app 就换了存贮。
+        let app = build_app();
+        app.clone()
+            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-delete"}"#))
+            .await
+            .unwrap();
+        let blocked = app
+            .clone()
+            .oneshot(delete_req("/api/forge/skills/zz-f11-delete"))
+            .await
+            .unwrap();
+        assert_eq!(blocked.status(), StatusCode::CONFLICT);
+        let v = json_body(blocked).await;
+        assert_eq!(v["error"]["code"], "GOV_PROPOSAL_REQUIRED");
+        assert!(tmp.0.exists(), "未批准竟已删除");
+        let pid = v["error"]["proposalId"].as_str().unwrap().to_string();
+        // 提案影响面须落在 impact.assets(has_approved_covering 读的正是它)。
+        let props = json_body(app.clone().oneshot(get("/api/forge/proposals")).await.unwrap()).await;
+        let p = props["proposals"].as_array().unwrap().iter().find(|p| p["id"] == pid).unwrap();
+        assert_eq!(p["kind"], "skill.delete");
+        assert_eq!(p["impact"]["assets"][0], "zz-f11-delete");
+        assert_eq!(p["impact"]["skills"][0], "zz-f11-delete");
+
+        let approved = app
+            .clone()
+            .oneshot(patch_json(&format!("/api/forge/proposals/{pid}"), r#"{"action":"approve"}"#))
+            .await
+            .unwrap();
+        assert_eq!(approved.status(), StatusCode::OK);
+        let done = app
+            .clone()
+            .oneshot(delete_req("/api/forge/skills/zz-f11-delete"))
+            .await
+            .unwrap();
+        assert_eq!(done.status(), StatusCode::OK, "批准后仍被拦 = 门坏了");
+        assert_eq!(json_body(done).await["deleted"], true);
+        assert!(!tmp.0.exists(), "批准后目录应真删");
+        // 删完再删 → 404(不是又开一张提案)。
+        let again = app
+            .oneshot(delete_req("/api/forge/skills/zz-f11-delete"))
+            .await
+            .unwrap();
+        assert_eq!(again.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn skills_validate_draft_and_disk() {
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = build_app();
+        // 磁盘现文(真实 skill)→ valid。契约是 ask:execute 风格的冒号动作段。
+        let disk = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills/asset-cleanup:validate", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(disk.status(), StatusCode::OK);
+        let v = json_body(disk).await;
+        assert_eq!(v["valid"], true, "真实 skill 应合规: {v}");
+        assert_eq!(v["errors"].as_array().unwrap().len(), 0);
+        // 草稿 content → 按草稿判(不读盘)。
+        let draft = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/skills/asset-cleanup:validate",
+                r#"{"content":"---\nname: asset-cleanup\ndescription: 缺节草稿\n---\n短。\n"}"#,
+            ))
+            .await
+            .unwrap();
+        let dv = json_body(draft).await;
+        assert_eq!(dv["valid"], false, "缺三节草稿不该判合规: {dv}");
+        assert_eq!(dv["errors"].as_array().unwrap().len(), 3, "三节各报一条: {dv}");
+        assert!(!dv["warnings"].as_array().unwrap().is_empty(), "短正文+无触发时机应告警: {dv}");
+        // 不存在的 skill 且无草稿 → 404。
+        let missing = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills/no-such-skill:validate", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        // 缺动作后缀 / 未知动作 → 400(不静默当成 validate)。
+        let no_action = app
+            .clone()
+            .oneshot(post_json("/api/forge/skills/asset-cleanup", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(no_action.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(no_action).await["error"]["code"], "SKILL_ACTION_REQUIRED");
+        let unknown = app
+            .oneshot(post_json("/api/forge/skills/asset-cleanup:enable", "{}"))
+            .await
+            .unwrap();
+        assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(unknown).await["error"]["code"], "SKILL_ACTION_UNKNOWN");
     }
 
     #[tokio::test]
     async fn skills_config_write_disable_then_restore() {
-        let cfg_path = skills_config_path();
+        let _g = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let cfg_path = skills::skills_config_path();
         let backup = std::fs::read_to_string(&cfg_path).ok();
         let app = build_app();
         // 禁用 asset-cleanup → list 反映 enabled=false。
@@ -2556,6 +3078,7 @@ mod tests {
         let data = gen_temp_dir("list");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
+        std::env::remove_var("MESHY_API_KEY");
         let resp = build_app()
             .oneshot(get("/api/forge/gen/backends"))
             .await
@@ -2563,16 +3086,280 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let bs = v["backends"].as_array().unwrap();
-        assert_eq!(bs.len(), 2, "注册表两条目: {bs:?}");
-        for id in ["local-mock", "remote-openai-compatible"] {
+        // text2img 两条目 + media 四条目(video/audio/meshy/mesh 兜底)聚合。
+        assert_eq!(bs.len(), 6, "注册表六条目: {bs:?}");
+        for id in [
+            "local-mock",
+            "remote-openai-compatible",
+            "remote-video-compatible",
+            "remote-audio-compatible",
+            "meshy",
+            "remote-mesh-compatible",
+        ] {
             let b = bs.iter().find(|b| b["id"] == id).unwrap_or_else(|| panic!("缺 {id}"));
             assert_eq!(b["configured"], false);
             assert_eq!(b["endpointSet"], false);
             assert!(b["capabilities"].is_object());
+            // 非密配置事实回显:空配置 = 未启用 + 无 key + 无 model(设置页表单据此预填)。
+            assert_eq!(b["enabled"], false, "{id} 空配置应 enabled=false");
+            assert_eq!(b["keyConfigured"], false, "{id} 空配置应 keyConfigured=false");
+            assert!(b["model"].is_null(), "{id} 空配置应 model=null");
             // 响应面无任何密钥/endpoint 值字段。
             assert!(b.get("apiKey").is_none());
             assert!(b.get("endpoint").is_none());
         }
+        // media 条目 capabilities.kinds 如实。
+        let kinds_of = |id: &str| {
+            bs.iter()
+                .find(|b| b["id"] == id)
+                .unwrap()["capabilities"]["kinds"]
+                .clone()
+        };
+        assert_eq!(kinds_of("remote-video-compatible"), json!(["text2video"]));
+        assert_eq!(kinds_of("remote-audio-compatible"), json!(["tts", "music"]));
+        assert_eq!(kinds_of("remote-mesh-compatible"), json!(["text2mesh"]));
+        assert_eq!(kinds_of("meshy"), json!(["text2mesh", "image2mesh"]));
+        // meshy 的官方端点回出,设置页据此把「endpoint 空」呈现为可用缺省而非缺件。
+        let meshy = bs.iter().find(|b| b["id"] == "meshy").unwrap();
+        assert_eq!(meshy["capabilities"]["defaultEndpoint"], "https://api.meshy.ai");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    // ---------- 素材创作波:媒体生成 REST 面(gen/video、gen/audio) ----------
+
+    #[tokio::test]
+    async fn gen_video_unconfigured_honest_501() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("video-nc");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let app = build_app();
+        // prompt 空 → 400 GEN_BAD_PARAMS(参数校验先行)。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/video", r#"{"prompt":"  "}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+        // 未配置 → 501 GEN_BACKEND_NOT_CONFIGURED(诚实占位,不伪造产物)。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/video", r#"{"prompt":"a knight walks"}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
+        let v = json_body(r).await;
+        assert_eq!(v["error"]["code"], "GEN_BACKEND_NOT_CONFIGURED");
+        assert!(
+            v["error"]["message"].as_str().unwrap().contains("remote-video-compatible"),
+            "错误应引导可配置条目: {v}"
+        );
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_audio_mode_gate_and_unconfigured() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("audio-nc");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let app = build_app();
+        // mode 非法 → 400。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/audio",
+                r#"{"mode":"remix","prompt":"hi"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+        // tts / music 未配置 → 501。
+        for body in [
+            r#"{"mode":"tts","prompt":"你好世界","voice":"alloy"}"#,
+            r#"{"mode":"music","prompt":"battle theme","instrumental":true}"#,
+        ] {
+            let r = app
+                .clone()
+                .oneshot(post_json("/api/forge/gen/audio", body))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
+            let v = json_body(r).await;
+            assert_eq!(v["error"]["code"], "GEN_BACKEND_NOT_CONFIGURED");
+            assert!(
+                v["error"]["message"].as_str().unwrap().contains("remote-audio-compatible"),
+                "错误应引导可配置条目: {v}"
+            );
+        }
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_mesh_params_gate_and_unconfigured() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("mesh-nc");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        std::env::remove_var("MESHY_API_KEY");
+        let app = build_app();
+        // prompt 空且无参考图 → 400 GEN_BAD_PARAMS。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh", r#"{"prompt":"  "}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+        // 只给参考图(图生 3D)不该被 prompt 空挡住:越过参数门,停在后端未配置。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/mesh",
+                r#"{"imageDataUrl":"data:image/png;base64,aGVsbG8="}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
+        // 文生 3D 未配置 → 501,错误引导 meshy(默认供应商排在首位)。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh", r#"{"prompt":"a wooden chest"}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
+        let v = json_body(r).await;
+        assert_eq!(v["error"]["code"], "GEN_BACKEND_NOT_CONFIGURED");
+        let msg = v["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("meshy"), "错误应引导默认供应商: {msg}");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    /// meshy 只需 enabled + key 即可用(endpoint 有官方缺省),这条与其他 remote
+    /// 后端「必须填 endpoint」的判定不同,须锁住免得日后被统一逻辑抹平。
+    #[tokio::test]
+    async fn gen_configure_meshy_without_endpoint() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("meshy-cfg");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        std::env::remove_var("MESHY_API_KEY");
+        let app = build_app();
+        let secret = "msy_test_REDLINE";
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                &format!(
+                    r#"{{"id":"meshy","kind":"remote","enabled":true,"model":"latest","apiKey":"{secret}"}}"#
+                ),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["configured"], true, "无 endpoint 也该判定为已配置: {v}");
+        assert!(!v.to_string().contains(secret), "响应回显密钥(R-5): {v}");
+        let cfg_text = std::fs::read_to_string(data.join("gen-backends.json")).unwrap();
+        assert!(!cfg_text.contains(secret), "gen-backends.json 含密钥(R-5)");
+        let ks_text = std::fs::read_to_string(data.join("keystore.json")).unwrap();
+        assert!(!ks_text.contains(secret), "keystore 明文落盘(RD-F5-001)");
+        let listed = app.oneshot(get("/api/forge/gen/backends")).await.unwrap();
+        let lv = json_body(listed).await;
+        let b = lv["backends"].as_array().unwrap().iter().find(|b| b["id"] == "meshy").unwrap();
+        assert_eq!(b["configured"], true);
+        assert_eq!(b["endpointSet"], false, "endpoint 确实没填,如实回 false");
+        assert_eq!(b["keyConfigured"], true);
+        assert_eq!(b["model"], "latest");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_configure_media_backend_entry() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("media-cfg");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let app = build_app();
+        // media 条目可配(endpoint+model+key → configured=true);响应不回显密钥(R-5)。
+        let secret = "sk-test-media-REDLINE";
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                &format!(r#"{{"id":"remote-video-compatible","kind":"remote","enabled":true,"endpoint":"https://video.example.com","model":"vgen-1","apiKey":"{secret}"}}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["configured"], true);
+        assert!(!v.to_string().contains(secret), "响应回显密钥(R-5): {v}");
+        // gen-backends.json 落 model 字段,不落 key。
+        let cfg_text = std::fs::read_to_string(data.join("gen-backends.json")).unwrap();
+        assert!(cfg_text.contains("remote-video-compatible"));
+        assert!(cfg_text.contains("vgen-1"));
+        assert!(!cfg_text.contains(secret), "gen-backends.json 含密钥(R-5)");
+        // GET 回读 configured=true + endpointSet=true。
+        let listed = app.oneshot(get("/api/forge/gen/backends")).await.unwrap();
+        let lv = json_body(listed).await;
+        let b = lv["backends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == "remote-video-compatible")
+            .unwrap();
+        assert_eq!(b["configured"], true);
+        assert_eq!(b["endpointSet"], true);
+        assert_eq!(b["enabled"], true);
+        assert_eq!(b["model"], "vgen-1");
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    /// 停用态必须能被清单如实读回:设置页表单据此预填,否则「只改 key」的保存
+    /// 会把用户停用的后端悄悄改回启用(upsert_entry 的 enabled 是无条件覆盖)。
+    #[tokio::test]
+    async fn gen_backends_list_reports_disabled_entry() {
+        let _g = GEN_REST_LOCK.lock().unwrap();
+        let data = gen_temp_dir("disabled");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let app = build_app();
+        let secret = "sk-test-disabled-REDLINE";
+        let cfg_body = format!(
+            r#"{{"id":"remote-openai-compatible","kind":"remote","enabled":false,"endpoint":"https://api.example.com","model":"sd3","apiKey":"{secret}"}}"#
+        );
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/backends/configure", &cfg_body))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let listed = app.oneshot(get("/api/forge/gen/backends")).await.unwrap();
+        let lv = json_body(listed).await;
+        assert!(!lv.to_string().contains(secret), "清单回显密钥(R-5): {lv}");
+        let b = lv["backends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == "remote-openai-compatible")
+            .unwrap();
+        assert_eq!(b["enabled"], false, "停用态未如实回读");
+        assert_eq!(b["endpointSet"], true, "停用不影响 endpoint 已配置事实");
+        assert_eq!(b["keyConfigured"], true, "停用不影响 key 已配置事实");
+        assert_eq!(b["model"], "sd3");
+        // 停用 → configured=false(与 remote.rs configured 判定一致);
+        // 但 configured 是复合判定,不能拿它当「有没有 key」用。
+        assert_eq!(b["configured"], false);
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();
     }

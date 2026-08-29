@@ -18,7 +18,7 @@ export default function SubagentRow({
 }) {
   const openSubagent = useChatStore((st) => st.openSubagent);
   const cancelRun = useChatStore((st) => st.cancelRun);
-  const top = subagentDispatchSummary(block.label, '');
+  const top = subagentDispatchSummary(block.label, block.prompt ?? '');
   const bottom = subagentLiveSummary(block.summary, block.work, block.status);
   const running = block.status === 'running';
 

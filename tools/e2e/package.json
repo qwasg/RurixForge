@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "f8:w4": "node f8-w4-browser-matrix.mjs"
+    "f8:w4": "node f8-w4-browser-matrix.mjs",
+    "f9": "node f9-full-journey.mjs",
+    "full": "node run-all.mjs",
+    "full:core": "node run-all.mjs --profile core"
   },
   "devDependencies": {
     "playwright-core": "^1.53.0"

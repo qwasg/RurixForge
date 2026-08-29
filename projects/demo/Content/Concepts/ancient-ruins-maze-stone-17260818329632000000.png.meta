@@ -1,0 +1,17 @@
+guid: 8bcfbc4b-f54e-4733-8d7f-79ce1362cbd3
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: local-mock
+    generatedAt: 2026-08-25T04:50:13Z
+    prompt: |-
+      【上游·大纲 1】
+      mock:已收到「请为当前游戏项目撰写游戏设计大纲(核心玩法 / 世界观 / 进程结构 / 关卡列表),Markdown 输出,不要调用工具。需求:
+      一个 7x7 迷宫探险游戏:…」(无 LLM 密钥,真实工具循环未启用;配 FORGE_LLM_API_KEY 或 keystore[deepseek] 后走 deepseek)
+
+      ancient ruins maze stone walls moss golden key concept art
+    seed: 17260818329631999812
+    sourceRefs: []
+build_state: current

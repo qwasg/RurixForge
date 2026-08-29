@@ -133,3 +133,7 @@ Play/Pause/Step 三键 = Unity 工具栏语义,状态机 = engine-host `play.*`(
 - 不做地形编辑器、植被笔刷(摆放 = `scene-dressing` skill)。
 - 不做批量编辑窗、不做命令面板之外的第二操作面(红线 R-2)。
 - 不做插件市场 UI(hooks/plugins 照搬后端但 UI 后置)。
+
+## Errata(只追加区)
+
+- **E-07-001(2026-08-25,F11 / D-025)**:§9 末条「不做插件市场 UI」的适用范围经原文核读限定为**括号所指的 hooks/plugins**(执行第三方代码的扩展面),维持 RD-F7-002 defer 不变。F11「资产商店」不落在该条射程内——它是**纯数据分发**(资产文件 + SKILL.md 文本),安装链路禁止执行包内任何脚本或二进制,分发物一律经既有 `asset_import` 构建链落地。相应地 §1 七区布局**不变**:商店与 Skill 管理不新增常驻面板,入口 = Sidebar 两个导航按钮(与既有 New Agent 行同款),承载 = Workbench tab(`plan` / `todo` / `proposals` 为 F7 既有同类先例)。§7.2 的 `skills` tab 存在性不变,内容收窄为「目录配置(extraDirs)+ 跳转 Skill 管理 tab」,列表与编辑归 Skill 管理 tab 独有以避免两处事实源(裁决见 D-F11-E)。

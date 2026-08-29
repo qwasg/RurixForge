@@ -1,0 +1,26 @@
+{
+    "wave":  "f11-w1-store",
+    "note":  "官方源 = 仓内 registry/(file:// 驱动,离线可跑);https 社区源腿本环境未实测,如实标注 DEV_ENV_DEGRADE 不充绿。",
+    "failures":  [
+
+                 ],
+    "measured":  {
+                     "starterFilesInstalled":  3,
+                     "libraryBlobAfterGc":  0,
+                     "uninstallProposalId":  "prop_1",
+                     "packagesInOfficialSource":  3,
+                     "libraryBlobAfterDedup":  1,
+                     "woodLatest":  "1.1.0",
+                     "woodCurrent":  "1.0.0"
+                 },
+    "pass":  56,
+    "at":  "2026-08-25T07:19:51Z",
+    "skipped":  [
+
+                ],
+    "fail":  0,
+    "degraded":  [
+                     "https 社区源(HttpSource)未做真实网络实测"
+                 ],
+    "gateGreen":  true
+}

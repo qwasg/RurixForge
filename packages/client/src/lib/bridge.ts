@@ -27,6 +27,11 @@ export interface ForgeAPI {
     /** 在系统文件管理器中显示(Content 相对路径) */
     showInFolder?: (rel: string) => void;
   };
+  /** 工作区选择器桌面能力(desktop preload 提供;web 端缺省,入口如实禁用) */
+  workspace?: {
+    /** 系统目录对话框选工作区根(可在框内新建文件夹),返回绝对路径;取消 → null */
+    pickFolder?: () => Promise<string | null>;
+  };
   platform: string;
 }
 
@@ -42,6 +47,7 @@ declare global {
  * - viewport.reportBounds: no-op(让 ViewportCanvas 走回退腿)
  * - assets.pickImport: rejected promise + console.info
  * - assets.showInFolder: no-op + console.info
+ * - workspace.pickFolder: resolve(null) + console.info(等价「用户取消」)
  * (F7 wave.3:自 lib/mock.ts 迁入本文件——mock.ts 假数据体系随旧面下线。)
  */
 export const MOCK_FORGE_API: ForgeAPI = {
@@ -61,6 +67,12 @@ export const MOCK_FORGE_API: ForgeAPI = {
     },
     showInFolder: () => {
       console.info('[bridge] showInFolder 不可用(仅桌面端)');
+    },
+  },
+  workspace: {
+    pickFolder: () => {
+      console.info('[bridge] pickFolder 不可用(仅桌面端)');
+      return Promise.resolve(null);
     },
   },
   platform: 'web',

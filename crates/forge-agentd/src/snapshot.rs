@@ -14,6 +14,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::llm;
+use crate::modelspec;
 use crate::AppState;
 
 #[derive(Deserialize)]
@@ -24,6 +25,9 @@ pub struct SnapshotQuery {
 }
 
 /// models 面(F8 wave.2 抽出纯函数:availability 实测同源 + openai-compat 条目,便于确定单测)。
+/// 模型规格波:条目本体改由 modelspec::CATALOG 生成(带 Thinking/Effort/Context 能力面),
+/// 本函数只负责把「实测才知道」的两项注入——availability(密钥/配置齐否)与 openai-compat 的
+/// 动态 label(已配 = 模型名,未配如实标注)。R-5 不变:只回布尔语义,密钥不出。
 fn models_json() -> Value {
     let deepseek_availability = if llm::deepseek_key_available() {
         "available"
@@ -43,14 +47,19 @@ fn models_json() -> Value {
     } else {
         oai.model.clone()
     };
+    let models: Vec<Value> = modelspec::CATALOG
+        .iter()
+        .map(|c| match c.id {
+            "deepseek-chat" => modelspec::card_json(c, deepseek_availability, c.label),
+            llm::OPENAI_COMPAT_MODEL_ID => {
+                modelspec::card_json(c, oai_availability, &oai_label)
+            }
+            _ => modelspec::card_json(c, "available", c.label),
+        })
+        .collect();
     json!({
-        "models": [
-            { "id": "deepseek-chat", "label": "deepseek-chat", "provider": "deepseek", "availability": deepseek_availability },
-            { "id": "mock", "label": "Mock provider", "provider": "mock", "availability": "available" },
-            // F8 wave.2:openai-compat 通用渠道(固定 id;菜单经本数据面自动纳入,未配 needs-key 禁用)。
-            { "id": llm::OPENAI_COMPAT_MODEL_ID, "label": oai_label, "provider": "openai-compat", "availability": oai_availability },
-        ],
-        "defaultModelId": "deepseek-chat",
+        "models": models,
+        "defaultModelId": modelspec::DEFAULT_MODEL_ID,
     })
 }
 
@@ -133,6 +142,16 @@ mod tests {
         assert_eq!(arr[2]["provider"], "openai-compat");
         assert_eq!(arr[2]["availability"], "needs-key");
         assert_eq!(arr[2]["label"], "openai-compatible(未配置)");
+        // 规格能力面随条目下发(client ModelPicker 的三个子菜单全靠它驱动):
+        // deepseek 收不到 reasoning_effort → effortOptions 空 + 单档窗口;
+        // openai-compat 是自配渠道 → 五档 effort + 多档窗口。
+        assert_eq!(arr[0]["supportsThinking"], true);
+        assert_eq!(arr[0]["effortOptions"].as_array().unwrap().len(), 0);
+        assert_eq!(arr[0]["contextOptions"].as_array().unwrap().len(), 1);
+        assert_eq!(arr[1]["supportsThinking"], false);
+        assert_eq!(arr[2]["effortOptions"].as_array().unwrap().len(), 5);
+        assert!(arr[2]["contextOptions"].as_array().unwrap().len() > 1);
+        assert_eq!(v["defaultModelId"], "deepseek-chat");
         // 配齐腿:config JSON + keystore → available + label=model 名;全文无 key 子串。
         std::fs::write(
             dir.join("llm-openai-compat.json"),

@@ -1,0 +1,20 @@
+{
+    "failures":  [
+
+                 ],
+    "pass":  31,
+    "gateGreen":  true,
+    "wave":  "f11-w2-skill",
+    "fail":  0,
+    "skipped":  [
+
+                ],
+    "at":  "2026-08-25T07:39:04Z",
+    "measured":  {
+                     "diskSkillDirCount":  13,
+                     "tmpSkillName":  "smoke-tmp-636",
+                     "finalSkillCount":  13,
+                     "proposalId":  "prop_1",
+                     "baselineSkillCount":  13
+                 }
+}

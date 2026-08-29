@@ -11,3 +11,12 @@ provenance:
         width: 4
     tool: texture_process
 build_state: current
+semantic:
+  description: f2w4_dot 经 texture_process 缩放到 4x4 的产物,橙红纯色;验证贴图处理输出幂等
+  tags:
+  - 测试夹具
+  - 缩放产物
+  - texture_process
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

@@ -1,0 +1,1230 @@
+{
+  "entities": [
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 1,
+      "name": "Wall_0_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 2,
+      "name": "Wall_0_1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 3,
+      "name": "Wall_0_2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 4,
+      "name": "Wall_0_3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          6.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 5,
+      "name": "Wall_0_4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 6,
+      "name": "Wall_0_5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          10.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 7,
+      "name": "Wall_0_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          0.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 8,
+      "name": "Wall_6_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 9,
+      "name": "Wall_6_1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 10,
+      "name": "Wall_6_2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 11,
+      "name": "Wall_6_3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          6.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 12,
+      "name": "Wall_6_4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 13,
+      "name": "Wall_6_5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          10.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 14,
+      "name": "Wall_6_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 15,
+      "name": "Wall_1_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          2.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 16,
+      "name": "Wall_2_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          4.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 17,
+      "name": "Wall_3_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          6.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 18,
+      "name": "Wall_4_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          8.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 19,
+      "name": "Wall_5_0",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          10.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 20,
+      "name": "Wall_1_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          2.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 21,
+      "name": "Wall_2_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          4.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 22,
+      "name": "Wall_3_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          6.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 23,
+      "name": "Wall_4_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          8.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 24,
+      "name": "Wall_5_6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          10.0,
+          1.0,
+          12.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 25,
+      "name": "Wall_2_2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          4.0,
+          1.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 26,
+      "name": "Wall_4_2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          8.0,
+          1.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 27,
+      "name": "Wall_2_3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          4.0,
+          1.0,
+          6.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 28,
+      "name": "Wall_2_4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          4.0,
+          1.0,
+          8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 29,
+      "name": "Wall_4_4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          8.0,
+          1.0,
+          8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 30,
+      "name": "Wall_5_4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          10.0,
+          1.0,
+          8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 31,
+      "name": "Wall_2_5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "translation": [
+          4.0,
+          1.0,
+          10.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        }
+      ],
+      "id": 32,
+      "name": "Floor",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          14.0,
+          0.20000000298023224,
+          14.0
+        ],
+        "translation": [
+          6.0,
+          -0.10000000149011612,
+          6.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "player"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/maze_player.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 33,
+      "name": "Player",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "translation": [
+          2.0,
+          0.4000000059604645,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.6,
+              1.6,
+              1.6
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/maze_key.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 34,
+      "name": "Key",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "translation": [
+          2.0,
+          0.5,
+          10.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/maze_door.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 35,
+      "name": "Door",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.0,
+          2.0,
+          0.4000000059604645
+        ],
+        "translation": [
+          6.0,
+          1.0,
+          8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.6,
+              1.6,
+              1.6
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/maze_goal.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 36,
+      "name": "Goal",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          10.0,
+          0.5,
+          10.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "2a1004f5-6469-437f-84d4-04b3482df41c",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/door_opener.rxgraph",
+            "module": "door_opener",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 37,
+      "name": "JourneyBox",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          2.0,
+          1.0,
+          2.0
+        ]
+      }
+    }
+  ],
+  "name": "maze",
+  "next_id": 38
+}

@@ -31,8 +31,16 @@ struct McpProc {
 
 impl Drop for McpProc {
     fn drop(&mut self) {
+        // panic 安全清理:先尽力探当前 host pid(watchdog 重启后 pid 会变,host_ping
+        // 返回现值),杀 MCP(停看门狗,避免杀 host 后又被拉起),再杀其拉起的 host。
+        // Windows 下父进程死亡不会级联回收孙进程——不兜底则 host 孤儿存活并持有
+        // 继承来的 stdout 管道句柄,让上游 `cargo test | 管道` 永不 EOF(实测坑)。
+        let host_pid = self.try_host_pid();
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Some(pid) = host_pid {
+            kill_pid_best_effort(pid);
+        }
     }
 }
 
@@ -86,9 +94,25 @@ impl McpProc {
         let text = result["content"][0]["text"].as_str().expect("缺 content text");
         serde_json::from_str(text).expect("工具结果 text 须为 JSON")
     }
+
+    /// 非 panic 版 host_ping(Drop 清理路径用;任何失败一律 None 不打断 unwind)。
+    fn try_host_pid(&mut self) -> Option<u64> {
+        let id = self.next_id;
+        self.next_id += 1;
+        let req = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call",
+            "params": { "name": "host_ping", "arguments": {} } });
+        writeln!(self.stdin, "{}", serde_json::to_string(&req).ok()?).ok()?;
+        self.stdin.flush().ok()?;
+        let mut line = String::new();
+        self.stdout.read_line(&mut line).ok()?;
+        let resp: Value = serde_json::from_str(line.trim()).ok()?;
+        let text = resp.get("result")?["content"][0]["text"].as_str()?;
+        let v: Value = serde_json::from_str(text).ok()?;
+        v["pid"].as_u64()
+    }
 }
 
-/// taskkill 强杀指定 pid。
+/// taskkill 强杀指定 pid(断言成功;测试主体内使用)。
 fn kill_pid(pid: u64) {
     let status = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/F"])
@@ -97,6 +121,15 @@ fn kill_pid(pid: u64) {
         .status()
         .expect("taskkill 调用失败");
     assert!(status.success(), "taskkill /PID {pid} /F 应成功");
+}
+
+/// taskkill 强杀指定 pid(尽力而为,不 panic;Drop 清理路径专用)。
+fn kill_pid_best_effort(pid: u64) {
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 #[test]
@@ -111,7 +144,8 @@ fn watchdog_restarts_host_after_kill() {
     let init = mcp.request("initialize", json!({}));
     assert_eq!(init["serverInfo"]["name"], "engine-scene-mcp");
 
-    // tools/list:F0 5 个 + F1 27 个 + F1 wave.2 viewport 6 个 = 38 个工具齐全
+    // tools/list:F0 5 + F1 27 + F1 wave.2 viewport 6 + F3 debug 2 + F4 逻辑输入 1
+    // + scene_index 1(场景分类索引:role/map/interaction) = 42 个工具齐全
     let tools = mcp.request("tools/list", json!({}));
     let names: Vec<&str> = tools["tools"]
         .as_array()
@@ -119,7 +153,7 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 41, "tools/list 须为 41 个工具:{names:?}");
+    assert_eq!(names.len(), 42, "tools/list 须为 42 个工具:{names:?}");
     for want in [
         "host_ping", "scene_new", "scene_summary", "render_once", "host_events",
         "entity_create", "entity_destroy", "entity_rename", "entity_get", "entity_list",
@@ -134,14 +168,17 @@ fn watchdog_restarts_host_after_kill() {
         "scene_graph_dump", "host_events_drain",
         // F4 wave.3:逻辑输入注入
         "logic_inject_input",
+        // scene.index 透传:场景分类索引(role/map/interaction)
+        "scene_index",
     ] {
         assert!(names.contains(&want), "tools/list 缺 {want}:{names:?}");
     }
 
     // F1 透传实测:component_list_types + entity_create + entity_list + play_state。
     let types = mcp.call_tool("component_list_types", json!({}));
-    // F4 wave.3(D-F4-F):注册表 + Script + Tag + Trigger → 7 类型。
-    assert_eq!(types.as_array().unwrap().len(), 7, "注册表须 7 类型");
+    // F4 wave.3(D-F4-F):注册表 + Script + Tag + Trigger → 7 类型;
+    // Category(场景分类 role/map/interaction)→ 8 类型。
+    assert_eq!(types.as_array().unwrap().len(), 8, "注册表须 8 类型");
     let created = mcp.call_tool(
         "entity_create",
         json!({
@@ -202,12 +239,6 @@ fn watchdog_restarts_host_after_kill() {
     assert_eq!(sum2["entityCount"], 0);
     assert_eq!(sum2["physics"]["backend"].as_str().unwrap(), backend);
 
-    // 清理:先杀 MCP(停看门狗,避免杀 host 后又被拉起),再杀其拉起的 host。
-    let ping2 = mcp.call_tool("host_ping", json!({}));
-    let pid2 = ping2["pid"].as_u64();
-    let _ = mcp.child.kill();
-    let _ = mcp.child.wait();
-    if let Some(pid2) = pid2 {
-        kill_pid(pid2);
-    }
+    // 清理(杀 MCP 前先探 pid → 杀 MCP 停看门狗 → 杀 host)由 McpProc::drop 统一
+    // panic 安全执行;正常/断言失败两条路径都不留 host 孤儿。
 }

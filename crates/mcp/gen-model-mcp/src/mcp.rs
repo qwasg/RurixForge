@@ -20,15 +20,23 @@ fn tool_list() -> Value {
         "tools": [
             {
                 "name": "gen_mesh",
-                "description": "文/图生网格候选;注册表无 text2mesh 适配器(D-F5-E)→ 显式 GEN_BACKEND_NOT_CONFIGURED,不伪造生成能力",
+                "description": "文/图生网格候选;默认走 meshy(text-to-3d preview→refine 两阶段 / image-to-3d,产物 glb),可经 backend 切到自建兼容端点。后端未配置 → 显式 GEN_BACKEND_NOT_CONFIGURED,不伪造生成能力。注意:远端为异步任务制,单次调用可能耗时数分钟,超时的调用方请改用 REST POST /api/forge/gen/mesh",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "prompt": { "type": "string", "description": "与 imageRef 至少其一" },
-                        "imageRef": { "type": "string", "description": "参考图;与 prompt 至少其一" },
-                        "targetPolyBudget": { "type": "integer" },
-                        "styleRefAssetPath": { "type": "string" },
-                        "backend": { "type": "string", "description": "后端 id(text2mesh 适配器缺席)" }
+                        "prompt": { "type": "string", "description": "与 imageRef 至少其一;上限 600 字符" },
+                        "imageRef": { "type": "string", "description": "参考图(项目相对路径 png/jpg,或 http(s)/data URI);给了即走图生 3D,与 prompt 至少其一" },
+                        "targetPolyBudget": { "type": "integer", "description": "目标面数(standard 档 100..=300000,smart-topology 档 100..=15000)" },
+                        "styleRefAssetPath": { "type": "string", "description": "风格参考:图片路径 → 作贴图引导图;其余字符串 → 作贴图提示词" },
+                        "texture": { "type": "boolean", "description": "是否跑贴图阶段(默认 true;false 只出几何,省额度)" },
+                        "pbr": { "type": "boolean", "description": "是否出 PBR 贴图组(默认 true)" },
+                        "textureResolution": { "type": "string", "description": "2k | 4k | 8k(默认 2k)" },
+                        "modelType": { "type": "string", "description": "standard | smart-topology(默认 standard)" },
+                        "aiModel": { "type": "string", "description": "latest | meshy-7 | meshy-6 | meshy-5 | meshy-t2(缺省取后端条目 model)" },
+                        "topology": { "type": "string", "description": "triangle | quad" },
+                        "poseMode": { "type": "string", "description": "a-pose | t-pose(角色类可用)" },
+                        "timeoutSec": { "type": "integer", "description": "单阶段等待预算秒数(默认 900)" },
+                        "backend": { "type": "string", "description": "后端 id(缺省取首个已配置的 text2mesh 适配器,即 meshy)" }
                     }
                 }
             },
@@ -92,6 +100,46 @@ fn arg_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, GenError> {
         .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, format!("缺参数或为空: {key}")))
 }
 
+/// 图引用 → 远端可收的地址:已是 http(s)/data URI 则原样透传,否则按项目相对路径读盘编码。
+fn to_image_uri(project: &ForgeProject, image_ref: &str) -> Result<String, GenError> {
+    let r = image_ref.trim();
+    if r.starts_with("http://") || r.starts_with("https://") || r.starts_with("data:") {
+        return Ok(r.to_string());
+    }
+    tmpstore::image_data_uri(project, r)
+}
+
+/// gen_mesh 的档位参数原样搬进 MediaRequest.params(校验交给适配器,
+/// 由它按供应商能力面给出可诉诸的 GEN_BAD_PARAMS,工具层不重复一套白名单)。
+fn mesh_params(args: &Value) -> Result<Value, GenError> {
+    let mut params = json!({});
+    for key in ["textureResolution", "modelType", "aiModel", "topology", "poseMode", "texturePrompt"]
+    {
+        if let Some(v) = args.get(key).and_then(Value::as_str).filter(|s| !s.trim().is_empty()) {
+            params[key] = json!(v.trim());
+        }
+    }
+    for key in ["texture", "pbr"] {
+        if let Some(v) = args.get(key).and_then(Value::as_bool) {
+            params[key] = json!(v);
+        }
+    }
+    if let Some(v) = args.get("timeoutSec").and_then(Value::as_u64) {
+        params["timeoutSec"] = json!(v);
+    }
+    // 契约参数名 targetPolyBudget → 适配器面 targetPolycount。
+    match args.get("targetPolyBudget") {
+        None | Some(Value::Null) => {}
+        Some(v) => {
+            let n = v.as_u64().filter(|n| *n > 0).ok_or_else(|| {
+                GenError::new(GEN_BAD_PARAMS, "targetPolyBudget 须为正整数")
+            })?;
+            params["targetPolycount"] = json!(n);
+        }
+    }
+    Ok(params)
+}
+
 fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, GenError> {
     let name = params
         .get("name")
@@ -110,12 +158,73 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             if prompt.is_empty() && image_ref.is_empty() {
                 return Err(GenError::new(GEN_BAD_PARAMS, "prompt 与 imageRef 至少其一非空"));
             }
-            // 后端门:注册表(local-mock/remote-openai-compatible)均无 text2mesh 能力
-            // (D-F5-E)→ 显式 NOT_CONFIGURED,不伪造生成产物。
-            Err(GenError::new(
-                GEN_BACKEND_NOT_CONFIGURED,
-                "无 text2mesh 生成后端(注册表仅 text2img 适配器;gen_mesh 待真实后端接入)",
-            ))
+            // 默认 meshy(注册表首个已配置的 text2mesh 适配器);未配置显式 NOT_CONFIGURED
+            // (D-F5-E 诚实纪律不变,门从「无适配器」升级为「适配器未配置」)。
+            let backend_arg = args.get("backend").and_then(Value::as_str);
+            let cfg = gend::config::GenConfig::load();
+            let keys = gend::keystore::Keystore::load();
+            let backend = gend::media::resolve_backend(
+                gend::media::MediaKind::Mesh,
+                backend_arg,
+                &cfg,
+                &keys,
+            )?;
+            // 参考图/风格图落在本地磁盘,远端只收 URL 或 data URI,故先在工具层解析编码
+            // (media 层保持纯 HTTP,不认识 ForgeProject)。
+            let mut params = mesh_params(&args)?;
+            if !image_ref.is_empty() {
+                let p = lock(proj);
+                params["imageDataUrl"] = json!(to_image_uri(&p, image_ref)?);
+            }
+            if let Some(style) = args.get("styleRefAssetPath").and_then(Value::as_str) {
+                let style = style.trim();
+                if !style.is_empty() {
+                    let p = lock(proj);
+                    // 图片路径 → 贴图引导图;其余(含自由文本)→ 贴图提示词。
+                    match to_image_uri(&p, style) {
+                        Ok(uri) => params["textureImageUrl"] = json!(uri),
+                        Err(_) => params["texturePrompt"] = json!(style),
+                    }
+                }
+            }
+            let req = gend::media::MediaRequest {
+                kind: gend::media::MediaKind::Mesh,
+                prompt: prompt.to_string(),
+                params,
+            };
+            let artifacts = backend.generate(&req, &cfg, &keys)?;
+            let p = lock(proj);
+            let seed = gend::fnv1a64(prompt.as_bytes());
+            let mut candidates = Vec::new();
+            // 顶层 imageRefs 是 agentd 侧「工具产出图片」的约定键:有视觉面的模型会
+            // 收到这些图,从而真看见生成的东西,而不是只读到一行文件路径。
+            let mut image_refs: Vec<Value> = Vec::new();
+            for (i, a) in artifacts.iter().enumerate() {
+                let sidecar = json!({
+                    "backendId": backend.id(),
+                    "kind": if image_ref.is_empty() { "text2mesh" } else { "image2mesh" },
+                    "prompt": prompt,
+                    // 供应商任务 id / 模型 / 额度等如实入 sidecar,gen_accept 据此写 provenance。
+                    "meta": a.meta,
+                    "generatedAt": utc_now_iso8601(),
+                });
+                let file_ref =
+                    tmpstore::save_artifact(&p, &a.bytes, &a.ext, seed, i as u32, &sidecar)?;
+                // 供应商预览图落盘:签名 URL 会过期,存下来才是可复看的事实。
+                let mut previews = Vec::new();
+                for pv in &a.previews {
+                    let r = tmpstore::save_preview(&p, &file_ref, &pv.label, &pv.png)?;
+                    previews.push(json!({ "label": pv.label, "fileRef": r.clone() }));
+                    image_refs.push(json!(r));
+                }
+                candidates.push(json!({
+                    "meshFileRef": file_ref,
+                    "backendId": backend.id(),
+                    "meta": a.meta,
+                    "previews": previews,
+                }));
+            }
+            Ok(json!({ "candidates": candidates, "imageRefs": image_refs }))
         }
         "gen_mesh_refine" => {
             let mesh_ref = arg_str(&args, "meshFileRef")?;
@@ -260,8 +369,8 @@ mod tests {
     #[test]
     fn gen_mesh_bad_params_then_not_configured() {
         let _g = ENV_LOCK.lock().unwrap();
-        // 即使 local-mock(text2img)已配置,gen_mesh 仍 NOT_CONFIGURED(无 text2mesh 适配器,
-        // 证明是能力门而非配置门)。
+        // 即使 local-mock(text2img)已配置,gen_mesh 仍 NOT_CONFIGURED(素材创作波:
+        // media 注册表有 remote-mesh-compatible 适配器但未配置——配置门如实)。
         let data = temp_dir("mesh-data");
         std::fs::write(
             data.join("gen-backends.json"),
@@ -269,18 +378,24 @@ mod tests {
         )
         .unwrap();
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
         let proj = temp_project("mesh-proj");
         // 双空 → GEN_BAD_PARAMS(参数校验先行)。
         let e = call(&proj, "gen_mesh", json!({ "prompt": "", "imageRef": "" })).unwrap_err();
         assert_eq!(e.code, GEN_BAD_PARAMS);
         let e = call(&proj, "gen_mesh", json!({})).unwrap_err();
         assert_eq!(e.code, GEN_BAD_PARAMS);
-        // 有参 → GEN_BACKEND_NOT_CONFIGURED(显式,不伪造)。
+        // 有参 → GEN_BACKEND_NOT_CONFIGURED(显式,不伪造;错误信息引导可配置条目)。
         let e = call(&proj, "gen_mesh", json!({ "prompt": "a chair" })).unwrap_err();
         assert_eq!(e.code, GEN_BACKEND_NOT_CONFIGURED);
+        assert!(e.message.contains("remote-mesh-compatible"), "错误应引导配置: {}", e.message);
         let e = call(&proj, "gen_mesh", json!({ "imageRef": ".forge/tmp/gen/x.png" })).unwrap_err();
         assert_eq!(e.code, GEN_BACKEND_NOT_CONFIGURED);
+        // 显式指定不支持 text2mesh 的后端(local-mock)→ GEN_BAD_PARAMS(能力面如实)。
         let e = call(&proj, "gen_mesh", json!({ "prompt": "a chair", "targetPolyBudget": 5000, "backend": "local-mock" })).unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        // 显式指定 mesh 适配器但未配置 → GEN_BACKEND_NOT_CONFIGURED。
+        let e = call(&proj, "gen_mesh", json!({ "prompt": "a chair", "backend": "remote-mesh-compatible" })).unwrap_err();
         assert_eq!(e.code, GEN_BACKEND_NOT_CONFIGURED);
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();

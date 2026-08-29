@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+forge-util = { path = "../forge-util" }
 forge-scene = { path = "../forge-scene" }
 # F4 wave.3:图解释执行运行时(play 态逻辑帧调度 + 热重载)。
 forge-logic = { path = "../forge-logic" }

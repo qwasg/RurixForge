@@ -89,9 +89,12 @@ describe('<Composer /> 发送状态机', () => {
 });
 
 describe('<Composer /> 模式与技能', () => {
-  it('+ 菜单五模式;非 build 出 chip;x 复位', () => {
+  it('+ 菜单含 AgentKind 三节与五模式;非 build 出 chip;x 复位', () => {
     render(<Composer />);
     fireEvent.click(screen.getByTestId('composer-add'));
+    for (const id of ['coding', 'general', 'document']) {
+      expect(screen.getByTestId(`kind-item-${id}`)).toBeInTheDocument();
+    }
     for (const id of ['build', 'plan', 'debug', 'multitask', 'ask']) {
       expect(screen.getByTestId(`mode-item-${id}`)).toBeInTheDocument();
     }
@@ -106,7 +109,7 @@ describe('<Composer /> 模式与技能', () => {
     expect(screen.queryByTestId('composer-mode-chip')).not.toBeInTheDocument();
   });
 
-  it('技能菜单:列表双行/选中 check + chips;发送前缀 Use skills 并清空', async () => {
+  it('技能菜单:列表双行/选中 check + chips;发送走结构化 skills 形参并清空', async () => {
     const sendMessage = vi.fn();
     useChatStore.setState({ sendMessage });
     render(<Composer />);
@@ -122,30 +125,36 @@ describe('<Composer /> 模式与技能', () => {
     expect(screen.queryByTestId('skill-chip-perf-budget-check')).not.toBeInTheDocument();
     type('整理场景');
     fireEvent.click(screen.getByTestId('composer-send'));
-    expect(sendMessage).toHaveBeenCalledWith('Use skills: scene-greybox.\n\n整理场景', 'build');
+    // F11:技能名不再拼进正文,改作 sendMessage 第三形参下发(ask:execute skills[])
+    expect(sendMessage).toHaveBeenCalledWith('整理场景', 'build', ['scene-greybox']);
     expect(screen.queryByTestId('skill-chip-scene-greybox')).not.toBeInTheDocument();
   });
 
-  it('模型菜单:label+provider 双行;needs-key 禁用+title;选中 PATCH(pickModel)', async () => {
+  it('模型子菜单:label+provider 双行;needs-key 禁用+title;选中 PATCH(pickModel)', async () => {
     const pickModel = vi.fn();
     useChatStore.setState({ pickModel });
     render(<Composer />);
     // chip 显示选中模型 label
     expect(screen.getByTestId('composer-model')).toHaveTextContent('Mock provider');
     fireEvent.click(screen.getByTestId('composer-model'));
+    fireEvent.click(screen.getByTestId('spec-row-model'));
     const ds = await screen.findByTestId('model-item-deepseek-chat');
     expect(ds).toBeDisabled();
     expect(ds).toHaveAttribute('title', '未配置 Key');
-    expect(screen.getByText('deepseek')).toBeInTheDocument();
+    expect(ds).toHaveTextContent('deepseek · 未配置 Key');
     fireEvent.click(screen.getByTestId('model-item-mock'));
     expect(pickModel).toHaveBeenCalledWith('mock');
   });
 
-  it('F8 wave.1:联网开关=诚实禁用态(disabled + tooltip,不可开关)', () => {
+  it('技能/模型钮落在胶囊下方工具行;联网搜索钮已移除', () => {
     render(<Composer />);
-    const ws = screen.getByTestId('composer-websearch');
-    expect(ws).toBeDisabled();
-    expect(ws).toHaveAttribute('title', '联网搜索后端未接入');
+    expect(screen.queryByTestId('composer-websearch')).not.toBeInTheDocument();
+    const tools = screen.getByTestId('composer-tools');
+    expect(tools).toContainElement(screen.getByTestId('composer-skills'));
+    expect(tools).toContainElement(screen.getByTestId('composer-model'));
+    expect(screen.getByTestId('composer-capsule')).not.toContainElement(
+      screen.getByTestId('composer-model'),
+    );
   });
 });
 
@@ -174,5 +183,50 @@ describe('<Composer /> TodoStrip', () => {
   it('todos 为空不渲染 strip', () => {
     render(<Composer />);
     expect(screen.queryByTestId('todo-strip')).not.toBeInTheDocument();
+  });
+});
+
+describe('<Composer /> 单行胶囊', () => {
+  const inputShell = () => screen.getByTestId('composer-input').parentElement as HTMLElement;
+
+  it('空文本:输入压到 26px,胶囊走 rounded-full 且只含 + / 输入 / 发送', () => {
+    render(<Composer />);
+    expect(inputShell().style.height).toBe('26px');
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-capsule', '1');
+    const pill = screen.getByTestId('composer-capsule');
+    expect(pill.className).toContain('rounded-full');
+    expect(pill).toContainElement(screen.getByTestId('composer-add'));
+    expect(pill).toContainElement(screen.getByTestId('composer-input'));
+    expect(pill).toContainElement(screen.getByTestId('composer-send'));
+  });
+
+  it('单行文本保持胶囊;换行后长高并退回 rounded-2xl', () => {
+    render(<Composer />);
+    type('单行');
+    expect(inputShell().style.height).toBe('26px');
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-capsule', '1');
+    type('第一行\n第二行');
+    expect(inputShell().style.height).toBe('46px');
+    expect(screen.getByTestId('composer')).not.toHaveAttribute('data-capsule');
+    expect(screen.getByTestId('composer-capsule').className).toContain('rounded-2xl');
+  });
+
+  it('TodoStrip 移到胶囊外,不再撑破胶囊形状', () => {
+    useChatStore.setState({ todos: [{ id: 't1', title: '排队项', status: 'queued' }] });
+    render(<Composer />);
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-capsule', '1');
+    expect(screen.getByTestId('composer-capsule')).not.toContainElement(
+      screen.getByTestId('todo-strip'),
+    );
+  });
+
+  it('模式 chip 移到胶囊上方 chip 行', () => {
+    render(<Composer />);
+    fireEvent.click(screen.getByTestId('composer-add'));
+    fireEvent.click(screen.getByTestId('mode-item-plan'));
+    expect(screen.getByTestId('composer-chips')).toContainElement(
+      screen.getByTestId('composer-mode-chip'),
+    );
+    expect(screen.getByTestId('composer')).toHaveAttribute('data-capsule', '1');
   });
 });

@@ -1,14 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { Minus, Search, Square, SquareSquare, X } from 'lucide-react';
+import {
+  MessageSquareText,
+  Minus,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Search,
+  Square,
+  SquareSquare,
+  X,
+} from 'lucide-react';
 import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { cn } from '@/lib/cn';
 import { runCommand } from '@/lib/commands';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { Kbd, MenuItem, MenuSep } from './primitives';
 
 /**
  * F7 wave.3 TitleBar(36px,参考 ui/titlebar.rs):
  * 左 logo 方块(serif「铸」,22×22 圆角 6,bg=text 字色 text_inv)+ File/Edit/View/Help 菜单
- * (26px 行高 + kbd 提示,玻璃下拉);中央 max-w-520 搜索胶囊(点击开命令面板);
+ * (26px 行高 + kbd 提示,玻璃下拉)+ 面板开关钮组(底部/会话栏/对话栏/Inspector);
+ * 中央 max-w-520 搜索胶囊(点击开命令面板);
  * 右 Windows 三钮(minimize/toggleMaximize/close,最大化态订阅,close hover 红底)。
  */
 
@@ -56,6 +68,7 @@ const MENUS: Record<MenuKey, { label: string; rows: MenuRow[] }> = {
     rows: [
       { label: '切换会话栏', command: 'pane.sessions' },
       { label: '切换对话栏', command: 'pane.chat' },
+      { label: '缩小/还原对话窗口', command: 'pane.chatMini' },
       { label: '切换 Inspector', command: 'pane.inspector' },
       { sep: true, label: '' },
       { label: '切换主题（浅色/深色）', command: 'theme.toggle' },
@@ -89,6 +102,16 @@ export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
   const desktop = isDesktopBridge();
+  const collapsed = useWorkbenchStore((st) => st.collapsed);
+  const togglePane = useWorkbenchStore((st) => st.togglePane);
+  const bottomOpen = useWorkbenchStore((st) => st.bottomOpen);
+  const toggleBottom = useWorkbenchStore((st) => st.toggleBottom);
+
+  const paneBtn = (on: boolean) =>
+    cn(
+      'flex h-6 items-center rounded px-1.5 text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg',
+      on && 'text-fg',
+    );
 
   useEffect(() => {
     const off = bridge().win.onMaximizedChanged(setMaximized);
@@ -170,6 +193,46 @@ export default function TitleBar() {
             </div>
           ))}
         </nav>
+        <span className="mx-0.5 h-4 w-px shrink-0 bg-edge" />
+        <div className="flex items-center">
+          <button
+            type="button"
+            title="切换底部面板(Ctrl+J)"
+            aria-label="切换底部面板"
+            data-testid="titlebar-bottom-toggle"
+            className={paneBtn(bottomOpen)}
+            onClick={toggleBottom}
+          >
+            <PanelBottom size={13} />
+          </button>
+          <button
+            type="button"
+            title="切换会话栏"
+            aria-label="切换会话栏"
+            className={paneBtn(!collapsed.sessions)}
+            onClick={() => togglePane('sessions')}
+          >
+            <PanelLeft size={13} />
+          </button>
+          <button
+            type="button"
+            title="切换对话栏"
+            aria-label="切换对话栏"
+            className={paneBtn(!collapsed.chat)}
+            onClick={() => togglePane('chat')}
+          >
+            <MessageSquareText size={13} />
+          </button>
+          <button
+            type="button"
+            title="切换 Inspector"
+            aria-label="切换 Inspector"
+            className={paneBtn(!collapsed.inspector)}
+            onClick={() => togglePane('inspector')}
+          >
+            <PanelRight size={13} />
+          </button>
+        </div>
       </div>
 
       {/* 中央:搜索胶囊(点击开命令面板) */}

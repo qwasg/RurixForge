@@ -19,3 +19,4 @@ uuid = { version = "1", features = ["v4"] }
 # 贴图缩略图原图直出(thumb.rs;与 engine-host 同版本)。
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+forge-util = { path = "../forge-util" }

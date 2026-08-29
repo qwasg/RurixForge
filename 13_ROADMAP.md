@@ -125,3 +125,17 @@ F0 地基 → F1 场景编辑闭环 → F2 素材管线 → F3 agent 集群与 s
 4. 浏览器真实任务矩阵:Playwright 落仓八任务 E2E(会话/消息/编辑器/场景编辑/multitask/提案/设置/会话管理)。
 
 验收门:见 `milestones/f8/F8_CONTRACT.md`(G-F8-1~5)。
+
+## F11 · 资产商店 + Skill 管理(后路线图里程碑,2026-08-25 立项 D-025)
+
+> 编号留痕:F9(全项目 journey)与 F10(context RAG)为需求驱动的轻量波,走 `.trae/specs/` 未立 milestone 契约,故本波取 F11 避让已被脚本名占用的 f9/f10 编号。
+
+交付:
+
+1. registry 内核:库 crate `forge-store`——协议 DTO 与校验、`file://` 与 `https://` 双源驱动、多源聚合、个人资产库(内容寻址)、安装卸载更新、打包发布;`sha256_hex` 收编进 `forge-util`。
+2. skill 内核:兑现 `06 §2` 未实装的注入链路——`read_skill` 原生工具 + 系统提示技能索引 + `ask:execute` 结构化 `skills[]` 经 preamble 注入全文;技能 CRUD 与校验(删除走 Proposal)。
+3. store 服务面:`store-mcp` 工具面 + agentd `store.rs` REST 长任务面;卸载与技能删除接 Proposal 门。
+4. 前端两个大类:Sidebar 两个导航按钮 + Workbench 两个 tab(商店三子页 / Skill 管理);Composer 文本前缀协议下线。
+5. 官方源种子(仓内 `registry/`,离线可完整验收)+ 冒烟 + 浏览器 journey 矩阵。
+
+验收门:见 `milestones/f11/F11_CONTRACT.md`(G-F11-1~6)。

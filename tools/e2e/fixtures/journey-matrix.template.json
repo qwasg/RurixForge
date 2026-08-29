@@ -1,0 +1,21 @@
+{
+  "scene": "{{SCENE}}",
+  "enterPlay": false,
+  "enter_play": false,
+  "cases": [
+    {
+      "name": "实体计数含 journey 实体",
+      "assert": { "kind": "entity_count", "op": "ge", "expected": 1 }
+    },
+    {
+      "name": "journey 实体 Script.graphRef",
+      "assert": {
+        "kind": "component_field",
+        "entity": "{{ENTITY}}",
+        "type": "Script",
+        "field": "{{GRAPH_FIELD}}",
+        "expected": "Content/Graphs/door_opener.rxgraph"
+      }
+    }
+  ]
+}

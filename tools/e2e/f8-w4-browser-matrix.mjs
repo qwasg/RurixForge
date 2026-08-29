@@ -381,11 +381,15 @@ async function main() {
   log('== F8 wave.4 浏览器真实任务矩阵(G-F8-4)==');
   log(`evidence: ${path.relative(ROOT, MATRIX_FILE)};TMP=${TMP};ENT=${ENT_NAME}`);
 
-  // ── 0. 构建检查 ──
-  log('== 0. 构建检查(cargo 七二进制 + client/host dist)==');
-  await run('cargo build -p forge-agentd -p engine-scene-mcp -p engine-host -p asset-pipeline-mcp -p code-forge-mcp -p gen-image-mcp -p gen-model-mcp');
-  await run('pnpm --filter @forge/client build');
-  await run('pnpm --filter @forge/host build');
+  // ── 0. 构建检查(编排器可 FORGE_E2E_SKIP_BUILD=1 跳过编,仍校验产物)──
+  if (process.env.FORGE_E2E_SKIP_BUILD === '1') {
+    log('== 0. 跳过构建(FORGE_E2E_SKIP_BUILD=1),仅校验产物==');
+  } else {
+    log('== 0. 构建检查(cargo 七二进制 + client/host dist)==');
+    await run('cargo build -p forge-agentd -p engine-scene-mcp -p engine-host -p asset-pipeline-mcp -p code-forge-mcp -p gen-image-mcp -p gen-model-mcp');
+    await run('pnpm --filter @forge/client build');
+    await run('pnpm --filter @forge/host build');
+  }
   for (const rel of [
     'target/debug/forge-agentd.exe', 'target/debug/engine-scene-mcp.exe', 'target/debug/engine-host.exe',
     'target/debug/asset-pipeline-mcp.exe', 'target/debug/code-forge-mcp.exe',

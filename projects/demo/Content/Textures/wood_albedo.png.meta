@@ -11,3 +11,15 @@ provenance:
     seed: 8844719688817715237
     sourceRefs: []
 build_state: current
+semantic:
+  description: 橙棕色编织木纹反照率贴图,横竖交错的木块拼贴图案;适合木地板、家具表面的 PBR albedo 槽
+  tags:
+  - 木纹
+  - 贴图
+  - albedo
+  - PBR
+  - 家具
+  - 地板
+  source: agent-vision
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

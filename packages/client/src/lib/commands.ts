@@ -51,6 +51,18 @@ export const COMMANDS: Command[] = [
     run: () => useWorkbenchStore.getState().openTab('proposals'),
   },
   {
+    id: 'tab.store',
+    label: '打开资产商店',
+    section: 'navigate',
+    run: () => useWorkbenchStore.getState().openTab('store'),
+  },
+  {
+    id: 'tab.skills',
+    label: '打开 Skill 管理',
+    section: 'navigate',
+    run: () => useWorkbenchStore.getState().openTab('skills'),
+  },
+  {
     id: 'bottom.toggle',
     label: '切换底部面板',
     section: 'view',
@@ -80,6 +92,12 @@ export const COMMANDS: Command[] = [
     label: '切换 Inspector',
     section: 'view',
     run: () => useWorkbenchStore.getState().togglePane('inspector'),
+  },
+  {
+    id: 'pane.chatMini',
+    label: '缩小/还原对话窗口',
+    section: 'view',
+    run: () => useWorkbenchStore.getState().toggleChatMini(),
   },
   {
     id: 'theme.toggle',

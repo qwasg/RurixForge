@@ -1,0 +1,156 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic "RurixForge" [ref=e6]: 铸
+      - navigation [ref=e7]:
+        - button "File" [ref=e9] [cursor=pointer]
+        - button "Edit" [ref=e11] [cursor=pointer]
+        - button "View" [ref=e13] [cursor=pointer]
+        - button "Help" [ref=e15] [cursor=pointer]
+      - generic [ref=e17]:
+        - button "切换底部面板" [ref=e18] [cursor=pointer]
+        - button "切换会话栏" [ref=e21] [cursor=pointer]
+        - button "切换对话栏" [ref=e24] [cursor=pointer]
+        - button "切换 Inspector" [ref=e27] [cursor=pointer]
+    - button "搜索会话、文件、命令… Ctrl K" [ref=e31] [cursor=pointer]:
+      - generic [ref=e35]: 搜索会话、文件、命令…
+      - generic [ref=e36]: Ctrl K
+  - generic [ref=e37]:
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - textbox "搜索会话…" [ref=e45]
+            - generic [ref=e46]: /
+          - button "折叠 sessions" [ref=e47] [cursor=pointer]
+          - button "New Agent Ctrl+Shift+N" [ref=e50] [cursor=pointer]:
+            - generic [ref=e53]: New Agent
+            - generic [ref=e54]: Ctrl+Shift+N
+        - generic [ref=e55]:
+          - generic [ref=e56]: 后端未连接
+          - generic [ref=e57]:
+            - generic [ref=e68]: WORKSPACES
+            - button "新建工作区" [ref=e70] [cursor=pointer]
+          - button "全部" [ref=e72] [cursor=pointer]
+          - generic [ref=e84]:
+            - generic [ref=e87]: CHAT FOLDERS
+            - button "新建文件夹" [ref=e89] [cursor=pointer]
+          - button "会话" [ref=e93] [cursor=pointer]
+        - generic [ref=e99]:
+          - generic [ref=e100]: 本
+          - generic [ref=e101]:
+            - generic [ref=e102]: 我的空间
+            - generic [ref=e103]: 本地用户
+          - button "设置" [ref=e104] [cursor=pointer]
+      - separator "拖动改栏宽 sessions" [ref=e108]
+    - generic [ref=e109]:
+      - generic [ref=e111]:
+        - generic [ref=e112]:
+          - button "缩小对话窗口" [ref=e186] [cursor=pointer]
+          - button "折叠 chat" [ref=e192] [cursor=pointer]
+        - paragraph [ref=e197]: 选择左侧会话或点击 New Agent
+        - generic [ref=e123]:
+          - generic [ref=e124]:
+            - button "模式菜单" [ref=e125] [cursor=pointer]
+            - textbox "描述任务…" [ref=e198]
+            - button "发送" [disabled] [ref=e129]
+          - generic [ref=e132]:
+            - button "选择技能" [ref=e133] [cursor=pointer]
+            - button "选择模型" [ref=e137] [cursor=pointer]:
+              - generic [ref=e140]: default
+            - button "上下文窗口占用" [ref=e143] [cursor=pointer]:
+              - generic [ref=e147]: 12%
+            - button "语音输入" [ref=e148] [cursor=pointer]
+      - separator "拖动改栏宽 chat" [ref=e199]
+    - generic [ref=e201]:
+      - button "编辑器 关闭 编辑器" [ref=e203] [cursor=pointer]:
+        - generic "编辑器" [ref=e209]
+        - button "关闭 编辑器" [ref=e210]
+      - generic [ref=e215]:
+        - region "Viewport" [ref=e216]:
+          - generic [ref=e217]:
+            - button "隐藏 Assets 底栏" [ref=e218] [cursor=pointer]
+            - generic [ref=e222]:
+              - button "Viewport" [ref=e223] [cursor=pointer]
+              - button "NodeGraph" [ref=e224] [cursor=pointer]
+              - button "画板" [ref=e225] [cursor=pointer]
+            - generic "Gizmo" [ref=e227]:
+              - button "Move (W)" [ref=e228] [cursor=pointer]
+              - button "Rotate (E)" [ref=e234] [cursor=pointer]
+              - button "Scale (R)" [ref=e239] [cursor=pointer]
+            - generic [ref=e246]:
+              - button "Play" [ref=e247] [cursor=pointer]
+              - button "Pause" [disabled] [ref=e250]
+              - button "Step" [disabled] [ref=e254]
+              - button "Stop (exit PIE)" [disabled] [ref=e257]
+            - button "Undo" [ref=e260] [cursor=pointer]
+            - button "Redo" [ref=e264] [cursor=pointer]
+            - button "Save Scene" [ref=e269] [cursor=pointer]
+            - button "Load Scene" [ref=e274] [cursor=pointer]
+            - button "Run maze playtest(结果走 toast)" [ref=e278] [cursor=pointer]
+          - generic [ref=e281]:
+            - application "Viewport 画布" [ref=e282]:
+              - paragraph [ref=e284]: Viewport 帧通道降级(如实上报,非伪造帧)响应非 JSON(HTTP 500)
+              - generic [ref=e285]: 帧统计待首帧
+              - generic [ref=e286]: 单击点选 · Alt+左键环绕 · 滚轮缩放 · F 聚焦 · W 平移(选中后拖拽)
+            - generic [ref=e287]:
+              - generic [ref=e289]: edit
+              - generic [ref=e290]: Untitled
+        - region "Assets" [ref=e292]:
+          - generic [ref=e293]:
+            - generic [ref=e294]: Assets
+            - generic [ref=e295]:
+              - button "All" [ref=e296] [cursor=pointer]
+              - button "Mesh" [ref=e297] [cursor=pointer]
+              - button "Texture" [ref=e298] [cursor=pointer]
+              - button "Material" [ref=e299] [cursor=pointer]
+              - button "Prefab" [ref=e300] [cursor=pointer]
+              - button "Scene" [ref=e301] [cursor=pointer]
+              - button "Script" [ref=e302] [cursor=pointer]
+              - button "Audio" [ref=e303] [cursor=pointer]
+            - textbox "Search assets..." [ref=e308]
+            - generic [ref=e309]:
+              - button "Grid" [ref=e310] [cursor=pointer]
+              - button "List" [ref=e313] [cursor=pointer]
+              - button "Refresh" [ref=e316] [cursor=pointer]
+          - generic [ref=e322]:
+            - generic "资产文件夹" [ref=e323]:
+              - button "全部" [ref=e324] [cursor=pointer]
+            - generic [ref=e328]:
+              - paragraph [ref=e329]: 响应非 JSON(HTTP 500)
+              - paragraph [ref=e330]: 暂无资产,先导入
+    - generic [ref=e331]:
+      - generic [ref=e332]:
+        - generic [ref=e333]:
+          - generic [ref=e334]:
+            - button "工作区" [ref=e335] [cursor=pointer]
+            - button "层级" [ref=e341] [cursor=pointer]
+            - button "属性" [ref=e345] [cursor=pointer]
+            - button "资产" [ref=e347] [cursor=pointer]
+          - button "折叠 inspector" [ref=e352] [cursor=pointer]
+        - region "Hierarchy" [ref=e356]:
+          - generic [ref=e357]:
+            - generic [ref=e358]: 层级 · 角色 / 地图 / 交互
+            - button "Create entity" [ref=e359] [cursor=pointer]
+          - textbox "Filter entities..." [ref=e366]
+          - generic [ref=e367]:
+            - generic [ref=e368]:
+              - button "角色 0" [ref=e369] [cursor=pointer]:
+                - generic [ref=e375]: 角色
+                - generic [ref=e376]: "0"
+              - paragraph [ref=e378]: 暂无角色实体
+            - generic [ref=e379]:
+              - button "地图 0" [ref=e380] [cursor=pointer]:
+                - generic [ref=e385]: 地图
+                - generic [ref=e386]: "0"
+              - paragraph [ref=e388]: 暂无地图实体
+            - generic [ref=e389]:
+              - button "交互 0" [ref=e390] [cursor=pointer]:
+                - generic [ref=e395]: 交互
+                - generic [ref=e396]: "0"
+              - paragraph [ref=e398]: 暂无交互实体
+            - paragraph [ref=e399]: 场景为空,点 + 新建实体
+      - separator "拖动改栏宽 inspector" [ref=e400]
+  - contentinfo [ref=e169]:
+    - generic [ref=e170]: host 离线
+    - generic [ref=e172]: Mock provider

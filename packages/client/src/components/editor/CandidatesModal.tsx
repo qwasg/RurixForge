@@ -21,21 +21,21 @@ export default function CandidatesModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" data-gen-candidates>
-      <div className="flex w-[520px] max-w-[90vw] flex-col rounded-lg border border-line bg-white p-3 shadow-md">
+      <div className="flex w-[520px] max-w-[90vw] flex-col rounded-lg border border-edge-strong bg-shell-panel p-3 shadow-md">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-ink">
+          <span className="text-sm font-medium text-fg">
             候选挑拣({candidates.length} 张 → Content/{destFolder})
           </span>
           <button type="button" title="关闭" data-gen-close className={iconBtn} onClick={closeCandidates}>
             <X size={13} strokeWidth={1.8} />
           </button>
         </div>
-        <p className="mt-0.5 text-2xs text-muted-faint">
+        <p className="mt-0.5 text-2xs text-fg-4">
           Accept 入管线(自动 .meta + provenance origin=gen-image);可逐个接受多张,不互斥。
         </p>
 
         {lastError && (
-          <p className="mt-1 text-2xs text-red-600" data-gen-error>
+          <p className="mt-1 text-2xs text-danger" data-gen-error>
             {lastErrorCode ? `${lastErrorCode}:` : ''}
             {lastError}
           </p>
@@ -50,7 +50,7 @@ export default function CandidatesModal() {
                 key={c.imageFileRef}
                 data-gen-candidate
                 data-seed={c.seed}
-                className="flex flex-col rounded-md border border-line bg-panel p-1.5"
+                className="flex flex-col rounded-md border border-edge-strong bg-shell-sunk p-1.5"
               >
                 {c.dataUrl ? (
                   <img
@@ -60,12 +60,12 @@ export default function CandidatesModal() {
                     draggable={false}
                   />
                 ) : (
-                  <div className="flex h-36 w-full items-center justify-center rounded-sm bg-white text-2xs text-muted-faint">
+                  <div className="flex h-36 w-full items-center justify-center rounded-sm bg-shell-panel text-2xs text-fg-4">
                     无缩略图(dataUrl 缺失)
                   </div>
                 )}
                 <div className="mt-1 flex items-center justify-between gap-1">
-                  <span className="min-w-0 flex-1 truncate text-2xs text-muted" title={`${c.backendId} · seed ${c.seed}`}>
+                  <span className="min-w-0 flex-1 truncate text-2xs text-fg-3" title={`${c.backendId} · seed ${c.seed}`}>
                     seed {c.seed} · {c.backendId}
                   </span>
                   <button
@@ -74,8 +74,8 @@ export default function CandidatesModal() {
                     disabled={busy}
                     onClick={() => void accept(c)}
                     className={cn(
-                      'shrink-0 rounded px-2 py-0.5 text-2xs text-white',
-                      busy ? 'cursor-not-allowed bg-muted-faint' : accepted ? 'bg-accent-green' : 'bg-ink',
+                      'shrink-0 rounded px-2 py-0.5 text-2xs text-fg-inv',
+                      busy ? 'cursor-not-allowed bg-fg-4' : accepted ? 'bg-sage' : 'bg-fg',
                     )}
                   >
                     {busy ? '入库中…' : accepted ? '已入库' : 'Accept'}
@@ -91,4 +91,4 @@ export default function CandidatesModal() {
 }
 
 const iconBtn =
-  'flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-ink-soft';
+  'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-soft';
