@@ -1,0 +1,10 @@
+// F4 wave.4 LSP 冒烟 fixture:单文件双 fn(定义 + 调用点)。
+// 诚实注记:上游 ToolingSession 为单文档语义(H:\rurix src\rurixc\src\tooling\session.rs,
+// 每 uri 独立 analyze,无跨文件模块装载),references 限同文件 → mathlib/caller 合并单文件。
+pub fn smooth_open(x: i32) -> i32 {
+    x * 2 + 1
+}
+
+fn main() {
+    let y = smooth_open(41);
+}

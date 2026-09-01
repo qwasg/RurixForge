@@ -1,0 +1,4 @@
+#[test]
+fn fails_nonzero() -> i32 {
+    1
+}

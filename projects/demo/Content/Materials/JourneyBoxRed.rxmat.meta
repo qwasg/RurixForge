@@ -1,0 +1,15 @@
+guid: 06530cdb-4012-479c-916c-07605992930e
+type: material
+importer: material
+provenance:
+  origin: user-import
+build_state: current
+semantic:
+  description: 纯参数红色 PBR 材质(无贴图),journey 场景红盒子用
+  tags:
+  - 材质
+  - 红色
+  - journey
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

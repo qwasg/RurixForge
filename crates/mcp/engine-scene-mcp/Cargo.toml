@@ -1,0 +1,10 @@
+[package]
+name = "engine-scene-mcp"
+description = "Forge 引擎场景 MCP 服务器:stdio NDJSON JSON-RPC,autoStart engine-host + 500ms 看门狗 + host-events.jsonl"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+forge-util = { path = "../../forge-util" }
+serde.workspace = true
+serde_json.workspace = true

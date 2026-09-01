@@ -1,0 +1,16 @@
+{
+  "params": {
+    "baseColor": [
+      1,
+      0.8,
+      0.6,
+      1
+    ],
+    "roughness": 0.7
+  },
+  "shader": "pbr-default",
+  "textures": {
+    "albedo": "e858d90b-19b7-425e-84a0-01a92733d053"
+  },
+  "version": 1
+}

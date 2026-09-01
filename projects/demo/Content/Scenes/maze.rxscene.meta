@@ -1,0 +1,12 @@
+guid: 3b7a2e14-9c4d-4e8a-b2f1-6d5c8a0e9f31
+type: scene
+importer: scene
+semantic:
+  description: 7x7 迷宫玩法场景(36 实体):玩家/钥匙/门/终点 + 墙体环,玩法逻辑挂 maze_*.rxgraph 四图
+  tags:
+  - 场景
+  - 迷宫
+  - 玩法
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

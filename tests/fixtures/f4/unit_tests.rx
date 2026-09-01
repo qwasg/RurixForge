@@ -1,0 +1,7 @@
+#[test]
+fn unit_ok() {}
+
+#[test]
+fn returns_zero() -> i32 {
+    0
+}

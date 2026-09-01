@@ -1,0 +1,22 @@
+guid: 8fe48198-4676-47dd-a53e-c64095fbb418
+type: texture
+importer: png
+provenance:
+  origin: user-import
+  detail:
+    derivedFrom: e858d90b-19b7-425e-84a0-01a92733d053
+    ops:
+      resize:
+        height: 4
+        width: 4
+    tool: texture_process
+build_state: current
+semantic:
+  description: f2w4_dot 经 texture_process 缩放到 4x4 的产物,橙红纯色;验证贴图处理输出幂等
+  tags:
+  - 测试夹具
+  - 缩放产物
+  - texture_process
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

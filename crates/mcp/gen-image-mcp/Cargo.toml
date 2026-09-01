@@ -1,0 +1,15 @@
+[package]
+name = "gen-image-mcp"
+description = "Forge 生成图像 MCP 服务器(F5,05 §7):gen_backends_list/gen_image/gen_texture_set/gen_accept/gen_variations;stdio NDJSON JSON-RPC,内嵌 gend 库"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gend = { path = "../../gend" }
+assetd = { path = "../../assetd" }
+serde.workspace = true
+serde_json.workspace = true
+# variations 源图解码(尺寸/校验)。
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# 候选缩略图 dataUrl(F5 wave.3 前端候选网格;与 gend 同版本)。
+base64 = "0.22"

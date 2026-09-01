@@ -1,0 +1,4 @@
+#[export(c)]
+pub fn add(a: f32, b: f32) -> f32 { a + b }
+#[export(c)]
+pub fn mixed(a: f32, b: i32) -> f32 { a }

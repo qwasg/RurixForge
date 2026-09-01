@@ -1,0 +1,11 @@
+guid: 47b522b9-3a3c-44c4-8d66-6cf7215da1f3
+type: scene
+importer: scene
+semantic:
+  description: 默认入口场景:单实体 W4Tri,MeshRenderer 引用椅子网格与 w4_mat 材质
+  tags:
+  - 场景
+  - 入口
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

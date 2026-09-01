@@ -1,0 +1,15 @@
+guid: 9b019e46-84c9-43c4-872e-bb830d272560
+type: script
+importer: rxgraph
+provenance:
+  origin: user-import
+build_state: current
+semantic:
+  description: call.call_function 探针图:on_start 调 callprobe.rx add(2,3.5) 并把结果存 result 变量
+  tags:
+  - 节点图
+  - 探针
+  - 测试夹具
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

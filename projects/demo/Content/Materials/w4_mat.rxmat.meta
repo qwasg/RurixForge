@@ -1,0 +1,15 @@
+guid: 2a1004f5-6469-437f-84d4-04b3482df41c
+type: material
+importer: material
+provenance:
+  origin: user-import
+build_state: current
+semantic:
+  description: 暖色 PBR 材质:baseColor(1,0.8,0.6)、roughness 0.7,albedo 槽引用贴图;W4 验收用
+  tags:
+  - 材质
+  - PBR
+  - 暖色
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "g_bad_dangling",
+  "name": "BadDangling",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "event.on_start",
+      "pos": [40, 80]
+    },
+    {
+      "id": "n2",
+      "type": "flow.branch",
+      "pos": [240, 80]
+    }
+  ],
+  "edges": [
+    { "from": ["n1", "exec"], "to": ["n2", "exec"] }
+  ]
+}

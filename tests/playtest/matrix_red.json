@@ -1,0 +1,9 @@
+{
+  "scene": "tests/playtest/fixture.rxscene",
+  "enterPlay": false,
+  "cases": [
+    { "name": "实体计数=9(必红)", "assert": { "kind": "entity_count", "expected": 9 } },
+    { "name": "玩家错位(必红)", "assert": { "kind": "transform_near", "entity": "Player", "translation": [5.0, 0.5, 5.0], "tolerance": 0.001 } },
+    { "name": "幽灵实体(必红)", "assert": { "kind": "component_field", "entity": "Ghost", "type": "Script", "field": "props", "expected": 1 } }
+  ]
+}

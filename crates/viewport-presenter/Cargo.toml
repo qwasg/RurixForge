@@ -1,0 +1,11 @@
+[package]
+name = "viewport-presenter"
+description = "Viewport 共享纹理消费者:D3D12 窗口呈现 engine-host 产出的帧(Windows only)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+windows.workspace = true
+
+[lints.rust]
+unsafe_code = "allow"

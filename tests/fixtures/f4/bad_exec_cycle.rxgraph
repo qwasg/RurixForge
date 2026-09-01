@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "g_bad_exec_cycle",
+  "name": "BadExecCycle",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "a",
+      "type": "flow.delay",
+      "pos": [40, 80],
+      "inputs": {
+        "duration": { "const": 1.0 }
+      }
+    },
+    {
+      "id": "b",
+      "type": "flow.delay",
+      "pos": [240, 80],
+      "inputs": {
+        "duration": { "const": 1.0 }
+      }
+    }
+  ],
+  "edges": [
+    { "from": ["a", "exec"], "to": ["b", "exec"] },
+    { "from": ["b", "exec"], "to": ["a", "exec"] }
+  ]
+}

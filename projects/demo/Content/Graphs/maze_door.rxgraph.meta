@@ -1,0 +1,15 @@
+guid: 2c6d8f04-7b3a-4e1c-a5f9-8b4d6c0e1a73
+type: script
+importer: rxgraph
+provenance:
+  origin: user-import
+build_state: current
+semantic:
+  description: 迷宫门图:收到消息后调 maze.rx door_open_angle 旋转 90 度并下移开门
+  tags:
+  - 节点图
+  - 迷宫
+  - 门
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

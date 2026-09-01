@@ -1,0 +1,22 @@
+[package]
+name = "gend"
+description = "Forge 生成接入共享库(F5,08 §6.2):后端注册表(local-mock/remote-openai-compatible)+ keystore(R-5)+ 临时产物目录 + gen_accept 入管线;被 gen-image-mcp/gen-model-mcp 内嵌,不暴露网络端口"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+forge-util = { path = "../forge-util" }
+# gen_accept 复用 assetd 导入链(08 §6.2:产物落 .forge/tmp/gen/ 后走 asset_import 同链)。
+assetd = { path = "../assetd" }
+serde.workspace = true
+serde_json.workspace = true
+# 确定性 PNG 编码/解码(与 assetd 同版本同 feature 面)。
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# remote-openai-compatible 响应 b64_json 解码(与 assetd 同版本)。
+base64 = "0.22"
+# 真实 HTTP 适配面(rustls 纯 Rust TLS;json 特性不用——body 由 serde_json 自序列化,send_string 发送)。
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+# RD-F5-001:keystore DPAPI 加固(Windows 腿;CryptProtectData 每用户熵)。
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Security_Cryptography"] }

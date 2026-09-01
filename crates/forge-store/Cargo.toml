@@ -1,0 +1,15 @@
+[package]
+name = "forge-store"
+description = "F11 商店/资产库内核(registry 内核):包清单 DTO + 路径安全校验、RegistrySource 抽象(file:// 本地目录源 / http(s) 远程源)+ 多源聚合与源配置持久化、内容寻址个人资产库、安装-卸载-更新检查(经 assetd 导入链落 Content/ 并覆写 store-install provenance)、打包发布、skill 包 frontmatter 解析;纯库,不暴露网络端口"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# 安装落地复用 assetd 导入链(08 §4.1)+ 删除引用阻断(ops::delete_assets)。
+assetd = { path = "../assetd" }
+# SHA-256 校验与 UTC 时间戳(hashutil / timeutil)。
+forge-util = { path = "../forge-util" }
+serde.workspace = true
+serde_json.workspace = true
+# 远程源 HTTP 面(阻塞式;rustls 纯 Rust TLS,与 gend 同版本同 feature 面)。
+ureq = { version = "2", default-features = false, features = ["tls"] }

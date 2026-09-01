@@ -1,0 +1,23 @@
+guid: 122eb2eb-46d5-4a30-aec3-6855f7e8b772
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: local-mock
+    generatedAt: 2026-08-19T08:50:53Z
+    map: roughness
+    prompt: wood 木纹
+    seed: 2304293062055812692
+    sourceRefs: []
+build_state: current
+semantic:
+  description: 与 wood_albedo 配套的灰度粗糙度贴图,木块区域明暗交错
+  tags:
+  - 木纹
+  - 粗糙度
+  - roughness
+  - PBR
+  source: agent-vision
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

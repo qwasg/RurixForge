@@ -1,0 +1,25 @@
+guid: ce11778e-b5fe-4e6a-b7fb-fe3d1e4b0a13
+type: mesh
+importer: gltf
+import_settings:
+  generateLods:
+  - 0.5
+provenance:
+  origin: gen-model
+  detail:
+    backendId: user-provided
+    generatedAt: 2026-08-19T08:50:53Z
+    note: 用户自备产物(.forge/tmp/gen/ 预放),非真实生成后端
+    sourceRefs:
+    - .forge/tmp/gen/f5w2-gen-chair.gltf
+build_state: current
+semantic:
+  description: 椅子网格(F5 wave.2 生成接入验收的用户自备产物),Main 场景 W4Tri 实体经 MeshRenderer 引用
+  tags:
+  - 椅子
+  - 家具
+  - 网格
+  - gen-model
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

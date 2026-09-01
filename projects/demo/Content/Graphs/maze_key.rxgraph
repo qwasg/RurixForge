@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "g_maze_key",
+  "name": "MazeKey",
+  "exposedProps": [],
+  "nodes": [
+    { "id": "t", "type": "event.on_trigger_enter", "pos": [0, 0] },
+    { "id": "h", "type": "entity.has_tag", "pos": [0, 1], "inputs": { "entity": { "node": "t", "pin": "otherEntity" }, "tag": { "const": "player" } } },
+    { "id": "b", "type": "flow.branch", "pos": [1, 0], "inputs": { "condition": { "node": "h", "pin": "out" } } },
+    { "id": "sq", "type": "flow.sequence", "pos": [2, 0] },
+    { "id": "mv", "type": "transform.move_tween", "pos": [3, 0], "inputs": { "target": { "const": "$self" }, "offset": { "const": [0, -10, 0] }, "duration": { "const": 0.3 } } },
+    { "id": "sm", "type": "call.send_message", "pos": [3, 1], "inputs": { "name": { "const": "key_taken" }, "payload": { "const": 1 } } }
+  ],
+  "edges": [
+    { "from": ["t", "exec"], "to": ["b", "exec"] },
+    { "from": ["b", "then"], "to": ["sq", "exec"] },
+    { "from": ["sq", "seq0"], "to": ["mv", "exec"] },
+    { "from": ["sq", "seq1"], "to": ["sm", "exec"] }
+  ]
+}

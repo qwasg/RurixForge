@@ -1,0 +1,33 @@
+// maze.rx — 迷宫规则单一事实源(F6 wave.2;7x7 网格,cell = col*10+row 线性码)
+// 布局:
+//   #######
+//   #S....#
+//   #.#.#.#
+//   #.#...#
+//   #.#D###
+//   #K#..G#
+//   #######
+// S(1,1) 出生 / K(1,5) 钥匙 / D(3,4) 门 / G(5,5) 终点;墙 = 边界环 + (2,2)(4,2)(2,3)(2,4)(4,4)(5,4)(2,5)
+// 全部函数自包含(无跨函数调用):rurixc --emit=dll 同模块内部调用符号未链接
+// (实测 RX7001 @rx_*_8 use of undefined value;RD-F6-001 登记上游,规避 = 规则内联单函数化)。
+
+#[export(c)]
+pub fn open_at_cell(cell: i32) -> bool {
+    if cell / 10 <= 0 || cell / 10 >= 6 || cell % 10 <= 0 || cell % 10 >= 6 { false }
+    else if cell / 10 == 2 && cell % 10 >= 2 { false }
+    else if cell / 10 == 4 && cell % 10 == 2 { false }
+    else if cell % 10 == 4 && cell / 10 >= 4 { false }
+    else { true }
+}
+
+#[export(c)]
+pub fn not_door_cell(cell: i32) -> bool { cell != 34 }
+
+#[export(c)]
+pub fn is_win_cell(cell: i32) -> bool { cell == 55 }
+
+#[export(c)]
+pub fn door_open_angle() -> f32 { 90.0 }
+
+#[export(c)]
+pub fn goal_spin_angle() -> f32 { 45.0 }

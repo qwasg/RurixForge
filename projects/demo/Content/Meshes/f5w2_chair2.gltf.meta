@@ -1,0 +1,25 @@
+guid: df3edbf1-fbfa-4831-a55b-45e2cc3f1dc3
+type: mesh
+importer: gltf
+import_settings:
+  generateLods:
+  - 0.5
+provenance:
+  origin: gen-model
+  detail:
+    backendId: user-provided
+    generatedAt: 2026-08-19T08:50:53Z
+    note: 用户自备产物(.forge/tmp/gen/ 预放),非真实生成后端
+    sourceRefs:
+    - .forge/tmp/gen/f5w2-gen-chair.gltf
+build_state: current
+semantic:
+  description: 椅子网格第二变体(F5 wave.2 生成变体验收产物)
+  tags:
+  - 椅子
+  - 家具
+  - 网格
+  - 变体
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

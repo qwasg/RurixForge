@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "id": "g_door_opener",
+  "name": "DoorOpener",
+  "exposedProps": [
+    {
+      "name": "openSpeed",
+      "kind": "F32",
+      "default": 90.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "event.on_trigger_enter",
+      "pos": [
+        40.0,
+        80.0
+      ]
+    },
+    {
+      "id": "n2",
+      "type": "flow.branch",
+      "pos": [
+        240.0,
+        80.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "n3",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "n3",
+      "type": "entity.has_tag",
+      "pos": [
+        60.0,
+        200.0
+      ],
+      "inputs": {
+        "entity": {
+          "node": "n1",
+          "pin": "otherEntity"
+        },
+        "tag": {
+          "const": "player"
+        }
+      }
+    },
+    {
+      "id": "n4",
+      "type": "transform.rotate_tween",
+      "pos": [
+        460.0,
+        80.0
+      ],
+      "inputs": {
+        "angle": {
+          "ref": "openSpeed"
+        },
+        "duration": {
+          "const": 1.2
+        },
+        "target": {
+          "const": "$self"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "n1",
+        "exec"
+      ],
+      "to": [
+        "n2",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n2",
+        "then"
+      ],
+      "to": [
+        "n4",
+        "exec"
+      ]
+    }
+  ]
+}

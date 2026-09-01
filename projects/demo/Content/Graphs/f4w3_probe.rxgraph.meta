@@ -1,0 +1,15 @@
+guid: 04486707-294b-4a24-9657-4802302ef1e1
+type: script
+importer: rxgraph
+provenance:
+  origin: user-import
+build_state: current
+semantic:
+  description: 图解释器事件探针(F4 wave.3):on_input/on_contact_begin/on_update 三事件各接 debug.log
+  tags:
+  - 节点图
+  - 探针
+  - 事件
+  source: agent-facts
+  model: claude-fable-5
+  updated_at: 2026-08-24T15:56:36Z

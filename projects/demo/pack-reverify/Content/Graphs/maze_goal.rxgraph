@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "id": "g_maze_goal",
+  "name": "MazeGoal",
+  "exposedProps": [],
+  "nodes": [
+    { "id": "t", "type": "event.on_trigger_enter", "pos": [0, 0] },
+    { "id": "h", "type": "entity.has_tag", "pos": [0, 1], "inputs": { "entity": { "node": "t", "pin": "otherEntity" }, "tag": { "const": "player" } } },
+    { "id": "b", "type": "flow.branch", "pos": [1, 0], "inputs": { "condition": { "node": "h", "pin": "out" } } },
+    { "id": "cf", "type": "call.call_function", "pos": [2, 0], "inputs": { "module": { "const": "Content/Scripts/maze.rx" }, "fn": { "const": "is_win_cell" }, "args": { "const": [55] } } },
+    { "id": "bw", "type": "flow.branch", "pos": [3, 0], "inputs": { "condition": { "node": "cf", "pin": "result" } } },
+    { "id": "cg", "type": "call.call_function", "pos": [4, 0], "inputs": { "module": { "const": "Content/Scripts/maze.rx" }, "fn": { "const": "goal_spin_angle" }, "args": { "const": [] } } },
+    { "id": "rt", "type": "transform.rotate_tween", "pos": [5, 0], "inputs": { "target": { "const": "$self" }, "angle": { "node": "cg", "pin": "result" }, "duration": { "const": 0.5 } } },
+    { "id": "mv", "type": "transform.move_tween", "pos": [6, 0], "inputs": { "target": { "const": "$self" }, "offset": { "const": [0, 2, 0] }, "duration": { "const": 0.5 } } },
+    { "id": "at", "type": "entity.add_tag", "pos": [7, 0], "inputs": { "entity": { "node": "t", "pin": "otherEntity" }, "tag": { "const": "winner" } } },
+    { "id": "lg", "type": "debug.log", "pos": [8, 0], "inputs": { "message": { "const": "maze win" } } }
+  ],
+  "edges": [
+    { "from": ["t", "exec"], "to": ["b", "exec"] },
+    { "from": ["b", "then"], "to": ["cf", "exec"] },
+    { "from": ["cf", "exec"], "to": ["bw", "exec"] },
+    { "from": ["bw", "then"], "to": ["cg", "exec"] },
+    { "from": ["cg", "exec"], "to": ["rt", "exec"] },
+    { "from": ["rt", "exec"], "to": ["mv", "exec"] },
+    { "from": ["mv", "exec"], "to": ["at", "exec"] },
+    { "from": ["at", "exec"], "to": ["lg", "exec"] }
+  ]
+}
