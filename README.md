@@ -37,7 +37,7 @@ cargo test --workspace  # Rust 测试
 go -C gateway-go test ./...
 ```
 
-> **上游依赖说明**：`crates/*` 以本地 path 依赖引用独立的 rurix 上游仓库（`rurix-rt` / `rurix-physics` / `rurix-asset` / `rurix-geom-build` / `rurix-pkg` / `soft-raster`，对账时点记录见 `RURIX_PIN.json`）。上游仓库未随本仓库发布，`cargo build` 需本地存在对应 rurix 源码树，并按各 `Cargo.toml` 中的 path 指向放置。
+> **上游依赖说明**：`crates/*` 以 git 依赖引用开源的 rurix 上游内核（[qwasg/Rurix](https://github.com/qwasg/Rurix)，锚定 rev `1478859a`，对账时点记录见 `RURIX_PIN.json`），`cargo build` 会自动拉取，无需本地存在 rurix 源码树。本地双仓开发时，取消根 `Cargo.toml` 末尾 `[patch."https://github.com/qwasg/Rurix"]` 注释节即可指向本地工作树（提交前须恢复注释）。
 
 ## 设计文档
 

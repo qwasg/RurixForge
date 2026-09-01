@@ -12,4 +12,4 @@ serde_json.workspace = true
 # RD-F4-004:call_function dll 运行时(rurixc --emit=dll 产物加载 + 标量编组)。
 libloading = "0.8"
 # 缓存键 SHA-256(rurix-pkg 零依赖手写实现,照 assetd 先例)。
-rurix-pkg = { path = "H:/rurix/src/rurix-pkg" }
+rurix-pkg.workspace = true

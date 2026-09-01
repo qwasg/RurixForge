@@ -10,7 +10,7 @@ forge-scene = { path = "../forge-scene" }
 forge-logic = { path = "../forge-logic" }
 forge-util = { path = "../forge-util" }
 # 缓存键同源 SHA-256(手写纯 Rust,与 assetd 一致)。
-rurix-pkg = { path = "H:/rurix/src/rurix-pkg" }
+rurix-pkg.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # 向量落盘 f32 LE → base64(与 thumb/keystore 同版本)。

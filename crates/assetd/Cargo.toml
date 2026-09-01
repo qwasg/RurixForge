@@ -7,9 +7,9 @@ edition.workspace = true
 [dependencies]
 # 上游复用(03 §4):gltf 严格导入 + 六表 + ImportedMesh 真实几何;rurix-geom-build
 # 离线 DAG 构建(RXGB .rxmesh);rurix-pkg 手写 SHA-256(缓存键)。
-rurix-asset = { path = "H:/rurix/src/rurix-asset" }
-rurix-geom-build = { path = "H:/rurix/src/rurix-geom-build" }
-rurix-pkg = { path = "H:/rurix/src/rurix-pkg" }
+rurix-asset.workspace = true
+rurix-geom-build.workspace = true
+rurix-pkg.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # .meta sidecar = YAML(08 §3.2;serde_yaml 纯 Rust 无原生依赖)。
