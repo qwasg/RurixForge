@@ -28,10 +28,14 @@ fn tool_list() -> Value {
             },
             {
                 "name": "scene_new",
-                "description": "新建空场景",
+                "description": "新建空场景(F-GAME-3:mode 选 2d 时编辑器相机自动切正交正视 XY 平面;缺省跟随项目 forge.toml [project] mode)",
                 "inputSchema": {
                     "type": "object",
-                    "properties": { "name": { "type": "string", "description": "场景名(可选)" } }
+                    "properties": {
+                        "name": { "type": "string", "description": "场景名(可选)" },
+                        "mode": { "type": "string", "enum": ["2d", "3d"], "description": "游戏维度模式(可选;缺省跟随项目 forge.toml)" },
+                        "gravity": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z] 场景重力(可选,缺省 [0,-9.81,0];2D 俯视/零重力写 [0,0,0])" }
+                    }
                 }
             },
             {
@@ -289,6 +293,21 @@ fn tool_list() -> Value {
                     "required": ["action", "value"]
                 }
             },
+            {
+                "name": "logic_inject_pointer",
+                "description": "注入指针点击(play 态限定):x/y 为归一化视口坐标(0..1,左上原点),经游戏相机反投影到游戏平面(2d 场景 z=0),依次派发 <action>_x/_y/_z(世界坐标)与 <action>(value=1);action 缺省 click",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "x": { "type": "number", "description": "归一化 x(0..1,左→右)" },
+                        "y": { "type": "number", "description": "归一化 y(0..1,上→下)" },
+                        "action": { "type": "string", "description": "动作名(缺省 click)" },
+                        "width": { "type": "integer", "description": "坐标所在画面宽(可选,只影响 aspect;缺省推流主订阅尺寸)" },
+                        "height": { "type": "integer", "description": "坐标所在画面高(可选)" }
+                    },
+                    "required": ["x", "y"]
+                }
+            },
             // ---- viewport.*(F1 wave.2)----
             {
                 "name": "viewport_frame",
@@ -319,22 +338,48 @@ fn tool_list() -> Value {
             },
             {
                 "name": "viewport_set_camera",
-                "description": "编辑器相机子集更新(target/yaw/pitch/dist/fovY,未给沿用旧值),回显全量",
+                "description": "编辑器相机子集更新(target/yaw/pitch/dist/fovY/ortho/orthoSize,未给沿用旧值),回显全量。2D 用法:ortho=true + yaw=0 + pitch=0 得正对 XY 平面视图,缩放调 orthoSize",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "target": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z] 环绕锚点" },
+                        "target": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z] 环绕锚点(2D 下=视野中心)" },
                         "yaw": { "type": "number", "description": "方位角(度)" },
                         "pitch": { "type": "number", "description": "俯仰角(度,钳 ±89)" },
                         "dist": { "type": "number", "description": "距离(钳 0.2..500)" },
-                        "fovY": { "type": "number", "description": "垂直视场角(度,钳 10..120)" }
+                        "fovY": { "type": "number", "description": "垂直视场角(度,钳 10..120)" },
+                        "ortho": { "type": "boolean", "description": "F-GAME-3:true=正交(2D),false=透视" },
+                        "orthoSize": { "type": "number", "description": "正交半高(世界单位,钳 0.01..1000;2D 缩放即调它)" }
                     }
                 }
             },
             {
                 "name": "viewport_get_camera",
-                "description": "取编辑器相机全量状态(target/yaw/pitch/dist/fovY)",
+                "description": "取编辑器相机全量状态(target/yaw/pitch/dist/fovY/ortho/orthoSize)",
                 "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "viewport_stream_info",
+                "description": "取视口直连推流通道信息(wsUrl 含随机 token;浏览器直连 WS 收二进制 RGBA 帧/发实时输入,绕开 MCP 轮询链)",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "sprite_create",
+                "description": "2D 精灵一步到位(F-GAME-3):创建实体 + Sprite 组件 + TRS。texture 为贴图 GUID(Content/Textures/*.png 的 .meta guid);scale=1 即素材原生尺寸(贴图像素/pixelsPerUnit 米);2D 坐标约定 XY 平面 z=0",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "texture": { "type": "string", "description": "贴图 GUID" },
+                        "position": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z](2D 约定 z=0)" },
+                        "scale": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z] 尺寸倍率(缺省 1,1,1 = 原生尺寸)" },
+                        "sortingOrder": { "type": "number", "description": "叠放次序(小者先绘,大者压上;缺省 0)" },
+                        "pixelsPerUnit": { "type": "number", "description": "每世界单位像素数(缺省 100)" },
+                        "tint": { "type": "array", "items": { "type": "number" }, "description": "[r,g,b,a] 0..1 染色(缺省白)" },
+                        "flipX": { "type": "boolean", "description": "水平镜像" },
+                        "flipY": { "type": "boolean", "description": "垂直镜像" }
+                    },
+                    "required": ["name", "texture"]
+                }
             },
             {
                 "name": "viewport_share_open",
@@ -519,10 +564,12 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "play_exit" => "play.exit",
         "play_state" => "play.state",
         "logic_inject_input" => "logic.inject_input",
+        "logic_inject_pointer" => "logic.inject_pointer",
         "viewport_frame" => "viewport.frame",
         "viewport_pick" => "viewport.pick",
         "viewport_set_camera" => "viewport.setCamera",
         "viewport_get_camera" => "viewport.getCamera",
+        "viewport_stream_info" => "viewport.streamInfo",
         "viewport_share_open" => "viewport.shareOpen",
         "viewport_share_close" => "viewport.shareClose",
         _ => return None,
@@ -551,7 +598,48 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
                     }
                 }
             }
+            // F-GAME-3:mode/gravity 透传(host 侧做枚举/形状校验)。
+            if let Some(m) = args.get("mode") {
+                rpc_params["mode"] = m.clone();
+            }
+            if let Some(g) = args.get("gravity") {
+                rpc_params["gravity"] = g.clone();
+            }
             Ok(host_tool(sup, "scene.new", rpc_params))
+        }
+        // F-GAME-3 2D 工效工具:sprite_create = entity.create + Sprite 组件组合调用。
+        "sprite_create" => {
+            let name = match args.get("name").and_then(Value::as_str) {
+                Some(s) if !s.is_empty() => s,
+                _ => return Err(err(Value::Null, -32602, "invalid params: 缺 name")),
+            };
+            let texture = match args.get("texture").and_then(Value::as_str) {
+                Some(s) if !s.is_empty() => s,
+                _ => {
+                    return Err(err(
+                        Value::Null,
+                        -32602,
+                        "invalid params: 缺 texture(贴图 GUID)",
+                    ))
+                }
+            };
+            let mut props = json!({ "texture": texture });
+            for k in ["tint", "flipX", "flipY", "pixelsPerUnit", "sortingOrder"] {
+                if let Some(v) = args.get(k) {
+                    props[k] = v.clone();
+                }
+            }
+            let mut create = json!({
+                "name": name,
+                "components": [ { "type": "Sprite", "props": props } ],
+            });
+            if let Some(p) = args.get("position") {
+                create["translation"] = p.clone();
+            }
+            if let Some(s) = args.get("scale") {
+                create["scale"] = s.clone();
+            }
+            Ok(host_tool(sup, "entity.create", create))
         }
         "scene_summary" => Ok(host_tool(sup, "scene.summary", json!({}))),
         "render_once" => Ok(host_tool(sup, "render.once", json!({}))),

@@ -1,0 +1,12 @@
+guid: 6bb7b0d8-d161-4eb4-bc85-1b8554804fe3
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:05:26Z
+    prompt: cute cartoon walnut character, big round brown nut body with a calm smiling face and two eyes, front view, isolated on plain solid magenta background, 2D game asset sprite, crisp edges, no text
+    seed: 6652992488192227310
+    sourceRefs: []
+build_state: current

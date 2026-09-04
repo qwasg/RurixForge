@@ -1,0 +1,13 @@
+guid: 293176ee-5962-43c2-96db-f3771b6e57f9
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-30T14:53:46Z
+    negativePrompt: photorealistic, horror, dark, text, letters, logo, watermark, signature, UI, border, multiple characters, busy background, weapon, blur, cropped subject, side view, copyrighted character exact replica
+    prompt: 'Create an ORIGINAL game asset for a bright whimsical cartoon tower-defense game: a friendly pea-shooting plant character, full body, front orthographic view, centered single subject. Distinct original design: squat leafy base, curved green stem, round expressive head, one large trumpet-like pea nozzle, two broad leaves, cheerful determined expression. Low-poly sculpted clay aesthetic, chunky clean shapes, soft studio lighting, saturated but harmonious greens, highly readable silhouette at small size. Pure clean pale warm background, no ground clutter. No text, no logo, no watermark, no frame, no extra characters, no projectiles. Square 1:1 composition.'
+    seed: 17421
+    sourceRefs: []
+build_state: current

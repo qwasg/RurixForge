@@ -1,0 +1,10 @@
+guid: 979bc8e8-2ad0-571e-b877-2f25a40487a4
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 1-9 关卡控制图(阳光/波次/指针交互/胜负)

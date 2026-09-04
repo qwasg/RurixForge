@@ -1,0 +1,10 @@
+guid: 9ddb3e89-5843-56cc-beb7-67da9eae80e3
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-4(roof,30 波,奖励 watering_can);在 IDE Assets 面板双击即可装进视口试玩

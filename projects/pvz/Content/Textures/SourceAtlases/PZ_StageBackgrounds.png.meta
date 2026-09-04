@@ -1,0 +1,13 @@
+guid: 9c4c393c-381e-4891-99df-7430b2099d49
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:58:10Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon battlefield backgrounds in a 3x2 equal grid, row-major panels: sunny front lawn, moonlit graveyard lawn, backyard pool with six lanes, foggy pool at night, sloped tiled rooftop, empty bonus panel. Wide game boards, no characters, nine planting columns, bold friendly shapes, no text, no borders, each panel visually distinct.'
+    seed: 200950
+    sourceRefs: []
+build_state: current

@@ -145,7 +145,9 @@ fn watchdog_restarts_host_after_kill() {
     assert_eq!(init["serverInfo"]["name"], "engine-scene-mcp");
 
     // tools/list:F0 5 + F1 27 + F1 wave.2 viewport 6 + F3 debug 2 + F4 逻辑输入 1
-    // + scene_index 1(场景分类索引:role/map/interaction) = 42 个工具齐全
+    // + scene_index 1(场景分类索引:role/map/interaction)= 42;
+    // + viewport_stream_info(视口直连推流)+ sprite_create(F-GAME-3 2D 精灵)= 44。
+    // 补账(D-036 波发现):logic_inject_pointer(指针点击注入)落地时漏改本闭集 = 45。
     let tools = mcp.request("tools/list", json!({}));
     let names: Vec<&str> = tools["tools"]
         .as_array()
@@ -153,7 +155,7 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 42, "tools/list 须为 42 个工具:{names:?}");
+    assert_eq!(names.len(), 45, "tools/list 须为 45 个工具:{names:?}");
     for want in [
         "host_ping", "scene_new", "scene_summary", "render_once", "host_events",
         "entity_create", "entity_destroy", "entity_rename", "entity_get", "entity_list",
@@ -170,6 +172,8 @@ fn watchdog_restarts_host_after_kill() {
         "logic_inject_input",
         // scene.index 透传:场景分类索引(role/map/interaction)
         "scene_index",
+        // 视口直连推流通道信息(WS 帧推送 + 实时输入)
+        "viewport_stream_info",
     ] {
         assert!(names.contains(&want), "tools/list 缺 {want}:{names:?}");
     }
@@ -177,8 +181,9 @@ fn watchdog_restarts_host_after_kill() {
     // F1 透传实测:component_list_types + entity_create + entity_list + play_state。
     let types = mcp.call_tool("component_list_types", json!({}));
     // F4 wave.3(D-F4-F):注册表 + Script + Tag + Trigger → 7 类型;
-    // Category(场景分类 role/map/interaction)→ 8 类型。
-    assert_eq!(types.as_array().unwrap().len(), 8, "注册表须 8 类型");
+    // Category(场景分类 role/map/interaction)→ 8 类型;
+    // F-GAME-3:Sprite(2D 精灵)→ 9 类型。
+    assert_eq!(types.as_array().unwrap().len(), 9, "注册表须 9 类型");
     let created = mcp.call_tool(
         "entity_create",
         json!({

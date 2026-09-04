@@ -243,7 +243,9 @@ describe('editorStore', () => {
 
   // ---- F1 wave.2:viewport 相机 / 点选 / gizmo ----
 
-  const CAM = { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50 };
+  const CAM = { target: [0, 0.5, 0], yaw: 35, pitch: 28, dist: 9, fovY: 50, ortho: false, orthoSize: 5 };
+  /** F-GAME-3:2D 正交相机(yaw0/pitch0 正对 XY 平面,orthoSize=5) */
+  const CAM2D = { target: [0, 0, 0], yaw: 0, pitch: 0, dist: 10, fovY: 50, ortho: true, orthoSize: 5 };
 
   it('pickAt:命中设置 selectedId 并切右栏到属性,未命中清空', async () => {
     fetchMock = mockForgeBackend({
@@ -289,7 +291,7 @@ describe('editorStore', () => {
     vi.stubGlobal('fetch', fetchMock);
     // 相机 yaw=90,pitch=0 → 眼在 +x 看向 -x;right = cross(f,up) 归一 = [0,0,-1]
     useEditorStore.setState({
-      camera: { target: [0, 0, 0], yaw: 90, pitch: 0, dist: 10, fovY: 90 },
+      camera: { target: [0, 0, 0], yaw: 90, pitch: 0, dist: 10, fovY: 90, ortho: false, orthoSize: 5 },
       entities: [CUBE],
       selectedId: 1,
       gizmo: 'translate',
@@ -323,6 +325,90 @@ describe('editorStore', () => {
     expect(rot[0]).toBeCloseTo(0, 5);
     expect(rot[1]).toBeCloseTo(Math.SQRT1_2, 3);
     expect(rot[2]).toBeCloseTo(0, 5);
+    expect(rot[3]).toBeCloseTo(Math.SQRT1_2, 3);
+  });
+
+  // ---- F-GAME-3:2D 正交视口 ----
+
+  it('orbitCamera:正交(2D)模式下置空,不发请求', async () => {
+    useEditorStore.setState({ camera: CAM2D, sceneMode: '2d' });
+    await useEditorStore.getState().orbitCamera(100, 10);
+    expect(fetchMock.mock.calls.length).toBe(0);
+  });
+
+  it('zoomCamera:正交分支调 orthoSize(不动 dist)', async () => {
+    const after = { ...CAM2D, orthoSize: 2.5 };
+    fetchMock = mockForgeBackend({ viewport_set_camera: after });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ camera: CAM2D, sceneMode: '2d' });
+    await useEditorStore.getState().zoomCamera(-800);
+    const args = callBody(0).arguments;
+    // 正交缩放:orthoSize = 5·1.0015^-800 ≈ 1.506;dist 不动
+    expect(args.orthoSize).toBeCloseTo(5 * Math.pow(1.0015, -800), 5);
+    expect(args.dist).toBeUndefined();
+  });
+
+  it('panCamera:2D 正交平移 target(wpp = 2·orthoSize/viewH)', async () => {
+    const after = { ...CAM2D, target: [4, 2, 0] };
+    fetchMock = mockForgeBackend({ viewport_set_camera: after });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({ camera: CAM2D, sceneMode: '2d' });
+    // wpp = 2·5/500 = 0.02;dx=100,dy=-50 → target.x -= 100·0.02=2(yaw0 → right=[1,0,0])
+    // target.y += dy·0.02 = -1(dy 向下为正 → 视野上移);即 target=[-2,-1,0]
+    await useEditorStore.getState().panCamera(100, -50, 500);
+    const args = callBody(0).arguments;
+    const t = args.target as number[];
+    expect(t[0]).toBeCloseTo(-2, 5);
+    expect(t[1]).toBeCloseTo(-1, 5);
+    expect(t[2]).toBeCloseTo(0, 5);
+  });
+
+  it('panCameraLocal:本地先行平移(只改本地相机态,不发请求)', () => {
+    useEditorStore.setState({ camera: CAM2D, sceneMode: '2d' });
+    useEditorStore.getState().panCameraLocal(100, 0, 500);
+    const c = useEditorStore.getState().camera;
+    expect(c?.target[0]).toBeCloseTo(-2, 5);
+    expect(fetchMock.mock.calls.length).toBe(0);
+  });
+
+  it('gizmoDragSelected 2D:平移吸附 0.5 网格;snap=false 不吸附', async () => {
+    const next = { translation: [0.5, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] };
+    fetchMock = mockForgeBackend({ transform_set: next });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({
+      camera: CAM2D,
+      entities: [CUBE],
+      selectedId: 1,
+      gizmo: 'translate',
+      sceneMode: '2d',
+    });
+    // wpp=0.02;dx=13 → 0.26 → 吸附 0.5;dy=0
+    await useEditorStore.getState().gizmoDragSelected(13, 0, 500);
+    let t = callBody(0).arguments.translation as number[];
+    expect(t[0]).toBeCloseTo(0.5, 5);
+    // Ctrl(snap=false):从原点再拖 0.26 原样(先重置实体位置,排除上次提交影响)
+    useEditorStore.setState({ entities: [CUBE] });
+    await useEditorStore.getState().gizmoDragSelected(13, 0, 500, false);
+    t = callBody(1).arguments.translation as number[];
+    expect(t[0]).toBeCloseTo(0.26, 5);
+  });
+
+  it('gizmoDragSelected 2D:旋转绕 Z 轴(XY 平面内)', async () => {
+    const next = { translation: [0, 0, 0], rotation: [0, 0, 0.7071, 0.7071], scale: [1, 1, 1] };
+    fetchMock = mockForgeBackend({ transform_set: next });
+    vi.stubGlobal('fetch', fetchMock);
+    useEditorStore.setState({
+      camera: CAM2D,
+      entities: [CUBE],
+      selectedId: 1,
+      gizmo: 'rotate',
+      sceneMode: '2d',
+    });
+    await useEditorStore.getState().gizmoDragSelected(180, 0, 500);
+    const rot = callBody(0).arguments.rotation as number[];
+    expect(rot[0]).toBeCloseTo(0, 5);
+    expect(rot[1]).toBeCloseTo(0, 5);
+    expect(rot[2]).toBeCloseTo(Math.SQRT1_2, 3);
     expect(rot[3]).toBeCloseTo(Math.SQRT1_2, 3);
   });
 });

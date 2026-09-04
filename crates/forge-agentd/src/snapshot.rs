@@ -102,6 +102,19 @@ pub async fn design_snapshot(
         .and_then(|rid| state.runs.get(rid))
         .map(|r| serde_json::to_value(r).expect("run 序列化失败"))
         .unwrap_or(Value::Null);
+    // F-GAME-3:当前项目面(2D/3D 模式徽标 + 客户端视口切换的事实源;
+    // 无会话时按默认工作区解析,徽标恒有定义)。
+    let project: Value = {
+        let sp = crate::scope::project_of(
+            &state,
+            active.as_ref().and_then(|s| s.workspace_id.as_deref()),
+        );
+        json!({
+            "name": sp.name,
+            "mode": sp.game_mode.as_str(),
+            "root": sp.project_root.to_string_lossy(),
+        })
+    };
     Json(json!({
         "sessions": sessions,
         "activeSession": active,
@@ -111,6 +124,7 @@ pub async fn design_snapshot(
         "models": models_json(),
         "latestSeq": latest_seq,
         "chatFolders": state.folders.list(),
+        "project": project,
     }))
 }
 
@@ -151,7 +165,7 @@ mod tests {
         assert_eq!(arr[1]["supportsThinking"], false);
         assert_eq!(arr[2]["effortOptions"].as_array().unwrap().len(), 5);
         assert!(arr[2]["contextOptions"].as_array().unwrap().len() > 1);
-        assert_eq!(v["defaultModelId"], "deepseek-chat");
+        assert_eq!(v["defaultModelId"], "openai-compat");
         // 配齐腿:config JSON + keystore → available + label=model 名;全文无 key 子串。
         std::fs::write(
             dir.join("llm-openai-compat.json"),

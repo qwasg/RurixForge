@@ -1,0 +1,12 @@
+guid: 41b4afe9-33a2-4252-b891-d77e44f807fa
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:06:23Z
+    prompt: seamless top-down cartoon grass lawn tile texture, bright green mowed grass with subtle checkerboard mowing stripes, flat 2D game texture, even lighting, no objects, no shadows, no text
+    seed: 1272989260779420250
+    sourceRefs: []
+build_state: current

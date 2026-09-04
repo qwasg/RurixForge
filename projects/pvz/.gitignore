@@ -1,0 +1,10 @@
+.forge/
+tools/__pycache__/
+Content/Scripts/*.exe
+Content/Scripts/*.dll
+Content/Scripts/*.lib
+Content/Scripts/*.exp
+Content/Scripts/*.ilk
+Content/Scripts/*.ll
+Content/Scripts/*.obj
+Content/Scripts/*.pdb

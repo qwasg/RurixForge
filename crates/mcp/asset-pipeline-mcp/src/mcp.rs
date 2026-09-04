@@ -3,11 +3,58 @@
 use std::io::{BufRead, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use assetd::import::{import_assets, ImportOutcome};
+use assetd::import::import_assets;
 use assetd::meta::MetaDoc;
 use assetd::project::ForgeProject;
-use assetd::{meta_path_for, normalize_rel, AssetType, Result as AssetResult};
+use assetd::{meta_path_for, normalize_rel};
+use forge_index::vector::Embedder;
 use serde_json::{json, Value};
+
+/// gend::embed::RemoteEmbedder → forge_index Embedder 适配(与 context-mcp 同)。
+struct GendEmbedder(gend::embed::RemoteEmbedder);
+
+impl Embedder for GendEmbedder {
+    fn model(&self) -> &str {
+        &self.0.model
+    }
+    fn embed(&self, texts: &[String]) -> std::result::Result<Vec<Vec<f32>>, String> {
+        self.0.embed_batch(texts)
+    }
+}
+
+fn resolve_embedder() -> Option<GendEmbedder> {
+    gend::embed::resolve_embedder().map(GendEmbedder)
+}
+
+/// F10-RAG:简介写后增量进语义索引(词法 + 已配 embedding 则向量)。
+/// 返回并入响应的字段;索引未建/失败不阻断写结果,如实标注(indexed/indexError)。
+fn index_after_description(project_root: &std::path::Path, asset_path: &str) -> Value {
+    let rel = match normalize_rel(asset_path) {
+        Ok(r) => r,
+        Err(e) => {
+            return json!({ "indexed": false, "indexError": format!("[{}] {}", e.code, e.message) })
+        }
+    };
+    let embedder = resolve_embedder();
+    match forge_index::build::upsert_asset_docs(
+        project_root,
+        &rel,
+        embedder.as_ref().map(|e| e as &dyn Embedder),
+    ) {
+        Ok(o) => {
+            let mut v = json!({
+                "indexed": o.indexed,
+                "indexedDocs": o.docs,
+                "tier": o.tier,
+            });
+            if let Some(e) = o.embed_error {
+                v["embedError"] = json!(e);
+            }
+            v
+        }
+        Err(e) => json!({ "indexed": false, "indexError": format!("[{}] {}", e.code, e.message) }),
+    }
+}
 
 fn tool_list() -> Value {
     json!({
@@ -116,7 +163,7 @@ fn tool_list() -> Value {
             },
             {
                 "name": "asset_set_description",
-                "description": "写入 .meta semantic 段(description/tags/source);缺 .meta 时自动补建",
+                "description": "写入 .meta semantic 段(description/tags/source);缺 .meta 时自动补建。写后自动增量进 RAG 语义索引(词法即时;索引为 hybrid 档时向量同步顶量。响应 indexed/tier 如实标注;索引未建则跳过,需 context_index_build 首建)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -185,6 +232,59 @@ fn tool_list() -> Value {
                 "name": "asset_cleanup_scan",
                 "description": "asset-cleanup dryRun:扫描全项目,产出整理提案(misplaced 错放/naming 命名混乱/orphan 孤儿),不写任何文件;执行经 asset_move(移动/改名)或 asset_delete(孤儿,须 Proposal)",
                 "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "sprite_create",
+                "description": "创建精灵图集资产(.rxsprite:单张贴图 + 帧 bbox + pivot 级联 + 动画 clip + 可选 animator 状态机);texture 须为已存在贴图 GUID;autoslice=true 时自动切帧(连通域检测,品红族/alpha 背景判定与视口色键同规则)填充 frames",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string", "description": "精灵名(不含扩展名/路径分隔符)" },
+                        "texture": { "type": "string", "description": "图集贴图资产 GUID" },
+                        "destFolder": { "type": "string", "description": "目标文件夹(缺省 Sprites)" },
+                        "pivot": { "type": "array", "items": { "type": "number" }, "description": "文档级锚点 [x,y](0..1,y 向下;缺省 [0.5,1] 脚底锚;VFX/飞行体用 [0.5,0.5])" },
+                        "frames": { "type": "object", "description": "帧名 → { bbox: [x,y,w,h], pivot?: [x,y] }(与 autoslice 二选一)" },
+                        "clips": { "type": "object", "description": "clip 名 → { frames: [帧名], fps?: 数, duration?: 总秒, loop?: 布尔, onFinish?: hold|first }" },
+                        "animator": { "type": "object", "description": "可选状态机 { defaultState, parameters, states, transitions }" },
+                        "autoslice": { "type": "boolean", "description": "自动切帧填充 frames(命名 frame_<i>,行序从上到下、行内从左到右)" },
+                        "minArea": { "type": "integer", "description": "autoslice 连通域像素数下限(缺省 16)" }
+                    },
+                    "required": ["name", "texture"]
+                }
+            },
+            {
+                "name": "sprite_get",
+                "description": "读 .rxsprite 文档(解析+校验后的规范形态)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "assetPath": { "type": "string" } },
+                    "required": ["assetPath"]
+                }
+            },
+            {
+                "name": "sprite_set",
+                "description": "整文档覆盖写 .rxsprite(先校验:clip 引用帧存在、animator 引用 clip/参数存在,坏文档拒绝;GUID 稳定不变)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "assetPath": { "type": "string" },
+                        "doc": { "type": "object", "description": "完整 .rxsprite JSON 文档(version/texture/pivot/frames/clips/animator)" }
+                    },
+                    "required": ["assetPath", "doc"]
+                }
+            },
+            {
+                "name": "sprite_autoslice",
+                "description": "对贴图做自动切帧(不写文件):连通域检测出紧致 bbox 列表,行带分组排序(从上到下、行内从左到右);背景判定 = alpha 过低或品红族(g < 0.5*min(r,b),与视口色键同规则)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "assetPath": { "type": "string", "description": "贴图资产路径(相对 Content/)" },
+                        "minArea": { "type": "integer", "description": "连通域像素数下限(缺省 16;噪点多时调高)" },
+                        "alphaThreshold": { "type": "integer", "description": "alpha 背景阈值 0-255(缺省 5)" }
+                    },
+                    "required": ["assetPath"]
+                }
             }
         ]
     })
@@ -402,7 +502,17 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
             match assetd::ops::set_description(
                 &p, asset_path, description, &tags, source, model, content_hash,
             ) {
-                Ok(()) => Ok(json!({ "ok": true })),
+                Ok(()) => {
+                    // F10-RAG:写后即增量进检索(索引未建/失败如实标注,不阻断写)。
+                    let mut resp = json!({ "ok": true });
+                    resp.as_object_mut().unwrap().extend(
+                        index_after_description(&p.root, asset_path)
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_default(),
+                    );
+                    Ok(resp)
+                }
                 Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
             }
         }
@@ -470,6 +580,103 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
                         "destFolder": p.dest_folder, "newName": p.new_name, "reason": p.reason
                     })).collect::<Vec<_>>(),
                     "impact": r.impact.iter().map(|(k, n)| json!({ "issue": k, "count": n })).collect::<Vec<_>>()
+                })),
+                Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
+            }
+        }
+        // ---- sprite_*(F-GAME-4:精灵图集资产面) ----
+        "sprite_create" => {
+            let name = args.get("name").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 name"))?;
+            let texture = args.get("texture").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 texture"))?;
+            let dest = args.get("destFolder").and_then(Value::as_str).unwrap_or("");
+            let pivot: Option<[f32; 2]> = args.get("pivot")
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+            let clips = args.get("clips").and_then(|v| v.as_object());
+            let animator = args.get("animator");
+            let autoslice = args.get("autoslice").and_then(Value::as_bool).unwrap_or(false);
+            let p = lock(proj);
+            // frames 来源:显式传入 > autoslice 检出 > 空(编辑器后续补)。
+            let frames_owned: Option<serde_json::Map<String, Value>> = if autoslice {
+                let mut opts = assetd::sprite::SliceOptions::default();
+                if let Some(m) = args.get("minArea").and_then(Value::as_u64) {
+                    opts.min_area = m as u32;
+                }
+                // GUID → 相对路径(autoslice 面接受路径;此处按 GUID 反查)。
+                let rel = p.scan_content()
+                    .ok()
+                    .and_then(|rels| rels.into_iter().find(|r| {
+                        let mp = meta_path_for(&p.content_root(), r);
+                        mp.is_file() && MetaDoc::load(&mp).map(|m| m.guid == texture).unwrap_or(false)
+                    }));
+                match rel {
+                    Some(rel) => match assetd::sprite::autoslice_texture(&p, &rel, opts) {
+                        Ok(out) => Some(assetd::sprite::frames_from_boxes("frame", &out.boxes)),
+                        Err(e) => return Ok(json!({ "error": e.code, "message": e.message })),
+                    },
+                    None => return Ok(json!({ "error": "UNKNOWN_GUID", "message": format!("texture GUID 不存在: {texture}") })),
+                }
+            } else {
+                args.get("frames").and_then(|v| v.as_object()).cloned()
+            };
+            match assetd::sprite::create_sprite(
+                &p, dest, name, texture, pivot, frames_owned.as_ref(), clips, animator,
+            ) {
+                Ok(c) => Ok(json!({
+                    "assetPath": c.asset_path, "guid": c.guid,
+                    "textureGuid": c.texture_guid,
+                    "frameCount": c.frame_count, "clipCount": c.clip_count
+                })),
+                Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
+            }
+        }
+        "sprite_get" => {
+            let asset_path = args.get("assetPath").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 assetPath"))?;
+            let p = lock(proj);
+            let rel = normalize_rel(asset_path).map_err(|e| err(Value::Null, -32602, &e.message))?;
+            let abs = p.content_root().join(&rel);
+            match assetd::sprite::load_rxsprite(&abs) {
+                Ok(doc) => {
+                    let meta_path = meta_path_for(&p.content_root(), &rel);
+                    let guid = MetaDoc::load(&meta_path).map(|m| m.guid).unwrap_or_default();
+                    Ok(json!({ "guid": guid, "doc": serde_json::to_value(&doc).unwrap_or(Value::Null) }))
+                }
+                Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
+            }
+        }
+        "sprite_set" => {
+            let asset_path = args.get("assetPath").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 assetPath"))?;
+            let doc = args.get("doc")
+                .filter(|v| v.is_object())
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 doc 对象"))?;
+            let p = lock(proj);
+            match assetd::sprite::write_sprite_doc(&p, asset_path, doc) {
+                Ok(parsed) => Ok(json!({
+                    "ok": true,
+                    "frameCount": parsed.frames.len(),
+                    "clipCount": parsed.clips.len()
+                })),
+                Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
+            }
+        }
+        "sprite_autoslice" => {
+            let asset_path = args.get("assetPath").and_then(Value::as_str)
+                .ok_or_else(|| err(Value::Null, -32602, "invalid params: 缺 assetPath"))?;
+            let mut opts = assetd::sprite::SliceOptions::default();
+            if let Some(m) = args.get("minArea").and_then(Value::as_u64) {
+                opts.min_area = m as u32;
+            }
+            if let Some(a) = args.get("alphaThreshold").and_then(Value::as_u64) {
+                opts.alpha_threshold = a.min(255) as u8;
+            }
+            let p = lock(proj);
+            match assetd::sprite::autoslice_texture(&p, asset_path, opts) {
+                Ok(out) => Ok(json!({
+                    "width": out.width, "height": out.height,
+                    "boxes": out.boxes.iter().map(|b| json!([b[0], b[1], b[2], b[3]])).collect::<Vec<_>>()
                 })),
                 Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
             }

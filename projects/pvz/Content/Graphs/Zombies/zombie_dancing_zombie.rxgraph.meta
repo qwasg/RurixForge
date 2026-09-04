@@ -1,0 +1,10 @@
+guid: 43197599-7bbb-53e5-86b9-d527fbd2068f
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_dancing_zombie

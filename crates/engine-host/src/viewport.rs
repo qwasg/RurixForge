@@ -41,6 +41,10 @@ fn v3_sub(a: V3, b: V3) -> V3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
+fn v3_add(a: V3, b: V3) -> V3 {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
 fn v3_scale(a: V3, s: f32) -> V3 {
     [a[0] * s, a[1] * s, a[2] * s]
 }
@@ -97,6 +101,20 @@ fn perspective_vk(fov_y_rad: f32, aspect: f32, near: f32, far: f32) -> M4 {
     m[2][2] = far / (near - far);
     m[2][3] = far * near / (near - far);
     m[3][2] = -1.0;
+    m
+}
+
+/// 正交投影(F-GAME-3 2D 支持;RH,Vulkan NDC z∈[0,1],y-flip 约定同 perspective_vk)。
+/// half_h = 半高(世界单位),半宽 = half_h × aspect;z=-near→0、z=-far→1。
+fn orthographic_vk(half_h: f32, aspect: f32, near: f32, far: f32) -> M4 {
+    let hh = half_h.max(1e-4);
+    let hw = (hh * aspect).max(1e-4);
+    let mut m = [[0.0f32; 4]; 4];
+    m[0][0] = 1.0 / hw;
+    m[1][1] = -1.0 / hh;
+    m[2][2] = 1.0 / (near - far);
+    m[2][3] = near / (near - far);
+    m[3][3] = 1.0;
     m
 }
 
@@ -173,6 +191,8 @@ fn trs_model(t: &Transform) -> M4 {
 // ─────────────────────────── 编辑器相机 ───────────────────────────
 
 /// 环绕式编辑器相机(07 §2:Alt+左键环绕 / 滚轮缩放 / F 聚焦 target)。
+/// F-GAME-3:ortho=true 切换正交投影(2D 模式;ortho_half_h 为半高世界单位,
+/// dist 仍决定眼位/近远裁剪,客户端 2D 手势把 yaw/pitch 归零得正对 XY 平面视图)。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EditorCamera {
     pub target: V3,
@@ -180,6 +200,8 @@ pub struct EditorCamera {
     pub pitch_deg: f32,
     pub dist: f32,
     pub fov_y_deg: f32,
+    pub ortho: bool,
+    pub ortho_half_h: f32,
 }
 
 impl Default for EditorCamera {
@@ -190,6 +212,8 @@ impl Default for EditorCamera {
             pitch_deg: 28.0,
             dist: 9.0,
             fov_y_deg: 50.0,
+            ortho: false,
+            ortho_half_h: 5.0,
         }
     }
 }
@@ -218,15 +242,35 @@ impl EditorCamera {
     }
 
     /// viewProj(列向量约定;aspect = w/h)。
+    /// proj Y 对角元取负:Vulkan readback/共享纹理行序底朝上,显示面(浏览器 canvas/
+    /// 视频)按顶行先行呈现——投影侧统一垂直翻转后显示直立,且与 viewport_pick 的
+    /// 屏幕→射线映射(yny 向上为正)同向;right 轴不动,不引入水平镜像(F-GAME-2)。
     pub fn view_proj(&self, aspect: f32) -> M4 {
-        let proj = perspective_vk(self.fov_y_deg.to_radians(), aspect.max(1e-6), 0.05, 500.0);
+        let mut proj = if self.ortho {
+            orthographic_vk(self.ortho_half_h, aspect.max(1e-6), 0.05, 500.0)
+        } else {
+            perspective_vk(self.fov_y_deg.to_radians(), aspect.max(1e-6), 0.05, 500.0)
+        };
+        proj[1][1] = -proj[1][1];
         let view = look_at_rh(self.eye(), self.target, [0.0, 1.0, 0.0]);
         m4_mul(proj, view)
     }
 
     /// 屏幕归一化坐标 (nx,ny ∈ [-1,1],y 向上为正) → 世界射线 (origin, dir 归一)。
+    /// 正交分支(F-GAME-3):平行射线——原点 = 眼平面偏移点,方向 = 相机前向。
     pub fn ray(&self, nx: f32, ny: f32, aspect: f32) -> (V3, V3) {
         let (r, u, f) = self.basis();
+        if self.ortho {
+            let hh = self.ortho_half_h.max(1e-4);
+            let hw = hh * aspect.max(1e-6);
+            let eye = self.eye();
+            let origin = [
+                eye[0] + r[0] * nx * hw + u[0] * ny * hh,
+                eye[1] + r[1] * nx * hw + u[1] * ny * hh,
+                eye[2] + r[2] * nx * hw + u[2] * ny * hh,
+            ];
+            return (origin, f);
+        }
         let t = (self.fov_y_deg.to_radians() * 0.5).tan();
         let dir = v3_norm([
             r[0] * nx * t * aspect + u[0] * ny * t + f[0],
@@ -243,6 +287,8 @@ impl EditorCamera {
             "pitch": self.pitch_deg,
             "dist": self.dist,
             "fovY": self.fov_y_deg,
+            "ortho": self.ortho,
+            "orthoSize": self.ortho_half_h,
         })
     }
 }
@@ -289,11 +335,171 @@ pub fn ray_unit_cube(origin: V3, dir: V3, tr: &Transform) -> Option<f32> {
     Some(if tmin >= 0.0 { tmin } else { tmax })
 }
 
-/// 实体是否参与视口渲染/点选(含 enabled MeshRenderer)。
+/// 实体是否参与视口渲染/点选(enabled MeshRenderer 或 enabled Sprite)。
 fn is_renderable(e: &forge_scene::Entity) -> bool {
     e.components
         .iter()
-        .any(|c| c.ctype == "MeshRenderer" && c.enabled)
+        .any(|c| (c.ctype == "MeshRenderer" || c.ctype == "Sprite") && c.enabled)
+}
+
+/// 启用态 Sprite 组件(F-GAME-3 2D 精灵)。
+fn sprite_component(e: &forge_scene::Entity) -> Option<&forge_scene::Component> {
+    e.components
+        .iter()
+        .find(|c| c.ctype == "Sprite" && c.enabled)
+}
+
+/// Sprite 排序键(sortingOrder;缺省/非 Sprite = 0.0,与旧贴图 quad 行为一致)。
+fn sprite_sorting_order(e: &forge_scene::Entity) -> f64 {
+    sprite_component(e)
+        .and_then(|c| c.props.get("sortingOrder").and_then(Value::as_f64))
+        .unwrap_or(0.0)
+}
+
+/// Sprite 数值字段读取(带缺省,与 forge-scene 注册表缺省一致)。
+fn sprite_num(c: &forge_scene::Component, key: &str, default: f64) -> f64 {
+    c.props.get(key).and_then(Value::as_f64).unwrap_or(default)
+}
+
+/// Sprite 布尔字段读取(缺省 false)。
+fn sprite_bool(c: &forge_scene::Component, key: &str) -> bool {
+    c.props.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// 整图 uv_rect(offset 0 + 全尺寸;texture 直贴模式 / 消隐槽用)。
+const FULL_UV_RECT: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
+/// 贴图精灵槽 push constants 字节数(F-GAME-4:model 64 + tint 16 + tex_size 8 +
+/// flip flags 8 + uv_rect 16 = 112 ≤ 128 上限)。
+const SPRITE_PC_LEN: usize = 112;
+
+/// .rxsprite 文档缓存(逐 GUID 2s TTL:精灵编辑器/agent 随时改写 bbox/clip,
+/// 不能像贴图那样泄漏进程级;解析失败缓存 None 同 TTL,避免坏文档逐帧刷盘)。
+pub fn sprite_doc_cached(sprite_guid: &str) -> Option<std::sync::Arc<assetd::sprite::SpriteDoc>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    type Entry = (std::time::Instant, Option<Arc<assetd::sprite::SpriteDoc>>);
+    static CACHE: OnceLock<Mutex<HashMap<String, Entry>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some((at, doc)) = cache.lock().unwrap().get(sprite_guid) {
+        if at.elapsed() < std::time::Duration::from_secs(2) {
+            return doc.clone();
+        }
+    }
+    let loaded = (|| {
+        let guid_map = content_guid_map_cached();
+        let path = guid_map.get(sprite_guid)?;
+        assetd::sprite::load_rxsprite(path).ok().map(Arc::new)
+    })();
+    cache
+        .lock()
+        .unwrap()
+        .insert(sprite_guid.to_string(), (std::time::Instant::now(), loaded.clone()));
+    loaded
+}
+
+/// Sprite 实体的渲染解析结果(texture 直贴 / .rxsprite 图集两模式统一出口)。
+pub struct SpriteRenderInfo {
+    pub tex: &'static TexGpu,
+    /// 图集子矩形(offset.xy + scale.zw,0..1 贴图空间;整图 = FULL_UV_RECT)。
+    pub uv_rect: [f32; 4],
+    /// 当前帧像素宽高(世界尺寸 = scale × 帧像素/ppu)。
+    pub frame_px: [f32; 2],
+    /// 图像空间锚点(0..1,y 向下;texture 直贴恒 [0.5,0.5] 居中 = F-GAME-3 行为不变)。
+    pub pivot: [f32; 2],
+}
+
+/// 解析 Sprite 组件当前帧(F-GAME-4):
+/// - `sprite`(.rxsprite GUID)非空 → 图集模式:clip 非空取 clip 第 frame 帧
+///   (钳制到末帧);clip 空则 frame 为 frames 键序下标;frames 为空 → 整图 + 文档 pivot;
+/// - 否则 `texture` 非空 → 整图直贴(居中锚,行为与 F-GAME-3 一致);
+/// - 两者皆空/解析失败 → None(实体回退 cube 占位腿,与既有坏引用行为同形)。
+fn resolve_sprite_render(c: &forge_scene::Component) -> Option<SpriteRenderInfo> {
+    let project_root = crate::rpc::project_root();
+    let sprite_guid = c.props.get("sprite").and_then(Value::as_str).unwrap_or("");
+    if !sprite_guid.is_empty() {
+        let doc = sprite_doc_cached(sprite_guid)?;
+        let tex = load_tex_static_cached(&project_root, &doc.texture)?;
+        let clip_name = c.props.get("clip").and_then(Value::as_str).unwrap_or("");
+        let frame_idx = sprite_num(c, "frame", 0.0).max(0.0) as usize;
+        let frame = if !clip_name.is_empty() {
+            doc.clips.get(clip_name).and_then(|clip| {
+                let idx = frame_idx.min(clip.frames.len().saturating_sub(1));
+                let name = clip.frames.get(idx)?;
+                doc.frames.get(name).map(|f| (name.clone(), f.clone()))
+            })
+        } else {
+            let keys: Vec<&String> = doc.frames.keys().collect();
+            keys.get(frame_idx.min(keys.len().saturating_sub(1)))
+                .map(|k| ((*k).clone(), doc.frames[*k].clone()))
+        };
+        return Some(match frame {
+            Some((name, f)) => {
+                let (tw, th) = (tex.w.max(1) as f32, tex.h.max(1) as f32);
+                let bbox = f.bbox;
+                SpriteRenderInfo {
+                    tex,
+                    uv_rect: [
+                        bbox[0] as f32 / tw,
+                        bbox[1] as f32 / th,
+                        bbox[2] as f32 / tw,
+                        bbox[3] as f32 / th,
+                    ],
+                    frame_px: [bbox[2] as f32, bbox[3] as f32],
+                    pivot: doc.resolve_pivot(&name),
+                }
+            }
+            // frames 为空(新建未切帧):整图 + 文档 pivot(诚实可见,编辑器可继续切)。
+            None => SpriteRenderInfo {
+                tex,
+                uv_rect: FULL_UV_RECT,
+                frame_px: [tex.w as f32, tex.h as f32],
+                pivot: doc.pivot,
+            },
+        });
+    }
+    let tex_guid = c.props.get("texture").and_then(Value::as_str).unwrap_or("");
+    if tex_guid.is_empty() {
+        return None;
+    }
+    let tex = load_tex_static_cached(&project_root, tex_guid)?;
+    Some(SpriteRenderInfo {
+        tex,
+        uv_rect: FULL_UV_RECT,
+        frame_px: [tex.w as f32, tex.h as f32],
+        pivot: [0.5, 0.5],
+    })
+}
+
+/// Sprite 实体渲染态等效变换(F-GAME-4:帧尺寸缩放 + pivot 锚定平移),
+/// 渲染模型矩阵与点选 OBB 共用,保证画面与点选一致。返回 None = 非 Sprite 实体。
+/// 锚定:图像空间 pivot(y 向下)→ 单位 quad 局部偏移 (0.5-px, py-0.5),
+/// 经旋转与有效缩放折入 translation,使锚点恰落在实体 translation 上。
+fn sprite_render_transform(e: &forge_scene::Entity) -> Option<Transform> {
+    let c = sprite_component(e)?;
+    let ppu = sprite_num(c, "pixelsPerUnit", 100.0).max(1.0) as f32;
+    let info = resolve_sprite_render(c);
+    let (fw, fh, pivot) = match &info {
+        Some(i) => (i.frame_px[0], i.frame_px[1], i.pivot),
+        // 贴图未解析:回退 1×1 居中(与旧 quad 腿同形)。
+        None => (ppu, ppu, [0.5, 0.5]),
+    };
+    let s = e.transform.scale;
+    let scale = [s[0] * fw / ppu, s[1] * fh / ppu, s[2].max(1e-3)];
+    let offset_local = [0.5 - pivot[0], pivot[1] - 0.5, 0.0];
+    let rot = quat_to_mat3(e.transform.rotation);
+    let world_off = m3_apply(
+        rot,
+        [
+            offset_local[0] * scale[0],
+            offset_local[1] * scale[1],
+            0.0,
+        ],
+    );
+    Some(Transform {
+        translation: v3_add(e.transform.translation, world_off),
+        rotation: e.transform.rotation,
+        scale,
+    })
 }
 
 /// 实体网格引用(MeshRenderer.props.mesh;缺省/空 = 内置 cube)。
@@ -325,7 +531,9 @@ pub fn pick_entity(
         if !is_renderable(e) {
             continue;
         }
-        if let Some(t) = ray_unit_cube(origin, dir, &e.transform) {
+        // F-GAME-3/4:Sprite 实体按渲染态变换(帧尺寸 + pivot 锚定)参与点选,与画面一致。
+        let tr = sprite_render_transform(e).unwrap_or(e.transform);
+        if let Some(t) = ray_unit_cube(origin, dir, &tr) {
             if best.is_none_or(|(_, bt)| t < bt) {
                 best = Some((e.id, t));
             }
@@ -370,6 +578,145 @@ fn cube_mesh_bytes() -> &'static [u8] {
         }
         Box::leak(bytes.into_boxed_slice())
     })
+}
+
+/// ── 贴图精灵管线(F-GAME-2:2D 游戏「真实画面」腿) ──
+/// 每个带材质 albedo 的实体 = 一张朝 +z 的单位四边形,逐槽绑定 albedo 纹理采样;
+/// 品红底色键 discard(生成素材的 chroma-key 约定)。
+
+/// 已解码贴图(进程级缓存,'static 泄漏与会话同生命周期纪律)。
+pub struct TexGpu {
+    pub w: u32,
+    pub h: u32,
+    pub rgba: &'static [u8],
+}
+
+/// 贴图 GUID → 解码缓存。
+pub fn load_tex_static_cached(project: &std::path::Path, tex_guid: &str) -> Option<&'static TexGpu> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static TEX_CACHE: OnceLock<Mutex<HashMap<String, Option<&'static TexGpu>>>> = OnceLock::new();
+    let cache = TEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(t) = cache.lock().unwrap().get(tex_guid) {
+        return *t;
+    }
+    let loaded = (|| {
+        let guid_map = content_guid_map_cached();
+        let tex_path = guid_map.get(tex_guid)?;
+        let (w, h, rgba) = assetd::texture::decode_rgba(tex_path).ok()?;
+        let rgba: &'static [u8] = Box::leak(rgba.into_boxed_slice());
+        Some(TexGpu { w, h, rgba })
+    })();
+    let leaked: Option<&'static TexGpu> = loaded.map(|t| &*Box::leak(Box::new(t)));
+    cache
+        .lock()
+        .unwrap()
+        .insert(tex_guid.to_string(), leaked);
+    leaked
+}
+
+/// 单位四边形(朝 +z;pos+normal+uv;2 三角)。
+fn quad_mesh_bytes() -> &'static [u8] {
+    static MESH: OnceLock<&'static [u8]> = OnceLock::new();
+    MESH.get_or_init(|| {
+        let corners: [[f32; 2]; 4] = [
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.5, 0.5],
+            [-0.5, 0.5],
+        ];
+        let uvs: [[f32; 2]; 4] = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+        let n = [0.0, 0.0, 1.0];
+        let mut bytes = Vec::with_capacity(6 * 32);
+        let mut push = |c: [f32; 2], uv: [f32; 2]| {
+            for f in [c[0], c[1], 0.0, n[0], n[1], n[2], uv[0], uv[1]] {
+                bytes.extend_from_slice(&f.to_le_bytes());
+            }
+        };
+        for i in [0usize, 1, 2, 0, 2, 3] {
+            push(corners[i], uvs[i]);
+        }
+        Box::leak(bytes.into_boxed_slice())
+    })
+}
+
+/// 贴图精灵顶点布局:pos(0) + normal(12) + uv(24),stride 32。
+/// R32G32_SFLOAT = VK_FORMAT_R32G32_SFLOAT(103;上游 render_exec TexFormat 同表)。
+const R32G32_SFLOAT: u32 = 103;
+const VERTEX_ATTRS_TEX: [(u32, u32, u32); 3] = [
+    (0, R32G32B32_SFLOAT, 0),
+    (1, R32G32B32_SFLOAT, 12),
+    (2, R32G32_SFLOAT, 24),
+];
+const QUAD_STRIDE: u32 = 32;
+
+const VS_TEX_WGSL: &str = r#"
+struct CameraUbo { view_proj: mat4x4<f32>, };
+// albedo 走 storage buffer texel 数组:buffer 初始数据上传是 cube VB 同款已验证
+// 路径;image sampled/storage 两路在本执行器实测读零,弃用(F-GAME-2)。
+@group(0) @binding(0) var<storage, read> albedo_texels: array<u32>;
+@group(0) @binding(1) var<uniform> u_cam: CameraUbo;
+// F-GAME-3:flags = (flipX, flipY)——Sprite 组件 UV 镜像(0/1)。
+// F-GAME-4:uv_rect = 图集子矩形(offset.xy + scale.zw,0..1 贴图空间)——帧动画的
+// 每帧可变通道(push constants 112B ≤ 128B 上限);整图模式恒 [0,0,1,1]。
+struct PushConsts { model: mat4x4<f32>, color: vec4<f32>, tex_size: vec2<u32>, flags: vec2<f32>, uv_rect: vec4<f32>, };
+var<push_constant> pc: PushConsts;
+struct VsOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) nrm: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+};
+@vertex
+fn main(@location(0) pos: vec3<f32>, @location(1) nrm: vec3<f32>, @location(2) uv: vec2<f32>) -> VsOut {
+    var o: VsOut;
+    o.clip = u_cam.view_proj * (pc.model * vec4<f32>(pos, 1.0));
+    o.nrm = (pc.model * vec4<f32>(nrm, 0.0)).xyz;
+    // 先在帧内翻转,再映射进图集子矩形(flip 语义 = 帧内镜像,不跨帧)。
+    let fu = vec2<f32>(mix(uv.x, 1.0 - uv.x, pc.flags.x), mix(uv.y, 1.0 - uv.y, pc.flags.y));
+    o.uv = pc.uv_rect.xy + fu * pc.uv_rect.zw;
+    return o;
+}
+"#;
+
+const FS_TEX_WGSL: &str = r#"
+struct PushConsts { model: mat4x4<f32>, color: vec4<f32>, tex_size: vec2<u32>, flags: vec2<f32>, uv_rect: vec4<f32>, };
+var<push_constant> pc: PushConsts;
+@group(0) @binding(0) var<storage, read> albedo_texels: array<u32>;
+// RGBA8 texel → vec4(小端:byte0=R 落在 u32 最低字节)。
+fn texel_at(x: i32, y: i32) -> vec4<f32> {
+    let idx = y * i32(pc.tex_size.x) + x;
+    let p = albedo_texels[idx];
+    return vec4<f32>(
+        f32((p) & 0xffu) / 255.0,
+        f32((p >> 8u) & 0xffu) / 255.0,
+        f32((p >> 16u) & 0xffu) / 255.0,
+        f32((p >> 24u) & 0xffu) / 255.0,
+    );
+}
+@fragment
+fn main(@location(0) nrm: vec3<f32>, @location(1) uv: vec2<f32>) -> @location(0) vec4<f32> {
+    // F-GAME-4:采样钳制在 uv_rect 子矩形内(帧边界插值恰达上界时防越入邻帧 1px);
+    // 整图模式 rect=[0,0,1,1] 与旧行为逐 texel 一致。
+    let w = f32(pc.tex_size.x);
+    let h = f32(pc.tex_size.y);
+    let x = i32(clamp(uv.x * w, max(pc.uv_rect.x * w, 0.0), min((pc.uv_rect.x + pc.uv_rect.z) * w, w) - 1.0));
+    let y = i32(clamp(uv.y * h, max(pc.uv_rect.y * h, 0.0), min((pc.uv_rect.y + pc.uv_rect.w) * h, h) - 1.0));
+    let texel = texel_at(x, y);
+    if (texel.a < 0.02) { discard; }
+    // 品红族色键(生成精灵 chroma-key 背景及渐变边):G 显著低于 R/B 两者即弃。
+    // 素材里绿身(g 高)/蓝天(r 低)/红屋(b 低)/黄瓣(g 高)均不受误伤。
+    let g_dom = 0.5 * min(texel.r, texel.b);
+    if (texel.g < g_dom) { discard; }
+    // F-GAME-3:pc.color = Sprite.tint(旧贴图 quad 路径恒推白色,行为不变)。
+    return vec4<f32>(texel.rgb * pc.color.rgb, pc.color.a);
+}
+"#;
+
+fn shader_tex_bytes() -> Result<(&'static [u8], &'static [u8]), String> {
+    static SHADERS: OnceLock<Result<(&'static [u8], &'static [u8]), String>> = OnceLock::new();
+    SHADERS
+        .get_or_init(|| Ok((compile_wgsl(VS_TEX_WGSL, "vs_tex")?, compile_wgsl(FS_TEX_WGSL, "fs_tex")?)))
+        .clone()
 }
 
 const VS_WGSL: &str = r#"
@@ -468,8 +815,14 @@ const MAX_DRAW_SLOTS: usize = 128;
 /// 避免小场景为空槽 pass 付全量重录/draw 代价(128 空槽实测 1080p ~22ms/帧大头)。
 /// 档位只升不降(滞后:实体数回落不重建,避免抖动);超 128 仍截断。
 fn slot_tier(renderable: usize) -> usize {
-    if renderable <= 48 {
-        48
+    // 档位必须覆盖当帧实体数；此前阈值 48→32 / 96→64 会主动截掉合法精灵，
+    // 导致 PvZ 关卡背景/单位消失。保持有限档位但保证 tier >= renderable。
+    if renderable <= 24 {
+        24
+    } else if renderable <= 32 {
+        32
+    } else if renderable <= 64 {
+        64
     } else if renderable <= 96 {
         96
     } else {
@@ -509,6 +862,11 @@ struct ViewportRenderer {
 unsafe impl Send for ViewportRenderer {}
 
 static RENDERER: OnceLock<Mutex<RendererState>> = OnceLock::new();
+
+/// 诊断:本帧是否发生了会话重建(性能定位用)。
+static REBUILD_FLAG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// 最近一次会话重建时刻(重建防抖用)。
+static LAST_REBUILD: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 
 fn renderer_slot() -> &'static Mutex<RendererState> {
     RENDERER.get_or_init(|| Mutex::new(RendererState::Uninit))
@@ -557,14 +915,15 @@ fn build_session(
     height: u32,
     slots: usize,
     slot_mesh: &[Option<&'static MeshGpu>],
+    slot_tex: &[Option<&'static TexGpu>],
     mesh_sig: u64,
 ) -> Result<ViewportRenderer, String> {
     let import = current_import(width, height);
-    match build_session_with(width, height, import, slots, slot_mesh, mesh_sig) {
+    match build_session_with(width, height, import, slots, slot_mesh, slot_tex, mesh_sig) {
         Ok(r) => Ok(r),
         Err(e) if import.is_some() => {
             eprintln!("[viewport] 零拷贝 import 会话创建失败,回退 readback 上传腿: {e}");
-            build_session_with(width, height, None, slots, slot_mesh, mesh_sig)
+            build_session_with(width, height, None, slots, slot_mesh, slot_tex, mesh_sig)
         }
         Err(e) => Err(e),
     }
@@ -576,9 +935,11 @@ fn build_session_with(
     import: Option<ShareImport>,
     slots: usize,
     slot_mesh: &[Option<&'static MeshGpu>],
+    slot_tex: &[Option<&'static TexGpu>],
     mesh_sig: u64,
 ) -> Result<ViewportRenderer, String> {
     assert_eq!(slot_mesh.len(), slots, "槽位→网格类表长度须等于槽数");
+    assert_eq!(slot_tex.len(), slots, "槽位→贴图表长度须等于槽数");
     if !vk::vulkan_available() {
         return Err("DEV_ENV_DEGRADE: vulkan loader 不可用(无 GPU/驱动)".to_owned());
     }
@@ -590,6 +951,7 @@ fn build_session_with(
         ));
     }
     let (vs, fs) = shader_bytes()?;
+    let (vs_tex, fs_tex) = shader_tex_bytes()?;
     let cube = cube_mesh_bytes();
 
     // 槽位→网格类 VB 资源下标:cube 恒 res 0;不同网格按首现序 4..;共享 SSBO 随后。
@@ -602,7 +964,7 @@ fn build_session_with(
             }
         }
     }
-    let import_res = 4 + distinct.len() as u32;
+    // import_res 在下方资源表构建后定案(纹理资源插入其间)。
 
     // 资源:0=cube VB / 1=相机 UBO / 2=色 attachment / 3=深度 / 4..=网格类 VB /(零拷贝档)共享 SSBO。
     let mut resources: Vec<rex::ResourceDesc> = vec![
@@ -659,6 +1021,47 @@ fn build_session_with(
             device_local: false,
         }));
     }
+    // 贴图精灵腿:四边形 VB(随后的 tex 资源表;F-GAME-2)。
+    let quad = quad_mesh_bytes();
+    let quad_res = (4 + distinct.len()) as u32;
+    resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
+        size: quad.len() as u64,
+        usage: rex::BufferUsage {
+            vertex: true,
+            ..Default::default()
+        },
+        data: Some(quad),
+        device_local: false,
+    }));
+    // 不同 albedo 贴图各一资源(首现序),跨槽复用同一资源下标。
+    let mut distinct_tex: Vec<&'static TexGpu> = Vec::new();
+    for t in slot_tex.iter().flatten() {
+        if !distinct_tex
+            .iter()
+            .any(|x| std::ptr::eq(*x, *t))
+        {
+            distinct_tex.push(t);
+        }
+    }
+    for t in &distinct_tex {
+        resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
+            size: t.rgba.len() as u64,
+            usage: rex::BufferUsage {
+                storage: true,
+                ..Default::default()
+            },
+            data: Some(t.rgba),
+            // host-visible 直写上传(cube VB 同款;512² RGBA ≈1MB/张,shader 读 PCIe 带宽足够)。
+            device_local: false,
+        }));
+    }
+    let tex_res = |t: &'static TexGpu| -> u32 {
+        (5 + distinct.len()) as u32
+            + distinct_tex
+                .iter()
+                .position(|x| std::ptr::eq(*x, t))
+                .unwrap_or(0) as u32
+    };
     if let Some(im) = import {
         // 上游 imported 集强制 data=None + device_local。
         resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
@@ -671,6 +1074,7 @@ fn build_session_with(
             device_local: true,
         }));
     }
+    let import_res = (5 + distinct.len() + distinct_tex.len()) as u32;
 
     // 消隐槽模型:远埋 + 微缩(全有限值,规避 NaN 顶点未定义光栅化)。
     let hidden_model = trs_model(&Transform {
@@ -681,10 +1085,67 @@ fn build_session_with(
     let mut hidden_pc = Vec::with_capacity(80);
     hidden_pc.extend_from_slice(&m4_col_bytes(hidden_model));
     hidden_pc.extend_from_slice(&[0u8; 16]);
+    // 贴图槽消隐 push constants(112B:model+color+tex_size+flip flags+uv_rect,F-GAME-4)。
+    let mut hidden_pc_tex = Vec::with_capacity(SPRITE_PC_LEN);
+    hidden_pc_tex.extend_from_slice(&m4_col_bytes(hidden_model));
+    hidden_pc_tex.extend_from_slice(&[0u8; 16]);
+    hidden_pc_tex.extend_from_slice(&1u32.to_le_bytes());
+    hidden_pc_tex.extend_from_slice(&1u32.to_le_bytes());
+    hidden_pc_tex.extend_from_slice(&0f32.to_le_bytes());
+    hidden_pc_tex.extend_from_slice(&0f32.to_le_bytes());
+    for f in FULL_UV_RECT {
+        hidden_pc_tex.extend_from_slice(&f.to_le_bytes());
+    }
 
     let mut passes: Vec<rex::Pass> = Vec::with_capacity(slots);
     let mut barrier_plan: Vec<Vec<(u32, rex::TargetState)>> = Vec::with_capacity(slots);
     for (k, s) in slot_mesh.iter().enumerate() {
+        let first = k == 0;
+        if let Some(t) = slot_tex[k] {
+            // 贴图精灵槽:四边形 + albedo 采样(品红色键在 FS 内 discard)。
+            passes.push(rex::Pass::Raster(rex::RasterPass {
+                name: "forge_viewport_sprite",
+                vs_spirv: vs_tex,
+                fs_spirv: fs_tex,
+                vertex: rex::VertexData::Resource {
+                    res: quad_res,
+                    offset: 0,
+                    stride: QUAD_STRIDE,
+                    attrs: &VERTEX_ATTRS_TEX,
+                },
+                draw: rex::DrawSpec::Direct {
+                    vertex_count: 6,
+                    instance_count: 1,
+                    first_vertex: 0,
+                    first_instance: 0,
+                },
+                colors: vec![rex::ColorAttachmentRef {
+                    res: 2,
+                    clear: if first { Some(CLEAR_RGBA) } else { None },
+                }],
+                depth: Some(rex::DepthAttachmentRef {
+                    res: 3,
+                    clear: if first { Some(1.0) } else { None },
+                }),
+                viewport: None,
+                bindings: rex::Bindings {
+                    uniform: Some(rex::UniformRef {
+                        res: 1,
+                        offset: 0,
+                        size: 64,
+                    }),
+                    storage_buffers: vec![tex_res(t)],
+                    push_constants: hidden_pc_tex.clone(),
+                    ..Default::default()
+                },
+                conservative: None,
+            }));
+            barrier_plan.push(vec![
+                (2, rex::TargetState::ColorAttachmentWrite),
+                (3, rex::TargetState::DepthAttachmentWrite),
+            ]);
+            continue;
+        }
         let (vb_res, vertex_count) = match s {
             None => (0u32, 36u32),
             Some(m) => (
@@ -756,7 +1217,7 @@ fn build_session_with(
         }));
         barrier_plan.push(vec![
             (2, rex::TargetState::StorageImageReadWrite),
-            (4, rex::TargetState::StorageReadWrite),
+            (import_res, rex::TargetState::StorageReadWrite),
         ]);
     }
 
@@ -834,6 +1295,251 @@ fn entity_color(id: u64, selected: bool) -> [f32; 4] {
     [c[0], c[1], c[2], 1.0]
 }
 
+/// 实体 MeshRenderer.material(GUID)→ albedo 贴图平均色。
+/// 视口渲染管线尚无纹理采样(逐实体纯色 push constant),用贴图平均色着色是
+/// 「真实生成素材可见」的保真替身(F-GAME-2);解码结果按材质 GUID 进程级缓存。
+fn entity_tint(e: &forge_scene::Entity, selected: bool) -> [f32; 4] {
+    if selected {
+        return [1.0, 0.62, 0.18, 1.0];
+    }
+    let mat_guid = e
+        .components
+        .iter()
+        .find(|c| c.ctype == "MeshRenderer" && c.enabled)
+        .and_then(|c| c.props.get("material"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if mat_guid.is_empty() {
+        return entity_color(e.id, false);
+    }
+    material_avg_color(&mat_guid).unwrap_or_else(|| entity_color(e.id, false))
+}
+
+/// 材质 GUID → albedo 平均色(进程级缓存;Content 资产量级 <百,首帧扫盘一次可接受)。
+fn material_avg_color(mat_guid: &str) -> Option<[f32; 4]> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<[f32; 4]>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(c) = cache.lock().unwrap().get(mat_guid) {
+        return *c;
+    }
+    let color = resolve_material_avg_color(mat_guid);
+    cache
+        .lock()
+        .unwrap()
+        .insert(mat_guid.to_string(), color);
+    color
+}
+
+/// guid → Content 内源文件路径映射(进程级缓存:render_scene_frame 每帧逐实体解析
+/// 材质,无缓存时每帧数百次 .meta 文件 IO,实测单帧 4-6s 全卡在这——F-GAME-2)。
+/// 未命中且距上次构建 >2s 时重建一次(容纳 agent 运行中新导入的资产)。
+fn content_guid_map_cached() -> std::collections::HashMap<String, std::path::PathBuf> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Map = HashMap<String, std::path::PathBuf>;
+    static CACHE: OnceLock<Mutex<(std::time::Instant, Map)>> = OnceLock::new();
+    let cell = CACHE.get_or_init(|| {
+        Mutex::new((
+            std::time::Instant::now() - std::time::Duration::from_secs(3600),
+            HashMap::new(),
+        ))
+    });
+    let mut guard = cell.lock().unwrap();
+    let (built_at, map) = &mut *guard;
+    if map.is_empty() || built_at.elapsed() > std::time::Duration::from_secs(2) {
+        let project = crate::rpc::project_root();
+        *map = content_guid_map(&project.join("Content"));
+        *built_at = std::time::Instant::now();
+    }
+    map.clone()
+}
+
+/// guid → Content 内源文件路径映射(扫全部 .meta;失配容忍——无 meta 的文件跳过)。
+fn content_guid_map(content: &std::path::Path) -> std::collections::HashMap<String, std::path::PathBuf> {
+    let mut map = std::collections::HashMap::new();
+    let mut stack = vec![content.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|x| x.to_str()) == Some("meta") {
+                if let Ok(doc) = assetd::meta::MetaDoc::load(&p) {
+                    // 源文件 = sidecar 去掉 .meta 后缀
+                    let src = p.with_extension("");
+                    if src.is_file() {
+                        map.insert(doc.guid, src);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
+/// 解析材质:mat guid → .rxmat 文件 → textures.albedo guid → 贴图文件 → 平均色。
+fn resolve_material_avg_color(mat_guid: &str) -> Option<[f32; 4]> {
+    let guid_map = content_guid_map_cached();
+    let mat_path = guid_map.get(mat_guid)?;
+    let mat_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(mat_path).ok()?).ok()?;
+    let albedo_guid = mat_json
+        .get("textures")?
+        .get("albedo")?
+        .as_str()?
+        .to_string();
+    let tex_path = guid_map.get(&albedo_guid)?;
+    assetd::texture::decode_average_rgba(tex_path).ok()
+}
+
+/// 材质 GUID → albedo 贴图 GUID(贴图精灵槽分类用)。
+fn material_albedo_guid(mat_guid: &str, _project: &std::path::Path) -> Option<String> {
+    let guid_map = content_guid_map_cached();
+    let mat_path = guid_map.get(mat_guid)?;
+    let mat_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(mat_path).ok()?).ok()?;
+    mat_json
+        .get("textures")?
+        .get("albedo")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// 场景相机实体(首个启用 Camera 组件)在归一化设备坐标 (nx, ny ∈ [-1,1],y 向上)处的
+/// 世界射线 (origin, dir)。与 [`scene_camera_view_proj`] 同一套相机参数解析,供 play 态
+/// 指针输入反投影(logic.inject_pointer):正交 = 平行射线从相机平面出发;透视 = 自相机眼
+/// 发散。无相机实体返回 None(调用方退回编辑器相机)。
+pub fn scene_camera_ray(scene: &Scene, nx: f32, ny: f32, aspect: f32) -> Option<(V3, V3)> {
+    let cam = scene.entities.iter().find(|e| {
+        e.components
+            .iter()
+            .any(|c| c.ctype == "Camera" && c.enabled)
+    })?;
+    let props = cam
+        .components
+        .iter()
+        .find(|c| c.ctype == "Camera")
+        .map(|c| &c.props)?;
+    let rot = quat_to_mat3(cam.transform.rotation);
+    let right = v3_norm(m3_apply(rot, [1.0, 0.0, 0.0]));
+    let up = v3_norm(m3_apply(rot, [0.0, 1.0, 0.0]));
+    let fwd = v3_norm(m3_apply(rot, [0.0, 0.0, -1.0]));
+    let eye = cam.transform.translation;
+    let projection = props
+        .get("projection")
+        .and_then(|v| v.as_str())
+        .unwrap_or("perspective");
+    if projection == "orthographic" {
+        let hh = props.get("orthoSize").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
+        let hh = hh.max(1e-4);
+        let hw = hh * aspect.max(1e-6);
+        let origin = [
+            eye[0] + right[0] * nx * hw + up[0] * ny * hh,
+            eye[1] + right[1] * nx * hw + up[1] * ny * hh,
+            eye[2] + right[2] * nx * hw + up[2] * ny * hh,
+        ];
+        return Some((origin, fwd));
+    }
+    let fov_deg = props.get("fov").and_then(|v| v.as_f64()).unwrap_or(60.0) as f32;
+    let t = (fov_deg.to_radians() * 0.5).tan();
+    let dir = v3_norm([
+        right[0] * nx * t * aspect + up[0] * ny * t + fwd[0],
+        right[1] * nx * t * aspect + up[1] * ny * t + fwd[1],
+        right[2] * nx * t * aspect + up[2] * ny * t + fwd[2],
+    ]);
+    Some((eye, dir))
+}
+
+/// 屏外裁剪的边距倍数:只裁「停车位」级别的远离(四角全在 3 倍视口范围之外),
+/// 贴边进出的实体(右侧刷出的僵尸、飞出屏的豌豆、开走的小推车)不裁——
+/// 可见集每变一次 pass 会话就要按新的贴图槽签名重建,逐帧进出会造成重建抖动。
+const OFFSCREEN_CULL_MARGIN: f32 = 3.0;
+
+/// Sprite 实体是否停在远屏外(保守四角裁剪):渲染态 quad 四角经 view_proj 投到裁剪空间,
+/// 四角同侧越界(全在 x>3w / x<-3w / y>3w / y<-3w)或全在相机后方即视为屏外。
+/// 用途:2D 游戏对象池把闲置实体停在屏外(如 y=-60),此前仍逐个占 draw 槽,
+/// 128 槽预算被池子吃掉;屏外精灵不进 renderables 后,槽位只留给真正可见的实体。
+/// 非 Sprite 实体(3D 网格/cube)不裁,行为不变。
+fn sprite_offscreen(e: &forge_scene::Entity, vp: &M4) -> bool {
+    let Some(tr) = sprite_render_transform(e) else {
+        return false;
+    };
+    let model = trs_model(&tr);
+    let mut outside = [true; 5]; // +x, -x, +y, -y, behind
+    for (lx, ly) in [(-0.5f32, -0.5f32), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)] {
+        let local = [lx, ly, 0.0, 1.0];
+        let mut world = [0.0f32; 4];
+        for r in 0..4 {
+            world[r] = (0..4).map(|k| model[r][k] * local[k]).sum();
+        }
+        let mut clip = [0.0f32; 4];
+        for r in 0..4 {
+            clip[r] = (0..4).map(|k| vp[r][k] * world[k]).sum();
+        }
+        let w = clip[3];
+        if w > 1e-6 {
+            outside[4] = false;
+        }
+        let bound = w.abs().max(1e-6) * OFFSCREEN_CULL_MARGIN;
+        if clip[0] <= bound {
+            outside[0] = false;
+        }
+        if clip[0] >= -bound {
+            outside[1] = false;
+        }
+        if clip[1] <= bound {
+            outside[2] = false;
+        }
+        if clip[1] >= -bound {
+            outside[3] = false;
+        }
+    }
+    outside.iter().any(|o| *o)
+}
+
+/// 场景内置相机实体(首个启用 Camera 组件)的 view_proj。
+/// PIE 期间视口以此驱动(F-GAME-2:游戏画面 = 游戏相机画面);无相机实体返回 None。
+pub fn scene_camera_view_proj(scene: &Scene, aspect: f32) -> Option<M4> {
+    let cam = scene.entities.iter().find(|e| {
+        e.components
+            .iter()
+            .any(|c| c.ctype == "Camera" && c.enabled)
+    })?;
+    let props = cam
+        .components
+        .iter()
+        .find(|c| c.ctype == "Camera")
+        .map(|c| &c.props)?;
+    let fov_deg = props.get("fov").and_then(|v| v.as_f64()).unwrap_or(60.0) as f32;
+    let near = props.get("near").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32;
+    let far = props.get("far").and_then(|v| v.as_f64()).unwrap_or(500.0) as f32;
+    // F-GAME-3:projection=orthographic 走正交(2D 游戏相机),orthoSize=半高(世界单位)。
+    let projection = props
+        .get("projection")
+        .and_then(|v| v.as_str())
+        .unwrap_or("perspective");
+    let ortho_size = props.get("orthoSize").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
+    let t = &cam.transform;
+    let rot = quat_to_mat3(t.rotation);
+    let fwd = v3_norm(m3_apply(rot, [0.0, 0.0, -1.0]));
+    let eye = t.translation;
+    let center = v3_add(eye, fwd);
+    // proj Y 对角元取负:与 EditorCamera::view_proj 同一显示朝向约定(见其注释)。
+    let mut proj = if projection == "orthographic" {
+        orthographic_vk(ortho_size, aspect.max(1e-6), near, far)
+    } else {
+        perspective_vk(fov_deg.to_radians(), aspect.max(1e-6), near, far)
+    };
+    proj[1][1] = -proj[1][1];
+    Some(m4_mul(proj, look_at_rh(eye, center, [0.0, 1.0, 0.0])))
+}
+
 /// 一帧产物(rgba8 紧凑字节 + 诊断面)。
 pub struct FramePixels {
     pub width: u32,
@@ -860,6 +1566,10 @@ impl FramePixels {
 }
 
 /// 渲一帧:场景 → rgba8。无设备 → `DEV_ENV_DEGRADE:` 前缀 Err(诚实档)。
+/// `vp_override`:PIE 时由场景相机实体给 view_proj(游戏画面 = 游戏相机);None = 编辑器相机。
+/// `want_stats`:是否做非背景像素全帧扫描(遗留 MCP 腿诊断面);推流腿 30-60fps
+/// 下逐帧扫 2M 像素纯属浪费,传 false 跳过(nonzero 恒 0,不伪造)。
+#[allow(clippy::too_many_arguments)]
 pub fn render_scene_frame(
     scene: &Scene,
     cam: &EditorCamera,
@@ -867,49 +1577,91 @@ pub fn render_scene_frame(
     width: u32,
     height: u32,
     want_readback: bool,
+    want_stats: bool,
+    vp_override: Option<M4>,
 ) -> Result<FramePixels, String> {
     let slot = renderer_slot();
     let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
 
-    // ── 网格类解析(资产→视口接线) ──
-    // 可渲染实体 + 网格引用;类 0 = 内置 cube/回退,类 1.. = 不同 mesh 引用(首现序)。
+    // ── 网格类解析(资产→视口接线 + 贴图精灵腿 F-GAME-2) ──
+    // 类 0 = 贴图精灵 quad(实体材质有 albedo 贴图),类 1 = 内置 cube/回退,
+    // 类 2.. = 不同 mesh 引用(首现序)。
+    // 屏外 Sprite 不进 renderables(对象池闲置实体不占 128 槽预算;见 sprite_offscreen)。
+    let frame_vp = vp_override.unwrap_or_else(|| cam.view_proj(width as f32 / height.max(1) as f32));
     let renderables: Vec<(&forge_scene::Entity, String)> = scene
         .entities
         .iter()
-        .filter(|e| is_renderable(e))
+        .filter(|e| is_renderable(e) && !sprite_offscreen(e, &frame_vp))
         .map(|e| (e, entity_mesh_ref(e)))
         .collect();
     let renderable_n = renderables.len();
     let want_slots = slot_tier(renderable_n);
     let want_import = current_import(width, height);
 
+    // 实体 → 精灵解析(有则走精灵 quad 槽)。
+    // F-GAME-4:Sprite 组件经 resolve_sprite_render 统一出口(texture 直贴 /
+    // .rxsprite 图集帧);否则沿旧路 MeshRenderer.material → albedo(整图)。
+    let project_root = crate::rpc::project_root();
+    let entity_sprite: Vec<Option<SpriteRenderInfo>> = renderables
+        .iter()
+        .map(|(e, _)| {
+            if let Some(sp) = sprite_component(e) {
+                return resolve_sprite_render(sp);
+            }
+            let mat_guid = e
+                .components
+                .iter()
+                .find(|c| c.ctype == "MeshRenderer" && c.enabled)
+                .and_then(|c| c.props.get("material"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if mat_guid.is_empty() {
+                return None;
+            }
+            let albedo = material_albedo_guid(mat_guid, &project_root)?;
+            let tex = load_tex_static_cached(&project_root, &albedo)?;
+            Some(SpriteRenderInfo {
+                tex,
+                uv_rect: FULL_UV_RECT,
+                frame_px: [tex.w as f32, tex.h as f32],
+                pivot: [0.5, 0.5],
+            })
+        })
+        .collect();
+    let entity_tex: Vec<Option<&'static TexGpu>> =
+        entity_sprite.iter().map(|s| s.as_ref().map(|i| i.tex)).collect();
+
     let mut class_refs: Vec<String> = Vec::new();
     let mut class_mesh: Vec<&'static MeshGpu> = Vec::new();
     let mut entity_class: Vec<usize> = Vec::with_capacity(renderable_n);
     let mut mesh_fallbacks = 0usize;
-    for (_, mesh_ref) in &renderables {
-        if mesh_ref == "cube" {
+    for (i, (_, mesh_ref)) in renderables.iter().enumerate() {
+        if entity_tex[i].is_some() {
             entity_class.push(0);
             continue;
         }
+        if mesh_ref == "cube" {
+            entity_class.push(1);
+            continue;
+        }
         let ci = match class_refs.iter().position(|c| c == mesh_ref) {
-            Some(i) => i + 1,
+            Some(i) => i + 2,
             None => {
                 if class_refs.len() >= meshres::MAX_MESH_CLASSES {
                     mesh_fallbacks += 1;
-                    entity_class.push(0);
+                    entity_class.push(1);
                     continue;
                 }
                 match meshres::load_mesh_static_cached(&crate::rpc::project_root(), mesh_ref) {
                     Ok(m) => {
                         class_refs.push(mesh_ref.clone());
                         class_mesh.push(m);
-                        class_refs.len()
+                        class_refs.len() + 1
                     }
                     Err(_) => {
                         // 失败详情已由 meshres 缓存路径 eprintln 一次;此处回退 cube。
                         mesh_fallbacks += 1;
-                        entity_class.push(0);
+                        entity_class.push(1);
                         continue;
                     }
                 }
@@ -918,41 +1670,67 @@ pub fn render_scene_frame(
         entity_class.push(ci);
     }
 
-    // ── 类槽位布局:cube 类先保(其实体必绘),非 cube 类按需分配,余量归 cube ──
-    let mut class_count = vec![0usize; class_refs.len() + 1];
+    // ── 类槽位布局:quad 精灵类先保(其实体必绘),cube 类次之,非内置类按需,余量归 cube ──
+    let n_classes = class_refs.len() + 2;
+    let mut class_count = vec![0usize; n_classes];
     for &c in &entity_class {
         class_count[c] += 1;
     }
-    let cube_n = class_count[0];
-    let mut class_slots = vec![0usize; class_refs.len() + 1];
-    let mut used_noncube = 0usize;
-    let avail = want_slots.saturating_sub(cube_n.min(want_slots));
-    for ci in 1..=class_refs.len() {
-        let take = class_count[ci].min(avail - used_noncube);
+    let quad_n = class_count[0];
+    let cube_n = class_count[1];
+    let mut class_slots = vec![0usize; n_classes];
+    let mut used_extra = 0usize;
+    let avail = want_slots
+        .saturating_sub(quad_n.min(want_slots))
+        .saturating_sub(cube_n.min(want_slots));
+    for ci in 2..n_classes {
+        let take = class_count[ci].min(avail.saturating_sub(used_extra));
         class_slots[ci] = take;
-        used_noncube += take;
+        used_extra += take;
     }
-    class_slots[0] = want_slots - used_noncube;
+    // 精灵数超当档预算(如 39 精灵落入 32 档)时钳到预算,超出截断(与超 128 同语义,
+    // 如实 truncated);否则 slot_tex/slot_mesh(长 want_slots)越界。
+    class_slots[0] = quad_n.min(want_slots);
+    // 精灵/cube 超槽位预算时 used_extra+quad_n 可超 want_slots;饱和减法防下溢崩溃。
+    class_slots[1] = want_slots.saturating_sub(used_extra).saturating_sub(quad_n.min(want_slots));
 
-    // 槽位→网格类表(构建期定案,帧内实体按类序占槽):
-    // cube 类占 [0..class_slots[0]),各 mesh 类紧随。
+    // F-GAME-3:精灵类(类 0)按 (sortingOrder, 场景序) 排序——小者先绘、大者压上;
+    // 槽位贴图绑定与下方绘制序共用此次序(稳定排序,等键保持场景序)。
+    let mut quad_order: Vec<usize> = (0..renderable_n).filter(|&i| entity_class[i] == 0).collect();
+    quad_order.sort_by(|&a, &b| {
+        sprite_sorting_order(renderables[a].0)
+            .partial_cmp(&sprite_sorting_order(renderables[b].0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // 槽位→几何/贴图表(构建期定案,帧内实体按类序占槽):
+    // quad 类占 [0..class_slots[0]),cube 类紧随,各 mesh 类再随后。
     let mut slot_mesh: Vec<Option<&'static MeshGpu>> = vec![None; want_slots];
-    let mut next = class_slots[0];
+    let mut slot_tex: Vec<Option<&'static TexGpu>> = vec![None; want_slots];
+    let mut qnext = 0usize;
+    for &i in &quad_order {
+        if qnext < class_slots[0] {
+            slot_tex[qnext] = entity_tex[i];
+            qnext += 1;
+        }
+    }
+    let mut next = class_slots[0] + class_slots[1];
     for (ci, m) in class_mesh.iter().enumerate() {
-        for _ in 0..class_slots[ci + 1] {
+        for _ in 0..class_slots[ci + 2] {
             slot_mesh[next] = Some(m);
             next += 1;
         }
     }
 
-    // 网格类布局签名(布局变化 → 会话重建;与改尺寸同路径)。
+    // 几何/贴图布局签名(任一变化 → 会话重建;与改尺寸同路径)。
     let mut sig_src = Vec::new();
     sig_src.extend_from_slice(&width.to_le_bytes());
     sig_src.extend_from_slice(&height.to_le_bytes());
     sig_src.extend_from_slice(&(want_slots as u64).to_le_bytes());
     sig_src.extend_from_slice(&want_import.map(|im| im.handle).unwrap_or(0).to_le_bytes());
     sig_src.extend_from_slice(&want_import.map(|im| im.size).unwrap_or(0).to_le_bytes());
-    for (r, ks) in class_refs.iter().zip(class_slots[1..].iter()) {
+    sig_src.extend_from_slice(&(class_slots[0] as u32).to_le_bytes());
+    for (r, ks) in class_refs.iter().zip(class_slots[2..].iter()) {
         sig_src.extend_from_slice(r.as_bytes());
         sig_src.push(0xff);
         sig_src.extend_from_slice(&(*ks as u32).to_le_bytes());
@@ -960,25 +1738,69 @@ pub fn render_scene_frame(
     for m in &class_mesh {
         sig_src.extend_from_slice(&m.bytes.len().to_le_bytes());
     }
+    // 槽位→贴图身份(场景换材质/换实体 → 重建使槽位绑定跟手)。
+    for t in &slot_tex {
+        match t {
+            Some(t) => {
+                sig_src.push(0x01);
+                sig_src.extend_from_slice(&t.w.to_le_bytes());
+                sig_src.extend_from_slice(&t.h.to_le_bytes());
+                sig_src.extend_from_slice(&(t.rgba.len() as u64).to_le_bytes());
+            }
+            None => sig_src.push(0x00),
+        }
+    }
     let mesh_sig = meshres::fnv1a64(&sig_src);
 
     // 懒初始化 / 改尺寸或共享纹理 import 键变化或网格类布局变化时重建
     // (降级态一经判定即缓存,不重试)。F6 wave.5:实体数超当前 pass 档 → 升档重建。
+    REBUILD_FLAG.store(false, std::sync::atomic::Ordering::Relaxed);
+    // 重建防抖(F-GAME-2 性能):重建 = 全量管线 + 纹理/网格初传,实测 ≈1-5s;多个取帧方
+    // (浏览器面板/诊断探针)尺寸不一致时会逐帧交替重建 → 卡死。1500ms 内的纯尺寸类
+    // 重建押后:复用现有会话按其自身尺寸出帧(客户端按回读宽高自适应呈现);几何/
+    // 贴图类变更(sig/档位/import)不押后——场景切换最多延迟一帧。
+    // 「纯尺寸」必须同时满足 import 键与槽位档未变:share 重开(新尺寸共享 buffer)
+    // 若被押后,旧会话仍绑旧 import,回读字节数与请求尺寸不符直接报错(f1_zerocopy 实测)。
+    let size_only_change = matches!(&*guard, RendererState::Ready(r)
+        if (r.width != width || r.height != height)
+            && r.import_key == want_import.map(|im| (im.handle, im.size))
+            && r.slots >= want_slots);
+    let throttled = size_only_change
+        && LAST_REBUILD
+            .lock()
+            .unwrap()
+            .map(|t| t.elapsed() < std::time::Duration::from_millis(1500))
+            .unwrap_or(false);
     match &*guard {
         RendererState::Uninit => {
-            *guard = match build_session(width, height, want_slots, &slot_mesh, mesh_sig) {
+            REBUILD_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
+            *guard = match build_session(width, height, want_slots, &slot_mesh, &slot_tex, mesh_sig)
+            {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
             };
         }
-        RendererState::Ready(r)
-            if r.width != width
-                || r.height != height
-                || r.import_key != want_import.map(|im| (im.handle, im.size))
-                || r.slots < want_slots
-                || r.mesh_sig != mesh_sig =>
+        RendererState::Ready(r) if !throttled && {
+            let reason = if r.width != width { Some("size") }
+                else if r.height != height { Some("size_h") }
+                else if r.import_key != want_import.map(|im| (im.handle, im.size)) { Some("import_key") }
+                else if r.slots < want_slots { Some("slots") }
+                else if r.mesh_sig != mesh_sig { Some("sig") }
+                else { None };
+            match reason {
+                Some(w) => {
+                    REBUILD_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
+                    *LAST_REBUILD.lock().unwrap() = Some(std::time::Instant::now());
+                    eprintln!("[viewport] 会话重建原因: {w} (会话 {}x{} → 请求 {width}x{height}, sig {}≠{})",
+                        r.width, r.height, r.mesh_sig, mesh_sig);
+                    true
+                }
+                None => false,
+            }
+        } =>
         {
-            *guard = match build_session(width, height, want_slots, &slot_mesh, mesh_sig) {
+            *guard = match build_session(width, height, want_slots, &slot_mesh, &slot_tex, mesh_sig)
+            {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => RendererState::Degraded(e),
             };
@@ -992,8 +1814,7 @@ pub fn render_scene_frame(
     };
     let slots = r.slots;
 
-    let aspect = width as f32 / height as f32;
-    let vp_bytes = m4_col_bytes(cam.view_proj(aspect));
+    let vp_bytes = m4_col_bytes(frame_vp);
 
     let mut update = rex::FrameUpdate {
         buffer_uploads: vec![(rex::StableResourceId(2), 0, vp_bytes.to_vec())],
@@ -1010,8 +1831,20 @@ pub fn render_scene_frame(
         }
     }
     let mut order: Vec<usize> = (0..renderable_n).collect();
-    order.sort_by_key(|&i| entity_class[i]);
-    let mut drawn_class = vec![0usize; class_refs.len() + 1];
+    // 类序优先;精灵类内按 (sortingOrder, 场景序)(与槽位贴图绑定同序,F-GAME-3)。
+    order.sort_by(|&a, &b| {
+        let (ca, cb) = (entity_class[a], entity_class[b]);
+        if ca != cb {
+            return ca.cmp(&cb);
+        }
+        if ca == 0 {
+            return sprite_sorting_order(renderables[a].0)
+                .partial_cmp(&sprite_sorting_order(renderables[b].0))
+                .unwrap_or(std::cmp::Ordering::Equal);
+        }
+        a.cmp(&b)
+    });
+    let mut drawn_class = vec![0usize; class_refs.len() + 2];
     let mut draws = 0usize;
     let mut triangles = 0usize;
     for &i in &order {
@@ -1024,23 +1857,61 @@ pub fn render_scene_frame(
         }
         let e = renderables[i].0;
         let model = trs_model(&e.transform);
-        let color = entity_color(e.id, selected == Some(e.id));
-        let mut pc = Vec::with_capacity(80);
-        pc.extend_from_slice(&m4_col_bytes(model));
-        for f in color {
-            pc.extend_from_slice(&f.to_le_bytes());
-        }
         let slot_idx = class_start[c] + drawn_class[c];
-        update.push_constant_overrides.push((slot_idx as u32, pc));
-        triangles += if c == 0 {
-            12
+        if c == 0 {
+            // 贴图精灵槽(112B:model + tint + 贴图尺寸 + flip 标志 + uv_rect,F-GAME-4)。
+            let info = entity_sprite[i].as_ref().expect("quad 类实体必有精灵解析");
+            let t = info.tex;
+            // F-GAME-3/4:Sprite 实体模型 = 渲染态变换(帧尺寸 × pivot 锚定),
+            // tint/flip 来自组件 props;旧 MeshRenderer+material 路径恒白 tint、
+            // 无 flip、整图 uv_rect、模型不变。
+            let (model, tint, flip) = match sprite_component(e) {
+                Some(sp) => {
+                    let m = trs_model(&sprite_render_transform(e).unwrap_or(e.transform));
+                    let tint_arr = sp.props.get("tint").and_then(Value::as_array);
+                    let tint = [0usize, 1, 2, 3].map(|k| {
+                        tint_arr
+                            .and_then(|a| a.get(k))
+                            .and_then(Value::as_f64)
+                            .unwrap_or(1.0) as f32
+                    });
+                    let flip = [sprite_bool(sp, "flipX"), sprite_bool(sp, "flipY")];
+                    (m, tint, flip)
+                }
+                None => (model, [1.0; 4], [false, false]),
+            };
+            let mut pc = Vec::with_capacity(SPRITE_PC_LEN);
+            pc.extend_from_slice(&m4_col_bytes(model));
+            for f in tint {
+                pc.extend_from_slice(&f.to_le_bytes());
+            }
+            pc.extend_from_slice(&t.w.to_le_bytes());
+            pc.extend_from_slice(&t.h.to_le_bytes());
+            pc.extend_from_slice(&(if flip[0] { 1.0f32 } else { 0.0f32 }).to_le_bytes());
+            pc.extend_from_slice(&(if flip[1] { 1.0f32 } else { 0.0f32 }).to_le_bytes());
+            for f in info.uv_rect {
+                pc.extend_from_slice(&f.to_le_bytes());
+            }
+            update.push_constant_overrides.push((slot_idx as u32, pc));
+            triangles += 2;
         } else {
-            class_mesh[c - 1].triangle_count as usize
-        };
+            let color = entity_tint(e, selected == Some(e.id));
+            let mut pc = Vec::with_capacity(80);
+            pc.extend_from_slice(&m4_col_bytes(model));
+            for f in color {
+                pc.extend_from_slice(&f.to_le_bytes());
+            }
+            update.push_constant_overrides.push((slot_idx as u32, pc));
+            triangles += if c == 1 {
+                12
+            } else {
+                class_mesh[c - 2].triangle_count as usize
+            };
+        }
         drawn_class[c] += 1;
         draws += 1;
     }
-    // 类内未占槽恒推回消隐模型(上帧可能有更多实体;80B×128 开销可忽略)。
+    // 类内未占槽恒推回消隐模型(上帧可能有更多实体;80/96B×128 开销可忽略)。
     let hidden_model = trs_model(&Transform {
         translation: [0.0, -1000.0, 0.0],
         rotation: [0.0, 0.0, 0.0, 1.0],
@@ -1048,9 +1919,20 @@ pub fn render_scene_frame(
     });
     for (c, k) in class_slots.iter().enumerate() {
         for j in drawn_class[c]..*k {
-            let mut pc = Vec::with_capacity(80);
+            // 贴图槽 112B、普通槽 80B——两种 push constants 尺寸并存,按槽对应类发。
+            let pc_len = if c == 0 { SPRITE_PC_LEN } else { 80usize };
+            let mut pc = Vec::with_capacity(pc_len);
             pc.extend_from_slice(&m4_col_bytes(hidden_model));
             pc.extend_from_slice(&[0u8; 16]);
+            if pc_len == SPRITE_PC_LEN {
+                pc.extend_from_slice(&1u32.to_le_bytes());
+                pc.extend_from_slice(&1u32.to_le_bytes());
+                pc.extend_from_slice(&0f32.to_le_bytes());
+                pc.extend_from_slice(&0f32.to_le_bytes());
+                for f in FULL_UV_RECT {
+                    pc.extend_from_slice(&f.to_le_bytes());
+                }
+            }
             update.push_constant_overrides.push(((class_start[c] + j) as u32, pc));
         }
     }
@@ -1058,6 +1940,8 @@ pub fn render_scene_frame(
     // 阻塞 + 8MB 拷贝 + 2M 像素统计),纯渲染+提交产能与帧通道端到端成本可拆分留档。
     update.readback_subset = if want_readback { Some(vec![0]) } else { None };
 
+    // F-GAME-2 性能定位:分段计时(准备/提交执行/回读)。
+    let prep_t0 = std::time::Instant::now();
     let provenance = r
         .session
         .next_provenance_with_update(&update)
@@ -1066,6 +1950,7 @@ pub fn render_scene_frame(
         .session
         .execute_with_frame_update(&provenance, &update)
         .map_err(|e| format!("帧执行失败: {e}"))?;
+    let exec_ms = prep_t0.elapsed().as_millis();
     let (rgba8, nonzero) = if want_readback {
         let rgba8 = out
             .readbacks
@@ -1076,19 +1961,36 @@ pub fn render_scene_frame(
         if rgba8.len() != expect {
             return Err(format!("回读字节数不符:{} ≠ {expect}", rgba8.len()));
         }
-        let bg = [
-            (CLEAR_RGBA[0] * 255.0 + 0.5).floor() as u8,
-            (CLEAR_RGBA[1] * 255.0 + 0.5).floor() as u8,
-            (CLEAR_RGBA[2] * 255.0 + 0.5).floor() as u8,
-        ];
-        let nonzero = rgba8
-            .chunks_exact(4)
-            .filter(|p| p[0] != bg[0] || p[1] != bg[1] || p[2] != bg[2])
-            .count();
+        let nonzero = if want_stats {
+            let bg = [
+                (CLEAR_RGBA[0] * 255.0 + 0.5).floor() as u8,
+                (CLEAR_RGBA[1] * 255.0 + 0.5).floor() as u8,
+                (CLEAR_RGBA[2] * 255.0 + 0.5).floor() as u8,
+            ];
+            rgba8
+                .chunks_exact(4)
+                .filter(|p| p[0] != bg[0] || p[1] != bg[1] || p[2] != bg[2])
+                .count()
+        } else {
+            0
+        };
         (rgba8, nonzero)
     } else {
         (Vec::new(), 0)
     };
+    // 分段计时日志采样:推流 30-60fps 下逐帧打会刷爆 engine-host-err.log;
+    // 重建帧必打(性能定位关键证据),常规帧每 60 帧一条。
+    static FRAME_LOG_TICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let log_tick = FRAME_LOG_TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let rebuilt = REBUILD_FLAG.load(std::sync::atomic::Ordering::Relaxed);
+    if rebuilt || log_tick % 60 == 0 {
+        eprintln!(
+            "[viewport] 帧分段 exec={exec_ms}ms readback+scan={}ms slots={} quad_slots={} draws={draws} rebuilt_this_frame={rebuilt}",
+            prep_t0.elapsed().as_millis() - exec_ms,
+            slots,
+            class_slots[0],
+        );
+    }
     Ok(FramePixels {
         width,
         height,
@@ -1179,5 +2081,167 @@ mod tests {
         // SPIR-V magic 0x07230203 小端。
         assert_eq!(&vs[..4], &[0x03, 0x02, 0x23, 0x07]);
         assert_eq!(&fs[..4], &[0x03, 0x02, 0x23, 0x07]);
+    }
+
+    #[test]
+    fn tex_shader_bytes_wellformed() {
+        let (vs, fs) = shader_tex_bytes().expect("精灵着色器编译应成功");
+        assert_eq!(&vs[..4], &[0x03, 0x02, 0x23, 0x07]);
+        assert_eq!(&fs[..4], &[0x03, 0x02, 0x23, 0x07]);
+    }
+
+    #[test]
+    fn ortho_view_proj_maps_extents_to_ndc_edges() {
+        // F-GAME-3:正交相机(yaw=0,pitch=0,眼在 target 正 +z)下半高=orthoSize,
+        // target 正上方 half_h 处应落在 NDC y=+1(显示面顶行),右侧 half_w 落在 x=+1。
+        let mut c = cam();
+        c.ortho = true;
+        c.ortho_half_h = 5.0;
+        c.yaw_deg = 0.0;
+        c.pitch_deg = 0.0;
+        c.target = [0.0, 0.0, 0.0];
+        c.dist = 10.0;
+        let aspect = 16.0 / 9.0;
+        let vp = c.view_proj(aspect);
+        let xform = |p: V3| -> V3 {
+            let v = [
+                vp[0][0] * p[0] + vp[0][1] * p[1] + vp[0][2] * p[2] + vp[0][3],
+                vp[1][0] * p[0] + vp[1][1] * p[1] + vp[1][2] * p[2] + vp[1][3],
+                vp[2][0] * p[0] + vp[2][1] * p[1] + vp[2][2] * p[2] + vp[2][3],
+            ];
+            let w = vp[3][0] * p[0] + vp[3][1] * p[1] + vp[3][2] * p[2] + vp[3][3];
+            [v[0] / w, v[1] / w, v[2] / w]
+        };
+        let top = xform([0.0, 5.0, 0.0]);
+        assert!((top[1] - 1.0).abs() < 1e-4, "半高点应达 NDC 顶:{top:?}");
+        let right = xform([5.0 * aspect, 0.0, 0.0]);
+        assert!((right[0] - 1.0).abs() < 1e-4, "半宽点应达 NDC 右:{right:?}");
+        let center = xform([0.0, 0.0, 0.0]);
+        assert!(center[0].abs() < 1e-5 && center[1].abs() < 1e-5, "target 应居中:{center:?}");
+        // 正交无透视形变:同 y 不同 z 的两点 NDC xy 相同。
+        let a = xform([1.0, 2.0, -3.0]);
+        let b = xform([1.0, 2.0, -8.0]);
+        assert!((a[0] - b[0]).abs() < 1e-5 && (a[1] - b[1]).abs() < 1e-5, "正交下深度不改 xy:{a:?} vs {b:?}");
+    }
+
+    #[test]
+    fn ortho_ray_is_parallel() {
+        // F-GAME-3:正交射线互相平行(dir 恒为前向),原点随屏幕位置平移。
+        let mut c = cam();
+        c.ortho = true;
+        c.ortho_half_h = 5.0;
+        c.yaw_deg = 0.0;
+        c.pitch_deg = 0.0;
+        c.target = [0.0, 0.0, 0.0];
+        c.dist = 10.0;
+        let aspect = 16.0 / 9.0;
+        let (o0, d0) = c.ray(0.0, 0.0, aspect);
+        let (o1, d1) = c.ray(1.0, 1.0, aspect);
+        for i in 0..3 {
+            assert!((d0[i] - d1[i]).abs() < 1e-6, "正交射线方向须一致");
+            assert!((d0[i] - [0.0, 0.0, -1.0][i]).abs() < 1e-6, "yaw0/pitch0 前向须为 -z");
+        }
+        // 右上角射线的原点应偏移 (+half_w, +half_h) 于眼位 xy。
+        assert!((o1[0] - (o0[0] + 5.0 * aspect)).abs() < 1e-4, "x 偏移 = 半宽");
+        assert!((o1[1] - (o0[1] + 5.0)).abs() < 1e-4, "y 偏移 = 半高");
+    }
+
+    #[test]
+    fn scene_camera_orthographic_branch() {
+        // F-GAME-3:Camera 组件 projection=orthographic → PIE 正交;缺省仍透视。
+        let mk_scene = |proj: Option<&str>| {
+            let mut s = Scene::new("t");
+            let props = match proj {
+                Some(p) => serde_json::json!({"projection": p, "orthoSize": 4.0, "fov": 60.0, "near": 0.1, "far": 100.0}),
+                None => serde_json::json!({"fov": 60.0, "near": 0.1, "far": 100.0}),
+            };
+            s.entities.push(forge_scene::Entity {
+                id: 1,
+                name: "cam".into(),
+                transform: Transform {
+                    translation: [0.0, 0.0, 10.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    scale: [1.0; 3],
+                },
+                components: vec![forge_scene::Component::new("Camera", props)],
+            });
+            s
+        };
+        let ortho = scene_camera_view_proj(&mk_scene(Some("orthographic")), 16.0 / 9.0).expect("有相机");
+        // 正交矩阵 m[3][2]=0(无透视除法项),m[1][1] 经 y-flip 后为 +1/half_h。
+        assert!(ortho[3][2].abs() < 1e-7, "正交无 w 透视项:{ortho:?}");
+        assert!((ortho[1][1] - 0.25).abs() < 1e-5, "orthoSize=4 → 1/half_h=0.25:{}", ortho[1][1]);
+        let persp = scene_camera_view_proj(&mk_scene(None), 16.0 / 9.0).expect("有相机");
+        assert!((persp[3][2] + 1.0).abs() < 1e-5, "缺省须为透视(m[3][2]=-1):{persp:?}");
+        assert!(scene_camera_view_proj(&Scene::new("空"), 1.0).is_none(), "无相机实体 → None");
+    }
+
+    fn ortho_cam_scene(ortho_size: f32) -> Scene {
+        let mut s = Scene::with_mode("t", "2d");
+        s.entities.push(forge_scene::Entity {
+            id: 1,
+            name: "cam".into(),
+            transform: Transform {
+                translation: [0.0, 0.0, 10.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                scale: [1.0; 3],
+            },
+            components: vec![forge_scene::Component::new(
+                "Camera",
+                serde_json::json!({"projection": "orthographic", "orthoSize": ortho_size, "fov": 60.0, "near": 0.1, "far": 100.0}),
+            )],
+        });
+        s
+    }
+
+    /// 指针反投影腿:正交场景相机下 NDC 角点 → 半宽/半高偏移的平行射线(朝 -z),
+    /// 屏幕上方(ny=+1)对应世界 +y——与画面(HUD 在上)一致。
+    #[test]
+    fn scene_camera_ray_orthographic_maps_ndc_to_world_plane() {
+        let s = ortho_cam_scene(6.2);
+        let aspect = 16.0 / 9.0;
+        let (o, d) = scene_camera_ray(&s, 0.0, 0.0, aspect).expect("有相机");
+        assert!((o[0]).abs() < 1e-5 && (o[1]).abs() < 1e-5 && (o[2] - 10.0).abs() < 1e-5);
+        assert!((d[2] + 1.0).abs() < 1e-5, "正交射线沿 -z:{d:?}");
+        let (o1, _) = scene_camera_ray(&s, 1.0, 1.0, aspect).expect("有相机");
+        assert!((o1[0] - 6.2 * aspect).abs() < 1e-3, "nx=1 → x=半宽:{}", o1[0]);
+        assert!((o1[1] - 6.2).abs() < 1e-4, "ny=1 → y=半高(屏幕上=世界上):{}", o1[1]);
+        assert!(scene_camera_ray(&Scene::new("空"), 0.0, 0.0, 1.0).is_none(), "无相机 → None");
+    }
+
+    /// 屏外裁剪:停在 y=-60 的池子精灵四角全在裁剪空间下方 → 屏外;屏内精灵不裁;
+    /// 非 Sprite 实体恒不裁(3D 网格行为不变)。
+    #[test]
+    fn sprite_offscreen_culls_parked_pool_entities_only() {
+        let s = ortho_cam_scene(6.2);
+        let vp = scene_camera_view_proj(&s, 16.0 / 9.0).expect("有相机");
+        let sprite = |id: u64, y: f32| forge_scene::Entity {
+            id,
+            name: format!("s{id}"),
+            transform: Transform {
+                translation: [0.0, y, 0.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                scale: [1.0; 3],
+            },
+            components: vec![forge_scene::Component::new(
+                "Sprite",
+                serde_json::json!({"texture": "", "sprite": "", "pixelsPerUnit": 100.0}),
+            )],
+        };
+        assert!(sprite_offscreen(&sprite(1, -60.0), &vp), "y=-60 的池子精灵须判屏外");
+        assert!(!sprite_offscreen(&sprite(2, 0.0), &vp), "屏中精灵不裁");
+        assert!(!sprite_offscreen(&sprite(3, 6.0), &vp), "贴边(半高 6.2 内)精灵不裁");
+        assert!(!sprite_offscreen(&sprite(5, -12.0), &vp), "刚出屏(3 倍边距内)不裁,免会话重建抖动");
+        let cube = forge_scene::Entity {
+            id: 4,
+            name: "cube".into(),
+            transform: Transform {
+                translation: [0.0, -60.0, 0.0],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                scale: [1.0; 3],
+            },
+            components: vec![forge_scene::Component::new("MeshRenderer", serde_json::json!({}))],
+        };
+        assert!(!sprite_offscreen(&cube, &vp), "非 Sprite 实体不裁");
     }
 }

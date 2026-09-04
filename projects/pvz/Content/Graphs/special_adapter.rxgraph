@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "id": "special_adapter",
+  "name": "special_adapter",
+  "exposedProps": [
+    {
+      "name": "specialCode",
+      "kind": "F32",
+      "default": 0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "s",
+      "type": "event.on_start",
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "l",
+      "type": "debug.log",
+      "pos": [
+        1,
+        0
+      ],
+      "inputs": {
+        "message": {
+          "const": "SPECIAL_ADAPTER_READY"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "s",
+        "exec"
+      ],
+      "to": [
+        "l",
+        "exec"
+      ]
+    }
+  ]
+}

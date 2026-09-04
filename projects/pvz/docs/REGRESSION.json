@@ -1,0 +1,955 @@
+{
+  "static": {
+    "ok": true,
+    "failures": [],
+    "counts": {
+      "levelManifests": 50,
+      "levelScenes": 50,
+      "controllers": 50,
+      "zombieGraphs": 26,
+      "stageScenes": 5,
+      "spriteDocs": 81,
+      "sourceAtlases": 12,
+      "plantGraphs": 49
+    },
+    "dataCounts": {
+      "plants": 49,
+      "zombies": 26,
+      "levels": 50,
+      "stages": 5
+    },
+    "stageDistribution": {
+      "day": 10,
+      "night": 10,
+      "pool": 10,
+      "fog": 10,
+      "roof": 10
+    },
+    "maxOnScreenSprites": 83,
+    "scriptReferences": 5313,
+    "productionGraphs": 147,
+    "rx": {
+      "pvz_data.rx": {
+        "checkExit": 0,
+        "dllExit": 0,
+        "diagnostics": "[]"
+      },
+      "pvz_rules.rx": {
+        "checkExit": 0,
+        "dllExit": 0,
+        "diagnostics": "[]"
+      }
+    }
+  },
+  "runtime": {
+    "ok": true,
+    "failures": [],
+    "results": [
+      {
+        "level": "1-1",
+        "scene": "Content/Scenes/Levels/Level_1_1.rxscene",
+        "load": {
+          "entityCount": 114,
+          "mode": "2d",
+          "name": "Level_1_1"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "frame": {
+          "width": 960,
+          "height": 540,
+          "draws": 20,
+          "truncated": false,
+          "nonZeroPixels": 518394
+        },
+        "screenshot": "D:\\游戏引擎\\evidence\\pvz\\stage_day.png",
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-2",
+        "scene": "Content/Scenes/Levels/Level_1_2.rxscene",
+        "load": {
+          "entityCount": 125,
+          "mode": "2d",
+          "name": "Level_1_2"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-3",
+        "scene": "Content/Scenes/Levels/Level_1_3.rxscene",
+        "load": {
+          "entityCount": 137,
+          "mode": "2d",
+          "name": "Level_1_3"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-4",
+        "scene": "Content/Scenes/Levels/Level_1_4.rxscene",
+        "load": {
+          "entityCount": 154,
+          "mode": "2d",
+          "name": "Level_1_4"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-5",
+        "scene": "Content/Scenes/Levels/Level_1_5.rxscene",
+        "load": {
+          "entityCount": 148,
+          "mode": "2d",
+          "name": "Level_1_5"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-6",
+        "scene": "Content/Scenes/Levels/Level_1_6.rxscene",
+        "load": {
+          "entityCount": 159,
+          "mode": "2d",
+          "name": "Level_1_6"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-7",
+        "scene": "Content/Scenes/Levels/Level_1_7.rxscene",
+        "load": {
+          "entityCount": 166,
+          "mode": "2d",
+          "name": "Level_1_7"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-8",
+        "scene": "Content/Scenes/Levels/Level_1_8.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_1_8"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-9",
+        "scene": "Content/Scenes/Levels/Level_1_9.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_1_9"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "1-10",
+        "scene": "Content/Scenes/Levels/Level_1_10.rxscene",
+        "load": {
+          "entityCount": 174,
+          "mode": "2d",
+          "name": "Level_1_10"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-1",
+        "scene": "Content/Scenes/Levels/Level_2_1.rxscene",
+        "load": {
+          "entityCount": 171,
+          "mode": "2d",
+          "name": "Level_2_1"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "frame": {
+          "width": 960,
+          "height": 540,
+          "draws": 69,
+          "truncated": false,
+          "nonZeroPixels": 518400
+        },
+        "screenshot": "D:\\游戏引擎\\evidence\\pvz\\stage_night.png",
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-2",
+        "scene": "Content/Scenes/Levels/Level_2_2.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_2"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-3",
+        "scene": "Content/Scenes/Levels/Level_2_3.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_3"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-4",
+        "scene": "Content/Scenes/Levels/Level_2_4.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_4"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-5",
+        "scene": "Content/Scenes/Levels/Level_2_5.rxscene",
+        "load": {
+          "entityCount": 177,
+          "mode": "2d",
+          "name": "Level_2_5"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-6",
+        "scene": "Content/Scenes/Levels/Level_2_6.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_6"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-7",
+        "scene": "Content/Scenes/Levels/Level_2_7.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_7"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-8",
+        "scene": "Content/Scenes/Levels/Level_2_8.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_8"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-9",
+        "scene": "Content/Scenes/Levels/Level_2_9.rxscene",
+        "load": {
+          "entityCount": 176,
+          "mode": "2d",
+          "name": "Level_2_9"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "2-10",
+        "scene": "Content/Scenes/Levels/Level_2_10.rxscene",
+        "load": {
+          "entityCount": 177,
+          "mode": "2d",
+          "name": "Level_2_10"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-1",
+        "scene": "Content/Scenes/Levels/Level_3_1.rxscene",
+        "load": {
+          "entityCount": 184,
+          "mode": "2d",
+          "name": "Level_3_1"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "frame": {
+          "width": 960,
+          "height": 540,
+          "draws": 76,
+          "truncated": false,
+          "nonZeroPixels": 518399
+        },
+        "screenshot": "D:\\游戏引擎\\evidence\\pvz\\stage_pool.png",
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-2",
+        "scene": "Content/Scenes/Levels/Level_3_2.rxscene",
+        "load": {
+          "entityCount": 185,
+          "mode": "2d",
+          "name": "Level_3_2"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-3",
+        "scene": "Content/Scenes/Levels/Level_3_3.rxscene",
+        "load": {
+          "entityCount": 184,
+          "mode": "2d",
+          "name": "Level_3_3"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-4",
+        "scene": "Content/Scenes/Levels/Level_3_4.rxscene",
+        "load": {
+          "entityCount": 185,
+          "mode": "2d",
+          "name": "Level_3_4"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-5",
+        "scene": "Content/Scenes/Levels/Level_3_5.rxscene",
+        "load": {
+          "entityCount": 185,
+          "mode": "2d",
+          "name": "Level_3_5"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-6",
+        "scene": "Content/Scenes/Levels/Level_3_6.rxscene",
+        "load": {
+          "entityCount": 184,
+          "mode": "2d",
+          "name": "Level_3_6"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-7",
+        "scene": "Content/Scenes/Levels/Level_3_7.rxscene",
+        "load": {
+          "entityCount": 184,
+          "mode": "2d",
+          "name": "Level_3_7"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-8",
+        "scene": "Content/Scenes/Levels/Level_3_8.rxscene",
+        "load": {
+          "entityCount": 184,
+          "mode": "2d",
+          "name": "Level_3_8"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-9",
+        "scene": "Content/Scenes/Levels/Level_3_9.rxscene",
+        "load": {
+          "entityCount": 184,
+          "mode": "2d",
+          "name": "Level_3_9"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "3-10",
+        "scene": "Content/Scenes/Levels/Level_3_10.rxscene",
+        "load": {
+          "entityCount": 185,
+          "mode": "2d",
+          "name": "Level_3_10"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-1",
+        "scene": "Content/Scenes/Levels/Level_4_1.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_1"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "frame": {
+          "width": 960,
+          "height": 540,
+          "draws": 83,
+          "truncated": false,
+          "nonZeroPixels": 518399
+        },
+        "screenshot": "D:\\游戏引擎\\evidence\\pvz\\stage_fog.png",
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-2",
+        "scene": "Content/Scenes/Levels/Level_4_2.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_2"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-3",
+        "scene": "Content/Scenes/Levels/Level_4_3.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_3"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-4",
+        "scene": "Content/Scenes/Levels/Level_4_4.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_4"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-5",
+        "scene": "Content/Scenes/Levels/Level_4_5.rxscene",
+        "load": {
+          "entityCount": 187,
+          "mode": "2d",
+          "name": "Level_4_5"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-6",
+        "scene": "Content/Scenes/Levels/Level_4_6.rxscene",
+        "load": {
+          "entityCount": 192,
+          "mode": "2d",
+          "name": "Level_4_6"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-7",
+        "scene": "Content/Scenes/Levels/Level_4_7.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_7"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-8",
+        "scene": "Content/Scenes/Levels/Level_4_8.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_8"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-9",
+        "scene": "Content/Scenes/Levels/Level_4_9.rxscene",
+        "load": {
+          "entityCount": 191,
+          "mode": "2d",
+          "name": "Level_4_9"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "4-10",
+        "scene": "Content/Scenes/Levels/Level_4_10.rxscene",
+        "load": {
+          "entityCount": 192,
+          "mode": "2d",
+          "name": "Level_4_10"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-1",
+        "scene": "Content/Scenes/Levels/Level_5_1.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_1"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "frame": {
+          "width": 960,
+          "height": 540,
+          "draws": 66,
+          "truncated": false,
+          "nonZeroPixels": 518400
+        },
+        "screenshot": "D:\\游戏引擎\\evidence\\pvz\\stage_roof.png",
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-2",
+        "scene": "Content/Scenes/Levels/Level_5_2.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_2"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-3",
+        "scene": "Content/Scenes/Levels/Level_5_3.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_3"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-4",
+        "scene": "Content/Scenes/Levels/Level_5_4.rxscene",
+        "load": {
+          "entityCount": 174,
+          "mode": "2d",
+          "name": "Level_5_4"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-5",
+        "scene": "Content/Scenes/Levels/Level_5_5.rxscene",
+        "load": {
+          "entityCount": 174,
+          "mode": "2d",
+          "name": "Level_5_5"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-6",
+        "scene": "Content/Scenes/Levels/Level_5_6.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_6"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-7",
+        "scene": "Content/Scenes/Levels/Level_5_7.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_7"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-8",
+        "scene": "Content/Scenes/Levels/Level_5_8.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_8"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-9",
+        "scene": "Content/Scenes/Levels/Level_5_9.rxscene",
+        "load": {
+          "entityCount": 173,
+          "mode": "2d",
+          "name": "Level_5_9"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      },
+      {
+        "level": "5-10",
+        "scene": "Content/Scenes/Levels/Level_5_10.rxscene",
+        "load": {
+          "entityCount": 174,
+          "mode": "2d",
+          "name": "Level_5_10"
+        },
+        "playEnter": {
+          "state": "play_running"
+        },
+        "runtimeErrors": [],
+        "playExit": {
+          "state": "edit"
+        },
+        "ok": true
+      }
+    ],
+    "screenshots": [
+      "D:\\游戏引擎\\evidence\\pvz\\stage_day.png",
+      "D:\\游戏引擎\\evidence\\pvz\\stage_fog.png",
+      "D:\\游戏引擎\\evidence\\pvz\\stage_night.png",
+      "D:\\游戏引擎\\evidence\\pvz\\stage_pool.png",
+      "D:\\游戏引擎\\evidence\\pvz\\stage_roof.png"
+    ]
+  },
+  "overallOk": true,
+  "knownLimitations": [
+    "对象池:每关每种植物 6 株、僵尸每种 5 只(总 15)、豌豆 24、阳光 8;屏外池子经 engine-host 视锥裁剪不占 draw 槽。",
+    "交互:点种子卡选植物 → 点格子种植(已占格弹回退款)、点格子收集其中阳光;无卡牌冷却、无铲子。",
+    "49植物与26僵尸全部具有AI素材、数值与行为适配映射;射击/生产/挡路/接触爆炸四类共享行为,复杂原版特技未逐帧复刻。",
+    "八类特殊关(保龄球/砸罐/传送带/僵王等)仍按普通关规则可玩,其适配图只记录事件入口。",
+    "渲染管线无 alpha 混合(只有色键丢弃),半透明 UI 以空心框表达;音频与游戏内存档受引擎能力限制。"
+  ]
+}

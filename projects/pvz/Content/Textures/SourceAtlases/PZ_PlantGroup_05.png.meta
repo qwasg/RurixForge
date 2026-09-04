@@ -1,0 +1,13 @@
+guid: 91805c1f-cf3c-4bf3-88d2-54d802d531af
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:54:43Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct garden defense plant icons: 1:white garlic bulb with strong smell; 2:broad green umbrella leaf plant; 3:orange marigold coin-producing flower; 4:green watermelon catapult plant; 5:four-barrel military gatling pea plant; 6:two-headed smiling sunflower; 7:dark purple gloom mushroom with fumes; 8:pink cattail cat plant on lily pad. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 200905
+    sourceRefs: []
+build_state: current

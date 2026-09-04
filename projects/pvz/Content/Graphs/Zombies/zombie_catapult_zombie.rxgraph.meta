@@ -1,0 +1,10 @@
+guid: df028623-eb2c-55ca-914c-b905db213750
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_catapult_zombie

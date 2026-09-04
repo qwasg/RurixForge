@@ -1,0 +1,12 @@
+guid: 1aaa1e22-15de-4d99-827a-96f85b273783
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:39:58Z
+    prompt: Angry Birds style black round bomb bird character, cartoon game sprite, black feathers, lit fuse on head, yellow beak, isolated on plain solid magenta background, 2D game asset, crisp edges, no text
+    seed: 15803172875771995821
+    sourceRefs: []
+build_state: current

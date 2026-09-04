@@ -1,0 +1,10 @@
+guid: 5d35c669-c7bb-56ee-b5cf-4e3f8ef2e1f6
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_jack_in_the_box_zombie

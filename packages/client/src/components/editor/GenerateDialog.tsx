@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useAssetStore } from '@/lib/assetStore';
 import { configuredBackends, useGenStore } from '@/lib/genStore';
 
 const SIZES = [256, 512, 1024] as const;
@@ -13,6 +14,7 @@ const SIZES = [256, 512, 1024] as const;
 export default function GenerateDialog() {
   const open = useGenStore((s) => s.dialogOpen);
   const destFolder = useGenStore((s) => s.destFolder);
+  const bindAssetPath = useGenStore((s) => s.bindAssetPath);
   const backends = useGenStore((s) => s.backends);
   const backendsLoaded = useGenStore((s) => s.backendsLoaded);
   const backendsError = useGenStore((s) => s.backendsError);
@@ -22,6 +24,10 @@ export default function GenerateDialog() {
   const closeDialog = useGenStore((s) => s.closeDialog);
   const generate = useGenStore((s) => s.generate);
   const loadBackends = useGenStore((s) => s.loadBackends);
+  // F10-RAG:绑定资产的简介(有则并入提示词;无则如实提示按原 prompt 生成)。
+  const bindDesc = useAssetStore((s) =>
+    bindAssetPath ? (s.items.find((i) => i.path === bindAssetPath)?.description ?? '') : '',
+  );
 
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
@@ -41,7 +47,14 @@ export default function GenerateDialog() {
 
   const submit = () => {
     if (!prompt.trim() || busy || noBackend) return;
-    void generate({ prompt: prompt.trim(), negativePrompt, size, n, backend: backendValue || undefined });
+    void generate({
+      prompt: prompt.trim(),
+      negativePrompt,
+      size,
+      n,
+      backend: backendValue || undefined,
+      assetPath: bindAssetPath ?? undefined,
+    });
   };
 
   return (
@@ -56,6 +69,14 @@ export default function GenerateDialog() {
         <p className="mt-0.5 text-2xs text-fg-4">
           目标文件夹:Content/{destFolder}(Accept 后入管线,provenance 自动记录)
         </p>
+        {bindAssetPath && (
+          <p className="mt-0.5 text-2xs text-fg-3" data-gen-bind-asset title={bindAssetPath}>
+            绑定资产:{bindAssetPath.split('/').pop()}
+            {bindDesc
+              ? ' — 简介+标签将并入提示词'
+              : ' — 该资产尚无简介,按原 prompt 生成(检视器「资产」页签可写)'}
+          </p>
+        )}
 
         <label className="mt-2 block text-2xs text-fg-3">Prompt(必填)</label>
         <textarea

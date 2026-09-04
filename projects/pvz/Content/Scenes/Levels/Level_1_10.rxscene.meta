@@ -1,0 +1,10 @@
+guid: 5de7d750-812e-5043-b17c-9d8f370d5cd0
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-10(day,20 波,奖励 puff_shroom);在 IDE Assets 面板双击即可装进视口试玩

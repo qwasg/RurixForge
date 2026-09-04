@@ -11,7 +11,10 @@ import {
 import { cn } from '@/lib/cn';
 import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { useAssetStore, type AssetItem, type AssetMenuAction, type AssetTypeFilter } from '@/lib/assetStore';
+import { useEditorStore } from '@/lib/editorStore';
+import { useSpriteStore } from '@/lib/spriteStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
+import { useWorkspaceStore } from '@/lib/workspaceStore';
 import { useGenStore } from '@/lib/genStore';
 import GenerateDialog from './GenerateDialog';
 import CandidatesModal from './CandidatesModal';
@@ -22,6 +25,7 @@ const TYPE_FILTERS: Array<{ key: AssetTypeFilter; label: string }> = [
   { key: 'mesh', label: 'Mesh' },
   { key: 'texture', label: 'Texture' },
   { key: 'material', label: 'Material' },
+  { key: 'sprite', label: 'Sprite' },
   { key: 'prefab', label: 'Prefab' },
   { key: 'scene', label: 'Scene' },
   { key: 'script', label: 'Script' },
@@ -72,7 +76,15 @@ function useSelectAsset() {
   );
 }
 
-function AssetGridItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.MouseEvent, item: AssetItem) => void }) {
+function AssetGridItem({
+  item,
+  onMenu,
+  onOpen,
+}: {
+  item: AssetItem;
+  onMenu: (e: React.MouseEvent, item: AssetItem) => void;
+  onOpen: (item: AssetItem) => void;
+}) {
   const status = useAssetStore((s) => s.status[item.path]);
   const selected = useAssetStore((s) => s.selectedGuid === item.guid);
   const select = useSelectAsset();
@@ -84,6 +96,7 @@ function AssetGridItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.Mo
         selected ? 'border-acc' : 'border-edge-strong',
       )}
       onClick={() => select(item.guid)}
+      onDoubleClick={() => onOpen(item)}
       onContextMenu={(e) => onMenu(e, item)}
       draggable
       onDragStart={(e) => {
@@ -107,7 +120,15 @@ function AssetGridItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.Mo
   );
 }
 
-function AssetListItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.MouseEvent, item: AssetItem) => void }) {
+function AssetListItem({
+  item,
+  onMenu,
+  onOpen,
+}: {
+  item: AssetItem;
+  onMenu: (e: React.MouseEvent, item: AssetItem) => void;
+  onOpen: (item: AssetItem) => void;
+}) {
   const status = useAssetStore((s) => s.status[item.path]);
   const selected = useAssetStore((s) => s.selectedGuid === item.guid);
   const select = useSelectAsset();
@@ -118,6 +139,7 @@ function AssetListItem({ item, onMenu }: { item: AssetItem; onMenu: (e: React.Mo
         selected && 'bg-shell-active',
       )}
       onClick={() => select(item.guid)}
+      onDoubleClick={() => onOpen(item)}
       onContextMenu={(e) => onMenu(e, item)}
       draggable
       onDragStart={(e) => {
@@ -159,9 +181,11 @@ export default function AssetsPanel() {
   const pickImport = desktop ? bridge().assets?.pickImport : undefined;
   const showInFolder = desktop ? bridge().assets?.showInFolder : undefined;
 
+  // 工作区切换 → 资产面按新项目根重拉(asset_list 经 workspaceId 作用域)。
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, activeWorkspaceId]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -193,6 +217,29 @@ export default function AssetsPanel() {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, item });
   }, []);
+
+  /** F-GAME-4:打开精灵编辑器 tab(texture = 先 sprite_create 建空精灵;sprite = 直开)。 */
+  const openSpriteEditor = useCallback((item: AssetItem) => {
+    const sprite = useSpriteStore.getState();
+    if (item.type === 'sprite') void sprite.openSprite(item.path);
+    else if (item.type === 'texture') void sprite.openFromTexture(item.path, item.guid);
+    else return;
+    useWorkbenchStore.getState().openTab('sprite-editor');
+  }, []);
+
+  /** 双击打开:.rxsprite → 精灵编辑器;.rxscene → 装进视口(切关卡/切场景的唯一 UI 入口)。 */
+  const onOpenItem = useCallback(
+    (item: AssetItem) => {
+      if (item.type === 'sprite') openSpriteEditor(item);
+      else if (item.type === 'scene') {
+        // asset_list 路径以 Content/ 为根;scene_load 按项目根解析,须补前缀。
+        const path = item.path.startsWith('Content/') ? item.path : `Content/${item.path}`;
+        void useEditorStore.getState().openScenePath(path);
+        useEditorStore.getState().setCenterTab('viewport');
+      }
+    },
+    [openSpriteEditor],
+  );
 
   /** 拖到文件夹树节点 = 移动资产(asset_move 自动 redirector,07 §4)。 */
   const onDropFolder = (folder: string, e: React.DragEvent) => {
@@ -229,7 +276,11 @@ export default function AssetsPanel() {
         // F5 wave.3:直开生成对话框(destFolder = 当前 Assets 文件夹,全部 → Textures)。
         // 07 §4「生成(图像/模型,跳 Chat 预填)」契约更新为真实对话框;prefillChat seam
         // 仍保留在 editorStore(Chat 生成路径不受影响)。
-        openGenDialog(currentFolder || 'Textures');
+        // F10-RAG:绑定右键资产路径——其 .meta 简介+标签并入 gen_image 提示词。
+        openGenDialog(currentFolder || 'Textures', item.path);
+        break;
+      case 'sprite-edit':
+        openSpriteEditor(item);
         break;
     }
   };
@@ -252,6 +303,12 @@ export default function AssetsPanel() {
     { label: 'Delete (Proposal)', action: 'delete-proposal' },
     { label: 'Generate...', action: 'gen-dialog' },
   ];
+  // F-GAME-4:按资产类型追加精灵入口(texture 建 .rxsprite;sprite 直开;其余不出现)。
+  if (menu?.item.type === 'texture') {
+    menuItems.push({ label: '编辑精灵(新建 .rxsprite)', action: 'sprite-edit' });
+  } else if (menu?.item.type === 'sprite') {
+    menuItems.push({ label: '编辑精灵', action: 'sprite-edit' });
+  }
 
   const refsResult = store.refsResult;
   const pendingDelete = store.pendingDelete;
@@ -389,13 +446,13 @@ export default function AssetsPanel() {
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1">
               {filtered.map((item) => (
-                <AssetGridItem key={item.guid} item={item} onMenu={onMenu} />
+                <AssetGridItem key={item.guid} item={item} onMenu={onMenu} onOpen={onOpenItem} />
               ))}
             </div>
           ) : (
             <div className="flex flex-col gap-0.5">
               {filtered.map((item) => (
-                <AssetListItem key={item.guid} item={item} onMenu={onMenu} />
+                <AssetListItem key={item.guid} item={item} onMenu={onMenu} onOpen={onOpenItem} />
               ))}
             </div>
           )}

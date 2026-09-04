@@ -1,0 +1,1140 @@
+{
+ "version": 1,
+ "id": "plant_13",
+ "name": "plant_13",
+ "exposedProps": [
+  {
+   "name": "plantId",
+   "kind": "F32",
+   "default": 13.0
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "event.on_start",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n2",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_data.rx"
+    },
+    "fn": {
+     "const": "plant_hp"
+    },
+    "args": {
+     "ref": "plantId"
+    }
+   }
+  },
+  {
+   "id": "n3",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hp"
+    },
+    "value": {
+     "node": "n2",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n4",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "eaten"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n5",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "activeT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n6",
+   "type": "entity.set_transform",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "transform": {
+     "const": {
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "translation": [
+       -40.0,
+       -60.0,
+       0.0
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "n7",
+   "type": "entity.add_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "plant_free_13"
+    }
+   }
+  },
+  {
+   "id": "n8",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_data.rx"
+    },
+    "fn": {
+     "const": "plant_hp"
+    },
+    "args": {
+     "ref": "plantId"
+    }
+   }
+  },
+  {
+   "id": "n9",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hp"
+    },
+    "value": {
+     "node": "n8",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n10",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "eaten"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n11",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "activeT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n12",
+   "type": "event.on_update",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n13",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "plant_active"
+    }
+   }
+  },
+  {
+   "id": "n14",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n13",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n15",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "activeT"
+    },
+    "value": {
+     "node": "n12",
+     "pin": "dt"
+    }
+   }
+  },
+  {
+   "id": "n16",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n17",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "eaten"
+    }
+   }
+  },
+  {
+   "id": "n18",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n17",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n19",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": -0.0
+    }
+   }
+  },
+  {
+   "id": "n20",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n21",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "gt_zero"
+    },
+    "args": {
+     "node": "n20",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n22",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n21",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n23",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "bite_damage"
+    },
+    "args": {
+     "node": "n12",
+     "pin": "dt"
+    }
+   }
+  },
+  {
+   "id": "n24",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hp"
+    },
+    "value": {
+     "node": "n23",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n25",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hp"
+    }
+   }
+  },
+  {
+   "id": "n26",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "hp_dead"
+    },
+    "args": {
+     "node": "n25",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n27",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n26",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n28",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n29",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "eaten"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n30",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "activeT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n31",
+   "type": "event.on_trigger_enter",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n32",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "plant_active"
+    }
+   }
+  },
+  {
+   "id": "n33",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n32",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n34",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n31",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "zombie_active"
+    }
+   }
+  },
+  {
+   "id": "n35",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n34",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n36",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "eaten"
+    },
+    "value": {
+     "const": 1.0
+    }
+   }
+  },
+  {
+   "id": "n37",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n31",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "plant_active"
+    }
+   }
+  },
+  {
+   "id": "n38",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n37",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n39",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n40",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "activeT"
+    }
+   }
+  },
+  {
+   "id": "n41",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n40",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n42",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": -0.3
+    }
+   }
+  },
+  {
+   "id": "n43",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n44",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "nonpositive"
+    },
+    "args": {
+     "node": "n43",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n45",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n44",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n46",
+   "type": "call.send_message",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "plant_refund"
+    },
+    "payload": {
+     "const": 500075.0
+    }
+   }
+  },
+  {
+   "id": "n47",
+   "type": "event.on_trigger_exit",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n48",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "eaten"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": [
+    "n1",
+    "exec"
+   ],
+   "to": [
+    "n2",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n2",
+    "exec"
+   ],
+   "to": [
+    "n3",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "exec"
+   ],
+   "to": [
+    "n4",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n4",
+    "exec"
+   ],
+   "to": [
+    "n5",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n6",
+    "exec"
+   ],
+   "to": [
+    "n7",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n7",
+    "exec"
+   ],
+   "to": [
+    "n8",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n8",
+    "exec"
+   ],
+   "to": [
+    "n9",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n9",
+    "exec"
+   ],
+   "to": [
+    "n10",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n10",
+    "exec"
+   ],
+   "to": [
+    "n11",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n12",
+    "exec"
+   ],
+   "to": [
+    "n14",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n16",
+    "exec"
+   ],
+   "to": [
+    "n18",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n18",
+    "exec"
+   ],
+   "to": [
+    "n19",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n19",
+    "exec"
+   ],
+   "to": [
+    "n21",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n21",
+    "exec"
+   ],
+   "to": [
+    "n22",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n15",
+    "exec"
+   ],
+   "to": [
+    "n16",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n23",
+    "exec"
+   ],
+   "to": [
+    "n24",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n24",
+    "exec"
+   ],
+   "to": [
+    "n26",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n26",
+    "exec"
+   ],
+   "to": [
+    "n27",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n22",
+    "then"
+   ],
+   "to": [
+    "n23",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n27",
+    "then"
+   ],
+   "to": [
+    "n6",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n22",
+    "else"
+   ],
+   "to": [
+    "n28",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n27",
+    "else"
+   ],
+   "to": [
+    "n28",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n14",
+    "then"
+   ],
+   "to": [
+    "n15",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n29",
+    "exec"
+   ],
+   "to": [
+    "n30",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n14",
+    "else"
+   ],
+   "to": [
+    "n29",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n31",
+    "exec"
+   ],
+   "to": [
+    "n33",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n33",
+    "then"
+   ],
+   "to": [
+    "n35",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n35",
+    "then"
+   ],
+   "to": [
+    "n36",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n35",
+    "else"
+   ],
+   "to": [
+    "n38",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n39",
+    "exec"
+   ],
+   "to": [
+    "n41",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n41",
+    "exec"
+   ],
+   "to": [
+    "n42",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n42",
+    "exec"
+   ],
+   "to": [
+    "n44",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n44",
+    "exec"
+   ],
+   "to": [
+    "n45",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n38",
+    "then"
+   ],
+   "to": [
+    "n39",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n45",
+    "then"
+   ],
+   "to": [
+    "n46",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n46",
+    "exec"
+   ],
+   "to": [
+    "n6",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n47",
+    "exec"
+   ],
+   "to": [
+    "n48",
+    "exec"
+   ]
+  }
+ ]
+}

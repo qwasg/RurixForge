@@ -1,0 +1,10 @@
+guid: 0fdefd83-cf74-59e2-b0ea-5ea106159e5b
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-2(day,10 波,奖励 cherry_bomb);在 IDE Assets 面板双击即可装进视口试玩

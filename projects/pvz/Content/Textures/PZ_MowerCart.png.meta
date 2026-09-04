@@ -1,0 +1,9 @@
+guid: 6404ae66-67ec-5c78-a925-a2f74e709441
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-mower
+build_state: current

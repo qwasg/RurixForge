@@ -167,3 +167,27 @@
 | 技能(F11) | `SKILL_*` | `SKILL_NOT_FOUND` `SKILL_NAME_INVALID` `SKILL_ALREADY_EXISTS` `SKILL_FRONTMATTER_INVALID` `SKILL_BODY_INCOMPLETE` `SKILL_READONLY_DIR` |
 
 规则:新错误码进本表 + `forge-protocol` 枚举,同 PR;不允许字符串裸抛。
+
+## Errata(只追加区)
+
+- **E-11-003(2026-09-03,PvZ 可玩化波 / D-037)——`POST /api/forge/mcp/call` 请求体增可选 `workspaceId`**:
+  - 此前 REST 透传面恒锚 `projects/demo`(mcp.rs `default_project_root`),IDE 视口 / 层级 / 资产面板与会话 turn 面各看各的项目(双真相源):在 pvz 工作区里打开关卡场景后 `play_enter` 会到 demo 根下找图而失败。现同请求体带 `workspaceId` 时,项目根经 `scope::project_of` 解析(与 turn 面同一事实源、同一 engine-host 连接池槽);缺省 / 未注册 id → 默认工作区 → `projects/demo` 兜底,旧客户端零改动。
+  - 客户端 `callTool*` 全部自动附带当前工作区 id(`lib/activeWorkspace.ts` 读 localStorage 镜像键,免 forgeApi ↔ workspaceStore 环依赖);切工作区时视口流通道按新工作区的 `viewport_stream_info` 重连,编辑器场景 / 实体 / 相机 / 资产面重拉。
+  - 未知工具仍先 404 `TOOL_NOT_FOUND`(作用域解析在其后);destructive 强制门(asset_delete force)语义不变。
+- **E-11-004(2026-09-03,D-038)——回执唤醒契约面 as-built(修订 E-11-002)**:
+  - **`ask:execute` 新增 409 `SESSION_BUSY`**:会话已有运行中的 run(典型 = 服务端自起的回执唤醒轮刚起、`agent.started` 尚未推到前端的那几毫秒内用户点了发送)→ `{error:{code:"SESSION_BUSY",message}}`,**不发任何事件、不建用户卡**;前端撤乐观回显并提示。其余状态码不变。
+  - **`composer.user.message` 增可选字段**:`source:"receipt"`(该 turn 是系统唤醒,正文由服务端生成、以「【系统唤醒】」开头)、`receiptIds:[]`(本轮送达的回执 id)。无 `source` = 用户发的(原语义)。对应 run 的 `trigger` = `receipt_wake`(此前只有 `composer_chat` / `multitask_dispatch`)。
+  - **`agent.receipts.injected` 增字段 `midTurn:bool`**:true = 主 agent 正在跑时中途插入(runId 为正在跑的那条 turn);false = 开轮取件(用户轮或唤醒轮)。E-11-002 所述「回执只在下一轮用户发言时注入」口径作废。
+- **E-11-002(2026-09-03,D-036)——multitask 异步委派契约面 as-built**:
+  - **`ask:execute` 请求体不变**(`multitask` 仍是既有 `mode` 取值之一);**响应体语义变**:multitask 轮的 `message.text` 是**派单说明**而非执行结果,`run.status=completed` 只代表「派发完成」,后台子代理此时通常仍在跑。原「模板未命中 → `run.status=failed` + `error` 含『模板未命中』」的口径**作废**(模板已退役,见 04 E-04-002)。
+  - **`subagent.*` 事件三件套增字段**:`detached: bool`(true = multitask 后台腿)、`dispatchedBy: string|null`(派它的父 runId)。后台腿的 `parentRunId`/`subRunId`/`parentToolCallId` **三者同值 = 该后台 run 自己的 id**——前端据此单开卡片、归组子事件、并把它当作取消用的 runId(`POST /api/forge/runs/{id}/cancel` 原样适用,该 run 的 `trigger` = `multitask_dispatch`)。后台腿终态另发 `agent.message` / `agent.completed|failed`(同 runId,payload 带 `detached:true`)落回执正文;**刻意不发 `agent.started`**——它会把前端 `activeRunId` 顶上、锁死输入框。
+  - **§3 事件新增一类**:`agent.receipts.injected {runId, receiptIds[], injected, pending, deferred, chars}`(本轮把哪几条后台回执喂进了主 agent 上下文;`deferred>0` = 有条目因预算留到下一次取件)。与既有 `agent.skills.injected` / `agent.context.injected` 同体例。
+  - **无新增 REST 前缀**:回执是服务端内部收件箱(`data/agent-sessions/receipts.json`),对外可见面 = 上述事件流;`/api/forge/swarm/*` 三端点保留且语义不变(不再被 multitask 使用)。
+  - 送达时机以 E-11-004(D-038)为准:本条写就时为「下一轮用户发言时注入」,已被即时送达 + 唤醒取代。
+- **E-11-001(2026-09-03,D-035)——plan 契约面 as-built**:
+  - **§2.1 `/api/forge/sessions/{id}/plan:generate` 与 `/api/forge/plans/{id}` 正式作废,不实现**。计划是工作区文件(`.forge/plans/<slug>.plan.md`),读写复用既有 `GET|PUT /api/forge/workspace/file`;有意不开 `/api/forge/plans` 顶级前缀(会同时要动 host `PROXY_PREFIXES`,且与「文件即事实源」重复)。生成入口 = `ask:execute` 的 `plan` 模式 + 原生工具 `create_plan`。
+  - **`ask:execute` 请求体增可选 `planPath`**(工作区相对路径):mode=build 且带此字段 = 按该计划实施(读计划 → 幂等物化 front matter 待办 → 计划全文注入本轮上下文)。校验:须为 `.forge/plans/` 下单层 `.plan.md`、无 `..` 逃逸,且文件可读可解析,否则 **400 `PLAN_NOT_READABLE`**(不静默降级成一次没有计划的普通 build,I-5)。同请求体既有字段(`userInput`/`mode`/`skills`/`readonlyWorkspaceIds`/`includeLibrary`)不变。
+  - **§3 事件新增三类**(前缀 `plan` → `plan` 频道,自 F7 预留本波首发):`plan.created {runId,path,name,overview,todoCount}`(计划文件首次落盘)、`plan.updated {同上}`(同路径覆盖迭代)、`plan.build.started {runId,path,name,todos:[{id,planTodoId,title}]}`(Build 轮起步,待办已物化)。§3.2 表中规划过的 `plan.updated` 至此兑现,命名保持。
+  - **§4 DTO 增补**:`TodoItem` 加可选 `planTodoId`(来源计划文件的待办 id;Build 按 `(sessionId, planTodoId)` 去重,重复 Build 不重建)与既有 `source`(计划物化时为 `"plan"`);会话 DTO 加可选 `activePlanPath`(当前计划文件路径,随 `design-snapshot.activeSession` 下发,fork 时继承)。两者均 serde default + 未设置不序列化,旧 `todos.json`/`sessions.json` 兼容。
+  - **计划文件格式**(前后端共同契约,写方 agentd `plan_doc.rs`,读方另有前端 `lib/planFile.ts`):YAML front matter `name`(必填)/`overview`/`todos[{id,content,status}]` + `---` 后的 Markdown 正文;front matter 内的值一律压成单行标量(不使用块标量/锚点等高级语法),两侧解析器据此保持一致。
+  - **§2.1 `/api/forge/sessions/{id}/model`** 维持不实现(as-built:模型经 `PATCH /api/forge/sessions/{id}` 的 `selectedModelId` 切换);Plan 页签的模型切换器复用该路径,故「换模型后再 Build」即以新模型实施,无需 per-message 覆盖字段。

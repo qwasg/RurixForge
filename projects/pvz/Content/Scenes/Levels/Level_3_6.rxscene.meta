@@ -1,0 +1,10 @@
+guid: 551a5428-87c6-568a-9058-8c4fa191e51a
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-6(pool,20 波,奖励 spikeweed);在 IDE Assets 面板双击即可装进视口试玩

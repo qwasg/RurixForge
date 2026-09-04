@@ -99,9 +99,10 @@ describe('<EditorView />', () => {
   it('PIE 状态条与视口帧统计来自 play_state/viewport_frame 实测(wave.2)', async () => {
     render(<EditorView />);
     expect(await screen.findByText('edit')).toBeInTheDocument();
-    // 帧统计:mock-gpu · draws 1 · frames 1 · px 0(viewport_frame 轮询首帧后上屏)
+    // 帧统计:mock-gpu · draws 1 · px 0 · 轮询回退(viewport_frame 轮询首帧后上屏;
+    // 测试环境无 WS 流服务器,通道如实标注轮询回退)
     expect(
-      await screen.findByText((_, el) => el?.textContent === 'mock-gpu · draws 1 · frames 1 · px 0'),
+      await screen.findByText((_, el) => el?.textContent === 'mock-gpu · draws 1 · px 0 · 轮询回退'),
     ).toBeInTheDocument();
   });
 

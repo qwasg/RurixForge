@@ -1,0 +1,4495 @@
+{
+  "name": "Stage_fog",
+  "mode": "2d",
+  "next_id": 76,
+  "gravity": [
+    0,
+    0,
+    0
+  ],
+  "entities": [
+    {
+      "id": 1,
+      "name": "Camera",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          10
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Camera",
+          "props": {
+            "projection": "orthographic",
+            "orthoSize": 6.2,
+            "fov": 60,
+            "near": 0.1,
+            "far": 100
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Background_fog",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          2.2,
+          1.85,
+          1
+        ],
+        "translation": [
+          0,
+          0,
+          -0.8
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "a15128f1-572d-5359-84bb-c5b89cdf18a8",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 0
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Cell_R1_C1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -6.4,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c1"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Cell_R1_C2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -4.8,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c2"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Cell_R1_C3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -3.2,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c3"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Cell_R1_C4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.5999999999999996,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c4"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Cell_R1_C5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.0,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c5"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Cell_R1_C6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c6"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Cell_R1_C7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          3.2,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c7"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Cell_R1_C8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          4.8,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c8"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Cell_R1_C9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r1c9"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Cell_R2_C1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -6.4,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c1"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Cell_R2_C2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -4.8,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c2"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Cell_R2_C3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -3.2,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c3"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Cell_R2_C4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.5999999999999996,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c4"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Cell_R2_C5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.0,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c5"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Cell_R2_C6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c6"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Cell_R2_C7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          3.2,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c7"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Cell_R2_C8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          4.8,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c8"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Cell_R2_C9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r2c9"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Cell_R3_C1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -6.4,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c1"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Cell_R3_C2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -4.8,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c2"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Cell_R3_C3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -3.2,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c3"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Cell_R3_C4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.5999999999999996,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c4"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Cell_R3_C5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.0,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c5"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Cell_R3_C6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c6"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Cell_R3_C7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          3.2,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c7"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Cell_R3_C8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          4.8,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c8"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Cell_R3_C9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.55,
+              0.8,
+              1.0,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r3c9"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Cell_R4_C1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -6.4,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c1"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Cell_R4_C2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -4.8,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c2"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Cell_R4_C3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -3.2,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c3"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Cell_R4_C4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.5999999999999996,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c4"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Cell_R4_C5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.0,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c5"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Cell_R4_C6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c6"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Cell_R4_C7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          3.2,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c7"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Cell_R4_C8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          4.8,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c8"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Cell_R4_C9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r4c9"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Cell_R5_C1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -6.4,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c1"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Cell_R5_C2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -4.8,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c2"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Cell_R5_C3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -3.2,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c3"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Cell_R5_C4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.5999999999999996,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c4"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Cell_R5_C5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.0,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c5"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Cell_R5_C6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c6"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Cell_R5_C7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          3.2,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c7"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Cell_R5_C8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          4.8,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c8"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Cell_R5_C9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r5c9"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Cell_R6_C1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -6.4,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c1"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Cell_R6_C2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -4.8,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c2"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Cell_R6_C3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -3.2,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c3"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "name": "Cell_R6_C4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -1.5999999999999996,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c4"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "name": "Cell_R6_C5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          0.0,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c5"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "name": "Cell_R6_C6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c6"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "name": "Cell_R6_C7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          3.2,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c7"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "name": "Cell_R6_C8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          4.8,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c8"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "name": "Cell_R6_C9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "adcd53f3-1f69-5845-9549-a4fe1ff23fbe",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 42.666666666666664,
+            "sortingOrder": 1
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "cell_r6c9"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "map"
+          }
+        }
+      ]
+    },
+    {
+      "id": 57,
+      "name": "Grave_1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1.1,
+          1.4,
+          1
+        ],
+        "translation": [
+          4.8,
+          4.0,
+          0.1
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.45,
+              0.45,
+              0.5,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 2
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "grave"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "name": "Grave_2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1.1,
+          1.4,
+          1
+        ],
+        "translation": [
+          3.2,
+          0.7999999999999998,
+          0.1
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.45,
+              0.45,
+              0.5,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 2
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "grave"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Grave_3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1.1,
+          1.4,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          -4.000000000000001,
+          0.1
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.45,
+              0.45,
+              0.5,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 2
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "grave"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "name": "Fog_Col_6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          5.0,
+          60.0,
+          1
+        ],
+        "translation": [
+          1.6000000000000005,
+          0,
+          0.3
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "039d31a5-4395-4b2c-aee1-97d0dee99008",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.25,
+              0.3,
+              0.35,
+              0.78
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 7
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "fog_overlay"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "name": "Fog_Col_7",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          5.0,
+          60.0,
+          1
+        ],
+        "translation": [
+          3.2,
+          0,
+          0.3
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "039d31a5-4395-4b2c-aee1-97d0dee99008",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.25,
+              0.3,
+              0.35,
+              0.78
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 7
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "fog_overlay"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Fog_Col_8",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          5.0,
+          60.0,
+          1
+        ],
+        "translation": [
+          4.8,
+          0,
+          0.3
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "039d31a5-4395-4b2c-aee1-97d0dee99008",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.25,
+              0.3,
+              0.35,
+              0.78
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 7
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "fog_overlay"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Fog_Col_9",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          5.0,
+          60.0,
+          1
+        ],
+        "translation": [
+          6.400000000000001,
+          0,
+          0.3
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "039d31a5-4395-4b2c-aee1-97d0dee99008",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              0.25,
+              0.3,
+              0.35,
+              0.78
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 7
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "fog_overlay"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "name": "LoseLine_R1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -8.4,
+          4.0,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              0.5,
+              1.5,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "loseline"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/loseline.rxgraph",
+            "module": "",
+            "props": {
+              "row": 1.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "name": "Mower_R1",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -7.9,
+          3.75,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "6404ae66-67ec-5c78-a925-a2f74e709441",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 50.0,
+            "sortingOrder": 5
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "mower_idle"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              1,
+              1.4,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/mower.rxgraph",
+            "module": "",
+            "props": {
+              "row": 1.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "role"
+          }
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "name": "LoseLine_R2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -8.4,
+          2.3999999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              0.5,
+              1.5,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "loseline"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/loseline.rxgraph",
+            "module": "",
+            "props": {
+              "row": 2.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Mower_R2",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -7.9,
+          2.1499999999999995,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "6404ae66-67ec-5c78-a925-a2f74e709441",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 50.0,
+            "sortingOrder": 5
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "mower_idle"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              1,
+              1.4,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/mower.rxgraph",
+            "module": "",
+            "props": {
+              "row": 2.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "role"
+          }
+        }
+      ]
+    },
+    {
+      "id": 68,
+      "name": "LoseLine_R3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -8.4,
+          0.7999999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              0.5,
+              1.5,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "loseline"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/loseline.rxgraph",
+            "module": "",
+            "props": {
+              "row": 3.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 69,
+      "name": "Mower_R3",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -7.9,
+          0.5499999999999998,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "6404ae66-67ec-5c78-a925-a2f74e709441",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 50.0,
+            "sortingOrder": 5
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "mower_idle"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              1,
+              1.4,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/mower.rxgraph",
+            "module": "",
+            "props": {
+              "row": 3.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "role"
+          }
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "name": "LoseLine_R4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -8.4,
+          -0.8000000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              0.5,
+              1.5,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "loseline"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/loseline.rxgraph",
+            "module": "",
+            "props": {
+              "row": 4.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 71,
+      "name": "Mower_R4",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -7.9,
+          -1.0500000000000007,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "6404ae66-67ec-5c78-a925-a2f74e709441",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 50.0,
+            "sortingOrder": 5
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "mower_idle"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              1,
+              1.4,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/mower.rxgraph",
+            "module": "",
+            "props": {
+              "row": 4.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "role"
+          }
+        }
+      ]
+    },
+    {
+      "id": 72,
+      "name": "LoseLine_R5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -8.4,
+          -2.4000000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              0.5,
+              1.5,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "loseline"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/loseline.rxgraph",
+            "module": "",
+            "props": {
+              "row": 5.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "name": "Mower_R5",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -7.9,
+          -2.6500000000000004,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "6404ae66-67ec-5c78-a925-a2f74e709441",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 50.0,
+            "sortingOrder": 5
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "mower_idle"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              1,
+              1.4,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/mower.rxgraph",
+            "module": "",
+            "props": {
+              "row": 5.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "role"
+          }
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "name": "LoseLine_R6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -8.4,
+          -4.000000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              0.5,
+              1.5,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "loseline"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/loseline.rxgraph",
+            "module": "",
+            "props": {
+              "row": 6.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "interaction"
+          }
+        }
+      ]
+    },
+    {
+      "id": 75,
+      "name": "Mower_R6",
+      "transform": {
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ],
+        "translation": [
+          -7.9,
+          -4.250000000000001,
+          0
+        ]
+      },
+      "components": [
+        {
+          "enabled": true,
+          "type": "Sprite",
+          "props": {
+            "texture": "6404ae66-67ec-5c78-a925-a2f74e709441",
+            "sprite": "",
+            "clip": "",
+            "frame": 0.0,
+            "tint": [
+              1,
+              1,
+              1,
+              1
+            ],
+            "flipX": false,
+            "flipY": false,
+            "pixelsPerUnit": 50.0,
+            "sortingOrder": 5
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Tag",
+          "props": {
+            "tag": "mower_idle"
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Trigger",
+          "props": {
+            "kind": "box",
+            "extents": [
+              1,
+              1.4,
+              1
+            ]
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Script",
+          "props": {
+            "graphRef": "Content/Graphs/mower.rxgraph",
+            "module": "",
+            "props": {
+              "row": 6.0
+            }
+          }
+        },
+        {
+          "enabled": true,
+          "type": "Category",
+          "props": {
+            "category": "role"
+          }
+        }
+      ]
+    }
+  ]
+}

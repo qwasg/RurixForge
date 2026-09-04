@@ -1,0 +1,12 @@
+guid: 8229c810-ad54-4ce8-b133-67f7ed9c5289
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:42:41Z
+    prompt: heavy grey stone block, cartoon 2D game asset for a physics puzzle game, rough granite texture with cracks, square shape, Angry Birds style, isolated on plain solid magenta background, crisp edges, no text
+    seed: 17120340359713982090
+    sourceRefs: []
+build_state: current

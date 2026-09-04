@@ -1,0 +1,12 @@
+guid: a34757c2-9c1f-4850-ae00-869336c1be02
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-31T17:51:20Z
+    prompt: 'glowing sun orb, bright yellow with warm rays and sparkle, Plants vs Zombies style cartoon game sprite, bold outlines, flat cel shading, side view facing right, full body visible, 1x2 grid, exactly 2 frames side by side: 2 pulsing glow frames, same size, separated by pure background gap, no text no borders, solid magenta background (#FF00FF), flat uniform, no gradients, no shadows on background'
+    seed: 7264238734793771884
+    sourceRefs: []
+build_state: current

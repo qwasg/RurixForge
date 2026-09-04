@@ -1,0 +1,10 @@
+guid: 34969461-8a34-582f-b6b8-5baff96c4231
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_ducky_tube_zombie

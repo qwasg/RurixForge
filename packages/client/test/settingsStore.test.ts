@@ -64,14 +64,14 @@ describe('workbenchStore 底部面板', () => {
 
   it('openTab 内建 tab 单例语义(重开=激活)', () => {
     const st = useWorkbenchStore.getState();
-    st.openTab('plan');
+    st.openTab('proposals');
     st.openTab('todo');
-    expect(useWorkbenchStore.getState().tabs.map((t) => t.id)).toEqual(['plan', 'todo']);
+    expect(useWorkbenchStore.getState().tabs.map((t) => t.id)).toEqual(['proposals', 'todo']);
     expect(useWorkbenchStore.getState().activeTabId).toBe('todo');
-    // 重开 plan = 激活而非重复
-    useWorkbenchStore.getState().openTab('plan');
+    // 重开 proposals = 激活而非重复
+    useWorkbenchStore.getState().openTab('proposals');
     expect(useWorkbenchStore.getState().tabs.length).toBe(2);
-    expect(useWorkbenchStore.getState().activeTabId).toBe('plan');
+    expect(useWorkbenchStore.getState().activeTabId).toBe('proposals');
   });
 
   it('openFile 按 path 单例:重开=激活;关闭后个人工作区空态', () => {

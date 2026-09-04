@@ -1,0 +1,10 @@
+guid: 7f9ecd24-e618-5e3e-a922-83145585685b
+type: sprite
+importer: sprite
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/SourceAtlases/PZ_UI_Atlas.png
+    pipeline: exact-4x4-ui-grid
+build_state: current

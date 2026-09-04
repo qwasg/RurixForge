@@ -1,0 +1,10 @@
+guid: 2f9ca445-7bdd-547a-ada9-97174fab98c5
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-3(night,10 波,奖励 grave_buster);在 IDE Assets 面板双击即可装进视口试玩

@@ -1,0 +1,10 @@
+guid: 9ba1e47f-49d3-5ab8-8f63-c3051181b9d0
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_bungee_zombie

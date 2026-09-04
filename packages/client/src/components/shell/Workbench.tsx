@@ -2,6 +2,7 @@ import {
   BookOpen,
   FileCode2,
   FileText,
+  Film,
   GitCompare,
   ListChecks,
   ListTree,
@@ -18,6 +19,7 @@ import FilePreviewTab from '@/components/workbench/FilePreviewTab';
 import PlanTab from '@/components/workbench/PlanTab';
 import ProposalsTab from '@/components/workbench/ProposalsTab';
 import SkillsTab from '@/components/workbench/SkillsTab';
+import SpriteEditorView from '@/components/sprite/SpriteEditorView';
 import StoreTab from '@/components/workbench/StoreTab';
 import TodoTab from '@/components/workbench/TodoTab';
 
@@ -36,12 +38,15 @@ import TodoTab from '@/components/workbench/TodoTab';
 
 const TAB_ICONS: Record<TabKind, typeof FileCode2> = {
   editor: FileCode2,
+  // D-035:plan 现为按路径多开的计划文件页(.forge/plans/<名>.plan.md)。
   plan: ListTree,
   todo: ListChecks,
   proposals: GitCompare,
   file: FileText,
   store: Store,
   skills: BookOpen,
+  // F-GAME-4:精灵编辑器(.rxsprite 图集/动画)。
+  'sprite-editor': Film,
 };
 
 export default function Workbench() {
@@ -113,8 +118,8 @@ export default function Workbench() {
       <div className="min-h-0 min-w-0 flex-1">
         {active?.kind === 'editor' ? (
           <EditorView />
-        ) : active?.kind === 'plan' ? (
-          <PlanTab />
+        ) : active?.kind === 'plan' && active.path ? (
+          <PlanTab path={active.path} tabId={active.id} />
         ) : active?.kind === 'todo' ? (
           <TodoTab />
         ) : active?.kind === 'proposals' ? (
@@ -123,6 +128,8 @@ export default function Workbench() {
           <StoreTab />
         ) : active?.kind === 'skills' ? (
           <SkillsTab />
+        ) : active?.kind === 'sprite-editor' ? (
+          <SpriteEditorView />
         ) : active?.kind === 'file' && active.path ? (
           <FilePreviewTab path={active.path} tabId={active.id} />
         ) : (

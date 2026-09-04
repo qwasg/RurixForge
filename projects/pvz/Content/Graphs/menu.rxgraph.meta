@@ -1,0 +1,10 @@
+guid: b840988f-e0bd-51bb-b803-bccddf11f662
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 menu

@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useChatStore, type ChatMsg } from './chatStore';
-import type { ContextChip } from './contextChips';
 import { useEffectiveSpec } from './modelSpec';
 import { editTargetFiles, toolVisual, type ChatBlock } from './timeline';
 
@@ -11,7 +10,7 @@ import { editTargetFiles, toolVisual, type ChatBlock } from './timeline';
  *   模型规格波之前这里是写死的 64K 静态表 + 后端不回窗口的数据缺口留痕,现在窗口档由
  *   agentd modelspec.rs 随 models[] 下发、由人在模型菜单里选,缺口已补;
  * - 明细行:文件(工具 args/结果按目标路径归并)、工具结果、对话消息、思考过程、
- *   上下文引用 chip、已选技能、当前草稿——全部由 chatStore 消息树与 Composer 本地态派生;
+ *   已选技能、当前草稿——全部由 chatStore 消息树与 Composer 本地态派生;
  * - 「系统提示与工具定义」行:会话收到过 agent.usage 时 = 实测 promptTokens − 可归因估算
  *   (倒算,把工具 schema 与协议开销如实归到这一行),否则 = BASE_PROMPT_TOKENS 静态基线;
  *   mock provider 不发 usage(llm.rs Usage 注),该腿恒走基线;
@@ -60,7 +59,6 @@ export type ContextRowKind =
   | 'tool'
   | 'message'
   | 'reasoning'
-  | 'context'
   | 'skill'
   | 'draft';
 
@@ -177,8 +175,6 @@ export function scanHistory(messages: ChatMsg[]): HistoryScan {
 }
 
 export interface PendingContext {
-  /** 未剔除的上下文引用 chip。 */
-  chips: ContextChip[];
   /** 已选技能名(发送时经 ask:execute 结构化 skills[] 下发,不再拼文本前缀)。 */
   skills: string[];
   /** Composer 草稿正文。 */
@@ -235,15 +231,6 @@ export function assembleUsage(scan: HistoryScan, pending: PendingContext): Conte
     detail: '助手 reasoning 块',
     tokens: scan.reasoningTokens,
   });
-  for (const c of pending.chips) {
-    rows.push({
-      key: `context:${c.key}`,
-      kind: 'context',
-      label: c.label,
-      detail: c.refText,
-      tokens: estimateTokens(c.refText),
-    });
-  }
   for (const name of [...pending.skills].sort()) {
     rows.push({
       key: `skill:${name}`,
@@ -284,21 +271,17 @@ export function computeContextUsage(
 }
 
 /**
- * 订阅式装配(chips 由调用方传入,已剔除的引用不计)。历史扫描与待发段分两段 memo:
+ * 订阅式装配。历史扫描与待发段分两段 memo:
  * 逐键入草稿只重算装配段,长会话消息树不随每次按键重扫。
  */
-export function useContextUsage(
-  chips: ContextChip[],
-  skills: string[],
-  draft: string,
-): ContextUsage {
+export function useContextUsage(skills: string[], draft: string): ContextUsage {
   const messages = useChatStore((st) => st.messages);
   const measured = useChatStore((st) => st.lastPromptTokens);
   const contextWindow = useEffectiveSpec().contextTokens;
 
   const scan = useMemo(() => scanHistory(messages), [messages]);
   return useMemo(
-    () => assembleUsage(scan, { chips, skills, draft, contextWindow, measured }),
-    [scan, chips, skills, draft, contextWindow, measured],
+    () => assembleUsage(scan, { skills, draft, contextWindow, measured }),
+    [scan, skills, draft, contextWindow, measured],
   );
 }

@@ -1,0 +1,10 @@
+guid: 27c77eba-5c09-5420-81d7-002e47885e5a
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_newspaper_zombie

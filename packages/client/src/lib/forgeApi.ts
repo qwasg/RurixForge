@@ -1,7 +1,11 @@
 /**
  * forgeApi:打 host /api/forge/mcp/call(经 vite proxy 或同源 3080)的最小封装。
  * agentd 返回 MCP result 信封,content[0].text 内是 JSON 字符串,需二次解析。
+ * 每次调用带当前工作区 id(workspaceId):agentd 据此把 MCP 子进程/engine-host 落到该工作区
+ * 的项目根——视口、层级、资产面与会话 turn 面看同一个项目(此前 REST 面恒锚 projects/demo)。
  */
+
+import { readActiveWorkspaceId } from './activeWorkspace';
 
 const TOOL_PREFIX = 'mcp__engine-scene__';
 const ASSET_TOOL_PREFIX = 'mcp__asset-pipeline__';
@@ -59,10 +63,15 @@ export async function callToolWithPrefix<T = unknown>(
 ): Promise<T> {
   let res: Response;
   try {
+    const workspaceId = readActiveWorkspaceId();
     res = await fetch('/api/forge/mcp/call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool: `${prefix}${name}`, arguments: args }),
+      body: JSON.stringify({
+        tool: `${prefix}${name}`,
+        arguments: args,
+        ...(workspaceId ? { workspaceId } : {}),
+      }),
     });
   } catch (err) {
     throw new ForgeApiError('NETWORK', `请求失败: ${(err as Error).message}`);

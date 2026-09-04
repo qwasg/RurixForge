@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { readActiveWorkspaceId, writeActiveWorkspaceId } from './activeWorkspace';
 import { apiDelete, apiGet, apiPatch, apiPost } from './forgeApi';
 import { useToastStore } from './toastStore';
 
@@ -25,28 +26,14 @@ export function displayRoot(root: string): string {
   return root;
 }
 
-const ACTIVE_KEY = 'forge:activeWorkspace';
 const RECENT_KEY = 'forge:recentWorkspaces';
 /** 最近列表上限(参考 Cursor 工作区选择器的 Recents 段落长度)。 */
 const RECENT_LIMIT = 8;
 
-function readActiveId(): string | null {
-  try {
-    const v = localStorage.getItem(ACTIVE_KEY);
-    return v === '' || v === 'null' ? null : v;
-  } catch {
-    return null;
-  }
-}
-
-function writeActiveId(id: string | null): void {
-  try {
-    if (id === null) localStorage.removeItem(ACTIVE_KEY);
-    else localStorage.setItem(ACTIVE_KEY, id);
-  } catch {
-    /* ignore */
-  }
-}
+// 当前工作区镜像键由 activeWorkspace.ts 统一读写:forgeApi 每次 MCP 调用据此带 workspaceId
+// (项目作用域),两侧不互相 import。
+const readActiveId = readActiveWorkspaceId;
+const writeActiveId = writeActiveWorkspaceId;
 
 function readRecentIds(): string[] {
   try {

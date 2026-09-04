@@ -48,9 +48,23 @@ describe('callTool', () => {
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
     expect(url).toBe('/api/forge/mcp/call');
-    const body = JSON.parse(init.body) as { tool: string; arguments: unknown };
+    const body = JSON.parse(init.body) as { tool: string; arguments: unknown; workspaceId?: string };
     expect(body.tool).toBe('mcp__engine-scene__entity_list');
     expect(body.arguments).toEqual({});
+    expect(body.workspaceId).toBeUndefined();
+  });
+
+  it('当前工作区已选 → 请求体带 workspaceId(agentd 按工作区项目根路由 engine-host)', async () => {
+    localStorage.setItem('forge:activeWorkspace', 'ws_pvz');
+    try {
+      const fetchMock = vi.fn(async () => okResponse(envelopeOf({ state: 'edit' })));
+      vi.stubGlobal('fetch', fetchMock);
+      await callTool('play_state');
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+      expect(JSON.parse(init.body).workspaceId).toBe('ws_pvz');
+    } finally {
+      localStorage.removeItem('forge:activeWorkspace');
+    }
   });
 
   it('信封 isError → 抛 TOOL_ERROR(取内嵌 message)', async () => {

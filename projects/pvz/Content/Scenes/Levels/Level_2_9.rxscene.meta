@@ -1,0 +1,10 @@
+guid: 3d3e6056-95ce-568b-aeeb-1c79f93a6141
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-9(night,20 波,奖励 note);在 IDE Assets 面板双击即可装进视口试玩

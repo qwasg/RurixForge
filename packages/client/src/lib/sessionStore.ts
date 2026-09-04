@@ -27,6 +27,16 @@ export interface ForgeSession {
   titleManuallySet: boolean;
   folderId?: string | null;
   workspaceId?: string | null;
+  /** D-035:当前计划文件(工作区相对路径);plan 模式 create_plan 落盘时由后端写入。 */
+  activePlanPath?: string | null;
+}
+
+/** POST /sessions 可选规格(与 chatStore 镜像字段同名;缺省 = 后端模型默认档)。 */
+export interface SessionCreateSpec {
+  selectedModelId?: string | null;
+  thinkingEnabled?: boolean;
+  reasoningEffort?: string | null;
+  contextOptionId?: string | null;
 }
 
 export interface ChatFolder {
@@ -46,7 +56,8 @@ interface SessionState {
   offline: boolean;
 
   loadAll: () => Promise<void>;
-  create: (title?: string) => Promise<ForgeSession | null>;
+  /** spec:全屏主页无会话时 Composer 已勾的模型规格,建会话时一并写入,避免回落到默认档。 */
+  create: (title?: string, spec?: SessionCreateSpec) => Promise<ForgeSession | null>;
   select: (id: string) => void;
   rename: (id: string, title: string) => Promise<void>;
   togglePin: (id: string) => Promise<void>;
@@ -84,12 +95,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  create: async (title) => {
+  create: async (title, spec) => {
     try {
       const workspaceId = useWorkspaceStore.getState().activeWorkspaceId;
       const r = await apiPost<{ session: ForgeSession }>('/api/forge/sessions', {
         title: title ?? '',
         ...(workspaceId ? { workspaceId } : {}),
+        ...(spec?.selectedModelId ? { selectedModelId: spec.selectedModelId } : {}),
+        ...(spec?.thinkingEnabled !== undefined ? { thinkingEnabled: spec.thinkingEnabled } : {}),
+        ...(spec?.reasoningEffort ? { reasoningEffort: spec.reasoningEffort } : {}),
+        ...(spec?.contextOptionId ? { contextOptionId: spec.contextOptionId } : {}),
       });
       set((st) => ({
         sessions: [r.session, ...st.sessions],

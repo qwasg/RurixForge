@@ -57,6 +57,7 @@ function genKindOf(node: StudioNode): string | null {
 
 function ModelPicker({ node, onClose }: { node: StudioNode; onClose: () => void }) {
   const backends = useGenStore((s) => s.backends);
+  const backendsError = useGenStore((s) => s.backendsError);
   const setParam = useStudioStore((s) => s.setParam);
   const ref = useRef<HTMLDivElement>(null);
   const kind = genKindOf(node);
@@ -121,7 +122,11 @@ function ModelPicker({ node, onClose }: { node: StudioNode; onClose: () => void 
             </button>
           ))}
           {list.length === 0 && (
-            <p className="px-1.5 pb-1 text-2xs text-fg-4">无支持该能力的后端条目</p>
+            <p className="px-1.5 pb-1 text-2xs text-fg-4">
+              {backendsError !== null
+                ? `后端清单拉取失败:${backendsError}(可关闭后在输入条上方点重试)`
+                : '无支持该能力的后端条目'}
+            </p>
           )}
         </>
       )}
@@ -153,6 +158,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
   const [scopeOpen, setScopeOpen] = useState(false);
   const backends = useGenStore((s) => s.backends);
   const backendsLoaded = useGenStore((s) => s.backendsLoaded);
+  const backendsError = useGenStore((s) => s.backendsError);
   const loadBackends = useGenStore((s) => s.loadBackends);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -263,8 +269,27 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
           )}
         </div>
       )}
-      {/* 未配置后端的前置如实提示(不挡发送:发送后拿到同码错误) */}
-      {genKind !== null && backendsLoaded && !anyConfigured && error === null && (
+      {/* 清单拉取失败:如实错误 + 重试(不冒充「未配置」——I-5) */}
+      {genKind !== null && backendsLoaded && backendsError !== null && error === null && (
+        <div
+          data-testid="studio-backends-error"
+          className="mb-1.5 flex items-center gap-2 rounded-lg border border-danger/50 bg-shell-panel px-2.5 py-1.5 shadow-composer"
+        >
+          <p className="min-w-0 flex-1 text-2xs leading-4 text-danger">
+            生成后端清单拉取失败:{backendsError}
+          </p>
+          <button
+            type="button"
+            data-testid="studio-backends-retry"
+            onClick={() => void loadBackends()}
+            className="shrink-0 rounded border border-edge-strong px-1.5 py-0.5 text-[10px] text-fg-2 transition-colors hover:bg-shell-hover"
+          >
+            重试
+          </button>
+        </div>
+      )}
+      {/* 未配置后端的前置如实提示(不挡发送:发送后拿到同码错误);拉取失败时不显示(上条优先) */}
+      {genKind !== null && backendsLoaded && backendsError === null && !anyConfigured && error === null && (
         <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-edge-strong bg-shell-panel px-2.5 py-1.5 shadow-composer">
           <p className="min-w-0 flex-1 text-2xs text-fg-3">
             未配置{preset.label}生成后端(预留 API 端口)——在设置·模型页填入兼容 endpoint / model / key 即可用。

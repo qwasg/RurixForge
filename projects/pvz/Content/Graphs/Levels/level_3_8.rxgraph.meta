@@ -1,0 +1,10 @@
+guid: bcf43253-8840-5f64-8c49-94d5011cc407
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 3-8 关卡控制图(阳光/波次/指针交互/胜负)

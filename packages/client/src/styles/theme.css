@@ -1,131 +1,131 @@
 /**
- * F7 wave.3 主题 token 静态默认表(Moonlit Agent IDE 复刻)。
- * :root = moonlit 亮色;[data-theme="dark"] = moonlit 暗色。
- * 派生值与 lib/themeStore.ts applyPalette(参考 appearance.rs 逐行移植)输出逐值一致;
+ * 主题净化波(2026-08-31)静态默认表:Forge 预设(中性净底 + 精炼锻橙)。
+ * :root = forge 亮色;[data-theme="dark"] = forge 暗色。
+ * 本表与 lib/themeStore.ts applyPalette(FORGE_LIGHT/FORGE_DARK) 输出逐值一致
+ * (由真实 applyPalette 打印生成,themeStore.test.ts 全 token 断言兜底);
  * 运行时 themeStore 会把当前预设/自定义派色结果注入 documentElement.style 覆盖本表。
  *
- * 差异留痕:语义色 sage/danger/warn/info(+_bg)与 dot_done/idle/blocked/queued 的
- * 参考默认值位于 moonlit-uikit crate(未随拷贝仓提供),本表为派生值(同族色);
- * apply_palette 派生面(bg_sunk/panel/text_2/3/4/accent_*/line/hover/active/
- * sidebar/float/selection/text_inv/dot_running)与参考算法逐值一致。
+ * 留痕:本表取代原 F7 wave.3 Moonlit 复刻表(暖奶油 #FAF9F5/陶土 #C96442,
+ * 用户反馈显脏);moonlit 预设仍在 THEME_PRESETS 中可选。语义色 sage/danger/warn/info
+ * 为全局共享(所有预设生效);code-* 高亮 token 不接 applyPalette,按新色族静态派生。
  */
 
 :root {
   /* 表面 */
-  --bg: #FAF9F5;
-  --bg-sunk: #F0EFEB;
-  --bg-panel: #FAF9F5;
-  --bg-input: #FAF9F5;
-  --bg-float: #FAF9F5;
-  --bg-sidebar: #F0EFEB;
-  --bg-hover: #2A27240A;
-  --bg-active: #2A272412;
-  --bg-selection: #C9644214;
+  --bg: #FFFFFF;
+  --bg-sunk: #F4F4F4;
+  --bg-panel: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-float: #FFFFFF;
+  --bg-sidebar: #F4F4F4;
+  --bg-hover: #1B1D210A;
+  --bg-active: #1B1D2112;
+  --bg-selection: #C94F1214;
   /* 文字 */
-  --text: #2A2724;
-  --text-2: #767470;
-  --text-3: #9D9B97;
-  --text-4: #BDBBB7;
-  --text-inv: #FAF9F5;
+  --text: #1B1D21;
+  --text-2: #6A6B6D;
+  --text-3: #949597;
+  --text-4: #B7B8B9;
+  --text-inv: #FFFFFF;
   /* 线 */
-  --line: #2A272417;
-  --line-strong: #2A272424;
+  --line: #1B1D2117;
+  --line-strong: #1B1D2124;
   /* 强调 */
-  --accent: #C96442;
-  --accent-soft: #B85C3C;
-  --accent-bg: #C9644214;
-  --accent-ring: #C9644247;
-  /* 语义(派生,见头注) */
-  --sage: #5F8D6A;
-  --sage-bg: rgba(95, 141, 106, 0.12);
-  --danger: #B8432F;
-  --danger-bg: rgba(184, 67, 47, 0.1);
-  --warn: #B2862C;
-  --warn-bg: rgba(178, 134, 44, 0.12);
-  --info: #3E74C2;
-  --info-bg: rgba(62, 116, 194, 0.1);
+  --accent: #C94F12;
+  --accent-soft: #B84810;
+  --accent-bg: #C94F1214;
+  --accent-ring: #C94F1247;
+  /* 语义(全局共享,见头注) */
+  --sage: #1D7A46;
+  --sage-bg: rgba(29, 122, 70, 0.12);
+  --danger: #CE3A1E;
+  --danger-bg: rgba(206, 58, 30, 0.1);
+  --warn: #9A6A0A;
+  --warn-bg: rgba(154, 106, 10, 0.12);
+  --info: #2563EB;
+  --info-bg: rgba(37, 99, 235, 0.1);
   /* 状态点 */
-  --dot-running: #C96442;
-  --dot-done: #5F8D6A;
-  --dot-idle: #BDBBB7;
-  --dot-blocked: #B8432F;
-  --dot-queued: #B2862C;
-  /* F9:代码高亮 token(文件编辑器 CodeMirror HighlightStyle 消费;
+  --dot-running: #C94F12;
+  --dot-done: #1D7A46;
+  --dot-idle: #B7B8B9;
+  --dot-blocked: #CE3A1E;
+  --dot-queued: #9A6A0A;
+  /* 代码高亮 token(文件编辑器 CodeMirror HighlightStyle 消费;
      色相从语义色派生(accent/sage/warn/info + type 紫/prop 棕补位),
-     静态双表随 data-theme 切换,不接 applyPalette 自定义派色——留痕见 spec) */
-  --code-keyword: #AD4F2D;
-  --code-string: #517F5D;
-  --code-comment: #9D9B97;
-  --code-number: #96721F;
-  --code-func: #3E74C2;
-  --code-type: #7A569E;
-  --code-prop: #8A5A44;
-  --code-punct: #767470;
-  --code-meta: #9C6B3F;
+     静态双表随 data-theme 切换,不接 applyPalette 自定义派色) */
+  --code-keyword: #B84810;
+  --code-string: #1D7A46;
+  --code-comment: #949597;
+  --code-number: #9A6A0A;
+  --code-func: #2563EB;
+  --code-type: #7C3AED;
+  --code-prop: #7F5539;
+  --code-punct: #6A6B6D;
+  --code-meta: #A16207;
   /* 字体栈与字号(themeStore 可注入覆盖) */
-  --font-sans: "HarmonyOS Sans SC", "Microsoft YaHei UI", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Inter Variable", "HarmonyOS Sans SC", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-serif: "Noto Serif SC", "SimSun", serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", Consolas, monospace;
   --ui-size: 13px;
   --code-size: 12px;
-  /* 阴影(参考 sh1/sh_float) */
-  --sh-1: 0 1px 2px rgba(42, 39, 36, 0.04), 0 0 0 1px rgba(42, 39, 36, 0.04);
-  --sh-float: 0 12px 40px rgba(42, 39, 36, 0.14), 0 0 0 1px rgba(42, 39, 36, 0.06);
-  /* 菜单玻璃底(参考 menubar_glass_bg) */
+  /* 阴影(中性 fg 基) */
+  --sh-1: 0 1px 2px rgba(27, 29, 33, 0.05), 0 0 0 1px rgba(27, 29, 33, 0.05);
+  --sh-float: 0 12px 40px rgba(27, 29, 33, 0.13), 0 0 0 1px rgba(27, 29, 33, 0.06);
+  /* 菜单玻璃底 */
   --menu-glass: rgba(255, 255, 255, 0.53);
   /* 浮层 scrim */
-  --scrim-palette: rgba(42, 39, 36, 0.18);
-  --scrim-modal: rgba(20, 18, 15, 0.32);
+  --scrim-palette: rgba(27, 29, 33, 0.16);
+  --scrim-modal: rgba(15, 16, 19, 0.34);
 }
 
 [data-theme='dark'] {
-  --bg: #1C1B18;
-  --bg-sunk: #1A1916;
-  --bg-panel: #252421;
-  --bg-input: #252421;
-  --bg-float: #252421;
-  --bg-sidebar: #1A1916;
+  --bg: #191A1D;
+  --bg-sunk: #17181B;
+  --bg-panel: #222326;
+  --bg-input: #222326;
+  --bg-float: #222326;
+  --bg-sidebar: #17181B;
   --bg-hover: #FFFFFF0D;
   --bg-active: #FFFFFF14;
-  --bg-selection: #E2886A24;
-  --text: #ECE8DF;
-  --text-2: #A6A39C;
-  --text-3: #7F7D77;
-  --text-4: #5E5C57;
-  --text-inv: #1C1B18;
-  --line: #ECE8DF12;
-  --line-strong: #ECE8DF21;
-  --accent: #E2886A;
-  --accent-soft: #E69980;
-  --accent-bg: #E2886A24;
-  --accent-ring: #E2886A6B;
-  --sage: #8FBF9B;
-  --sage-bg: rgba(143, 191, 155, 0.16);
-  --danger: #DD6B55;
-  --danger-bg: rgba(221, 107, 85, 0.16);
-  --warn: #D4AC55;
-  --warn-bg: rgba(212, 172, 85, 0.16);
-  --info: #6FA3E0;
-  --info-bg: rgba(111, 163, 224, 0.16);
-  --dot-running: #E2886A;
-  --dot-done: #8FBF9B;
-  --dot-idle: #5E5C57;
-  --dot-blocked: #DD6B55;
-  --dot-queued: #D4AC55;
-  --code-keyword: #E2886A;
-  --code-string: #8FBF9B;
-  --code-comment: #7F7D77;
-  --code-number: #D4AC55;
-  --code-func: #6FA3E0;
-  --code-type: #B79CE4;
-  --code-prop: #C99E7C;
-  --code-punct: #A6A39C;
-  --code-meta: #C79B72;
+  --bg-selection: #F47B3324;
+  --text: #E8E9EC;
+  --text-2: #A2A3A6;
+  --text-3: #7C7D80;
+  --text-4: #5B5C5F;
+  --text-inv: #191A1D;
+  --line: #E8E9EC12;
+  --line-strong: #E8E9EC21;
+  --accent: #F47B33;
+  --accent-soft: #F58E51;
+  --accent-bg: #F47B3324;
+  --accent-ring: #F47B336B;
+  --sage: #7BC996;
+  --sage-bg: rgba(123, 201, 150, 0.16);
+  --danger: #F0755A;
+  --danger-bg: rgba(240, 117, 90, 0.16);
+  --warn: #E0B45C;
+  --warn-bg: rgba(224, 180, 92, 0.16);
+  --info: #7AA8F0;
+  --info-bg: rgba(122, 168, 240, 0.16);
+  --dot-running: #F47B33;
+  --dot-done: #7BC996;
+  --dot-idle: #5B5C5F;
+  --dot-blocked: #F0755A;
+  --dot-queued: #E0B45C;
+  --code-keyword: #F47B33;
+  --code-string: #7BC996;
+  --code-comment: #7C7D80;
+  --code-number: #E0B45C;
+  --code-func: #7AA8F0;
+  --code-type: #A78BFA;
+  --code-prop: #C9A87C;
+  --code-punct: #A2A3A6;
+  --code-meta: #CBA35F;
   --sh-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --sh-float: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --menu-glass: rgba(35, 34, 32, 0.53);
-  --scrim-palette: rgba(42, 39, 36, 0.18);
-  --scrim-modal: rgba(20, 18, 15, 0.32);
+  --menu-glass: rgba(34, 35, 38, 0.53);
+  --scrim-palette: rgba(10, 11, 13, 0.2);
+  --scrim-modal: rgba(8, 9, 11, 0.36);
 }
 
 /* F7 wave.4:流式 caret 1s 闪烁(参考 .stream-caret);reduce-motion 禁闪 */
@@ -144,6 +144,40 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .forge-stream-caret {
+    animation: none;
+  }
+}
+
+/* 思考中「Thinking」字样:亮带沿字面从左到右扫过(AssistantMessage ReasoningLine);
+   reduce-motion 停在静态 text_3 色,不留透明字。 */
+@keyframes forge-thinking-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+.forge-thinking {
+  /* 底色取 text_3 = 同列灰字汇总行的静息色,亮带到 text,扫过即亮一档 */
+  background-image: linear-gradient(
+    90deg,
+    var(--text-3) 0%,
+    var(--text-3) 40%,
+    var(--text) 50%,
+    var(--text-3) 60%,
+    var(--text-3) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: forge-thinking-sweep 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .forge-thinking {
+    background-image: none;
+    color: var(--text-3);
     animation: none;
   }
 }

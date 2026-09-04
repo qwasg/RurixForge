@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "texture": "d459d3df-bad0-51ef-8cf2-7baf68f39107",
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frames": {
+    "frame_0": {
+      "bbox": [
+        0,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_1": {
+      "bbox": [
+        256,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_2": {
+      "bbox": [
+        512,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_3": {
+      "bbox": [
+        768,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_4": {
+      "bbox": [
+        0,
+        256,
+        256,
+        256
+      ]
+    },
+    "frame_5": {
+      "bbox": [
+        256,
+        256,
+        256,
+        256
+      ]
+    },
+    "frame_6": {
+      "bbox": [
+        512,
+        256,
+        256,
+        256
+      ]
+    },
+    "frame_7": {
+      "bbox": [
+        768,
+        256,
+        256,
+        256
+      ]
+    }
+  },
+  "clips": {
+    "walk": {
+      "frames": [
+        "frame_0",
+        "frame_1",
+        "frame_2",
+        "frame_3"
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "eat": {
+      "frames": [
+        "frame_4",
+        "frame_5"
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "die": {
+      "frames": [
+        "frame_6",
+        "frame_7"
+      ],
+      "fps": 6,
+      "loop": false,
+      "onFinish": "hold"
+    },
+    "special": {
+      "frames": [
+        "frame_4",
+        "frame_5"
+      ],
+      "fps": 7,
+      "loop": false,
+      "onFinish": "first"
+    }
+  }
+}

@@ -23,6 +23,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__scene_summary",
     "mcp__engine-scene__render_once",
     "mcp__engine-scene__entity_create",
+    // F-GAME-3:2D 精灵一步创建(实体 + Sprite 组件组合工具)
+    "mcp__engine-scene__sprite_create",
     "mcp__engine-scene__entity_destroy",
     "mcp__engine-scene__entity_rename",
     "mcp__engine-scene__entity_get",
@@ -55,10 +57,14 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__play_state",
     // F4 wave.3:逻辑输入注入(play 态驱动图解释器 on_input)
     "mcp__engine-scene__logic_inject_input",
+    // 指针点击注入(归一化视口坐标 → 游戏平面世界坐标 → <action>_x/_y/_z + <action>)
+    "mcp__engine-scene__logic_inject_pointer",
     "mcp__engine-scene__viewport_frame",
     "mcp__engine-scene__viewport_pick",
     "mcp__engine-scene__viewport_set_camera",
     "mcp__engine-scene__viewport_get_camera",
+    // 视口直连推流通道信息(浏览器 WS 直连帧推送/实时输入;绕开 MCP 轮询链)
+    "mcp__engine-scene__viewport_stream_info",
     "mcp__engine-scene__viewport_share_open",
     "mcp__engine-scene__viewport_share_close",
     // F2 wave.1+2:asset-pipeline(资产管线)
@@ -82,6 +88,11 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__asset-pipeline__mesh_inspect",
     // F2 wave.5:asset-cleanup dryRun 扫描
     "mcp__asset-pipeline__asset_cleanup_scan",
+    // F-GAME-4:精灵图集资产面(.rxsprite 创建/读/写 + 自动切帧)
+    "mcp__asset-pipeline__sprite_create",
+    "mcp__asset-pipeline__sprite_get",
+    "mcp__asset-pipeline__sprite_set",
+    "mcp__asset-pipeline__sprite_autoslice",
     // F4 wave.1:code-forge(rx 工具链五工具,子进程包上游 rx CLI/rurixc)
     "mcp__code-forge__rx_check",
     "mcp__code-forge__rx_build",
@@ -347,13 +358,17 @@ fn workspace_root() -> PathBuf {
 /// 缺省资产项目根 = <workspace>/projects/demo(05 §1.2 mcp.json 示例对齐)。
 /// 作用域波:这只是「没有工作区可解析」时的兜底,真正的项目根由 scope::project_root_of
 /// 按会话工作区算出并逐调用传入,不再全局锚死一个项目。
+/// F-TEAM-3:必须 canonicalize 与 scope::canonical 同形态——连接池按路径字符串分池,
+/// Windows 上 canonicalize 产生 \\?\ verbatim 前缀,两种形态会为同一目录开两套
+/// MCP 子进程 + 两个 engine-host(双真相源:/mcp/call 面与 turn 面各看各的场景)。
 pub(crate) fn default_project_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let root = manifest_dir
         .ancestors()
         .nth(2)
         .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("projects").join("demo")
+    let p = root.join("projects").join("demo");
+    p.canonicalize().unwrap_or(p)
 }
 
 /// 资产项目根(REST 面遗留调用点:gen/video、gen/audio 产物落项目 tmpstore)。

@@ -5,3 +5,19 @@ target/
 *.log
 .DS_Store
 gateway-go/forge-gateway.exe
+
+# 临时与过程产物（开发证据/截图，不进入仓库）
+.tmp-*/
+.tmp-*.mjs
+**/.tmp-*
+.playwright-cli/
+evidence/
+shots/
+**/.forge/tmp/
+**/.forge/cache/
+
+# 编译产物
+*.exe
+*.obj
+*.pdb
+*.ilk

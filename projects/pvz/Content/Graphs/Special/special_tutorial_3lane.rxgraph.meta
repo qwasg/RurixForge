@@ -1,0 +1,10 @@
+guid: b664f117-54d8-5c1b-a384-b2c013d1d37a
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_tutorial_3lane

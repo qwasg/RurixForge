@@ -1,0 +1,1287 @@
+{
+  "entities": [
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "far": 100.0,
+            "fov": 40.0,
+            "near": 0.1
+          },
+          "type": "Camera"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 1,
+      "name": "PZ_Camera",
+      "transform": {
+        "rotation": [
+          -0.5,
+          0.0,
+          0.0,
+          0.8659999966621399
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          30.0,
+          17.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "6dd4fa36-82ae-49a0-b416-652c2ea1a503",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 2,
+      "name": "PZ_Sun",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          3.0,
+          3.0,
+          3.0
+        ],
+        "translation": [
+          -14.0,
+          18.0,
+          -8.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d6b48208-533d-40c0-959f-348734cd13e2",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 3,
+      "name": "PZ_Lawn",
+      "transform": {
+        "rotation": [
+          -0.7071067690849304,
+          0.0,
+          0.0,
+          0.7071067690849304
+        ],
+        "scale": [
+          22.0,
+          12.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          -0.5,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0f414026-5a8c-4b46-be33-74c64f177e6b",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 4,
+      "name": "PZ_House",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          6.0,
+          6.0,
+          1.0
+        ],
+        "translation": [
+          -11.0,
+          3.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1,
+              8,
+              8
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "houseline"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "interaction"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 5,
+      "name": "PZ_HouseLine",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.20000000298023224,
+          8.0,
+          8.0
+        ],
+        "translation": [
+          -10.0,
+          2.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "6dd4fa36-82ae-49a0-b416-652c2ea1a503",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "scoreboard"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "interaction"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 6,
+      "name": "PZ_Scoreboard",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          10.0,
+          2.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          -3.0,
+          6.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d0896a64-1589-4b24-9d20-3fb92f2cfc53",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 7,
+      "name": "PZ_Sunflower1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.399999976158142,
+          1.0
+        ],
+        "translation": [
+          -8.0,
+          0.800000011920929,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d0896a64-1589-4b24-9d20-3fb92f2cfc53",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 8,
+      "name": "PZ_Sunflower2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.399999976158142,
+          1.0
+        ],
+        "translation": [
+          -8.0,
+          0.800000011920929,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0c8df5af-398c-477d-a0d5-28597fffc565",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 9,
+      "name": "PZ_Peashooter1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.800000011920929,
+          1.2000000476837158,
+          0.800000011920929
+        ],
+        "translation": [
+          -4.0,
+          0.800000011920929,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0c8df5af-398c-477d-a0d5-28597fffc565",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 10,
+      "name": "PZ_Peashooter2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.800000011920929,
+          1.2000000476837158,
+          0.800000011920929
+        ],
+        "translation": [
+          -4.0,
+          0.800000011920929,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0c8df5af-398c-477d-a0d5-28597fffc565",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 11,
+      "name": "PZ_Peashooter3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.800000011920929,
+          1.2000000476837158,
+          0.800000011920929
+        ],
+        "translation": [
+          -4.0,
+          0.800000011920929,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "beb19f41-8e24-4a8f-bb54-63cffb668eaa",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.4,
+              2,
+              1.4
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 12,
+      "name": "PZ_Wallnut1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.2000000476837158,
+          1.0
+        ],
+        "translation": [
+          -1.0,
+          0.800000011920929,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "beb19f41-8e24-4a8f-bb54-63cffb668eaa",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.4,
+              2,
+              1.4
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "plant"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 13,
+      "name": "PZ_Wallnut2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.2000000476837158,
+          1.0
+        ],
+        "translation": [
+          -1.0,
+          0.800000011920929,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d08fcd6b-cf52-4ec4-9134-41b2de07035e",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2.4,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "z1"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 14,
+      "name": "PZ_Zombie1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.8999999761581421,
+          1.600000023841858,
+          0.8999999761581421
+        ],
+        "translation": [
+          11.0,
+          -50.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d08fcd6b-cf52-4ec4-9134-41b2de07035e",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2.4,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "z2"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 15,
+      "name": "PZ_Zombie2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.8999999761581421,
+          1.600000023841858,
+          0.8999999761581421
+        ],
+        "translation": [
+          11.0,
+          -50.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d08fcd6b-cf52-4ec4-9134-41b2de07035e",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2.4,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "z3"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 16,
+      "name": "PZ_Zombie3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.8999999761581421,
+          1.600000023841858,
+          0.8999999761581421
+        ],
+        "translation": [
+          11.0,
+          -50.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d08fcd6b-cf52-4ec4-9134-41b2de07035e",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2.4,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "z4"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 17,
+      "name": "PZ_Zombie4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.8999999761581421,
+          1.600000023841858,
+          0.8999999761581421
+        ],
+        "translation": [
+          13.0,
+          -50.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d08fcd6b-cf52-4ec4-9134-41b2de07035e",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2.4,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "z5"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 18,
+      "name": "PZ_Zombie5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.8999999761581421,
+          1.600000023841858,
+          0.8999999761581421
+        ],
+        "translation": [
+          13.0,
+          -50.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "d08fcd6b-cf52-4ec4-9134-41b2de07035e",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              1.2,
+              2.4,
+              1.2
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "z6"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_level1.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 19,
+      "name": "PZ_Zombie6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.8999999761581421,
+          1.600000023841858,
+          0.8999999761581421
+        ],
+        "translation": [
+          13.0,
+          -50.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "21babfa7-c19e-4298-bdda-da98932f7b0d",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea1"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 20,
+      "name": "PZ_Pea1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.4000000059604645,
+          0.4000000059604645,
+          0.4000000059604645
+        ],
+        "translation": [
+          -4.0,
+          -50.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "21babfa7-c19e-4298-bdda-da98932f7b0d",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea2"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 21,
+      "name": "PZ_Pea2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.4000000059604645,
+          0.4000000059604645,
+          0.4000000059604645
+        ],
+        "translation": [
+          -4.0,
+          -50.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "21babfa7-c19e-4298-bdda-da98932f7b0d",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea3"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 22,
+      "name": "PZ_Pea3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.4000000059604645,
+          0.4000000059604645,
+          0.4000000059604645
+        ],
+        "translation": [
+          -4.0,
+          -50.0,
+          2.0
+        ]
+      }
+    }
+  ],
+  "mode": "2d",
+  "name": "pz_level1",
+  "next_id": 23
+}

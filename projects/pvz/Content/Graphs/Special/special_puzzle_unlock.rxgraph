@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "id": "special_puzzle_unlock",
+  "name": "special_puzzle_unlock",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "s",
+      "type": "event.on_start",
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "ls",
+      "type": "debug.log",
+      "pos": [
+        1,
+        0
+      ],
+      "inputs": {
+        "message": {
+          "const": "SPECIAL_PUZZLE_UNLOCK_READY"
+        }
+      }
+    },
+    {
+      "id": "i",
+      "type": "event.on_input",
+      "pos": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "li",
+      "type": "debug.log",
+      "pos": [
+        1,
+        2
+      ],
+      "inputs": {
+        "message": {
+          "const": "SPECIAL_PUZZLE_UNLOCK_INPUT"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "s",
+        "exec"
+      ],
+      "to": [
+        "ls",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "i",
+        "exec"
+      ],
+      "to": [
+        "li",
+        "exec"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+[project]
+name = "pvz"
+engine-version = "0.1.0"
+rurix-ref = "v1.0.1-dist"
+entry-scene = "Content/Scenes/Main.rxscene"
+mode = "2d"
+
+[dirs]
+content = "Content"
+scripts = "Content/Scripts"

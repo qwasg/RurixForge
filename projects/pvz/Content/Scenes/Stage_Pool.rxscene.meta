@@ -1,0 +1,10 @@
+guid: 9f62d6f7-0c0b-5b01-85ed-ce250c1ad646
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ pool 场景模板(棋盘/推车/判负线,无关卡逻辑)

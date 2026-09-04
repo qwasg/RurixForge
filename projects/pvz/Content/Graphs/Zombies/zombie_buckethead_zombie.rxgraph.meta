@@ -1,0 +1,10 @@
+guid: 85c5a522-88b6-59fe-95f5-6ce8230801c4
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_buckethead_zombie

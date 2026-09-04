@@ -134,11 +134,14 @@ impl RefGraph {
                         ("scene", t) => match t {
                             "mesh" => "scene→mesh",
                             "material" => "scene→material",
+                            "sprite" => "scene→sprite",
                             _ => "scene→asset",
                         },
                         ("prefab", "mesh") => "prefab→mesh",
                         ("prefab", "material") => "prefab→material",
                         ("material", "texture") => "material→texture",
+                        // F-GAME-4:.rxsprite 引用贴图(删除阻断链:scene→sprite→texture)。
+                        ("sprite", "texture") => "sprite→texture",
                         (a, b) => match (a, b) {
                             _ => "asset→asset",
                         },

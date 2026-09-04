@@ -22,6 +22,7 @@ import NodeGraphView from '@/components/editor/NodeGraphView';
 import StudioBoardView from '@/components/studio/StudioBoardView';
 import { useGraphStore } from '@/lib/graphStore';
 import { useEditorStore, type CenterTab, type GizmoMode, type PlayState } from '@/lib/editorStore';
+import { useWorkspaceStore } from '@/lib/workspaceStore';
 
 /**
  * 编辑器视图:07 §1 七区骨架。
@@ -252,12 +253,16 @@ export default function EditorView() {
   const panes = useEditorStore((s) => s.editorPanes);
   const loadGraphForSelected = useGraphStore((s) => s.loadForSelectedEntity);
 
-  // 进视图即拉一次真实数据;空场景 → 默认加载迷宫(打开即见真实工程,非空壳)
+  // 进视图即拉一次真实数据;空场景 → 默认加载迷宫(打开即见真实工程,非空壳)。
+  // 工作区切换 = 视口所连 engine-host 换成新项目的实例,场景/实体/相机/选中全部按新项目重拉。
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   useEffect(() => {
+    useEditorStore.getState().selectEntity(null);
     void ensureDefaultScene().then(() => loadEntities());
     void refreshSummary();
     void refreshPlayState();
-  }, [ensureDefaultScene, loadEntities, refreshSummary, refreshPlayState]);
+    void useEditorStore.getState().loadCamera();
+  }, [ensureDefaultScene, loadEntities, refreshSummary, refreshPlayState, activeWorkspaceId]);
 
   // F9(D1):MCP 侧(agent 聊天)实体变更同步腿——周期 scene_summary;
   // entityCount 漂移时 refreshSummary 内真实重拉 entity_list,Hierarchy 随之刷新。

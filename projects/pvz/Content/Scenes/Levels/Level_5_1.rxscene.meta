@@ -1,0 +1,10 @@
+guid: 7eeb68bc-b392-530a-ada1-7e5d313bf245
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-1(roof,10 波,奖励 flower_pot);在 IDE Assets 面板双击即可装进视口试玩

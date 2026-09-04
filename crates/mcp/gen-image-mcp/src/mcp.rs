@@ -26,7 +26,7 @@ fn tool_list() -> Value {
             },
             {
                 "name": "gen_image",
-                "description": "文生图:产 n 个候选落 .forge/tmp/gen/;无已配置后端 → GEN_BACKEND_NOT_CONFIGURED(I-5);styleRefAssetPath v1 接受但不消费(RD-F5-002)",
+                "description": "文生图:产 n 个候选落 .forge/tmp/gen/;无已配置后端 → GEN_BACKEND_NOT_CONFIGURED(I-5);styleRefAssetPath v1 接受但不消费(RD-F5-002);传 assetPath 把该资产 .meta 文字简介+标签直接绑进提示词(响应 promptFinal = 实际发送全文,descBinding 如实标注)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -34,7 +34,8 @@ fn tool_list() -> Value {
                         "negativePrompt": { "type": "string" },
                         "size": { "type": "integer", "enum": [256, 512, 1024], "description": "边长,缺省 512" },
                         "styleRefAssetPath": { "type": "string", "description": "v1 不消费(如实标注)" },
-                        "seed": { "type": "integer", "description": "缺省 = hash(prompt)" },
+                        "assetPath": { "type": "string", "description": "可选:目标资产路径(相对 Content/)——.meta 文字简介+标签直接并入提示词;资产无简介则 descBound=false 按原 prompt 生成" },
+                        "seed": { "type": "integer", "description": "缺省 = hash(最终提示词)" },
                         "n": { "type": "integer", "minimum": 1, "maximum": 4 },
                         "backend": { "type": "string", "description": "后端 id,缺省 = 首个已配置后端" }
                     },
@@ -43,7 +44,7 @@ fn tool_list() -> Value {
             },
             {
                 "name": "gen_texture_set",
-                "description": "材质纹理组:逐 map 生成并自动入管线(Content/Textures/,provenance detail.map=槽位名)",
+                "description": "材质纹理组:逐 map 生成并自动入管线(Content/Textures/,provenance detail.map=槽位名);传 assetPath 绑该资产文字简介+标签进提示词(同 gen_image)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -51,6 +52,7 @@ fn tool_list() -> Value {
                         "materialKind": { "type": "string", "enum": ["pbr", "unlit"] },
                         "maps": { "type": "array", "items": { "type": "string", "enum": ["albedo", "normal", "roughness", "ao"] } },
                         "size": { "type": "integer", "enum": [256, 512, 1024] },
+                        "assetPath": { "type": "string", "description": "可选:目标资产路径(相对 Content/)——.meta 文字简介+标签直接并入提示词" },
                         "seamless": { "type": "boolean", "description": "缺省 true;mock v1 不保证真无缝(如实标注)" }
                     },
                     "required": ["prompt", "materialKind", "maps"]
@@ -182,7 +184,7 @@ fn sidecar(
     negative_prompt: Option<&str>,
     seed: u64,
     source_refs: Vec<String>,
-    extra: Option<(&str, Value)>,
+    extras: &[(&str, Value)],
 ) -> Value {
     let mut v = json!({
         "backendId": backend_id,
@@ -194,10 +196,63 @@ fn sidecar(
     if let Some(np) = negative_prompt {
         v["negativePrompt"] = json!(np);
     }
-    if let Some((k, val)) = extra {
-        v[k] = val;
+    for (k, val) in extras {
+        v[*k] = val.clone();
     }
     v
+}
+
+/// 资产简介绑定(F10-RAG):assetPath → .meta semantic(description+tags)直接并入提示词。
+/// 返回 (最终提示词, 绑定信息)。路径非法/资产不存在 → GEN_BAD_PARAMS(显式参数显式失败);
+/// 资产无简介 → 原提示词 + descBound=false(如实标注,不伪造绑定)。
+fn bind_asset_description(
+    proj: &ForgeProject,
+    prompt: &str,
+    asset_path: Option<&str>,
+) -> Result<(String, Value), GenError> {
+    let Some(ap) = asset_path.filter(|s| !s.trim().is_empty()) else {
+        return Ok((prompt.to_string(), json!({ "descBound": false })));
+    };
+    let rel = assetd::normalize_rel(ap)
+        .map_err(|e| GenError::new(GEN_BAD_PARAMS, format!("assetPath 非法: {ap}({})", e.message)))?;
+    if !proj.content_root().join(&rel).is_file() {
+        return Err(GenError::new(GEN_BAD_PARAMS, format!("assetPath 资产不存在: {rel}")));
+    }
+    let meta_path = assetd::meta_path_for(&proj.content_root(), &rel);
+    let sem = if meta_path.is_file() {
+        assetd::meta::MetaDoc::load(&meta_path).ok().and_then(|m| m.semantic)
+    } else {
+        None
+    };
+    let desc = sem
+        .as_ref()
+        .map(|s| s.description.trim().to_string())
+        .unwrap_or_default();
+    let tags: Vec<String> = sem.map(|s| s.tags).unwrap_or_default();
+    if desc.is_empty() {
+        return Ok((
+            prompt.to_string(),
+            json!({
+                "descBound": false,
+                "descAssetPath": rel,
+                "note": "资产尚无文字简介(检视器「资产」页签可写),按原 prompt 生成",
+            }),
+        ));
+    }
+    let mut final_prompt = format!("{prompt}\n资产简介: {desc}");
+    if !tags.is_empty() {
+        final_prompt.push_str(&format!("\n标签: {}", tags.join(", ")));
+    }
+    Ok((
+        final_prompt,
+        json!({
+            "descBound": true,
+            "descAssetPath": rel,
+            "boundDescription": desc,
+            "boundTags": tags,
+            "promptOriginal": prompt,
+        }),
+    ))
 }
 
 /// PNG 字节 → dataUrl(F5 wave.3:候选网格缩略图;imageFileRef 是项目内路径,client 拿不到
@@ -262,27 +317,39 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             let negative = args.get("negativePrompt").and_then(Value::as_str);
             let size = arg_size(&args)?;
             let n = arg_n(&args, 1)?;
+            // styleRefAssetPath:v1 接受参数但不消费(不传远程/不进生成;RD-F5-002 如实标注)。
+            let _style_ref_unconsumed = args.get("styleRefAssetPath").and_then(Value::as_str);
+            // F10-RAG:assetPath → 该资产 .meta 简介+标签直接并入提示词(先于缺省 seed hash,
+            // 保证「同最终提示词 → 同缺省 seed」)。
+            let (final_prompt, bind_info) = {
+                let p = lock(proj);
+                bind_asset_description(&p, prompt, args.get("assetPath").and_then(Value::as_str))?
+            };
             let seed = args
                 .get("seed")
                 .and_then(Value::as_u64)
-                .unwrap_or_else(|| fnv1a64(prompt.as_bytes()));
-            // styleRefAssetPath:v1 接受参数但不消费(不传远程/不进生成;RD-F5-002 如实标注)。
-            let _style_ref_unconsumed = args.get("styleRefAssetPath").and_then(Value::as_str);
+                .unwrap_or_else(|| fnv1a64(final_prompt.as_bytes()));
             let cfg = GenConfig::load();
             let keys = Keystore::load();
             let backend = resolve_backend(args.get("backend").and_then(Value::as_str), "text2img", &cfg, &keys)?;
             let req = GenRequest {
-                prompt: prompt.to_string(),
+                prompt: final_prompt.clone(),
                 negative_prompt: negative.map(str::to_string),
                 size,
                 seed,
                 n,
             };
             let cands = backend.generate(&req, &cfg, &keys)?;
+            // 绑定发生过(含尝试但无简介)→ sidecar 如实记录;未传 assetPath 保持旧形态。
+            let extras: Vec<(&str, Value)> = if bind_info.get("descAssetPath").is_some() {
+                vec![("descBinding", bind_info.clone())]
+            } else {
+                vec![]
+            };
             let p = lock(proj);
             let mut out = Vec::with_capacity(cands.len());
             for (i, c) in cands.iter().enumerate() {
-                let sc = sidecar(backend.id(), prompt, negative, c.seed, vec![], None);
+                let sc = sidecar(backend.id(), &final_prompt, negative, c.seed, vec![], &extras);
                 let r = tmpstore::save_candidate(&p, &c.png_bytes, c.seed, i as u32, &sc)?;
                 out.push(json!({
                     "imageFileRef": r,
@@ -291,7 +358,11 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
                     "dataUrl": png_data_url(&c.png_bytes),
                 }));
             }
-            Ok(json!({ "candidates": out }))
+            Ok(json!({
+                "candidates": out,
+                "promptFinal": final_prompt,
+                "descBinding": bind_info,
+            }))
         }
         "gen_texture_set" => {
             let prompt = arg_str(&args, "prompt")?;
@@ -331,12 +402,24 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
                 ));
             }
             let slug = slugify(prompt);
+            // F10-RAG:assetPath 绑该资产简介+标签进提示词(seed 按最终提示词派生)。
+            let (final_prompt, bind_info) = {
+                let p = lock(proj);
+                bind_asset_description(&p, prompt, args.get("assetPath").and_then(Value::as_str))?
+            };
+            let extras: Vec<(&str, Value)> = if bind_info.get("descAssetPath").is_some() {
+                vec![("descBinding", bind_info.clone())]
+            } else {
+                vec![]
+            };
             let p = lock(proj);
             let mut assets = Vec::with_capacity(maps.len());
             for m in &maps {
-                let seed = gend::hash_parts(&[prompt.as_bytes(), m.as_bytes(), &size.to_le_bytes()]);
-                let png = mock::render_map(prompt, m, size, seed)?;
-                let detail = sidecar(backend.id(), prompt, None, seed, vec![], Some(("map", json!(m))));
+                let seed = gend::hash_parts(&[final_prompt.as_bytes(), m.as_bytes(), &size.to_le_bytes()]);
+                let png = mock::render_map(&final_prompt, m, size, seed)?;
+                let mut detail_extras: Vec<(&str, Value)> = vec![("map", json!(m))];
+                detail_extras.extend(extras.iter().cloned());
+                let detail = sidecar(backend.id(), &final_prompt, None, seed, vec![], &detail_extras);
                 let r = tmpstore::save_candidate(&p, &png, seed, 0, &detail)?;
                 let acc = gen_accept(&p, &r, "Textures", &format!("{slug}_{m}"), detail)?;
                 assets.push(json!({
@@ -345,7 +428,11 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
                     "dataUrl": png_data_url(&png),
                 }));
             }
-            Ok(json!({ "textureAssets": assets }))
+            Ok(json!({
+                "textureAssets": assets,
+                "promptFinal": final_prompt,
+                "descBinding": bind_info,
+            }))
         }
         "gen_accept" => {
             let image_ref = arg_str(&args, "imageFileRef")?;
@@ -398,7 +485,7 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
                     None,
                     seed,
                     vec![source_ref.to_string()],
-                    Some(("strength", json!(strength))),
+                    &[("strength", json!(strength))],
                 );
                 let r = tmpstore::save_candidate(&p, &png, seed, i, &sc)?;
                 out.push(json!({
@@ -617,6 +704,126 @@ mod tests {
         let vc = var["candidates"].as_array().unwrap();
         assert_eq!(vc.len(), 2);
         assert_ne!(vc[0]["seed"], vc[1]["seed"]);
+
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    /// F10-RAG 绑定测试夹具:local-mock 后端 + 带/不带简介的资产。
+    fn bind_fixture(tag: &str) -> (std::path::PathBuf, Arc<Mutex<ForgeProject>>) {
+        let data = temp_dir(&format!("{tag}-data"));
+        std::fs::write(
+            data.join("gen-backends.json"),
+            r#"{"backends":[{"id":"local-mock","kind":"local","enabled":true}]}"#,
+        )
+        .unwrap();
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let proj = temp_project(tag);
+        let p = proj.lock().unwrap();
+        std::fs::create_dir_all(p.content_root().join("Textures")).unwrap();
+        std::fs::write(p.content_root().join("Textures/chair.png"), b"fake-png").unwrap();
+        std::fs::write(p.content_root().join("Textures/nodesc.png"), b"fake-png").unwrap();
+        assetd::ops::set_description(
+            &p,
+            "Textures/chair.png",
+            "北欧风实木餐椅,浅橡木色,适合客厅场景",
+            &["家具".to_string(), "椅子".to_string()],
+            "human",
+            None,
+            None,
+        )
+        .unwrap();
+        drop(p);
+        (data, proj)
+    }
+
+    #[test]
+    fn gen_image_binds_asset_description_into_prompt() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let (data, proj) = bind_fixture("bind");
+
+        let r = call(
+            &proj,
+            "gen_image",
+            json!({ "prompt": "一把椅子", "n": 1, "size": 256, "assetPath": "Textures/chair.png" }),
+        )
+        .unwrap();
+        let final_prompt = r["promptFinal"].as_str().expect("缺 promptFinal");
+        assert!(final_prompt.contains("一把椅子"), "{final_prompt}");
+        assert!(final_prompt.contains("北欧风实木餐椅"), "简介须绑入:{final_prompt}");
+        assert!(final_prompt.contains("家具"), "标签须绑入:{final_prompt}");
+        assert_eq!(r["descBinding"]["descBound"], true, "{r}");
+        assert_eq!(r["descBinding"]["descAssetPath"], "Textures/chair.png");
+        assert_eq!(r["descBinding"]["promptOriginal"], "一把椅子");
+
+        // sidecar 如实记录绑定(实际发送全文 + 绑定信息)。
+        let image_ref = r["candidates"][0]["imageFileRef"].as_str().unwrap();
+        let p = proj.lock().unwrap();
+        let sc = tmpstore::load_sidecar(&p, image_ref).expect("缺 sidecar");
+        assert_eq!(sc["prompt"], final_prompt);
+        assert_eq!(sc["descBinding"]["descBound"], true);
+        assert_eq!(sc["descBinding"]["boundDescription"], "北欧风实木餐椅,浅橡木色,适合客厅场景");
+        drop(p);
+
+        // 无简介资产:原 prompt 生成 + descBound=false 如实标注。
+        let r = call(
+            &proj,
+            "gen_image",
+            json!({ "prompt": "一张桌子", "n": 1, "size": 256, "assetPath": "Textures/nodesc.png" }),
+        )
+        .unwrap();
+        assert_eq!(r["promptFinal"], "一张桌子");
+        assert_eq!(r["descBinding"]["descBound"], false, "{r}");
+        assert!(r["descBinding"]["note"].as_str().unwrap().contains("尚无文字简介"), "{r}");
+
+        // 不传 assetPath:响应仍带 promptFinal(= 原 prompt),sidecar 无 descBinding 字段。
+        let r = call(&proj, "gen_image", json!({ "prompt": "plain", "n": 1, "size": 256 })).unwrap();
+        assert_eq!(r["promptFinal"], "plain");
+        assert_eq!(r["descBinding"]["descBound"], false);
+        let image_ref = r["candidates"][0]["imageFileRef"].as_str().unwrap();
+        let p = proj.lock().unwrap();
+        let sc = tmpstore::load_sidecar(&p, image_ref).unwrap();
+        assert!(sc.get("descBinding").is_none(), "未绑定不应有 descBinding:{sc}");
+        drop(p);
+
+        // assetPath 指向不存在资产 → GEN_BAD_PARAMS(显式参数显式失败)。
+        let e = call(
+            &proj,
+            "gen_image",
+            json!({ "prompt": "x", "assetPath": "Textures/ghost.png" }),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[test]
+    fn gen_texture_set_binds_asset_description() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let (data, proj) = bind_fixture("bind-ts");
+
+        let r = call(
+            &proj,
+            "gen_texture_set",
+            json!({
+                "prompt": "椅子材质", "materialKind": "pbr", "maps": ["albedo"], "size": 256,
+                "assetPath": "Textures/chair.png"
+            }),
+        )
+        .unwrap();
+        assert!(r["promptFinal"].as_str().unwrap().contains("北欧风实木餐椅"), "{r}");
+        assert_eq!(r["descBinding"]["descBound"], true);
+        // 入管线资产 provenance detail 带绑定信息。
+        let ap = r["textureAssets"][0]["assetPath"].as_str().unwrap();
+        let p = proj.lock().unwrap();
+        let meta = assetd::meta::MetaDoc::load(&assetd::meta_path_for(&p.content_root(), ap)).unwrap();
+        let detail = meta.provenance.unwrap().detail.unwrap();
+        assert_eq!(detail["descBinding"]["descBound"], true, "{detail}");
+        assert!(detail["prompt"].as_str().unwrap().contains("北欧风实木餐椅"), "{detail}");
+        drop(p);
 
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();

@@ -1,6 +1,8 @@
 import { useOverlayStore } from './overlayStore';
+import { usePlanStore } from './planStore';
 import { useSessionStore } from './sessionStore';
 import { useThemeStore } from './themeStore';
+import { useToastStore } from './toastStore';
 import { useWorkbenchStore } from './workbenchStore';
 
 /**
@@ -36,7 +38,15 @@ export const COMMANDS: Command[] = [
     id: 'tab.plan',
     label: '打开 Plan',
     section: 'navigate',
-    run: () => useWorkbenchStore.getState().openTab('plan'),
+    // D-035:计划是文件,先要有;没有就如实说,不开一个空壳页签。
+    run: () => {
+      const path = usePlanStore.getState().activePlanPath;
+      if (path === null) {
+        useToastStore.getState().push('info', '尚无计划:在对话中以 Plan 模式描述任务即可生成');
+        return;
+      }
+      useWorkbenchStore.getState().openPlan(path);
+    },
   },
   {
     id: 'tab.todo',

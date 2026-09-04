@@ -1,0 +1,10 @@
+guid: e836cf63-d772-5fc7-8b33-ec601679ef95
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-3(roof,20 波,奖励 coffee_bean);在 IDE Assets 面板双击即可装进视口试玩

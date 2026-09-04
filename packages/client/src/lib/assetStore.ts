@@ -21,6 +21,14 @@ export interface AssetSemantic {
   content_hash?: string;
 }
 
+/** F10-RAG:asset_set_description 响应的索引同步状态(写后即进检索;未建索引/失败如实标注)。 */
+export interface DescIndexInfo {
+  indexed?: boolean;
+  tier?: string;
+  embedError?: string;
+  indexError?: string;
+}
+
 /** 资产构建状态(asset_build_status 返回)。 */
 export interface AssetBuildStatus {
   path: string;
@@ -29,16 +37,27 @@ export interface AssetBuildStatus {
 }
 
 export type AssetViewMode = 'grid' | 'list';
-export type AssetTypeFilter = 'all' | 'mesh' | 'texture' | 'material' | 'prefab' | 'scene' | 'script' | 'audio';
+export type AssetTypeFilter =
+  | 'all'
+  | 'mesh'
+  | 'texture'
+  | 'material'
+  | 'sprite'
+  | 'prefab'
+  | 'scene'
+  | 'script'
+  | 'audio';
 
-/** 右键菜单动作(六菜单,07 §4;F5 wave.3:gen-chat seam → gen-dialog 真实对话框)。 */
+/** 右键菜单动作(六菜单,07 §4;F5 wave.3:gen-chat seam → gen-dialog 真实对话框;
+ * F-GAME-4:sprite-edit = texture 建 .rxsprite 开编辑器 / sprite 直开编辑器)。 */
 export type AssetMenuAction =
   | 'import-here'
   | 'reimport'
   | 'show-in-folder'
   | 'find-refs'
   | 'delete-proposal'
-  | 'gen-dialog';
+  | 'gen-dialog'
+  | 'sprite-edit';
 
 /** 引用查询结果(GUID 已尽量解析为路径;未知 GUID 原样显示)。 */
 export interface RefsResult {
@@ -99,8 +118,9 @@ interface AssetState {
   loadThumb: (item: AssetItem) => Promise<void>;
   /** F10:读 .meta semantic 段(检视器溯源显示;NO_META 等错误返回 null 不抛)。 */
   fetchSemantic: (assetPath: string) => Promise<AssetSemantic | null>;
-  /** F10:写文字简介与标签(source=human;写后刷新列表)。 */
-  setDescription: (assetPath: string, description: string, tags: string[]) => Promise<void>;
+  /** F10:写文字简介与标签(source=human;写后刷新列表)。
+   * F10-RAG:服务端写后自动增量进语义索引,返回索引状态供 UI 如实提示。 */
+  setDescription: (assetPath: string, description: string, tags: string[]) => Promise<DescIndexInfo>;
 }
 
 export const useAssetStore = create<AssetState>((set, get) => ({
@@ -276,12 +296,13 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   },
 
   setDescription: async (assetPath, description, tags) => {
-    await callAssetTool('asset_set_description', {
+    const r = await callAssetTool<DescIndexInfo>('asset_set_description', {
       assetPath,
       description,
       tags,
       source: 'human',
     });
     await get().load();
+    return r;
   },
 }));

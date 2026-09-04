@@ -1,0 +1,10 @@
+guid: 793bd41b-1e5d-5fb2-b21e-6d19b28c4192
+type: sprite
+importer: sprite
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_Wallnut.png
+    pipeline: deterministic-frame-sheet
+build_state: current

@@ -1,14 +1,13 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import PlanTab, { lastPlanText } from '@/components/workbench/PlanTab';
 import ProposalsTab from '@/components/workbench/ProposalsTab';
 import TodoTab from '@/components/workbench/TodoTab';
-import { useChatStore, type ChatMsg } from '@/lib/chatStore';
+import { useChatStore } from '@/lib/chatStore';
 import { useComposerPrefillStore } from '@/lib/composerStore';
 
 /**
- * F7 wave.5 workbench tabs:Plan(plan 空态/有稿/开始 Build 预填)+ Todo(四列看板分列)
- * + 提案(列表渲染/impact 展开/批准拒绝接线)。
+ * F7 wave.5 workbench tabs:Todo(四列看板分列)+ 提案(列表渲染/impact 展开/批准拒绝接线)。
+ * D-035:Plan 页签已改为计划文件页(按 path 多开),用例迁到 planTab.test.tsx。
  */
 
 const initialChat = useChatStore.getState();
@@ -24,54 +23,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-});
-
-function msg(partial: Partial<ChatMsg> & Pick<ChatMsg, 'id' | 'role'>): ChatMsg {
-  return { text: '', blocks: [], time: '', ...partial };
-}
-
-describe('Plan tab', () => {
-  it('空态:无 plan 模式消息 → 「尚无计划」+ 开始 Build 禁用', () => {
-    render(<PlanTab />);
-    expect(screen.getByText('尚无计划')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-start-build')).toBeDisabled();
-  });
-
-  it('lastPlanText:取最近 plan 模式 turn 的 assistant 终稿', () => {
-    const messages: ChatMsg[] = [
-      msg({ id: 'u1', role: 'user', text: '做个迷宫', mode: 'build', runId: 'r1' }),
-      msg({ id: 'a1', role: 'assistant', runId: 'r1', blocks: [{ kind: 'text', text: 'build 答复', final: true }] }),
-      msg({ id: 'u2', role: 'user', text: '规划一下', mode: 'plan', runId: 'r2' }),
-      msg({ id: 'a2', role: 'assistant', runId: 'r2', blocks: [{ kind: 'text', text: '# 计划\n第一步', final: true }] }),
-    ];
-    expect(lastPlanText(messages)).toBe('# 计划\n第一步');
-    // 非 plan 模式不取
-    expect(lastPlanText(messages.slice(0, 2))).toBeNull();
-  });
-
-  it('有稿:渲染终稿 Markdown + To-dos 表;开始 Build → composer 预填 build+「执行上述计划」', () => {
-    useChatStore.setState({
-      messages: [
-        msg({ id: 'u2', role: 'user', text: '规划一下', mode: 'plan', runId: 'r2' }),
-        msg({ id: 'a2', role: 'assistant', runId: 'r2', blocks: [{ kind: 'text', text: '计划正文', final: true }] }),
-      ],
-      todos: [
-        { id: 'todo_1', title: '搭场景', status: 'completed' },
-        { id: 'todo_2', title: '写逻辑', status: 'queued' },
-      ],
-    });
-    render(<PlanTab />);
-    expect(screen.getByText('计划正文')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-todo-table')).toHaveTextContent('2 To-dos');
-    // 完成划线
-    expect(screen.getByTestId('plan-todo-todo_1').querySelector('.line-through')).not.toBeNull();
-    const btn = screen.getByTestId('plan-start-build');
-    expect(btn).toBeEnabled();
-    fireEvent.click(btn);
-    // 预填已写入(Composer 挂载时才消费 clear;此处只验 store 面)
-    expect(useComposerPrefillStore.getState().draft).toBe('执行上述计划');
-    expect(useComposerPrefillStore.getState().mode).toBe('build');
-  });
 });
 
 describe('Todo tab', () => {

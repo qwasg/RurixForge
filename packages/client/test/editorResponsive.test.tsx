@@ -128,7 +128,7 @@ describe('<RightPane /> 工作区 / 层级 / 属性', () => {
     act(() => useWorkbenchStore.getState().openEditor());
     await screen.findByTestId('hierarchy-panel');
 
-    act(() => useWorkbenchStore.getState().openTab('plan'));
+    act(() => useWorkbenchStore.getState().openTab('todo'));
     expect(await screen.findByTestId('inspector')).toBeInTheDocument();
 
     act(() => useWorkbenchStore.getState().activateTab('editor'));

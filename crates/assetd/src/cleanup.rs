@@ -36,7 +36,7 @@ pub struct CleanupReport {
     pub impact: Vec<(String, usize)>,
 }
 
-/// 类型应有目录(08 §3.1 七目录;AssetType → 目录名)。
+/// 类型应有目录(08 §3.1 目录映射;F-GAME-4 + Sprites)。
 fn expected_folder(atype: &str) -> Option<&'static str> {
     Some(match atype {
         "mesh" => "Meshes",
@@ -46,6 +46,7 @@ fn expected_folder(atype: &str) -> Option<&'static str> {
         "scene" => "Scenes",
         "script" => "Scripts",
         "audio" => "Audio",
+        "sprite" => "Sprites",
         _ => return None,
     })
 }

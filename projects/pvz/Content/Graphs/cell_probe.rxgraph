@@ -1,0 +1,207 @@
+{
+ "version": 1,
+ "id": "cell_probe",
+ "name": "cell_probe",
+ "exposedProps": [],
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "event.on_trigger_enter",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n2",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n1",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "sun_active"
+    }
+   }
+  },
+  {
+   "id": "n3",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n2",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n4",
+   "type": "entity.set_transform",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n1",
+     "pin": "otherEntity"
+    },
+    "transform": {
+     "const": {
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "translation": [
+       0.0,
+       -80.0,
+       0.0
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "n5",
+   "type": "entity.add_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n1",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "sun_free"
+    }
+   }
+  },
+  {
+   "id": "n6",
+   "type": "call.send_message",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sun_gained"
+    },
+    "payload": {
+     "const": 25.0
+    }
+   }
+  },
+  {
+   "id": "n7",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n1",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "sun_placed"
+    }
+   }
+  },
+  {
+   "id": "n8",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n7",
+     "pin": "out"
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": [
+    "n1",
+    "exec"
+   ],
+   "to": [
+    "n3",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n4",
+    "exec"
+   ],
+   "to": [
+    "n5",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n5",
+    "exec"
+   ],
+   "to": [
+    "n6",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "then"
+   ],
+   "to": [
+    "n4",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "else"
+   ],
+   "to": [
+    "n8",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n8",
+    "then"
+   ],
+   "to": [
+    "n4",
+    "exec"
+   ]
+  }
+ ]
+}

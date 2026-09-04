@@ -1,0 +1,10 @@
+guid: 750f0cd2-a45f-5cbc-ad41-78613e90d219
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-5(roof,20 波,奖励 garlic);在 IDE Assets 面板双击即可装进视口试玩

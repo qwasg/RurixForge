@@ -1,0 +1,13 @@
+guid: 91a7bfeb-7081-4b2f-8501-694836c31071
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:55:48Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct invading zombie full-body icons: 1:zombie carrying a red brain flag; 2:zombie wearing orange traffic cone; 3:athletic zombie carrying vaulting pole; 4:zombie wearing metal bucket helmet; 5:old zombie holding newspaper; 6:zombie carrying screen door shield; 7:red-uniform armored football zombie; 8:disco dancing zombie in white suit. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 201901
+    sourceRefs: []
+build_state: current

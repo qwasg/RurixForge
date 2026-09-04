@@ -1,0 +1,10 @@
+guid: 30c9df30-f5c7-5fdf-8ae6-6b8a10a1cefa
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_dolphin_rider_zombie

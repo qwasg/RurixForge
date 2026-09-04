@@ -22,6 +22,8 @@ pub struct ScopeProject {
     pub workspace_root: PathBuf,
     /// 资产项目根(含 Content/ 的那一层;见 project_root_of)。
     pub project_root: PathBuf,
+    /// 游戏维度模式(forge.toml [project] mode;无清单/解析失败 → ThreeD,F-GAME-3)。
+    pub game_mode: assetd::project::GameMode,
 }
 
 impl ScopeProject {
@@ -85,6 +87,13 @@ fn canonical(p: &Path) -> PathBuf {
     p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
 }
 
+/// 项目游戏模式:读 project_root/forge.toml [project] mode;缺失/解析失败 → ThreeD。
+pub fn game_mode_of(project_root: &Path) -> assetd::project::GameMode {
+    assetd::project::ForgeProject::load(project_root)
+        .map(|p| p.mode)
+        .unwrap_or(assetd::project::GameMode::ThreeD)
+}
+
 /// 解析单个工作区 id → ScopeProject。
 pub fn project_of(state: &AppState, workspace_id: Option<&str>) -> ScopeProject {
     let id = workspace_id.map(str::trim).filter(|s| !s.is_empty());
@@ -93,11 +102,14 @@ pub fn project_of(state: &AppState, workspace_id: Option<&str>) -> ScopeProject 
         .and_then(|i| state.workspaces.get(i))
         .map(|w| w.name)
         .unwrap_or_else(|| "默认工作区".to_string());
+    let project_root = project_root_of(&workspace_root);
+    let game_mode = game_mode_of(&project_root);
     ScopeProject {
         workspace_id: id.map(str::to_string),
         name,
-        project_root: project_root_of(&workspace_root),
+        project_root,
         workspace_root,
+        game_mode,
     }
 }
 
@@ -139,10 +151,12 @@ pub fn resolve(
 }
 
 /// 作用域摘要(事件留痕/工具反馈用;只给 id 与名字,不给磁盘路径)。
+/// F-GAME-3:附带当前项目游戏模式(2d/3d),客户端徽标与提示词注入共用此事实源。
 pub fn summary_json(scope: &ScopeContext) -> serde_json::Value {
     serde_json::json!({
         "currentProjectId": scope.current.id(),
         "currentProjectName": scope.current.name,
+        "currentProjectMode": scope.current.game_mode.as_str(),
         "readonlyProjectIds": scope.readonly.iter().map(|p| p.id()).collect::<Vec<_>>(),
         "includeLibrary": scope.include_library,
     })
@@ -177,6 +191,14 @@ mod tests {
             dir.join("projects").join("demo").canonicalize().unwrap()
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// F-TEAM-3 守门:default_project_root 必须与 scope canonical 同形态——
+    /// 连接池按路径字符串分池,形态漂移会为同一目录开两套 MCP + 两个 engine-host。
+    #[test]
+    fn default_root_is_canonical_same_as_scope_form() {
+        let d = crate::mcp::default_project_root();
+        assert_eq!(d, canonical(&d), "default_project_root 须为 canonical 形态");
     }
 }
 
@@ -214,6 +236,8 @@ mod isolation_tests {
             workspaces: Arc::new(ws),
             runs: Arc::new(crate::agent::RunRegistry::default()),
             todos: Arc::new(crate::agent::TodoStore::load(dir.join("todos.json"))),
+            receipts: Arc::new(crate::receipts::ReceiptStore::load(dir.join("receipts.json"))),
+            wakes: Arc::new(crate::agent::WakeRegistry::default()),
             permissions: Arc::new(crate::permission::PermissionService::load(dir.join("perm.json"))),
         };
         let scope = resolve(

@@ -1,0 +1,13 @@
+guid: 5329e92f-79c2-4434-9ad9-8a84b707a6e7
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:52:20Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct garden defense plant icons: 1:pair of red cherries with fuse and determined faces; 2:small potato land mine with red detonator; 3:icy blue pea shooter plant; 4:purple carnivorous flytrap plant with teeth; 5:green double-barrel pea shooter; 6:tiny purple puff mushroom; 7:small golden sun mushroom; 8:large purple fume mushroom. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 200901
+    sourceRefs: []
+build_state: current

@@ -1,0 +1,9 @@
+guid: 930bef3c-8a3b-5737-839e-7aecf2d3624b
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-seed-card-atlas
+build_state: current

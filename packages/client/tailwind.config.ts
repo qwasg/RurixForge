@@ -90,9 +90,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"DM Sans Variable"', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
+        // 净化波:统一走主题字体变量(Inter Variable + 系统中文栈,见 theme.css)
+        sans: ['var(--font-sans)'],
         mono: ['"JetBrains Mono Variable"', 'Consolas', 'monospace'],
-        // F7 wave.3 新壳字体族(系统栈;serif 用于 logo/标题)
         shell: ['var(--font-sans)'],
         serif: ['var(--font-serif)'],
         code: ['var(--font-mono)'],

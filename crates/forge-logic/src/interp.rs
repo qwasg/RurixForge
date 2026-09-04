@@ -51,6 +51,22 @@ pub struct LogicContact {
     pub phase: LogicPhase,
 }
 
+/// 精灵动画命令(F-GAME-4:图节点 sprite.*/animator.* 产出,宿主动画系统消费——
+/// 组件 frame/clip 的唯一写者是宿主,图侧只发命令,避免双写者)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnimCommand {
+    /// 播放 clip;restart=false 时同 clip 幂等 no-op(状态式脚本缺省,防"每帧重启冻帧"坑)。
+    Play { entity: u64, clip: String, restart: bool },
+    /// 停止播放(停在当前帧)。
+    Stop { entity: u64 },
+    /// 手控帧(clip 内序号;越界钳制)。
+    SetFrame { entity: u64, index: usize },
+    /// animator bool 参数。
+    SetBool { entity: u64, param: String, value: bool },
+    /// animator trigger 参数(转换触发即消费)。
+    SetTrigger { entity: u64, param: String },
+}
+
 /// 活跃 tween(rotate = 绕本地 Y 轴 angle 度制 / move = 线性 offset;末帧钳制写最终值)。
 #[derive(Debug, Clone, Copy)]
 enum TweenKind {
@@ -165,6 +181,8 @@ pub struct LogicRuntime {
     message_queue: Vec<(String, Value)>,
     /// call_function dll 运行时(RD-F4-004;None = 未挂项目根,调用如实 logic.call_error)。
     call_rt: Option<crate::callruntime::CallRuntime>,
+    /// 本帧累计的精灵动画命令(F-GAME-4;宿主 frame 后 take 消费)。
+    anim_commands: Vec<AnimCommand>,
 }
 
 impl LogicRuntime {
@@ -181,6 +199,12 @@ impl LogicRuntime {
         self.graphs.clear();
         self.prev_trigger_overlap.clear();
         self.message_queue.clear();
+        self.anim_commands.clear();
+    }
+
+    /// 取走本帧累计的动画命令(宿主 advance_frame 在 frame() 后调用,声明序)。
+    pub fn take_anim_commands(&mut self) -> Vec<AnimCommand> {
+        std::mem::take(&mut self.anim_commands)
     }
 
     pub fn graph_count(&self) -> usize {
@@ -258,13 +282,13 @@ impl LogicRuntime {
         scene: &mut Scene,
         log: &mut Vec<(String, Value)>,
     ) {
-        let Self { graphs, message_queue, call_rt, .. } = self;
+        let Self { graphs, message_queue, call_rt, anim_commands, .. } = self;
         let (eid, inst) = &mut graphs[gi];
         let Some(node) = inst.event_node(event_type) else { return };
         let starts = inst.exec_targets(&node.id, "exec");
         let ev = EventCtx { node: node.id.clone(), pins: binds };
         for t in starts {
-            exec_node(inst, *eid, &t, &ev, scene, message_queue, call_rt, log, 0);
+            exec_node(inst, *eid, &t, &ev, scene, message_queue, call_rt, anim_commands, log, 0);
         }
     }
 
@@ -403,11 +427,11 @@ impl LogicRuntime {
                 let _ = eid;
             }
             for conts in resumed {
-                let Self { graphs, message_queue, call_rt, .. } = self;
+                let Self { graphs, message_queue, call_rt, anim_commands, .. } = self;
                 let (eid, inst) = &mut graphs[gi];
                 let ev = EventCtx::empty();
                 for node_id in conts {
-                    exec_node(inst, *eid, &node_id, &ev, scene, message_queue, call_rt, log, 0);
+                    exec_node(inst, *eid, &node_id, &ev, scene, message_queue, call_rt, anim_commands, log, 0);
                 }
             }
             if self.has_event(gi, "event.on_update") {
@@ -587,6 +611,7 @@ fn exec_node(
     scene: &mut Scene,
     mq: &mut Vec<(String, Value)>,
     call_rt: &mut Option<crate::callruntime::CallRuntime>,
+    anim: &mut Vec<AnimCommand>,
     log: &mut Vec<(String, Value)>,
     depth: usize,
 ) {
@@ -731,6 +756,52 @@ fn exec_node(
             mq.push((name, payload));
             next_exec(inst)
         }
+        // ---- sprite.* / animator.*(F-GAME-4:帧动画命令;宿主动画系统消费)----
+        "sprite.play" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            let clip = as_string(&eval_pin(inst, eid, &nid, "clip", ev, scene, log));
+            let restart = eval_pin(inst, eid, &nid, "restart", ev, scene, log)
+                .as_bool()
+                .unwrap_or(false);
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::Play { entity: id, clip, restart });
+            }
+            next_exec(inst)
+        }
+        "sprite.stop" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::Stop { entity: id });
+            }
+            next_exec(inst)
+        }
+        "sprite.set_frame" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            let index = as_f64(&eval_pin(inst, eid, &nid, "index", ev, scene, log)).max(0.0) as usize;
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::SetFrame { entity: id, index });
+            }
+            next_exec(inst)
+        }
+        "animator.set_bool" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            let param = as_string(&eval_pin(inst, eid, &nid, "param", ev, scene, log));
+            let value = eval_pin(inst, eid, &nid, "value", ev, scene, log)
+                .as_bool()
+                .unwrap_or(false);
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::SetBool { entity: id, param, value });
+            }
+            next_exec(inst)
+        }
+        "animator.set_trigger" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            let param = as_string(&eval_pin(inst, eid, &nid, "param", ev, scene, log));
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::SetTrigger { entity: id, param });
+            }
+            next_exec(inst)
+        }
         "debug.log" => {
             let message = eval_pin(inst, eid, &nid, "message", ev, scene, log);
             log.push((
@@ -786,7 +857,7 @@ fn exec_node(
         _ => Vec::new(), // 事件/纯节点不作为链目标(校验器已挡);到达即终止。
     };
     for n in nexts {
-        exec_node(inst, eid, &n, ev, scene, mq, call_rt, log, depth + 1);
+        exec_node(inst, eid, &n, ev, scene, mq, call_rt, anim, log, depth + 1);
     }
 }
 
@@ -990,6 +1061,61 @@ mod tests {
         assert!((yaw - 90.0).abs() < 0.01, "60 帧后 yaw 须恰为 90°,实际 {yaw}(quat {rot:?})");
         // trigger enter 恰好一次(tween 重启幂等,无重复 enter)。
         assert_eq!(log.iter().filter(|(n, _)| n == "logic.trigger").count(), 1);
+    }
+
+    /// F-GAME-4:sprite.*/animator.* 节点产出 AnimCommand(声明序;实体解析 $self/名称)。
+    #[test]
+    fn sprite_animator_nodes_emit_commands() {
+        let mut scene = Scene::new("t");
+        scene.entities = vec![
+            entity(1, "hero", [0.0; 3], vec![]),
+            entity(2, "zombie", [0.0; 3], vec![]),
+        ];
+        let g = doc(json!({
+            "version": 1, "id": "g_anim", "name": "Anim",
+            "nodes": [
+                { "id": "s", "type": "event.on_start", "pos": [0, 0] },
+                { "id": "p", "type": "sprite.play", "pos": [1, 0],
+                  "inputs": { "entity": { "const": "$self" }, "clip": { "const": "walk" } } },
+                { "id": "b", "type": "animator.set_bool", "pos": [2, 0],
+                  "inputs": { "entity": { "const": "zombie" }, "param": { "const": "isMoving" }, "value": { "const": true } } },
+                { "id": "t", "type": "animator.set_trigger", "pos": [3, 0],
+                  "inputs": { "entity": { "const": 2 }, "param": { "const": "hit" } } },
+                { "id": "f", "type": "sprite.set_frame", "pos": [4, 0],
+                  "inputs": { "entity": { "const": "$self" }, "index": { "const": 3 } } },
+                { "id": "st", "type": "sprite.stop", "pos": [5, 0],
+                  "inputs": { "entity": { "const": "$self" } } }
+            ],
+            "edges": [
+                { "from": ["s", "exec"], "to": ["p", "exec"] },
+                { "from": ["p", "exec"], "to": ["b", "exec"] },
+                { "from": ["b", "exec"], "to": ["t", "exec"] },
+                { "from": ["t", "exec"], "to": ["f", "exec"] },
+                { "from": ["f", "exec"], "to": ["st", "exec"] }
+            ]
+        }));
+        let mut rt = LogicRuntime::new();
+        let mut log = Vec::new();
+        rt.load(1, g, &json!({}), &mut scene, &mut log);
+        let cmds = rt.take_anim_commands();
+        assert_eq!(
+            cmds,
+            vec![
+                // restart 可选 pin 未接 → 缺省 false(幂等语义)。
+                AnimCommand::Play { entity: 1, clip: "walk".into(), restart: false },
+                AnimCommand::SetBool { entity: 2, param: "isMoving".into(), value: true },
+                AnimCommand::SetTrigger { entity: 2, param: "hit".into() },
+                AnimCommand::SetFrame { entity: 1, index: 3 },
+                AnimCommand::Stop { entity: 1 },
+            ],
+            "命令须按声明序且实体解析正确"
+        );
+        // take 后清空;无节点执行则无命令。
+        assert!(rt.take_anim_commands().is_empty());
+        rt.frame(&mut scene, DT, vec![], vec![], &mut log);
+        assert!(rt.take_anim_commands().is_empty(), "无 on_update 挂链不应再产命令");
+        // 校验器接受新节点(必填 pin 齐全)。
+        assert!(names(&log).iter().all(|n| *n != "logic.unsupported"), "新节点不得报 unsupported: {log:?}");
     }
 
     /// timer_start → 到期 on_timer(0.05s @60Hz = 第 3 帧)。

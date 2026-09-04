@@ -1,0 +1,12 @@
+guid: e3002f10-1f1f-4285-b0f4-e918763a0718
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-31T17:50:51Z
+    prompt: single round green pea projectile with slight motion shine, Plants vs Zombies style cartoon game sprite, bold outlines, flat cel shading, side view facing right, full body visible, single frame centered, solid magenta background (#FF00FF), flat uniform, no gradients, no shadows on background
+    seed: 6954995225239344292
+    sourceRefs: []
+build_state: current

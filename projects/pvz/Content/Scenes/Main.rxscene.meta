@@ -1,0 +1,10 @@
+guid: 40a22f6d-19e2-53ca-bcde-f15fc3ccdf07
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险模式 50 关选择面(运行时暂不支持图内切场景,关卡请直接打开 Scenes/Levels/*)

@@ -186,6 +186,22 @@ fn encode_png(px: &[u8], w: u32, h: u32) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// RGBA8 → PNG 字节(公开:agentd 把 viewport_frame 的 rgba8 回读帧转 PNG 回注视觉模型)。
+pub fn encode_png_rgba8(px: &[u8], w: u32, h: u32) -> Result<Vec<u8>> {
+    use image::ImageEncoder;
+    if px.len() != (w as usize) * (h as usize) * 4 {
+        return Err(GenError::new(
+            crate::GEN_BAD_PARAMS,
+            format!("rgba8 字节数不符: {} ≠ {w}x{h}x4", px.len()),
+        ));
+    }
+    let mut buf = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut buf)
+        .write_image(px, w, h, image::ExtendedColorType::Rgba8)
+        .map_err(|e| GenError::new(crate::GEN_BACKEND_ERROR, format!("PNG 编码失败: {e}")))?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

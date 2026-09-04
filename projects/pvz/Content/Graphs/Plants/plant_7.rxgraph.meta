@@ -1,0 +1,10 @@
+guid: 4d9dcfcf-211a-534e-8ba0-76b6a6630301
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 plant_7

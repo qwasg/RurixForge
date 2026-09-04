@@ -5,6 +5,32 @@ use std::path::{Path, PathBuf};
 
 use crate::{AssetError, Result};
 
+/// 游戏维度模式(F-GAME-3:项目选型,forge.toml [project] mode = "2d"|"3d")。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameMode {
+    /// 2D:XY 平面侧视约定(正交相机朝 -Z,重力 -Y,Sprite 精灵)。
+    TwoD,
+    /// 3D:自由三维(缺省,旧项目无 mode 字段时回退此值)。
+    ThreeD,
+}
+
+impl GameMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GameMode::TwoD => "2d",
+            GameMode::ThreeD => "3d",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "2d" => Some(GameMode::TwoD),
+            "3d" => Some(GameMode::ThreeD),
+            _ => None,
+        }
+    }
+}
+
 /// 项目清单(forge.toml)。
 #[derive(Debug, Clone)]
 pub struct ForgeProject {
@@ -15,6 +41,8 @@ pub struct ForgeProject {
     pub entry_scene: String,
     pub content_dir: String,
     pub scripts_dir: String,
+    /// 游戏维度模式(缺省 ThreeD)。
+    pub mode: GameMode,
 }
 
 impl ForgeProject {
@@ -51,6 +79,19 @@ impl ForgeProject {
                 .and_then(|v| v.as_str())
                 .unwrap_or("Content/Scenes/Main.rxscene")
                 .into(),
+            mode: proj
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .map(|s| {
+                    GameMode::parse(s).ok_or_else(|| {
+                        AssetError::new(
+                            "PARSE_ERR",
+                            format!("forge.toml [project] mode 须为 \"2d\"|\"3d\",实际 {s:?}"),
+                        )
+                    })
+                })
+                .transpose()?
+                .unwrap_or(GameMode::ThreeD),
             content_dir: dirs
                 .and_then(|d| d.get("content"))
                 .and_then(|v| v.as_str())
@@ -74,7 +115,28 @@ impl ForgeProject {
             entry_scene: "Content/Scenes/Main.rxscene".into(),
             content_dir: "Content".into(),
             scripts_dir: "Content/Scripts".into(),
+            mode: GameMode::ThreeD,
         }
+    }
+
+    /// 序列化为 forge.toml 文本(项目脚手架/设置回写用;[project] + [dirs] 两表)。
+    pub fn to_toml(&self) -> String {
+        format!(
+            "[project]\nname = {:?}\nengine-version = {:?}\nrurix-ref = {:?}\nentry-scene = {:?}\nmode = {:?}\n\n[dirs]\ncontent = {:?}\nscripts = {:?}\n",
+            self.name,
+            self.engine_version,
+            self.rurix_ref,
+            self.entry_scene,
+            self.mode.as_str(),
+            self.content_dir,
+            self.scripts_dir,
+        )
+    }
+
+    /// 写 forge.toml 到项目根(已存在则覆盖——调用方负责确认时机)。
+    pub fn save_manifest(&self) -> Result<()> {
+        std::fs::write(self.root.join("forge.toml"), self.to_toml())?;
+        Ok(())
     }
 
     pub fn content_root(&self) -> PathBuf {
@@ -101,7 +163,7 @@ impl ForgeProject {
         let content = self.content_root();
         let cache = self.cache_root();
         let tmp = self.tmp_root();
-        for sub in ["Meshes", "Textures", "Materials", "Prefabs", "Scenes", "Scripts", "Audio"] {
+        for sub in ["Meshes", "Textures", "Materials", "Prefabs", "Scenes", "Scripts", "Audio", "Sprites"] {
             std::fs::create_dir_all(content.join(sub))?;
         }
         std::fs::create_dir_all(cache.join("rxmesh"))?;
@@ -156,6 +218,44 @@ mod tests {
         assert!(p.resolve_content_path("Textures/a.png").is_ok());
         assert!(p.resolve_content_path("../secret.txt").is_err());
         assert!(p.resolve_content_path("C:/Windows/notepad.exe").is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn game_mode_parse_and_default() {
+        assert_eq!(GameMode::parse("2d"), Some(GameMode::TwoD));
+        assert_eq!(GameMode::parse("3d"), Some(GameMode::ThreeD));
+        assert_eq!(GameMode::parse("2D"), None);
+        assert_eq!(GameMode::parse(""), None);
+        // 无 forge.toml → 缺省 3d。
+        let p = ForgeProject::with_defaults(PathBuf::from("x"));
+        assert_eq!(p.mode, GameMode::ThreeD);
+    }
+
+    #[test]
+    fn manifest_roundtrip_with_mode() {
+        let dir = std::env::temp_dir().join(format!(
+            "assetd-mode-{}-{}",
+            std::process::id(),
+            forge_util::timeutil::unix_millis()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        // 2d 模式落盘 → 重载回读一致。
+        let mut p = ForgeProject::with_defaults(dir.clone());
+        p.name = "demo2d".into();
+        p.mode = GameMode::TwoD;
+        p.save_manifest().unwrap();
+        let text = std::fs::read_to_string(dir.join("forge.toml")).unwrap();
+        assert!(text.contains("mode = \"2d\""), "forge.toml 须含 mode:{text}");
+        let loaded = ForgeProject::load(&dir).unwrap();
+        assert_eq!(loaded.mode, GameMode::TwoD);
+        assert_eq!(loaded.name, "demo2d");
+        // 非法 mode 如实报错。
+        std::fs::write(dir.join("forge.toml"), "[project]\nmode = \"5d\"\n").unwrap();
+        assert!(ForgeProject::load(&dir).is_err());
+        // 无 mode 字段的旧 forge.toml → 3d。
+        std::fs::write(dir.join("forge.toml"), "[project]\nname = \"legacy\"\n").unwrap();
+        assert_eq!(ForgeProject::load(&dir).unwrap().mode, GameMode::ThreeD);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -1,0 +1,13 @@
+guid: e836943c-4051-4618-a0ca-95024e9bdd30
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:59:52Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original game UI icon atlas, 4x4 equal grid: wooden seed card, metal shovel, yellow sun counter, green wave meter, play button, pause button, lock, trophy, coin, watering can, almanac book, selection glow, conveyor belt, warning flag, win ribbon, game-over stone tablet. Bold cartoon icons, dark outlines, #FF00FF background, no text or borders.'
+    seed: 200960
+    sourceRefs: []
+build_state: current

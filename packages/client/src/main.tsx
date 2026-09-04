@@ -1,7 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-// F7 wave.3:字体栈改系统栈(HarmonyOS Sans SC / Microsoft YaHei UI 等,见 theme.css),
-// 不再引 DM Sans webfont;JetBrains Mono Variable 包导入保留(代码字体)。
+// 净化波:Inter Variable 包接管西文/数字(中文仍系统栈,见 theme.css --font-sans);
+// JetBrains Mono Variable 包导入保留(代码字体)。
+import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
 import './styles/theme.css';
 import './styles/index.css';

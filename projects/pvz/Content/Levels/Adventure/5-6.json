@@ -1,0 +1,517 @@
+{
+  "version": 1,
+  "levelId": "5-6",
+  "levelCode": 506,
+  "stage": "roof",
+  "rows": 5,
+  "cols": 9,
+  "sourceWaves": 20,
+  "flags": 2,
+  "startingSun": 50,
+  "zombieIds": [
+    "zombie",
+    "catapult_zombie",
+    "conehead_zombie"
+  ],
+  "reward": "umbrella_leaf",
+  "specialRule": null,
+  "availablePlants": [
+    "peashooter",
+    "sunflower",
+    "cherry_bomb",
+    "wall_nut",
+    "potato_mine",
+    "snow_pea",
+    "chomper",
+    "repeater",
+    "puff_shroom",
+    "sun_shroom",
+    "fume_shroom",
+    "grave_buster",
+    "hypno_shroom",
+    "scaredy_shroom",
+    "ice_shroom",
+    "doom_shroom",
+    "lily_pad",
+    "squash",
+    "threepeater",
+    "tangle_kelp",
+    "jalapeno",
+    "spikeweed",
+    "torchwood",
+    "tall_nut",
+    "sea_shroom",
+    "plantern",
+    "cactus",
+    "blover",
+    "split_pea",
+    "starfruit",
+    "pumpkin",
+    "magnet_shroom",
+    "cabbage_pult",
+    "kernel_pult",
+    "coffee_bean",
+    "garlic",
+    "gatling_pea",
+    "twin_sunflower",
+    "gloom_shroom",
+    "cattail",
+    "winter_melon",
+    "gold_magnet",
+    "spikerock",
+    "cob_cannon",
+    "imitater",
+    "flower_pot"
+  ],
+  "recommendedLoadout": [
+    "flower_pot",
+    "sunflower",
+    "cabbage_pult",
+    "kernel_pult",
+    "garlic",
+    "coffee_bean",
+    "peashooter",
+    "cherry_bomb"
+  ],
+  "runtimeWaveSchedule": [
+    {
+      "index": 1,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 1,
+          "delaySec": 0.0
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 2,
+          "delaySec": 0.0
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 3,
+          "delaySec": 0.0
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 4,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 5,
+          "delaySec": 0.4
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 5,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 1,
+          "delaySec": 0.4
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 1,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 2,
+          "delaySec": 0.4
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 2,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 3,
+          "delaySec": 0.4
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 3,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 4,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 5,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 4,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 5,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 1,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "flag": true,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 5,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 1,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 2,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 1,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 2,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 3,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 2,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 3,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 4,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 3,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 4,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 5,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 4,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 5,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 1,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 5,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 1,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 2,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 1,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 2,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 3,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 2,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 3,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 4,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 3,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 4,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "zombie",
+          "zombieCode": 1,
+          "row": 5,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "flag": false,
+      "members": [
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 4,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 5,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "catapult_zombie",
+          "zombieCode": 23,
+          "row": 1,
+          "delaySec": 0.8
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "flag": true,
+      "members": [
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 5,
+          "delaySec": 0.0
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 1,
+          "delaySec": 0.4
+        },
+        {
+          "zombieId": "conehead_zombie",
+          "zombieCode": 3,
+          "row": 2,
+          "delaySec": 0.8
+        }
+      ]
+    }
+  ],
+  "waveScheduleProvenance": {
+    "source": "docs/data/levels.json",
+    "kind": "synthetic-deterministic-runtime-schedule",
+    "note": "原版逐只刷新时间未进入事实源；保留原波数/旗帜/出怪类型，成员顺序由生成器确定。"
+  },
+  "scene": "Content/Scenes/Levels/Level_5_6.rxscene",
+  "controllerGraph": "Content/Graphs/Levels/level_5_6.rxgraph",
+  "playableRows": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "runtimeNotes": [
+    "事实源波次数/旗帜完整保留；对象池运行时每波按预算生成1..3只(屏外池子不占渲染槽)。",
+    "所有植物/僵尸素材与数值可索引；复杂特殊机制由 Rules 适配配置驱动。",
+    "交互:点种子卡选植物 → 点格子种植(已占格弹回退款);点格子收集其中阳光;引擎指针输入契约 click_x/click_y/click。"
+  ]
+}

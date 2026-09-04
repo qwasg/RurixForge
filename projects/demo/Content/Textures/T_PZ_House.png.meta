@@ -1,0 +1,12 @@
+guid: 427a5fd6-532b-4290-8555-5c1d9a17e4c8
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:06:54Z
+    prompt: cozy cartoon suburban house facade with red gable roof, white walls, front door and two windows, daytime, front-side view, isolated on plain solid magenta background, 2D game asset, crisp edges, no text
+    seed: 15073526939076800181
+    sourceRefs: []
+build_state: current

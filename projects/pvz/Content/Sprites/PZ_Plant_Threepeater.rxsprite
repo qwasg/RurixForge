@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "texture": "36690e76-60f6-5e29-9c16-f578380c7800",
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frames": {
+    "frame_0": {
+      "bbox": [
+        0,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_1": {
+      "bbox": [
+        256,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_2": {
+      "bbox": [
+        0,
+        256,
+        256,
+        256
+      ]
+    },
+    "frame_3": {
+      "bbox": [
+        256,
+        256,
+        256,
+        256
+      ]
+    }
+  },
+  "clips": {
+    "idle": {
+      "frames": [
+        "frame_0",
+        "frame_1"
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "attack": {
+      "frames": [
+        "frame_2",
+        "frame_3"
+      ],
+      "fps": 8,
+      "loop": false,
+      "onFinish": "first"
+    },
+    "special": {
+      "frames": [
+        "frame_2",
+        "frame_3"
+      ],
+      "fps": 7,
+      "loop": false,
+      "onFinish": "hold"
+    }
+  }
+}

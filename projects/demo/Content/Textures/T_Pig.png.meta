@@ -1,0 +1,12 @@
+guid: bfa55e3e-8194-4a50-966d-3264dbea78b6
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:40:36Z
+    prompt: Angry Birds style green pig character, round cartoon game sprite, green skin, big snout, ears, smug grin, isolated on plain solid magenta background, 2D game asset, crisp edges, no text
+    seed: 9452599173273362099
+    sourceRefs: []
+build_state: current

@@ -1,0 +1,561 @@
+{
+  "version": 1,
+  "id": "g_pz_mvp_zombie",
+  "name": "PZ_MVP_Zombie",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "start",
+      "type": "event.on_start",
+      "pos": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "init_hp",
+      "type": "var.set",
+      "pos": [
+        1.0,
+        0.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "hp"
+        },
+        "value": {
+          "const": 3.0
+        }
+      }
+    },
+    {
+      "id": "init_active",
+      "type": "var.set",
+      "pos": [
+        2.0,
+        0.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "active"
+        },
+        "value": {
+          "const": true
+        }
+      }
+    },
+    {
+      "id": "log_enter",
+      "type": "debug.log",
+      "pos": [
+        3.0,
+        0.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "PZ_ZOMBIE_ENTER_ROW3_HP3"
+        }
+      }
+    },
+    {
+      "id": "update",
+      "type": "event.on_update",
+      "pos": [
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "id": "get_active_update",
+      "type": "var.get",
+      "pos": [
+        1.0,
+        4.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "active"
+        }
+      }
+    },
+    {
+      "id": "br_active_update",
+      "type": "flow.branch",
+      "pos": [
+        1.0,
+        3.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "get_active_update",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "move_left",
+      "type": "transform.move_tween",
+      "pos": [
+        2.0,
+        3.0
+      ],
+      "inputs": {
+        "duration": {
+          "const": 0.0
+        },
+        "offset": {
+          "const": [
+            -0.025,
+            0.0,
+            0.0
+          ]
+        },
+        "target": {
+          "const": "$self"
+        }
+      }
+    },
+    {
+      "id": "trigger",
+      "type": "event.on_trigger_enter",
+      "pos": [
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "id": "other_is_pea",
+      "type": "entity.has_tag",
+      "pos": [
+        1.0,
+        8.0
+      ],
+      "inputs": {
+        "entity": {
+          "node": "trigger",
+          "pin": "otherEntity"
+        },
+        "tag": {
+          "const": "pea"
+        }
+      }
+    },
+    {
+      "id": "br_other_pea",
+      "type": "flow.branch",
+      "pos": [
+        1.0,
+        7.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "other_is_pea",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "get_active_hit",
+      "type": "var.get",
+      "pos": [
+        2.0,
+        8.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "active"
+        }
+      }
+    },
+    {
+      "id": "br_active_hit",
+      "type": "flow.branch",
+      "pos": [
+        2.0,
+        7.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "get_active_hit",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "hide_pea",
+      "type": "entity.set_transform",
+      "pos": [
+        3.0,
+        7.0
+      ],
+      "inputs": {
+        "entity": {
+          "node": "trigger",
+          "pin": "otherEntity"
+        },
+        "transform": {
+          "const": {
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": [
+              0.28,
+              0.28,
+              0.28
+            ],
+            "translation": [
+              0.0,
+              -50.0,
+              0.0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "damage_hp",
+      "type": "var.add",
+      "pos": [
+        4.0,
+        7.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "hp"
+        },
+        "value": {
+          "const": -1.0
+        }
+      }
+    },
+    {
+      "id": "get_hp",
+      "type": "var.get",
+      "pos": [
+        5.0,
+        8.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "hp"
+        }
+      }
+    },
+    {
+      "id": "hp_dead",
+      "type": "call.call_function",
+      "pos": [
+        5.0,
+        7.0
+      ],
+      "inputs": {
+        "args": {
+          "node": "get_hp",
+          "pin": "out"
+        },
+        "fn": {
+          "const": "hp_dead"
+        },
+        "module": {
+          "const": "Content/Scripts/pz_mvp_rules.rx"
+        }
+      }
+    },
+    {
+      "id": "br_dead",
+      "type": "flow.branch",
+      "pos": [
+        6.0,
+        7.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "hp_dead",
+          "pin": "result"
+        }
+      }
+    },
+    {
+      "id": "log_hit",
+      "type": "debug.log",
+      "pos": [
+        7.0,
+        8.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "PZ_PEA_HIT_ZOMBIE_HP_MINUS1"
+        }
+      }
+    },
+    {
+      "id": "set_inactive",
+      "type": "var.set",
+      "pos": [
+        7.0,
+        6.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "active"
+        },
+        "value": {
+          "const": false
+        }
+      }
+    },
+    {
+      "id": "hide_zombie",
+      "type": "entity.set_transform",
+      "pos": [
+        8.0,
+        6.0
+      ],
+      "inputs": {
+        "entity": {
+          "const": "$self"
+        },
+        "transform": {
+          "const": {
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": [
+              0.8,
+              1.35,
+              0.3
+            ],
+            "translation": [
+              12.0,
+              -50.0,
+              0.0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "tag_dead",
+      "type": "entity.add_tag",
+      "pos": [
+        9.0,
+        6.0
+      ],
+      "inputs": {
+        "entity": {
+          "const": "$self"
+        },
+        "tag": {
+          "const": "dead"
+        }
+      }
+    },
+    {
+      "id": "send_kill",
+      "type": "call.send_message",
+      "pos": [
+        10.0,
+        6.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "pz_ev"
+        },
+        "payload": {
+          "const": 200.0
+        }
+      }
+    },
+    {
+      "id": "log_killed",
+      "type": "debug.log",
+      "pos": [
+        11.0,
+        6.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "PZ_ZOMBIE_KILLED"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "start",
+        "exec"
+      ],
+      "to": [
+        "init_hp",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "init_hp",
+        "exec"
+      ],
+      "to": [
+        "init_active",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "init_active",
+        "exec"
+      ],
+      "to": [
+        "log_enter",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "update",
+        "exec"
+      ],
+      "to": [
+        "br_active_update",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_active_update",
+        "then"
+      ],
+      "to": [
+        "move_left",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "trigger",
+        "exec"
+      ],
+      "to": [
+        "br_other_pea",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_other_pea",
+        "then"
+      ],
+      "to": [
+        "br_active_hit",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_active_hit",
+        "then"
+      ],
+      "to": [
+        "hide_pea",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "hide_pea",
+        "exec"
+      ],
+      "to": [
+        "damage_hp",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "damage_hp",
+        "exec"
+      ],
+      "to": [
+        "hp_dead",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "hp_dead",
+        "exec"
+      ],
+      "to": [
+        "br_dead",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_dead",
+        "else"
+      ],
+      "to": [
+        "log_hit",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_dead",
+        "then"
+      ],
+      "to": [
+        "set_inactive",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "set_inactive",
+        "exec"
+      ],
+      "to": [
+        "hide_zombie",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "hide_zombie",
+        "exec"
+      ],
+      "to": [
+        "tag_dead",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "tag_dead",
+        "exec"
+      ],
+      "to": [
+        "send_kill",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "send_kill",
+        "exec"
+      ],
+      "to": [
+        "log_killed",
+        "exec"
+      ]
+    }
+  ]
+}

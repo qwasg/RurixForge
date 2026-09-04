@@ -1,0 +1,10 @@
+guid: a428e443-0053-5b36-96f5-e4779951d4d1
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_bowling

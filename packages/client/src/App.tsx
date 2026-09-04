@@ -23,6 +23,8 @@ export default function App() {
       openEditor: () => useWorkbenchStore.getState().openEditor(),
       openTab: (k: BuiltinTabKind) => useWorkbenchStore.getState().openTab(k),
       openFile: (path: string) => useWorkbenchStore.getState().openFile(path),
+      // D-035:计划页按路径开(plan 已不是单例内建 tab)。
+      openPlan: (path: string) => useWorkbenchStore.getState().openPlan(path),
       toggleBottom: () => useWorkbenchStore.getState().toggleBottom(),
       openSettings: (page?: SettingsPage) => {
         if (page) useSettingsStore.getState().setPage(page);

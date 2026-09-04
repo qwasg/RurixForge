@@ -1,0 +1,88 @@
+{
+  "day": {
+    "id": "day",
+    "name_zh": "白天",
+    "rows": 5,
+    "cols": 9,
+    "sky_sun": {
+      "enabled": true,
+      "interval_sec": 9,
+      "amount": 25
+    },
+    "graves": "无",
+    "pool_rows": [],
+    "fog_columns": 0,
+    "roof_slope_cols": 0,
+    "lawnmower": "每行左侧一辆草坪推车，触发后清除整行"
+  },
+  "night": {
+    "id": "night",
+    "name_zh": "黑夜",
+    "rows": 5,
+    "cols": 9,
+    "sky_sun": {
+      "enabled": false,
+      "interval_sec": 0,
+      "amount": 0
+    },
+    "graves": "随机生成墓碑，可产僵尸或阻挡种植；墓碑吞噬者清除",
+    "pool_rows": [],
+    "fog_columns": 0,
+    "roof_slope_cols": 0,
+    "lawnmower": "每行左侧一辆草坪推车，触发后清除整行"
+  },
+  "pool": {
+    "id": "pool",
+    "name_zh": "泳池",
+    "rows": 6,
+    "cols": 9,
+    "sky_sun": {
+      "enabled": true,
+      "interval_sec": 9,
+      "amount": 25
+    },
+    "graves": "无",
+    "pool_rows": [
+      2,
+      3
+    ],
+    "fog_columns": 0,
+    "roof_slope_cols": 0,
+    "lawnmower": "陆地草坪推车；水路使用泳池清洁车，触发后清除整行"
+  },
+  "fog": {
+    "id": "fog",
+    "name_zh": "浓雾",
+    "rows": 6,
+    "cols": 9,
+    "sky_sun": {
+      "enabled": false,
+      "interval_sec": 0,
+      "amount": 0
+    },
+    "graves": "随机墓碑规则同黑夜，浓雾遮挡右侧区域",
+    "pool_rows": [
+      2,
+      3
+    ],
+    "fog_columns": 4,
+    "roof_slope_cols": 0,
+    "lawnmower": "陆地草坪推车与水路清洁车分别覆盖对应行"
+  },
+  "roof": {
+    "id": "roof",
+    "name_zh": "屋顶",
+    "rows": 5,
+    "cols": 9,
+    "sky_sun": {
+      "enabled": true,
+      "interval_sec": 9,
+      "amount": 25
+    },
+    "graves": "无",
+    "pool_rows": [],
+    "fog_columns": 0,
+    "roof_slope_cols": 5,
+    "lawnmower": "每行左侧一辆草坪推车；屋顶斜坡影响平射，投手可越过，需花盆种植"
+  }
+}

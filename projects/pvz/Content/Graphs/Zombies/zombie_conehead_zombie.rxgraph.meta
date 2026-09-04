@@ -1,0 +1,10 @@
+guid: 9588a102-f98b-52df-918d-f63bfe835f74
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_conehead_zombie

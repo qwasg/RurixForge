@@ -1,0 +1,2342 @@
+{
+  "entities": [
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 1,
+      "name": "PZ_Cell_R1C1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -6.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 2,
+      "name": "PZ_Cell_R1C2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -4.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 3,
+      "name": "PZ_Cell_R1C3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -2.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 4,
+      "name": "PZ_Cell_R1C4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 5,
+      "name": "PZ_Cell_R1C5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          2.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 6,
+      "name": "PZ_Cell_R1C6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          4.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 7,
+      "name": "PZ_Cell_R1C7",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          6.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 8,
+      "name": "PZ_Cell_R1C8",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          8.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 9,
+      "name": "PZ_Cell_R1C9",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          10.0,
+          0.0,
+          4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 10,
+      "name": "PZ_Cell_R2C1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -6.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 11,
+      "name": "PZ_Cell_R2C2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -4.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 12,
+      "name": "PZ_Cell_R2C3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -2.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 13,
+      "name": "PZ_Cell_R2C4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 14,
+      "name": "PZ_Cell_R2C5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          2.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 15,
+      "name": "PZ_Cell_R2C6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          4.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 16,
+      "name": "PZ_Cell_R2C7",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          6.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 17,
+      "name": "PZ_Cell_R2C8",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          8.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 18,
+      "name": "PZ_Cell_R2C9",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          10.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 19,
+      "name": "PZ_Cell_R3C1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -6.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 20,
+      "name": "PZ_Cell_R3C2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -4.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 21,
+      "name": "PZ_Cell_R3C3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -2.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 22,
+      "name": "PZ_Cell_R3C4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 23,
+      "name": "PZ_Cell_R3C5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          2.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 24,
+      "name": "PZ_Cell_R3C6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          4.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 25,
+      "name": "PZ_Cell_R3C7",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          6.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 26,
+      "name": "PZ_Cell_R3C8",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          8.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 27,
+      "name": "PZ_Cell_R3C9",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          10.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 28,
+      "name": "PZ_Cell_R4C1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -6.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 29,
+      "name": "PZ_Cell_R4C2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -4.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 30,
+      "name": "PZ_Cell_R4C3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -2.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 31,
+      "name": "PZ_Cell_R4C4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 32,
+      "name": "PZ_Cell_R4C5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          2.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 33,
+      "name": "PZ_Cell_R4C6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          4.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 34,
+      "name": "PZ_Cell_R4C7",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          6.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 35,
+      "name": "PZ_Cell_R4C8",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          8.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 36,
+      "name": "PZ_Cell_R4C9",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          10.0,
+          0.0,
+          -2.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 37,
+      "name": "PZ_Cell_R5C1",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -6.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 38,
+      "name": "PZ_Cell_R5C2",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -4.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 39,
+      "name": "PZ_Cell_R5C3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          -2.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 40,
+      "name": "PZ_Cell_R5C4",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 41,
+      "name": "PZ_Cell_R5C5",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          2.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 42,
+      "name": "PZ_Cell_R5C6",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          4.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 43,
+      "name": "PZ_Cell_R5C7",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          6.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 44,
+      "name": "PZ_Cell_R5C8",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          8.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0981e64b-78c2-413d-bacc-58a290f6ef03",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 45,
+      "name": "PZ_Cell_R5C9",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.9200000166893005,
+          0.11999999731779099,
+          0.9200000166893005
+        ],
+        "translation": [
+          10.0,
+          0.0,
+          -4.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "0f414026-5a8c-4b46-be33-74c64f177e6b",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 46,
+      "name": "PZ_House_Left",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          2.5,
+          3.0,
+          5.800000190734863
+        ],
+        "translation": [
+          -11.0,
+          2.5,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "cbacbc91-e7c9-4d45-8958-548108d245dd",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "lose_line"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "interaction"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              0.35,
+              2.0,
+              5.8
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_mvp_lose_line.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 47,
+      "name": "PZ_LoseLine_X-8",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.07999999821186066,
+          0.1599999964237213,
+          5.800000190734863
+        ],
+        "translation": [
+          -8.0,
+          0.18000000715255737,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "6019f453-7e95-4ff2-af3a-46209cdc09f5",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie_entry"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 48,
+      "name": "PZ_ZombieEntry_X12",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.07999999821186066,
+          0.1599999964237213,
+          5.800000190734863
+        ],
+        "translation": [
+          12.0,
+          0.18000000715255737,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pz_controller"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "interaction"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_mvp_controller.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 49,
+      "name": "PZ_MVP_Controller",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          -50.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "c2214f7c-ceb6-4fd1-a5a3-311e369d5db9",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "peashooter_mvp"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "kind": "kinematic",
+            "mass": 1
+          },
+          "type": "RigidBody"
+        }
+      ],
+      "id": 50,
+      "name": "PZ_MVP_Peashooter_R3C3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.75,
+          1.149999976158142,
+          0.25
+        ],
+        "translation": [
+          -2.0,
+          -50.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "6af1a903-87bc-4327-b86a-ee122dad8653",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "pea"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "kind": "kinematic",
+            "mass": 1
+          },
+          "type": "RigidBody"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              0.35,
+              0.35,
+              0.35
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        }
+      ],
+      "id": 51,
+      "name": "PZ_MVP_Pea_01",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.2800000011920929,
+          0.2800000011920929,
+          0.2800000011920929
+        ],
+        "translation": [
+          -1.0,
+          -50.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "503280ad-b92e-4827-8be7-ccb2c663146d",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "role"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "kind": "kinematic",
+            "mass": 1
+          },
+          "type": "RigidBody"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "extents": [
+              0.85,
+              1.45,
+              0.65
+            ],
+            "kind": "box"
+          },
+          "type": "Trigger"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/pz_mvp_zombie.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 52,
+      "name": "PZ_MVP_Zombie_R3",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          0.800000011920929,
+          1.350000023841858,
+          0.30000001192092896
+        ],
+        "translation": [
+          12.0,
+          1.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "material": "6dd4fa36-82ae-49a0-b416-652c2ea1a503",
+            "mesh": "cube"
+          },
+          "type": "MeshRenderer"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "sun_counter"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "interaction"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "kind": "kinematic",
+            "mass": 1
+          },
+          "type": "RigidBody"
+        }
+      ],
+      "id": 53,
+      "name": "PZ_SunCounter_Visual",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.100000023841858,
+          0.3499999940395355,
+          0.3499999940395355
+        ],
+        "translation": [
+          -6.0,
+          0.6000000238418579,
+          6.199999809265137
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "castShadow": true,
+            "color": [
+              1,
+              0.95,
+              0.82
+            ],
+            "intensity": 3,
+            "kind": "directional"
+          },
+          "type": "Light"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 54,
+      "name": "PZ_KeyLight",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          15.0,
+          5.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "castShadow": false,
+            "color": [
+              0.55,
+              0.72,
+              1
+            ],
+            "intensity": 1.2,
+            "kind": "directional"
+          },
+          "type": "Light"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 55,
+      "name": "PZ_FillLight",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          -6.0,
+          8.0,
+          -6.0
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "far": 100.0,
+            "fov": 40.0,
+            "near": 0.1,
+            "orthoSize": 7.0,
+            "projection": "orthographic"
+          },
+          "type": "Camera"
+        }
+      ],
+      "id": 56,
+      "name": "PZ_Camera",
+      "transform": {
+        "rotation": [
+          -0.5,
+          0.0,
+          0.0,
+          0.8660254
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          2.0,
+          20.0,
+          10.0
+        ]
+      }
+    }
+  ],
+  "mode": "2d",
+  "name": "PZ_MVP_Phase1",
+  "next_id": 57
+}

@@ -1,0 +1,10 @@
+guid: 0c336b19-a4bb-561b-96dc-572b6b3aa1a9
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_pogo_zombie

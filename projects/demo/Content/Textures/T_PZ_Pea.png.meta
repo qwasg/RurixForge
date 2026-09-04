@@ -1,0 +1,12 @@
+guid: fdb2ae15-906e-435f-81b5-4097b77f45bd
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:07:52Z
+    prompt: single round green pea projectile sphere, glossy cartoon style with small highlight, isolated on plain solid magenta background, 2D game asset sprite, crisp edges, no text
+    seed: 12508579460789656493
+    sourceRefs: []
+build_state: current

@@ -1,0 +1,10 @@
+guid: 4ce92699-35e8-5e06-a1eb-56ffb28db151
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-8(day,10 波,奖励 repeater);在 IDE Assets 面板双击即可装进视口试玩

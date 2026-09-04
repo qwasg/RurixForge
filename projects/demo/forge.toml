@@ -1,0 +1,12 @@
+[project]
+name = "demo"
+engine-version = "0.1.0"
+rurix-ref = "v1.0.1-dist"
+entry-scene = "Content/Scenes/Main.rxscene"
+# F-GAME-3:项目游戏模式(2d = XY 平面侧视约定;正交相机 + Sprite 精灵 + 场景重力)。
+# 单场景可经 .rxscene 顶层 mode 字段覆盖(如 maze/journey 保持 3d)。
+mode = "2d"
+
+[dirs]
+content = "Content"
+scripts = "Content/Scripts"

@@ -1,0 +1,10 @@
+guid: 32e668ea-75f0-50e5-891b-32273a0577c5
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/SourceAtlases/PZ_PlantGroup_02.png
+    pipeline: ai-atlas-grid-crop
+build_state: current

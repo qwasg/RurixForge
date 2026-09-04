@@ -7,19 +7,23 @@ import { create } from 'zustand';
  */
 
 /**
- * F7 wave.5:内建 tab 种类(editor=游戏编辑器;plan/todo/proposals=本仓语义适配页)。
+ * F7 wave.5:内建 tab 种类(editor=游戏编辑器;todo/proposals=本仓语义适配页)。
  * F11(D-025):store=资产商店、skills=Skill 管理——两个大类不新增常驻面板(I-3 冻结),
  * 沿用既有 workbench tab 承载,入口在 Sidebar 导航按钮。
+ * F-GAME-4:sprite-editor=精灵编辑器(.rxsprite;入口在资产面板右键/双击,
+ * 「当前编辑哪个 sprite」在 spriteStore,tab 本身仍是无 payload 单例)。
+ * D-035:plan 退出单例集——计划是工作区文件(.forge/plans/<名>.plan.md),按 path 多开,
+ * 与 file tab 同形态(dirty 拦截/草稿暂存全套复用)。
  */
-export type BuiltinTabKind = 'editor' | 'plan' | 'todo' | 'proposals' | 'store' | 'skills';
-/** 工作区 tab:内建页 + 工作区文件编辑器(F9 起可编辑,原只读预览;Cursor 式,按 path 多开)。 */
-export type TabKind = BuiltinTabKind | 'file';
+export type BuiltinTabKind = 'editor' | 'todo' | 'proposals' | 'store' | 'skills' | 'sprite-editor';
+/** 工作区 tab:内建页 + 按路径多开的文件编辑器与计划页(Cursor 式)。 */
+export type TabKind = BuiltinTabKind | 'file' | 'plan';
 
 export interface WorkbenchTab {
   id: string;
   kind: TabKind;
   title: string;
-  /** kind=file 时为工作区相对路径。 */
+  /** kind=file|plan 时为工作区相对路径。 */
   path?: string;
   /** F9:未保存改动标记(文件编辑器写入;tabbar 圆点 + 关闭拦截消费)。 */
   dirty?: boolean;
@@ -27,11 +31,11 @@ export interface WorkbenchTab {
 
 /** 内建 tab 元信息(id=kind,单例)。 */
 export const BUILTIN_TABS: Record<Exclude<BuiltinTabKind, 'editor'>, { title: string }> = {
-  plan: { title: 'Plan' },
   todo: { title: 'Todo' },
   proposals: { title: '提案' },
   store: { title: '资产商店' },
   skills: { title: 'Skill 管理' },
+  'sprite-editor': { title: '精灵编辑器' },
 };
 
 /** 文件预览 tab id(同一 path 单例)。 */
@@ -42,6 +46,17 @@ export function fileTabId(path: string): string {
 export function fileTabTitle(path: string): string {
   const name = path.replace(/\\/g, '/').split('/').pop();
   return name && name !== '' ? name : path;
+}
+
+/** D-035:计划 tab id(同一计划文件单例;与 file tab 分开,同一文件两种视图互不顶掉)。 */
+export function planTabId(path: string): string {
+  return `plan:${path}`;
+}
+
+/** 计划 tab 标题:去掉目录与 `.plan.md` 后缀(真名由 front matter 给,加载后回填)。 */
+export function planTabTitle(path: string): string {
+  const name = fileTabTitle(path);
+  return name.replace(/\.plan\.md$/i, '') || 'Plan';
 }
 
 export type PaneKind = 'sessions' | 'chat' | 'inspector';
@@ -189,6 +204,10 @@ interface WorkbenchState {
   openTab: (kind: BuiltinTabKind) => void;
   /** 工作区文件 → 个人工作区 tab(已开则激活)。 */
   openFile: (path: string) => void;
+  /** D-035:计划文件 → Plan tab(已开则激活;plan.created/updated 事件与命令面板共用)。 */
+  openPlan: (path: string) => void;
+  /** tab 标题回填(计划页加载出 front matter 真名后改 tabbar 文案)。 */
+  setTabTitle: (id: string, title: string) => void;
   /** 关闭 tab(F9:dirty tab 先拦截 → 激活 + 挂 pendingCloseTabId,不直接关)。 */
   closeTab: (id: string) => void;
   /** 无条件关闭(dirty 确认后/干净 tab;原 closeTab 语义)。 */
@@ -297,6 +316,31 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
       } else {
         set({ activeTabId: id, rightTab: 'files', homeDismissed: false });
       }
+    },
+
+    openPlan: (path) => {
+      const id = planTabId(path);
+      const { tabs } = get();
+      if (!tabs.some((t) => t.id === id)) {
+        set({
+          tabs: [...tabs, { id, kind: 'plan', title: planTabTitle(path), path }],
+          activeTabId: id,
+          rightTab: 'files',
+          homeDismissed: false,
+        });
+      } else {
+        set({ activeTabId: id, rightTab: 'files', homeDismissed: false });
+      }
+    },
+
+    setTabTitle: (id, title) => {
+      const t = title.trim();
+      if (t === '') return;
+      set((st) =>
+        st.tabs.some((x) => x.id === id && x.title !== t)
+          ? { tabs: st.tabs.map((x) => (x.id === id ? { ...x, title: t } : x)) }
+          : {},
+      );
     },
 
     closeTab: (id) => {

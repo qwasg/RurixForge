@@ -461,12 +461,14 @@ mod tests {
                 name: "A".into(),
                 workspace_root: PathBuf::from("."),
                 project_root: PathBuf::from("."),
+                game_mode: assetd::project::GameMode::ThreeD,
             },
             readonly: vec![ScopeProject {
                 workspace_id: Some("ws_b".into()),
                 name: "B".into(),
                 workspace_root: PathBuf::from("."),
                 project_root: PathBuf::from("."),
+                game_mode: assetd::project::GameMode::ThreeD,
             }],
             include_library: true,
         }
@@ -537,12 +539,14 @@ mod tests {
                 name: "A".into(),
                 workspace_root: dir.join("a"),
                 project_root: dir.join("a"),
+                game_mode: assetd::project::GameMode::ThreeD,
             },
             readonly: vec![ScopeProject {
                 workspace_id: Some(b.id.clone()),
                 name: "B".into(),
                 workspace_root: dir.join("b"),
                 project_root: dir.join("b"),
+                game_mode: assetd::project::GameMode::ThreeD,
             }],
             include_library: true,
         };

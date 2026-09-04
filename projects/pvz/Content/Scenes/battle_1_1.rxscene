@@ -1,0 +1,2881 @@
+{
+ "entities": [
+  {
+   "id": 1,
+   "name": "Camera",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     0.0,
+     0.0,
+     10.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "far": 100.0,
+      "fov": 60.0,
+      "near": 0.1,
+      "orthoSize": 6.0,
+      "projection": "orthographic"
+     },
+     "type": "Camera"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "name": "Lawn",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     23.0,
+     12.0,
+     1.0
+    ],
+    "translation": [
+     0.0,
+     0.0,
+     -0.5
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e5cf3c97-f69f-4bbd-b2b9-882d07a61849",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 0.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "name": "Cell_R3_C1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     -6.4,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "name": "Cell_R3_C2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     -4.8,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c2"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "name": "Cell_R3_C3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     -3.2,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c3"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "name": "Cell_R3_C4",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     -1.5999999999999996,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c4"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 7,
+   "name": "Cell_R3_C5",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c5"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 8,
+   "name": "Cell_R3_C6",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     1.6000000000000005,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c6"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 9,
+   "name": "Cell_R3_C7",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     3.2,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c7"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 10,
+   "name": "Cell_R3_C8",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     4.8,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c8"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 11,
+   "name": "Cell_R3_C9",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.5,
+     1.5,
+     1.0
+    ],
+    "translation": [
+     6.400000000000001,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e1bf568c-616e-409e-8979-d48ef4288fa3",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 1.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "cell_r3c9"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "map"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 12,
+   "name": "LoseLine_R3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -8.4,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       0.5,
+       1.6,
+       1.6
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "loseline"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/loseline.rxgraph",
+      "module": "",
+      "props": {
+       "row": 3.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "interaction"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 13,
+   "name": "Mower_R3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -7.9,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "e2c05ad4-9111-4891-b084-be85c5d91eaa",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 4.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "mower_idle"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.0,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/mower.rxgraph",
+      "module": "",
+      "props": {
+       "row": 3.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 14,
+   "name": "Peashooter_Pool_1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -20.0,
+     -62.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "afd7e44c-880d-40fe-8512-c443f7258252",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 2.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "plant_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/plant_shooter.rxgraph",
+      "module": "",
+      "props": {
+       "plantId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.2,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 15,
+   "name": "Peashooter_Pool_2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -20.0,
+     -64.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "afd7e44c-880d-40fe-8512-c443f7258252",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 2.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "plant_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/plant_shooter.rxgraph",
+      "module": "",
+      "props": {
+       "plantId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.2,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 16,
+   "name": "Peashooter_Pool_3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -20.0,
+     -66.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "afd7e44c-880d-40fe-8512-c443f7258252",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 2.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "plant_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/plant_shooter.rxgraph",
+      "module": "",
+      "props": {
+       "plantId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.2,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 17,
+   "name": "Sunflower_Pool_1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -24.0,
+     -62.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "88a05223-2d02-4cfe-ba9e-21082a85d543",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 2.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "plant_free_2"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/plant_producer.rxgraph",
+      "module": "",
+      "props": {
+       "plantId": 2.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.2,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 18,
+   "name": "Sunflower_Pool_2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -24.0,
+     -64.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "88a05223-2d02-4cfe-ba9e-21082a85d543",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 2.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "plant_free_2"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/plant_producer.rxgraph",
+      "module": "",
+      "props": {
+       "plantId": 2.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.2,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 19,
+   "name": "Sunflower_Pool_3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -24.0,
+     -66.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "88a05223-2d02-4cfe-ba9e-21082a85d543",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 2.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "plant_free_2"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/plant_producer.rxgraph",
+      "module": "",
+      "props": {
+       "plantId": 2.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       1.2,
+       1.4,
+       1.0
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 20,
+   "name": "Zombie_Pool_1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     20.0,
+     -62.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "1aa2a846-da59-4515-b0f8-c060c9e1439a",
+      "clip": "walk",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 4.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "zombie_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/zombie_walker.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 1.0,
+       "zombieId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       0.9,
+       1.4,
+       0.9
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 21,
+   "name": "Zombie_Pool_2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     20.0,
+     -65.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "1aa2a846-da59-4515-b0f8-c060c9e1439a",
+      "clip": "walk",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 4.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "zombie_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/zombie_walker.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 2.0,
+       "zombieId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       0.9,
+       1.4,
+       0.9
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 22,
+   "name": "Zombie_Pool_3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     20.0,
+     -67.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "1aa2a846-da59-4515-b0f8-c060c9e1439a",
+      "clip": "walk",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 4.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "zombie_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/zombie_walker.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 3.0,
+       "zombieId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       0.9,
+       1.4,
+       0.9
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 23,
+   "name": "Zombie_Pool_4",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     20.0,
+     -70.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "1aa2a846-da59-4515-b0f8-c060c9e1439a",
+      "clip": "walk",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 4.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "zombie_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/zombie_walker.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 4.0,
+       "zombieId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       0.9,
+       1.4,
+       0.9
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 24,
+   "name": "Zombie_Pool_5",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     20.0,
+     -72.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "1aa2a846-da59-4515-b0f8-c060c9e1439a",
+      "clip": "walk",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 4.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "zombie_free_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/zombie_walker.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 5.0,
+       "zombieId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "extents": [
+       0.9,
+       1.4,
+       0.9
+      ],
+      "kind": "box"
+     },
+     "type": "Trigger"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 25,
+   "name": "Pea_Pool_1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -61.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 26,
+   "name": "Pea_Pool_2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -63.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 2.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 27,
+   "name": "Pea_Pool_3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -64.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 3.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 28,
+   "name": "Pea_Pool_4",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -66.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 4.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 29,
+   "name": "Pea_Pool_5",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -67.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 5.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 30,
+   "name": "Pea_Pool_6",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -69.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 6.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 31,
+   "name": "Pea_Pool_7",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -70.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 7.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 32,
+   "name": "Pea_Pool_8",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     0.5,
+     0.5,
+     1.0
+    ],
+    "translation": [
+     24.0,
+     -72.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "6c003375-1914-424a-b0a6-392dd982ebaf",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 3.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "pea_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/pea_fly.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 8.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 33,
+   "name": "Sun_Pool_1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     28.0,
+     -61.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "5e94d635-cb7a-4865-a69a-fc28d95b5f10",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 5.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "sun_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/sun_fall.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 1.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 34,
+   "name": "Sun_Pool_2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     28.0,
+     -63.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "5e94d635-cb7a-4865-a69a-fc28d95b5f10",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 5.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "sun_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/sun_fall.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 2.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 35,
+   "name": "Sun_Pool_3",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     28.0,
+     -64.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "5e94d635-cb7a-4865-a69a-fc28d95b5f10",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 5.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "sun_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/sun_fall.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 3.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 36,
+   "name": "Sun_Pool_4",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     28.0,
+     -66.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "5e94d635-cb7a-4865-a69a-fc28d95b5f10",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 5.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "sun_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/sun_fall.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 4.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 37,
+   "name": "Sun_Pool_5",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     28.0,
+     -67.5,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "5e94d635-cb7a-4865-a69a-fc28d95b5f10",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 5.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "sun_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/sun_fall.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 5.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 38,
+   "name": "Sun_Pool_6",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     28.0,
+     -69.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "",
+      "sprite": "5e94d635-cb7a-4865-a69a-fc28d95b5f10",
+      "clip": "idle",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 5.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "sun_free"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/sun_fall.rxgraph",
+      "module": "",
+      "props": {
+       "poolId": 6.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "role"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 39,
+   "name": "LevelController",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/level_controller.rxgraph",
+      "module": "",
+      "props": {
+       "levelCode": 101.0
+      }
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "interaction"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 40,
+   "name": "HUDController",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "graphRef": "Content/Graphs/hud.rxgraph",
+      "module": "",
+      "props": {}
+     },
+     "type": "Script"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "interaction"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 41,
+   "name": "HUD_SunBar",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -8.0,
+     4.6,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "039d31a5-4395-4b2c-aee1-97d0dee99008",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 10.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "hud_sunbar"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "interaction"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 42,
+   "name": "HUD_Card_1",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -6.4,
+     4.6,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "9cd04eac-73ce-48d9-8d68-62160c547c66",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 10.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "hud_card_1"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "interaction"
+     },
+     "type": "Category"
+    }
+   ]
+  },
+  {
+   "id": 43,
+   "name": "HUD_Card_2",
+   "transform": {
+    "rotation": [
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "scale": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "translation": [
+     -5.2,
+     4.6,
+     0.0
+    ]
+   },
+   "components": [
+    {
+     "enabled": true,
+     "props": {
+      "texture": "9cd04eac-73ce-48d9-8d68-62160c547c66",
+      "sprite": "",
+      "clip": "",
+      "frame": 0.0,
+      "tint": [
+       1.0,
+       1.0,
+       1.0,
+       1.0
+      ],
+      "flipX": false,
+      "flipY": false,
+      "pixelsPerUnit": 100.0,
+      "sortingOrder": 10.0
+     },
+     "type": "Sprite"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "tag": "hud_card_2"
+     },
+     "type": "Tag"
+    },
+    {
+     "enabled": true,
+     "props": {
+      "category": "interaction"
+     },
+     "type": "Category"
+    }
+   ]
+  }
+ ],
+ "mode": "2d",
+ "name": "battle_1_1"
+}

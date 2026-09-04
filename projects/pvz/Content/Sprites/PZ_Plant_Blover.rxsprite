@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "texture": "b3450df9-3ca1-5a49-ac09-08994a159967",
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frames": {
+    "frame_0": {
+      "bbox": [
+        0,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_1": {
+      "bbox": [
+        256,
+        0,
+        256,
+        256
+      ]
+    },
+    "frame_2": {
+      "bbox": [
+        0,
+        256,
+        256,
+        256
+      ]
+    },
+    "frame_3": {
+      "bbox": [
+        256,
+        256,
+        256,
+        256
+      ]
+    }
+  },
+  "clips": {
+    "idle": {
+      "frames": [
+        "frame_0",
+        "frame_1"
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "special": {
+      "frames": [
+        "frame_2",
+        "frame_3"
+      ],
+      "fps": 7,
+      "loop": false,
+      "onFinish": "hold"
+    }
+  }
+}

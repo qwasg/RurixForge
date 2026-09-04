@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { apiGet, apiPatch, apiPost } from './forgeApi';
+import { apiGet, apiPatch, apiPost, ForgeApiError } from './forgeApi';
 import { notifyAgentToolSettled } from './editorSync';
+import { usePlanStore } from './planStore';
 import { useSessionStore, type ForgeSession } from './sessionStore';
 import { useToastStore } from './toastStore';
 import { subscribeSessionEvents, type SseSubscription } from './sseClient';
@@ -52,6 +53,11 @@ export interface ChatMsg {
   startedTs?: string | null;
   finishedTs?: string | null;
   error?: string;
+  /**
+   * D-038:用户卡的来源。`receipt` = 后台子代理回执送达时系统自动唤醒主 agent 的那一轮——
+   * 卡片正文是系统生成的唤醒说明,不是用户说的话,不可编辑重发。缺省(undefined)= 用户发的。
+   */
+  source?: 'receipt';
 }
 
 export interface TodoItem {
@@ -63,6 +69,10 @@ export interface TodoItem {
   summary?: string | null;
   /** F7 wave.5:看板卡两行截断描述(快照面有;todo.* 事件载荷无 description,如实缺省)。 */
   description?: string | null;
+  /** D-035:来源计划文件里的待办 id(Plan 页签按它映射实时状态);非计划来源缺省。 */
+  planTodoId?: string | null;
+  /** 来源标记("user" / "plan")。 */
+  source?: string;
 }
 
 /** reasoning_effort 档(id 即后端实发的 API 值)。 */
@@ -105,6 +115,8 @@ interface DesignSnapshot {
     thinkingEnabled?: boolean;
     reasoningEffort?: string | null;
     contextOptionId?: string | null;
+    /** D-035:当前计划文件(刷新/换会话后 Plan 页签据此定位)。 */
+    activePlanPath?: string | null;
   } | null;
   events?: ForgeEventWire[];
   todos?: TodoItem[];
@@ -163,9 +175,23 @@ interface ChatState {
   applyEvent: (evt: ForgeEventWire) => void;
   selectSession: (id: string | null) => Promise<void>;
   resync: () => Promise<void>;
-  /** skills:选中技能名(F11:ask:execute 结构化字段,后端按名注入 SKILL.md 全文;空/缺省 = 不发该字段)。 */
-  sendMessage: (text: string, mode: string, skills?: string[]) => Promise<void>;
+  /**
+   * skills:选中技能名(F11:ask:execute 结构化字段,后端按名注入 SKILL.md 全文;空/缺省 = 不发该字段)。
+   * opts.planPath:D-035 Plan 页签 Build——后端据此读计划文件、物化待办并把全文注入本轮。
+   */
+  sendMessage: (
+    text: string,
+    mode: string,
+    skills?: string[],
+    opts?: { planPath?: string },
+  ) => Promise<void>;
   cancelRun: () => Promise<void>;
+  /**
+   * D-036:中止单个后台子代理(multitask dispatch 派出去的 run)。
+   * 与 cancelRun 分开:后台子代理跑的时候父轮早已收束、activeRunId 为空,
+   * cancelRun 会直接空转。
+   */
+  cancelSubagent: (runId: string) => Promise<void>;
   editAndResend: (msgId: string, newText: string) => Promise<void>;
   pickModel: (modelId: string) => Promise<void>;
   setThinking: (on: boolean) => Promise<void>;
@@ -175,6 +201,7 @@ interface ChatState {
   resolvePermission: (allow: boolean) => Promise<void>;
   /** 清空原始事件环(底部面板 trash 钮;不影响消息/待办)。 */
   clearEventsRing: () => void;
+  ensureModels: () => Promise<void>;
   reset: () => void;
 }
 
@@ -247,12 +274,41 @@ function appendTextDelta(blocks: ChatBlock[], delta: string): void {
   }
 }
 
-function appendReasoningDelta(blocks: ChatBlock[], delta: string): void {
+/** 终稿 reasoning:覆盖本轮最后一块思考(流式后正文已接在后面时,不能只认尾块)。 */
+function settleReasoning(blocks: ChatBlock[], text: string, ts: string): void {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const last = blocks[i];
+    if (last.kind === 'reasoning') {
+      blocks[i] = { ...last, text, startedTs: last.startedTs ?? ts, endedTs: ts };
+      return;
+    }
+  }
+  blocks.push({ kind: 'reasoning', text, startedTs: ts, endedTs: ts });
+}
+
+/** 终稿正文:覆盖本轮最后一块 text(中间若又插了思考块,不能只认尾块)。 */
+function settleFinalText(blocks: ChatBlock[], text: string): void {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    if (blocks[i].kind === 'text') {
+      blocks[i] = { kind: 'text', text, final: true };
+      return;
+    }
+  }
+  blocks.push({ kind: 'text', text, final: true });
+}
+
+/** ts = 本帧末一条 reasoning 事件的 ts;首末之差即思考行显示的时长(合帧误差 ≤ 1 帧)。 */
+function appendReasoningDelta(blocks: ChatBlock[], delta: string, ts: string): void {
   const last = blocks[blocks.length - 1];
   if (last?.kind === 'reasoning') {
-    blocks[blocks.length - 1] = { ...last, text: last.text + delta };
+    blocks[blocks.length - 1] = {
+      ...last,
+      text: last.text + delta,
+      startedTs: last.startedTs ?? ts,
+      endedTs: ts,
+    };
   } else {
-    blocks.push({ kind: 'reasoning', text: delta });
+    blocks.push({ kind: 'reasoning', text: delta, startedTs: ts, endedTs: ts });
   }
 }
 
@@ -284,6 +340,7 @@ function ensureSubagent(blocks: ChatBlock[], id: string, patch?: Partial<Subagen
     summary: patch?.summary,
     prompt: patch?.prompt,
     parentToolCallId: patch?.parentToolCallId,
+    detachedRunId: patch?.detachedRunId,
     work: patch?.work ?? [],
   };
   blocks.push(created);
@@ -340,18 +397,24 @@ export const useChatStore = create<ChatState>((set, get) => {
   const seenOrder: string[] = [];
   /** UI 融合波 C3:toolCallId → 工具名(invoked 记录,completed/failed 载荷无 name,查后删)。 */
   const toolNames = new Map<string, string>();
-  const streamBuf = new Map<string, { token: string; reasoning: string }>();
+  const streamBuf = new Map<string, { token: string; reasoning: string; ts: string }>();
   let streamRaf: number | null = null;
   let sse: SseSubscription | null = null;
 
   const streamKey = (runId: string | null, parent?: string) => `${runId ?? ''}\0${parent ?? ''}`;
 
-  const applyStreamChunk = (runId: string | null, parent: string | undefined, kind: 'token' | 'reasoning', text: string) => {
+  const applyStreamChunk = (
+    runId: string | null,
+    parent: string | undefined,
+    kind: 'token' | 'reasoning',
+    text: string,
+    ts: string,
+  ) => {
     let messages = get().messages;
     messages = mutateAssistant(messages, runId, (m) => {
       const dest = targetBlocks(m.blocks, parent);
       if (kind === 'token') appendTextDelta(dest, text);
-      else appendReasoningDelta(dest, text);
+      else appendReasoningDelta(dest, text, ts);
     });
     set({ messages: normalize(messages) });
   };
@@ -368,16 +431,23 @@ export const useChatStore = create<ChatState>((set, get) => {
       const [runId, parent] = key.split('\0');
       const rid = runId === '' ? null : runId;
       const pid = parent === '' ? undefined : parent;
-      if (buf.reasoning) applyStreamChunk(rid, pid, 'reasoning', buf.reasoning);
-      if (buf.token) applyStreamChunk(rid, pid, 'token', buf.token);
+      if (buf.reasoning) applyStreamChunk(rid, pid, 'reasoning', buf.reasoning, buf.ts);
+      if (buf.token) applyStreamChunk(rid, pid, 'token', buf.token, buf.ts);
     }
   };
 
-  const enqueueStream = (runId: string | null, parent: string | undefined, kind: 'token' | 'reasoning', text: string) => {
+  const enqueueStream = (
+    runId: string | null,
+    parent: string | undefined,
+    kind: 'token' | 'reasoning',
+    text: string,
+    ts: string,
+  ) => {
     const key = streamKey(runId, parent);
-    const cur = streamBuf.get(key) ?? { token: '', reasoning: '' };
+    const cur = streamBuf.get(key) ?? { token: '', reasoning: '', ts };
     if (kind === 'token') cur.token += text;
     else cur.reasoning += text;
+    cur.ts = ts;
     streamBuf.set(key, cur);
     if (!COALESCE_STREAM) {
       flushStreamNow();
@@ -516,6 +586,13 @@ export const useChatStore = create<ChatState>((set, get) => {
     sse = null;
   };
 
+  /**
+   * 快照回放中(applySnapshot 的事件重放)。
+   * D-035:回放里的历史 plan.* 只回填指针,不弹页签——否则每次切会话都会把旧计划
+   * 顶到工作台前面。只有实时到达的 plan.* 才自动开页签。
+   */
+  let replaying = false;
+
   const applySnapshot = (snap: DesignSnapshot) => {
     seenKeys.clear();
     seenOrder.length = 0;
@@ -535,9 +612,20 @@ export const useChatStore = create<ChatState>((set, get) => {
       hydrating: false,
       pendingPermission: null,
     });
-    for (const evt of snap.events ?? []) get().applyEvent(evt);
-    // 快照回放后 run 仍在运行(进程重启前状态) → activeRunId 如实回填
+    // D-035:计划指针回填。放在事件回放之前——回放里的 plan.* 会顺带开页签,
+    // 这里只负责「有计划但本会话没新事件」时命令面板仍能找到它。
+    usePlanStore.getState().setActivePlanPath(snap.activeSession?.activePlanPath ?? null);
+    replaying = true;
+    try {
+      for (const evt of snap.events ?? []) get().applyEvent(evt);
+    } finally {
+      replaying = false;
+    }
+    // 快照回放后 run 仍在运行(进程重启前状态) → activeRunId 如实回填;
+    // 反之快照 run 为空(服务端 run 注册表才是活运行唯一事实源)→ 强制清空:
+    // 事件日志可能存在 run.created 无终止事件的残留(进程被杀),只靠回放会永久卡幽灵运行态(2026-08-29 实测)。
     if (snap.run && snap.run.status === 'running') set({ activeRunId: snap.run.id });
+    else set({ activeRunId: null });
   };
 
   const subscribe = (sessionId: string, fromSeq: number) => {
@@ -561,7 +649,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   /**
    * 模型规格落库:先乐观改本地态 → PATCH 会话 → 用响应回写 sessionStore 会话面;
    * 失败只回滚本次改动的项 + toast。无会话时只改本地态——全屏主页首屏尚无会话,
-   * 发送时新建的会话起于该模型默认档(与后端 modelspec::resolve 回落同口径)。
+   * 发送建会话时把当前规格带进 POST /sessions,selectSession 回放即继承。
    */
   const patchSpec = async (patch: SpecPatch, failLabel: string): Promise<void> => {
     const sid = useSessionStore.getState().activeSessionId;
@@ -643,6 +731,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             ts: evt.ts,
             runId: runIdOf(evt),
           };
+          if (payloadStr(evt, 'source') === 'receipt') user.source = 'receipt';
           messages = upsertUser(messages, user);
           break;
         }
@@ -728,12 +817,12 @@ export const useChatStore = create<ChatState>((set, get) => {
         }
         case 'agent.token.stream.delta': {
           const delta = payloadStr(evt, 'delta') ?? payloadStr(evt, 'text') ?? '';
-          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'token', delta);
+          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'token', delta, evt.ts);
           return;
         }
         case 'agent.reasoning.delta': {
           const delta = payloadStr(evt, 'delta') ?? payloadStr(evt, 'text') ?? '';
-          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'reasoning', delta);
+          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'reasoning', delta, evt.ts);
           return;
         }
         case 'agent.reasoning': {
@@ -741,9 +830,9 @@ export const useChatStore = create<ChatState>((set, get) => {
           const runId = runIdOf(evt);
           messages = mutateAssistant(messages, runId, (m) => {
             const dest = targetBlocks(m.blocks, parentOf(evt));
-            const last = dest[dest.length - 1];
-            if (last?.kind === 'reasoning') dest[dest.length - 1] = { kind: 'reasoning', text };
-            else dest.push({ kind: 'reasoning', text });
+            // 终稿覆盖本轮思考块:流式时思考在前、正文在后,尾块已是 text,
+            // 只认尾块会再插一条 Thought,一句话看起来重复两遍。
+            settleReasoning(dest, text, evt.ts);
           });
           break;
         }
@@ -790,12 +879,26 @@ export const useChatStore = create<ChatState>((set, get) => {
           const id = payloadStr(evt, 'subRunId') ?? payloadStr(evt, 'parentToolCallId') ?? `sub-${evt.seq}`;
           const prompt = payloadStr(evt, 'prompt') ?? '';
           const label = payloadStr(evt, 'description') ?? payloadStr(evt, 'label') ?? '子代理任务';
+          // D-036:后台子代理(detached)自己占一张助手卡 —— 它的 parentRunId 就是自己的
+          // 后台 runId,派它的那一轮早已收束。卡片元数据(时间/模型/流式态)此前只由
+          // agent.started 填,而后台腿刻意不发 agent.started(发了会顶掉前端 activeRunId、
+          // 锁住输入框),故在这里补齐,否则卡片没有时间戳、状态点永远停在初始态。
+          const detached = evt.payload?.detached === true;
+          const model = payloadStr(evt, 'model');
           messages = mutateAssistant(messages, runId, (m) => {
+            if (detached) {
+              if (m.time === '') m.time = time;
+              if (!m.startedTs) m.startedTs = evt.ts;
+              if (model) m.model = model;
+              m.status = 'streaming';
+            }
             ensureSubagent(m.blocks, id, {
               label,
               prompt,
               status: 'running',
               parentToolCallId: payloadStr(evt, 'parentToolCallId') ?? id,
+              // Stop 打后台 run 本身(父轮已结束,全局 activeRunId 为空)。
+              detachedRunId: detached ? runId ?? undefined : undefined,
             });
           });
           break;
@@ -837,13 +940,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           const provider = payloadStr(evt, 'provider');
           messages = mutateAssistant(messages, runId, (m) => {
             if (provider) m.provider = provider;
-            // 权威最终 text 块:替换尾随 text 块,否则追加(参考 agent.completed 语义)
-            const last = m.blocks[m.blocks.length - 1];
-            if (last?.kind === 'text') {
-              m.blocks[m.blocks.length - 1] = { kind: 'text', text, final: true };
-            } else {
-              m.blocks.push({ kind: 'text', text, final: true });
-            }
+            settleFinalText(m.blocks, text);
           });
           break;
         }
@@ -851,18 +948,12 @@ export const useChatStore = create<ChatState>((set, get) => {
           const runId = runIdOf(evt);
           const text = payloadStr(evt, 'text') ?? '';
           messages = mutateAssistant(messages, runId, (m) => {
-            if (text !== '') {
-              const last = m.blocks[m.blocks.length - 1];
-              if (last?.kind === 'text') {
-                m.blocks[m.blocks.length - 1] = { kind: 'text', text, final: true };
-              } else {
-                m.blocks.push({ kind: 'text', text, final: true });
-              }
-            }
+            if (text !== '') settleFinalText(m.blocks, text);
             m.status = 'completed';
             m.finishedTs = evt.ts;
           });
           if (get().activeRunId === runId) set({ activeRunId: null });
+          usePlanStore.getState().setPlanning(false);
           break;
         }
         case 'agent.failed': {
@@ -874,6 +965,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             if (error) m.error = error;
           });
           if (get().activeRunId === runId) set({ activeRunId: null });
+          usePlanStore.getState().setPlanning(false);
           break;
         }
         case 'agent.cancelled': {
@@ -883,6 +975,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             m.finishedTs = evt.ts;
           });
           if (get().activeRunId === runId) set({ activeRunId: null });
+          usePlanStore.getState().setPlanning(false);
           break;
         }
         case 'agent.usage': {
@@ -912,6 +1005,10 @@ export const useChatStore = create<ChatState>((set, get) => {
           if (typeof p.status === 'string') patch.status = p.status;
           if (typeof p.kind === 'string') patch.kind = p.kind;
           if ('summary' in p) patch.summary = (p.summary as string | null) ?? null;
+          if ('description' in p) patch.description = (p.description as string | null) ?? null;
+          // D-035:计划来源标记——Plan 页签靠 planTodoId 把清单与实时状态对上。
+          if (typeof p.planTodoId === 'string') patch.planTodoId = p.planTodoId;
+          if (typeof p.source === 'string') patch.source = p.source;
           if (idx >= 0) todos[idx] = { ...todos[idx], ...patch };
           else {
             todos.push({
@@ -920,11 +1017,26 @@ export const useChatStore = create<ChatState>((set, get) => {
               status: patch.status ?? 'queued',
               kind: patch.kind,
               summary: patch.summary,
+              description: patch.description,
+              planTodoId: patch.planTodoId,
+              source: patch.source,
             });
           }
           set({ todos });
           return;
         }
+        // D-035:计划落盘 / 覆盖 → 回填路径、开(或刷新)Plan 页签。
+        case 'plan.created':
+        case 'plan.updated': {
+          const path = payloadStr(evt, 'path');
+          if (!path) return;
+          if (replaying) usePlanStore.getState().setActivePlanPath(path);
+          else usePlanStore.getState().onPlanEvent(path, evt.type === 'plan.created');
+          return;
+        }
+        // Build 起步:此刻计划待办已物化,后续 todo.* 会带 planTodoId 回来。
+        case 'plan.build.started':
+          return;
         case 'session.updated': {
           // 转发 sessionStore 刷新(标题/置顶/模型等元信息面)
           void useSessionStore.getState().loadAll();
@@ -941,7 +1053,16 @@ export const useChatStore = create<ChatState>((set, get) => {
       closeSse();
       get().reset();
       set({ currentSessionId: id });
-      if (!id) return;
+      if (!id) {
+        try {
+          const snap = await apiGet<DesignSnapshot>('/api/forge/design-snapshot');
+          if (token !== selectToken) return;
+          applySnapshot(snap);
+        } catch {
+          // 后端离线等错误交由全局 offline 呈现
+        }
+        return;
+      }
       set({ hydrating: true });
       let snap: DesignSnapshot;
       try {
@@ -973,7 +1094,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       }
     },
 
-    sendMessage: async (text, mode, skills) => {
+    sendMessage: async (text, mode, skills, opts) => {
       const sid = useSessionStore.getState().activeSessionId;
       const trimmed = text.trim();
       if (trimmed === '') return;
@@ -994,14 +1115,25 @@ export const useChatStore = create<ChatState>((set, get) => {
         runId: null,
       };
       set((st) => ({ messages: [...st.messages, local] }));
+      // plan 模式:开跑即进「调研中」态,Plan 页签据此显示进行条(终态由 run 收束事件复位)。
+      if (mode === 'plan') usePlanStore.getState().setPlanning(true);
       try {
         await apiPost(`/api/forge/sessions/${encodeURIComponent(sid)}/ask:execute`, {
           userInput: trimmed,
           mode,
           ...(skills !== undefined && skills.length > 0 ? { skills } : {}),
+          ...(opts?.planPath !== undefined ? { planPath: opts.planPath } : {}),
         });
         // 响应体不等:UI 由 SSE 事件驱动(参考 send 语义)
       } catch (err) {
+        usePlanStore.getState().setPlanning(false);
+        // D-038:会话被服务端自起的回执唤醒轮占用(agent.started 尚未到达的那几毫秒里点了发送)。
+        // 这条消息后端没收,乐观回显必须撤掉——留着就是一张永远没有回应的幽灵用户卡。
+        if (err instanceof ForgeApiError && err.code === 'SESSION_BUSY') {
+          set((st) => ({ messages: st.messages.filter((m) => m.id !== local.id) }));
+          useToastStore.getState().push('warning', '主 agent 正在处理后台回执,请等它收束后再发');
+          return;
+        }
         toastError(err, '提交失败');
       }
     },
@@ -1013,6 +1145,15 @@ export const useChatStore = create<ChatState>((set, get) => {
         await apiPost(`/api/forge/runs/${encodeURIComponent(runId)}/cancel`, {});
       } catch (err) {
         toastError(err, '中止失败');
+      }
+    },
+
+    cancelSubagent: async (runId) => {
+      if (!runId) return;
+      try {
+        await apiPost(`/api/forge/runs/${encodeURIComponent(runId)}/cancel`, {});
+      } catch (err) {
+        toastError(err, '中止子代理失败');
       }
     },
 
@@ -1065,24 +1206,41 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     pickContext: (contextId) => patchSpec({ contextOptionId: contextId }, '切换上下文规格失败'),
 
+    ensureModels: async () => {
+      if (get().models.length > 0) return;
+      try {
+        const snap = await apiGet<DesignSnapshot>('/api/forge/design-snapshot');
+        if (snap.models?.models && snap.models.models.length > 0) {
+          set({
+            models: snap.models.models,
+            defaultModelId: snap.models.defaultModelId ?? get().defaultModelId,
+          });
+        }
+      } catch {
+        // 后端离线等错误暂不打断
+      }
+    },
+
     reset: () => {
       seenKeys.clear();
       seenOrder.length = 0;
       toolNames.clear();
       streamBuf.clear();
+      // D-035:计划指针随会话走(切走即清,applySnapshot 会按新会话回填)。
+      usePlanStore.getState().reset();
       if (streamRaf != null && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(streamRaf);
         streamRaf = null;
       }
-      set({
+      set((st) => ({
         messages: [],
         activeRunId: null,
         todos: [],
         tokens: { prompt: 0, completion: 0, total: 0 },
         lastPromptTokens: 0,
         latestSeq: 0,
-        models: [],
-        defaultModelId: null,
+        models: st.models,
+        defaultModelId: st.defaultModelId,
         selectedModelId: null,
         thinkingEnabled: false,
         reasoningEffort: null,
@@ -1091,7 +1249,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         currentSessionId: null,
         eventsRing: [],
         pendingPermission: null,
-      });
+      }));
     },
   };
 });

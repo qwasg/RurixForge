@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "id": "g_pz_mvp_lose_line",
+  "name": "PZ_MVP_LoseLine",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "event.on_trigger_enter",
+      "pos": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": "is_zombie",
+      "type": "entity.has_tag",
+      "pos": [
+        1.0,
+        1.0
+      ],
+      "inputs": {
+        "entity": {
+          "node": "trigger",
+          "pin": "otherEntity"
+        },
+        "tag": {
+          "const": "zombie"
+        }
+      }
+    },
+    {
+      "id": "br_zombie",
+      "type": "flow.branch",
+      "pos": [
+        1.0,
+        0.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "is_zombie",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "is_dead",
+      "type": "entity.has_tag",
+      "pos": [
+        2.0,
+        1.0
+      ],
+      "inputs": {
+        "entity": {
+          "node": "trigger",
+          "pin": "otherEntity"
+        },
+        "tag": {
+          "const": "dead"
+        }
+      }
+    },
+    {
+      "id": "br_dead",
+      "type": "flow.branch",
+      "pos": [
+        2.0,
+        0.0
+      ],
+      "inputs": {
+        "condition": {
+          "node": "is_dead",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "tag_defeat",
+      "type": "entity.add_tag",
+      "pos": [
+        3.0,
+        0.0
+      ],
+      "inputs": {
+        "entity": {
+          "const": "$self"
+        },
+        "tag": {
+          "const": "defeat"
+        }
+      }
+    },
+    {
+      "id": "send_defeat",
+      "type": "call.send_message",
+      "pos": [
+        4.0,
+        0.0
+      ],
+      "inputs": {
+        "name": {
+          "const": "pz_ev"
+        },
+        "payload": {
+          "const": 900.0
+        }
+      }
+    },
+    {
+      "id": "log_defeat",
+      "type": "debug.log",
+      "pos": [
+        5.0,
+        0.0
+      ],
+      "inputs": {
+        "message": {
+          "const": "PZ_DEFEAT_ZOMBIE_REACHED_X_MINUS_8"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "trigger",
+        "exec"
+      ],
+      "to": [
+        "br_zombie",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_zombie",
+        "then"
+      ],
+      "to": [
+        "br_dead",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "br_dead",
+        "else"
+      ],
+      "to": [
+        "tag_defeat",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "tag_defeat",
+        "exec"
+      ],
+      "to": [
+        "send_defeat",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "send_defeat",
+        "exec"
+      ],
+      "to": [
+        "log_defeat",
+        "exec"
+      ]
+    }
+  ]
+}

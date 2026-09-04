@@ -1,0 +1,10 @@
+guid: 41482235-6a44-56fe-8c46-9a8c4423aac6
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-1(night,10 波,奖励 sun_shroom);在 IDE Assets 面板双击即可装进视口试玩

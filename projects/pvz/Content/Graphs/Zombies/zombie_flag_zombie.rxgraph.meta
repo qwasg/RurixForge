@@ -1,0 +1,10 @@
+guid: 1a039905-17a6-503c-bb17-f2007a4c2626
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_flag_zombie

@@ -1,0 +1,317 @@
+{
+ "version": 1,
+ "id": "mower",
+ "name": "mower",
+ "exposedProps": [
+  {
+   "name": "row",
+   "kind": "F32",
+   "default": 3.0
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "event.on_start",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n2",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "used"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n3",
+   "type": "event.on_trigger_enter",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n4",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n3",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "zombie_active"
+    }
+   }
+  },
+  {
+   "id": "n5",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n4",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n6",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n7",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "used"
+    }
+   }
+  },
+  {
+   "id": "n8",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n7",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n9",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n10",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "is_zero"
+    },
+    "args": {
+     "node": "n9",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n11",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n10",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n12",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "used"
+    },
+    "value": {
+     "const": 1.0
+    }
+   }
+  },
+  {
+   "id": "n13",
+   "type": "entity.add_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "mower_active"
+    }
+   }
+  },
+  {
+   "id": "n14",
+   "type": "transform.move_tween",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "target": {
+     "const": "$self"
+    },
+    "offset": {
+     "const": [
+      22.0,
+      0.0,
+      0.0
+     ]
+    },
+    "duration": {
+     "const": 2.2
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": [
+    "n1",
+    "exec"
+   ],
+   "to": [
+    "n2",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "exec"
+   ],
+   "to": [
+    "n5",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n6",
+    "exec"
+   ],
+   "to": [
+    "n8",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n8",
+    "exec"
+   ],
+   "to": [
+    "n10",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n10",
+    "exec"
+   ],
+   "to": [
+    "n11",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n5",
+    "then"
+   ],
+   "to": [
+    "n6",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n12",
+    "exec"
+   ],
+   "to": [
+    "n13",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n13",
+    "exec"
+   ],
+   "to": [
+    "n14",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n11",
+    "then"
+   ],
+   "to": [
+    "n12",
+    "exec"
+   ]
+  }
+ ]
+}

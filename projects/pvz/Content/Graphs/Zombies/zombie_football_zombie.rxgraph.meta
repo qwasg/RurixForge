@@ -1,0 +1,10 @@
+guid: 8589bdda-f3b4-5b95-92bd-8919df4a7a1a
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_football_zombie

@@ -1,0 +1,10 @@
+guid: a562f021-3a69-5357-b692-1ab552e5fa60
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_Wallnut.png
+    pipeline: ai-atlas-grid-crop
+build_state: current

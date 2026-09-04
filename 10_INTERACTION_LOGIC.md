@@ -106,3 +106,7 @@
 3. 挂载:`component_set` 写 `Script { graphRef }` 或 `{ module }`。
 4. 验证:playtest `test_run` 注入触发(如 spawn player tag 实体进触发区)断言结果(`05 §6`)。
 5. 失败 → debug 模式循环(`04 §3`),不交付未验证逻辑(skill `logic-blueprint-gen` 强制)。
+
+## Errata(只追加区)
+
+- **E-10-001(2026-08-31,F-GAME-4 帧动画波 / D-031)——§4.2 节点注册表 40→45 加性扩展**:新增两族五节点(RD-F4-004 加性扩展先例):`sprite.play { entity, clip, restart?(可选,缺省 false) }`、`sprite.stop { entity }`、`sprite.set_frame { entity, index }`、`animator.set_bool { entity, param, value }`、`animator.set_trigger { entity, param }`。①`restart` 是注册表首个**可选输入 pin**(`PinSpec.required=false`,校验器不要求接线),缺省 false = **幂等语义**——同 clip 重复调用 no-op,可安全挂 on_update 每帧调用(内置 VibeGame「每帧 restart 重启致冻帧」头号坑的防御);retrigger 场景(碰撞/按键的离散时刻)才显式传 true。②执行语义:五节点**不直接写组件**,产出 `AnimCommand` 进 `LogicRuntime` 命令队列,宿主 `advance_frame` 在逻辑帧后取走(`take_anim_commands`)交动画系统按声明序消费——`Sprite.frame/clip` 唯一写者是宿主,图侧无双写者(裁决记 09 E-09-002)。③目标实体无 .rxsprite 精灵、clip 不存在、animator 参数不存在、对 FSM 模式实体手控 play(实体 clip 留空且文档带 animator 时状态机独占,见 09 E-09-002 模式判定)等误用一律如实 `anim.warn` 事件,不静默(I-5)。

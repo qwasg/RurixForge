@@ -48,6 +48,7 @@ beforeEach(() => {
     backendsError: null,
     dialogOpen: false,
     destFolder: 'Textures',
+    bindAssetPath: null,
     candidates: null,
     lastPrompt: '',
     acceptedRefs: [],
@@ -85,6 +86,29 @@ describe('genStore generate', () => {
     expect(s.dialogOpen).toBe(false);
     expect(s.lastPrompt).toBe('wood 木纹');
     expect(s.lastError).toBeNull();
+  });
+
+  it('F10-RAG:openDialog 带 assetPath → generate 绑定资产路径进 gen_image 参数', async () => {
+    const fetchMock = mockForgeBackend(toolMap(), { '/api/forge/gen/backends': BACKENDS });
+    vi.stubGlobal('fetch', fetchMock);
+    useGenStore.getState().openDialog('Textures', 'Textures/chair.png');
+    expect(useGenStore.getState().bindAssetPath).toBe('Textures/chair.png');
+    await useGenStore.getState().generate({
+      prompt: '一把椅子',
+      size: 256,
+      n: 1,
+      assetPath: useGenStore.getState().bindAssetPath ?? undefined,
+    });
+    const calls = fetchMock.mock.calls
+      .filter((c) => (c[0] as string) === '/api/forge/mcp/call')
+      .map((c) => {
+        const init = c[1] as { body: string };
+        return JSON.parse(init.body) as { tool: string; arguments: Record<string, unknown> };
+      });
+    const genCall = calls.find((c) => c.tool === 'mcp__gen-image__gen_image');
+    expect(genCall).toBeDefined();
+    expect(genCall!.arguments.prompt).toBe('一把椅子');
+    expect(genCall!.arguments.assetPath).toBe('Textures/chair.png');
   });
 
   it('gen_image 工具级错误 → lastErrorCode 如实保留 GEN_BACKEND_NOT_CONFIGURED', async () => {

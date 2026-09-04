@@ -14,7 +14,7 @@
   }
 
   body {
-    /* F7 wave.3:壳底色/文字/字体走主题变量(默认 moonlit 亮表,见 theme.css) */
+    /* 壳底色/文字/字体走主题变量(默认 forge 亮表,见 theme.css) */
     background: var(--bg);
     color: var(--text);
     font-family: var(--font-sans);
@@ -28,17 +28,17 @@
     user-select: text;
   }
 
-  /* 细滚动条,贴近 Cursor 风格 */
+  /* 细滚动条,贴近 Cursor 风格;净化波:暖灰硬编码 → 主题变量,暗色自适应 */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-thumb {
-    background: #d8d5d0;
+    background: var(--text-4);
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #c3c0ba;
+    background: var(--text-3);
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -46,6 +46,222 @@
 }
 
 @layer components {
+  /* 主页首屏氛围底:accent 微光(上方)+ 淡网格(径向渐隐),全走主题变量,双主题自适应 */
+  .home-ambient {
+    @apply pointer-events-none absolute inset-0 overflow-hidden;
+  }
+  .home-ambient::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: -180px;
+    width: 760px;
+    height: 500px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background: var(--accent);
+    opacity: 0.07;
+    filter: blur(110px);
+  }
+  [data-theme='dark'] .home-ambient::before {
+    opacity: 0.13;
+  }
+  .home-ambient::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    opacity: 0.55;
+    -webkit-mask-image: radial-gradient(ellipse 75% 62% at 50% 30%, black 0%, transparent 74%);
+    mask-image: radial-gradient(ellipse 75% 62% at 50% 30%, black 0%, transparent 74%);
+  }
+  /* 首屏入场:上浮淡入,错峰 delay 由内联 style 给;reduce-motion 禁动 */
+  @keyframes forge-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .forge-rise {
+    animation: forge-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .forge-rise {
+      animation: none;
+    }
+  }
+  /* 贴输入盒的浮层入场(SubagentOverlay 等):短促上浮淡入,比 forge-rise 快一档;
+     注意会占用 transform,宿主不要再用 translate 类定位。reduce-motion 禁动 */
+  @keyframes forge-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .forge-pop-in {
+    animation: forge-pop-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .forge-pop-in {
+      animation: none;
+    }
+  }
+  /* 子代理状态粒子(components/chat/SubagentParticles.tsx):
+     running 公转 + 明灭 + 核心光晕;done 内收静止;error 外散静止。色走状态点 token。 */
+  .forge-particles {
+    position: relative;
+    display: block;
+    height: var(--fp-box, 14px);
+    width: var(--fp-box, 14px);
+    color: var(--dot-idle);
+    transition: color 0.25s ease;
+  }
+  .forge-particles[data-state='running'] {
+    color: var(--dot-running);
+  }
+  .forge-particles[data-state='done'] {
+    color: var(--dot-done);
+  }
+  /* 失败态只改形（粒子外散炸开），不改色——2026-09-03 用户指令「报错不需特别标明」，
+     原 dot-blocked 红下线，与 idle 同灰。 */
+  .forge-particles[data-state='error'] {
+    color: var(--dot-idle);
+  }
+  /* 运行态核心光晕(径向渐隐,免 blur 滤镜且随盒宽等比) */
+  .forge-particles::before {
+    content: '';
+    position: absolute;
+    inset: -14%;
+    border-radius: 9999px;
+    background: radial-gradient(circle, currentColor 0%, transparent 66%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .forge-particles[data-state='running']::before {
+    animation: forge-particle-glow 2.2s ease-in-out infinite;
+  }
+  .forge-particles-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    height: var(--fp-core, 3.4px);
+    width: var(--fp-core, 3.4px);
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: 0.85;
+    transform: translate(-50%, -50%);
+  }
+  .forge-particles[data-state='running'] .forge-particles-core {
+    animation: forge-particle-core 1.7s ease-in-out infinite;
+  }
+  .forge-particles-orbit {
+    position: absolute;
+    inset: 0;
+    transform: rotate(var(--fp-a, 0deg));
+  }
+  .forge-particles[data-state='running'] .forge-particles-orbit {
+    animation: forge-particle-orbit var(--fp-t, 3s) linear var(--fp-d, 0s) infinite;
+  }
+  .forge-particles[data-state='running'] .forge-particles-orbit[data-dir='ccw'] {
+    animation-name: forge-particle-orbit-rev;
+  }
+  .forge-particles-orbit::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    height: var(--fp-dot, 2px);
+    width: var(--fp-dot, 2px);
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: 0.7;
+    transform: translate(-50%, -50%) translateX(var(--fp-r, 5px));
+    transition:
+      transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.3s ease;
+  }
+  .forge-particles[data-state='running'] .forge-particles-orbit::after {
+    animation: forge-particle-twinkle var(--fp-tw, 1.7s) ease-in-out var(--fp-d, 0s) infinite;
+  }
+  .forge-particles[data-state='done'] .forge-particles-orbit::after {
+    transform: translate(-50%, -50%) translateX(calc(var(--fp-r, 5px) * 0.82));
+    opacity: 0.62;
+  }
+  .forge-particles[data-state='error'] .forge-particles-orbit::after {
+    transform: translate(-50%, -50%) translateX(calc(var(--fp-r, 5px) * 1.14));
+    opacity: 0.9;
+  }
+  @keyframes forge-particle-orbit {
+    from {
+      transform: rotate(var(--fp-a, 0deg));
+    }
+    to {
+      transform: rotate(calc(var(--fp-a, 0deg) + 360deg));
+    }
+  }
+  @keyframes forge-particle-orbit-rev {
+    from {
+      transform: rotate(var(--fp-a, 0deg));
+    }
+    to {
+      transform: rotate(calc(var(--fp-a, 0deg) - 360deg));
+    }
+  }
+  @keyframes forge-particle-twinkle {
+    0%,
+    100% {
+      transform: translate(-50%, -50%) translateX(calc(var(--fp-r, 5px) * 0.66)) scale(0.55);
+      opacity: 0.3;
+    }
+    50% {
+      transform: translate(-50%, -50%) translateX(var(--fp-r, 5px)) scale(1);
+      opacity: 1;
+    }
+  }
+  @keyframes forge-particle-core {
+    0%,
+    100% {
+      transform: translate(-50%, -50%) scale(0.78);
+      opacity: 0.55;
+    }
+    50% {
+      transform: translate(-50%, -50%) scale(1.12);
+      opacity: 1;
+    }
+  }
+  @keyframes forge-particle-glow {
+    0%,
+    100% {
+      opacity: 0.14;
+    }
+    50% {
+      opacity: 0.32;
+    }
+  }
+  /* 减动偏好:运行态也停在静止粒子(选择器需与上方运行态规则同权重才盖得住) */
+  @media (prefers-reduced-motion: reduce) {
+    .forge-particles[data-state='running']::before,
+    .forge-particles[data-state='running'] .forge-particles-core,
+    .forge-particles[data-state='running'] .forge-particles-orbit,
+    .forge-particles[data-state='running'] .forge-particles-orbit[data-dir='ccw'],
+    .forge-particles[data-state='running'] .forge-particles-orbit::after {
+      animation: none;
+    }
+    .forge-particles[data-state='running']::before {
+      opacity: 0.18;
+    }
+  }
   /* F7 wave.5:设置滑杆(参考 set_slider:4px 轨 + 12px knob,accent 填充) */
   .set-slider {
     -webkit-appearance: none;

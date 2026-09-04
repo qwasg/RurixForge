@@ -1,0 +1,10 @@
+guid: e053b701-6d8b-5b05-a7a1-9915fe287c53
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 mower

@@ -1,0 +1,10 @@
+guid: 4f921ea2-61a1-5a65-b3ec-5974072145cc
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_vasebreaker

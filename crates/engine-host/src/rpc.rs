@@ -258,6 +258,8 @@ pub struct HostState {
     pub physics: Option<PhysicsWorld>,
     /// 实际后端名("jolt"/"rapier"/"none")。
     pub backend: String,
+    /// 当前物理世界的重力(F-GAME-3:play.enter 时与场景重力比对,不同则重建世界)。
+    pub world_gravity: [f32; 3],
     /// 成功固定步数。
     pub steps: u64,
     /// step 错误计数(不 panic)。
@@ -274,6 +276,8 @@ pub struct HostState {
     pub events: VecDeque<Value>,
     /// 图解释运行时(F4 wave.3;play.enter 装配,play.exit 销毁)。
     pub logic: Option<LogicRuntime>,
+    /// 精灵帧动画系统(F-GAME-4;play 会话生命周期,Sprite.frame/clip 唯一写者)。
+    pub anim: crate::anim::AnimSystem,
     /// 实体 ↔ body 映射(F4 wave.3 D-F4-I;play.enter 批建,play.exit 批删)。
     pub body_map: HashMap<u64, BodyId>,
     /// 待派发输入事件队列(F4 wave.3 logic.inject_input;下一逻辑帧取空)。
@@ -286,6 +290,9 @@ pub struct HostState {
     pub h264: H264State,
     /// --game 模式(F6 wave.4 D-F6-D):RPC 裁剪为只读+input 子集,禁编辑面。
     pub game_mode: bool,
+    /// 可视状态代次(推流腿编辑态空闲跳帧依据):dispatch 对非只读方法成功后自增,
+    /// stream 相机消息亦自增;Running 态推流不看此值(逐帧都在变)。
+    pub scene_rev: u64,
 }
 
 /// H.264 编码器状态(F1 wave.4):懒加载 + 尺寸变化重建 + 帧计数。
@@ -354,7 +361,7 @@ impl H264State {
 impl HostState {
     /// 初始化:建物理世界(按 Jolt→Rapier 序取首个可构造后端;全失败则 None)。
     pub fn new() -> Self {
-        let (world, backend) = create_world();
+        let (world, backend) = create_world(forge_scene::default_scene_gravity());
         let mut events = VecDeque::with_capacity(16);
         events.push_back(json!({
             "ts": utc_now_iso8601(),
@@ -370,6 +377,7 @@ impl HostState {
             checkpoints: Vec::new(),
             physics: world,
             backend: backend.to_string(),
+            world_gravity: forge_scene::default_scene_gravity(),
             steps: 0,
             step_errors: 0,
             frames: 0,
@@ -379,11 +387,13 @@ impl HostState {
             h264: H264State::new(),
             events,
             logic: None,
+            anim: crate::anim::AnimSystem::default(),
             body_map: HashMap::new(),
             input_queue: Vec::new(),
             started: Instant::now(),
             camera: crate::viewport::EditorCamera::default(),
             game_mode: false,
+            scene_rev: 0,
         }
     }
 
@@ -393,7 +403,7 @@ impl HostState {
     }
 
     /// 当前活动场景(play 态为运行态,否则编辑态)。
-    fn active(&self) -> &Scene {
+    pub(crate) fn active(&self) -> &Scene {
         match self.play {
             PlayState::Edit => &self.scene,
             _ => self.run_scene.as_ref().unwrap_or(&self.scene),
@@ -435,11 +445,13 @@ pub fn push_event(st: &mut HostState, event: &str, extra: Value) {
 }
 
 /// 建物理世界:Jolt 生产默认优先,未编译则 Rapier 快路径;全失败 → (None, "none")。
-fn create_world() -> (Option<PhysicsWorld>, &'static str) {
+/// F-GAME-3:gravity 由场景携带(2D 俯视/零重力项目写 [0,0,0]),play.enter 按需重建世界。
+fn create_world(gravity: [f32; 3]) -> (Option<PhysicsWorld>, &'static str) {
     for (kind, name) in [(BackendKind::Jolt, "jolt"), (BackendKind::Rapier, "rapier")] {
         let desc = WorldDesc {
             backend: kind,
             dt_fixed: DT_FIXED,
+            gravity,
             ..WorldDesc::default()
         };
         match PhysicsWorld::new(desc) {
@@ -448,6 +460,25 @@ fn create_world() -> (Option<PhysicsWorld>, &'static str) {
         }
     }
     (None, "none")
+}
+
+/// 场景模式 → 编辑器相机同步(F-GAME-3):2d 场景切正交并正对 XY 平面
+/// (yaw/pitch 归零 → 眼在 target 正 +Z 朝 -Z);3d 场景切回透视。target/dist 不动。
+fn sync_camera_to_scene_mode(st: &mut HostState) {
+    let is2d = st.scene.is_2d();
+    if st.camera.ortho == is2d && (!is2d || (st.camera.yaw_deg == 0.0 && st.camera.pitch_deg == 0.0)) {
+        return;
+    }
+    st.camera.ortho = is2d;
+    if is2d {
+        st.camera.yaw_deg = 0.0;
+        st.camera.pitch_deg = 0.0;
+    }
+    push_event(
+        st,
+        "viewport.camera_mode",
+        json!({ "ortho": is2d, "sceneMode": st.scene.mode }),
+    );
 }
 
 // ---------- F4 wave.3:图解释运行时 + 物理接线 ----------
@@ -541,10 +572,36 @@ fn collect_script_graphs(scene: &Scene) -> Vec<(u64, String, Value)> {
 }
 
 /// 完整逻辑帧(F4 wave.3;Running 后台线程与 Paused play.step 共用):
-/// world.step → drain_contacts(每帧新 SyncBudget)→ BodyId→实体翻译(规范序保序)→
-/// active_transforms 回写 run_scene → runtime.frame(trigger 沿检测在 frame 内)→
-/// logic.* 事件进 ring。
+/// kinematic 正向同步 → world.step → drain_contacts(每帧新 SyncBudget)→
+/// BodyId→实体翻译(规范序保序)→ active_transforms 回写 run_scene →
+/// runtime.frame(trigger 沿检测在 frame 内)→ logic.* 事件进 ring。
 pub(crate) fn advance_frame(st: &mut HostState) {
+    // F-TEAM-4:kinematic 正向同步——运动体语义 = 游戏逻辑驱动、物理跟随。
+    // 图解释器上帧写的 transform 若不喂回物理,下一帧回写会用 body 旧位置把它
+    // 覆盖掉(实测:打砖块挡板/球每步被拉回原位,逻辑驱动的运动体整体失效)。
+    if let Some(run) = st.run_scene.as_ref() {
+        let targets: Vec<(BodyId, PhysicsTransform)> = st
+            .body_map
+            .iter()
+            .filter_map(|(eid, body)| {
+                let e = run.entity(*eid)?;
+                let rb = e.component("RigidBody")?;
+                (rb.props.get("kind").and_then(Value::as_str) == Some("kinematic")).then_some((
+                    *body,
+                    PhysicsTransform {
+                        translation: e.transform.translation,
+                        rotation: e.transform.rotation,
+                    },
+                ))
+            })
+            .collect();
+        if let Some(world) = st.physics.as_mut() {
+            for (body, t) in targets {
+                // 失败(body 已删等)不打断帧:回写阶段自会如实反映物理侧真相。
+                let _ = world.set_kinematic_target(body, t);
+            }
+        }
+    }
     let mut contacts: Vec<LogicContact> = Vec::new();
     if let Some(world) = st.physics.as_mut() {
         match world.step(DT_FIXED) {
@@ -582,6 +639,16 @@ pub(crate) fn advance_frame(st: &mut HostState) {
     let mut logs: Vec<(String, Value)> = Vec::new();
     if let (Some(rt), Some(run)) = (st.logic.as_mut(), st.run_scene.as_mut()) {
         rt.frame(run, DT_FIXED, inputs, contacts, &mut logs);
+    }
+    // F-GAME-4:精灵帧动画推进(逻辑帧之后——本帧图命令本帧生效;宿主是
+    // Sprite.frame/clip 唯一写者,图侧只发 AnimCommand)。
+    let anim_cmds = st
+        .logic
+        .as_mut()
+        .map(|rt| rt.take_anim_commands())
+        .unwrap_or_default();
+    if let Some(run) = st.run_scene.as_mut() {
+        st.anim.advance(run, anim_cmds, DT_FIXED, &mut logs);
     }
     for (name, payload) in logs {
         push_event(st, &name, payload);
@@ -694,6 +761,9 @@ fn parse_component(v: &Value) -> Result<Component, (i64, String)> {
         Some(p) if p.is_object() => p.clone(),
         Some(_) => return param_err("invalid params: props 须为对象"),
     };
+    // F-GAME-3:可选字段(带注册表缺省)在边界补齐,落库 props 恒全量。
+    let props = forge_scene::normalize_props(&ctype, &props)
+        .map_err(|e| (-32602, format!("invalid params: {e}")))?;
     let c = Component {
         ctype,
         enabled,
@@ -767,7 +837,9 @@ fn parse_batch_op(v: &Value, scene: &Scene) -> Result<Op, (i64, String)> {
                 if !p.is_object() {
                     return param_err("invalid params: props 须为对象");
                 }
-                new.props = p.clone();
+                // F-GAME-3:可选字段缺省补齐(全量替换语义不变)。
+                new.props = forge_scene::normalize_props(ctype, p)
+                    .map_err(|e| (-32602, format!("invalid params: {e}")))?;
             }
             if let Some(b) = v.get("enabled") {
                 new.enabled = b
@@ -790,6 +862,30 @@ fn default_scene_path() -> PathBuf {
     project_root().join("data").join("scene.rxscene")
 }
 
+/// 只读方法集(dispatch 成功后不 bump scene_rev;推流线程据 rev 做编辑态空闲跳帧)。
+/// 漏列的代价 = 多渲一帧,方向安全;误列才会让画面滞后,故仅收录确定无可视副作用者。
+const READONLY_METHODS: &[&str] = &[
+    "host.ping",
+    "scene.summary",
+    "scene.index",
+    "scene.graph_dump",
+    "scene.save",
+    "scene.diff",
+    "render.once",
+    "events.drain",
+    "entity.get",
+    "entity.list",
+    "component.get",
+    "component.listTypes",
+    "transform.get",
+    "play.state",
+    "logic.inject_input",
+    "viewport.frame",
+    "viewport.getCamera",
+    "viewport.pick",
+    "viewport.streamInfo",
+];
+
 /// 分派单条请求(请求已合法解析为 JSON;坏 JSON 由连接层回 -32700)。
 pub fn dispatch(state: &Mutex<HostState>, req: &Value) -> Value {
     let id = req.get("id").cloned().unwrap_or(Value::Null);
@@ -800,7 +896,12 @@ pub fn dispatch(state: &Mutex<HostState>, req: &Value) -> Value {
     let params = req.get("params").cloned().unwrap_or(Value::Null);
     let mut st = lock(state);
     match handle(&mut st, method, &params) {
-        Ok(result) => ok(id, result),
+        Ok(result) => {
+            if !READONLY_METHODS.contains(&method) {
+                st.scene_rev = st.scene_rev.wrapping_add(1);
+            }
+            ok(id, result)
+        }
         Err((code, msg)) => err(id, code, &msg),
     }
 }
@@ -822,6 +923,7 @@ const GAME_ALLOWED: &[&str] = &[
     "viewport.setCamera",
     "viewport.getCamera",
     "viewport.pick",
+    "viewport.streamInfo",
 ];
 
 /// --game 启动(F6 wave.4):项目根相对场景 → scene_load → play_enter;失败如实 Err(main 退出)。
@@ -887,10 +989,12 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "play.exit" => play_exit(st),
         "play.state" => Ok(json!({ "state": st.play.as_str() })),
         "logic.inject_input" => logic_inject_input(st, params),
+        "logic.inject_pointer" => logic_inject_pointer(st, params),
         "viewport.frame" => viewport_frame(st, params),
         "viewport.setCamera" => viewport_set_camera(st, params),
         "viewport.getCamera" => Ok(st.camera.to_json()),
         "viewport.pick" => viewport_pick(st, params),
+        "viewport.streamInfo" => viewport_stream_info(),
         "viewport.shareOpen" => viewport_share_open(params),
         "viewport.shareClose" => {
             crate::share::close();
@@ -963,14 +1067,46 @@ fn scene_new(st: &mut HostState, params: &Value) -> HResult {
     if !params.is_null() && !params.is_object() {
         return param_err("invalid params: 须为对象");
     }
+    // F-GAME-3:可选 mode("2d"|"3d";缺省跟随项目 forge.toml [project] mode,无清单则 3d)
+    // 与 gravity([f32;3],缺省 [0,-9.81,0])。
+    let mode = match params.get("mode") {
+        None | Some(Value::Null) => assetd::project::ForgeProject::load(project_root())
+            .ok()
+            .map(|p| p.mode.as_str().to_string()),
+        Some(Value::String(s)) => {
+            if s != "2d" && s != "3d" {
+                return param_err("invalid params: mode 须为 \"2d\"|\"3d\"");
+            }
+            Some(s.clone())
+        }
+        Some(_) => return param_err("invalid params: mode 须为字符串"),
+    };
+    let gravity = match params.get("gravity") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(a)) if a.len() == 3 && a.iter().all(|v| v.is_number()) => Some([
+            a[0].as_f64().unwrap() as f32,
+            a[1].as_f64().unwrap() as f32,
+            a[2].as_f64().unwrap() as f32,
+        ]),
+        Some(_) => return param_err("invalid params: gravity 须为 3 数数组"),
+    };
     if st.play != PlayState::Edit {
         return domain_err("play 态禁止 scene.new,请先 play.exit");
     }
-    st.apply_tracked(Op::ReplaceScene(Scene::new(&name)))
+    let mut scene = match mode.as_deref() {
+        Some(m) => Scene::with_mode(&name, m),
+        None => Scene::new(&name),
+    };
+    if let Some(g) = gravity {
+        scene.gravity = g;
+    }
+    st.apply_tracked(Op::ReplaceScene(scene))
         .map_err(|e| (-32000, e))?;
-    push_event(st, "scene.created", json!({ "name": name }));
+    sync_camera_to_scene_mode(st);
+    let mode = st.scene.mode.clone();
+    push_event(st, "scene.created", json!({ "name": name, "mode": mode }));
     let s = st.scene.summary();
-    Ok(json!({ "name": s.name, "entityCount": s.entity_count }))
+    Ok(json!({ "name": s.name, "entityCount": s.entity_count, "mode": mode }))
 }
 
 fn scene_summary(st: &HostState) -> Value {
@@ -979,6 +1115,8 @@ fn scene_summary(st: &HostState) -> Value {
         "name": s.name,
         "entityCount": s.entity_count,
         "playState": st.play.as_str(),
+        "mode": st.active().mode,
+        "gravity": st.active().gravity,
         "physics": {
             "backend": st.backend,
             "steps": st.steps,
@@ -1029,32 +1167,66 @@ fn viewport_size(params: &Value) -> Result<(u32, u32), (i64, String)> {
     Ok((w, h))
 }
 
+/// 共享纹理喂帧(帧源共用:viewport.frame 遗留腿与 stream 推流腿,杜绝双真相源):
+/// - 会话已 import(零拷贝档):VK 直渲进共享 buffer,仅推进共享 fence;
+/// - 未 import(readback 上传档):CPU 拷贝进共享 buffer(调用方按第二返回值计 cpu_uploads)。
+/// share 未开 → ("no_share", false)。
+pub(crate) fn feed_share_frame(
+    f: &crate::viewport::FramePixels,
+) -> Result<(&'static str, bool), String> {
+    if !crate::share::is_open() {
+        return Ok(("no_share", false));
+    }
+    if f.imported {
+        crate::share::signal_frame().map_err(|e| format!("共享 fence 信号失败: {e}"))?;
+        Ok(("zero_copy", false))
+    } else {
+        crate::share::write_frame(&f.rgba8, f.width, f.height)
+            .map_err(|e| format!("共享纹理写入失败: {e}"))?;
+        Ok(("readback_upload", true))
+    }
+}
+
+/// viewport.streamInfo:直连推流通道地址(WS 端口 + 随机 token)。
+/// 服务器未启动(极端:端口绑定失败)→ 域错误,客户端如实回退轮询腿。
+fn viewport_stream_info() -> HResult {
+    match crate::stream::info() {
+        Some(i) => Ok(json!({
+            "wsUrl": format!("ws://127.0.0.1:{}/stream?token={}", i.port, i.token),
+            "proto": 1,
+        })),
+        None => domain_err("推流服务器未启动(视口走轮询回退腿)"),
+    }
+}
+
 /// viewport.frame:GPU 场景实渲染 + 回读;无设备 → DEV_ENV_DEGRADE 结构化错误(不充绿)。
 /// `format` = "rgba8"(默认) | "h264"(F1 wave.4 流腿:Annex B 码流,供纯 web 客户端)。
 fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
-    let (w, h) = viewport_size(params)?;
+    let (mut w, mut h) = viewport_size(params)?;
+    // 推流期间以流为尺寸权威:多消费者尺寸不一致会触发 1-5s 会话重建拉锯
+    // (agent 截图 960×540 与流面板尺寸逐次交替重建)。遗留腿按流尺寸出帧,
+    // 响应 width/height 如实回报实渲尺寸,消费者按实返自适应(既有契约)。
+    if let Some((sw, sh)) = crate::stream::primary_size() {
+        (w, h) = (sw, sh);
+    }
     let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8");
     let selected = params.get("selectedId").and_then(Value::as_u64);
     let cam = st.camera;
+    // F-GAME-2:PIE 期间视口由场景相机实体驱动(游戏画面 = 游戏相机);编辑态走编辑器相机。
+    let vp_override = if st.play != PlayState::Edit {
+        let aspect = w as f32 / h as f32;
+        crate::viewport::scene_camera_view_proj(st.active(), aspect)
+    } else {
+        None
+    };
     // F6 wave.5:format=none 性能测量档不回读(渲染+提交产能口径);rgba8/h264 档帧通道端到端口径。
     let want_readback = format != "none";
-    match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h, want_readback) {
+    match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h, want_readback, true, vp_override) {
         Ok(f) => {
-            // 帧通道(F1 wave.2/3):帧源唯一 = render_scene_frame。共享纹理开启时:
-            // - 会话已 import(零拷贝档):VK 直渲进共享纹理,仅推进共享 fence;
-            // - 未 import(readback 上传档):CPU 拷贝进共享纹理,cpu_uploads 计数。
-            let mut frame_path = "no_share";
-            if crate::share::is_open() {
-                if f.imported {
-                    crate::share::signal_frame()
-                        .map_err(|e| (-32000, format!("共享 fence 信号失败: {e}")))?;
-                    frame_path = "zero_copy";
-                } else {
-                    crate::share::write_frame(&f.rgba8, f.width, f.height)
-                        .map_err(|e| (-32000, format!("共享纹理写入失败: {e}")))?;
-                    st.cpu_uploads += 1;
-                    frame_path = "readback_upload";
-                }
+            // 帧通道(F1 wave.2/3):帧源唯一 = render_scene_frame;share 喂帧与推流腿共用。
+            let (frame_path, cpu_upload) = feed_share_frame(&f).map_err(|e| (-32000, e))?;
+            if cpu_upload {
+                st.cpu_uploads += 1;
             }
             st.frames += 1;
             st.last_tris = f.triangles;
@@ -1129,8 +1301,9 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
     }
 }
 
-/// viewport.setCamera:子集更新(target/yaw/pitch/dist/fovY),回显全量。
-fn viewport_set_camera(st: &mut HostState, params: &Value) -> HResult {
+/// viewport.setCamera:子集更新(target/yaw/pitch/dist/fovY/ortho/orthoSize),回显全量。
+/// pub(crate):stream 相机消息与 RPC 腿共用同一套解析+钳制。
+pub(crate) fn viewport_set_camera(st: &mut HostState, params: &Value) -> HResult {
     if !params.is_object() {
         return param_err("invalid params: 须为对象");
     }
@@ -1158,6 +1331,13 @@ fn viewport_set_camera(st: &mut HostState, params: &Value) -> HResult {
     }
     if let Some(v) = num("fovY") {
         cam.fov_y_deg = v.clamp(10.0, 120.0);
+    }
+    // F-GAME-3:正交开关 + 正交半高(2D 视口缩放即调 orthoSize)。
+    if let Some(v) = params.get("ortho").and_then(Value::as_bool) {
+        cam.ortho = v;
+    }
+    if let Some(v) = num("orthoSize") {
+        cam.ortho_half_h = v.clamp(0.01, 1000.0);
     }
     st.camera = cam;
     Ok(cam.to_json())
@@ -1319,7 +1499,9 @@ fn component_set(st: &mut HostState, params: &Value) -> HResult {
         if !p.is_object() {
             return param_err("invalid params: props 须为对象");
         }
-        new.props = p.clone();
+        // F-GAME-3:可选字段缺省补齐(全量替换语义不变)。
+        new.props = forge_scene::normalize_props(&ctype, p)
+            .map_err(|e| (-32602, format!("invalid params: {e}")))?;
         touched = true;
     }
     if let Some(b) = params.get("enabled") {
@@ -1552,9 +1734,12 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
     let scene = Scene::load(&path).map_err(|e| (-32000, e.to_string()))?;
     st.apply_tracked(Op::ReplaceScene(scene))
         .map_err(|e| (-32000, e))?;
-    push_event(st, "scene.loaded", json!({ "path": path.to_string_lossy() }));
+    // F-GAME-3:场景模式驱动编辑器相机(2d → 正交正视 XY 平面)。
+    sync_camera_to_scene_mode(st);
+    let mode = st.scene.mode.clone();
+    push_event(st, "scene.loaded", json!({ "path": path.to_string_lossy(), "mode": mode }));
     let s = st.scene.summary();
-    Ok(json!({ "name": s.name, "entityCount": s.entity_count }))
+    Ok(json!({ "name": s.name, "entityCount": s.entity_count, "mode": mode }))
 }
 
 fn scene_diff(st: &HostState, params: &Value) -> HResult {
@@ -1642,6 +1827,19 @@ fn play_enter(st: &mut HostState) -> HResult {
     if st.play != PlayState::Edit {
         return domain_err(format!("当前状态 {} 禁止 play.enter", st.play.as_str()));
     }
+    // F-GAME-3:场景重力 ≠ 当前物理世界重力 → 重建世界(edit 态 body_map 恒空,安全;
+    // rurix-physics 无 set_gravity 面,重建是唯一路径)。2D 俯视/零重力场景写 gravity=[0,0,0]。
+    if st.scene.gravity != st.world_gravity {
+        let (world, backend) = create_world(st.scene.gravity);
+        st.physics = world;
+        st.backend = backend.to_string();
+        st.world_gravity = st.scene.gravity;
+        push_event(
+            st,
+            "physics.gravity",
+            json!({ "gravity": st.scene.gravity, "backend": st.backend }),
+        );
+    }
     // F4 wave.3 ①:RigidBody 实体批建 body(D-F4-I),填 body_map。
     let run = st.scene.clone();
     let mut descs = Vec::new();
@@ -1684,6 +1882,7 @@ fn play_enter(st: &mut HostState) -> HResult {
         rt.load(eid, doc, &props, run, &mut logs);
     }
     st.logic = Some(rt);
+    st.anim.clear(); // F-GAME-4:动画状态随 play 会话从零起
     st.play = PlayState::Running;
     // 跨场景切换,命令栈清空避免误作用。
     st.undo.clear();
@@ -1706,6 +1905,7 @@ fn play_enter_rollback(st: &mut HostState) {
     st.body_map.clear();
     st.run_scene = None;
     st.logic = None;
+    st.anim.clear();
 }
 
 fn play_pause(st: &mut HostState) -> HResult {
@@ -1749,6 +1949,7 @@ fn play_exit(st: &mut HostState) -> HResult {
     }
     st.body_map.clear();
     st.logic = None;
+    st.anim.clear();
     st.input_queue.clear();
     st.run_scene = None;
     st.play = PlayState::Edit;
@@ -1758,11 +1959,101 @@ fn play_exit(st: &mut HostState) -> HResult {
     Ok(json!({ "state": st.play.as_str() }))
 }
 
+/// 输入入队(play 态限定;logic.inject_input 与 stream 实时输入共用)。
+/// edit 态 Err(调用方决定上报或静默丢弃);软上限防离线堆积(Paused 不排空队列)。
+pub(crate) fn queue_input(st: &mut HostState, action: &str, value: f64) -> Result<usize, String> {
+    if st.play == PlayState::Edit {
+        return Err("edit 态禁止 logic.inject_input,请先 play.enter".to_string());
+    }
+    if st.input_queue.len() >= EVENT_RING_CAP {
+        return Err(format!("input_queue 已满({EVENT_RING_CAP}),输入被丢弃"));
+    }
+    st.input_queue.push((action.to_string(), value));
+    Ok(st.input_queue.len())
+}
+
+/// 指针(归一化视口坐标,0..1,左上原点)→ 游戏平面世界点:射线取自场景相机实体
+/// (PIE 画面 = 游戏相机,无相机实体退回编辑器相机),与 2d 场景 z=0 平面(XY 侧视约定,
+/// D-030)/ 3d 场景 y=0 地面求交;射线与平面平行时退回射线原点(不报错,输入通道不刷屏)。
+pub(crate) fn pointer_to_world(st: &HostState, x01: f32, y01: f32, aspect: f32) -> [f32; 3] {
+    let nx = 2.0 * x01 - 1.0;
+    let ny = 1.0 - 2.0 * y01;
+    let scene = st.active();
+    let (origin, dir) = crate::viewport::scene_camera_ray(scene, nx, ny, aspect)
+        .unwrap_or_else(|| st.camera.ray(nx, ny, aspect));
+    let axis = if scene.mode == "2d" { 2 } else { 1 };
+    if dir[axis].abs() < 1e-6 {
+        return origin;
+    }
+    let t = -origin[axis] / dir[axis];
+    [
+        origin[0] + dir[0] * t,
+        origin[1] + dir[1] * t,
+        origin[2] + dir[2] * t,
+    ]
+}
+
+/// 指针输入入队(logic.inject_pointer 与 stream `pointer` 消息共用):
+/// 依次入队 `<action>_x` / `<action>_y` / `<action>_z`(世界坐标)与 `<action>`(value=1),
+/// 同一逻辑帧按序派发——图侧先经 `var.set(name=action)` 接住坐标,再在 `<action>` 事件里消费;
+/// 只认 `<action>` 正值的老游戏图行为不变。返回世界点。
+pub(crate) fn queue_pointer(
+    st: &mut HostState,
+    action: &str,
+    x01: f64,
+    y01: f64,
+    size: Option<(u32, u32)>,
+) -> Result<[f32; 3], String> {
+    if st.play == PlayState::Edit {
+        return Err("edit 态禁止 logic.inject_pointer,请先 play.enter".to_string());
+    }
+    let (w, h) = size
+        .or_else(crate::stream::primary_size)
+        .unwrap_or((960, 540));
+    let aspect = w as f32 / h.max(1) as f32;
+    let world = pointer_to_world(st, x01.clamp(0.0, 1.0) as f32, y01.clamp(0.0, 1.0) as f32, aspect);
+    queue_input(st, &format!("{action}_x"), f64::from(world[0]))?;
+    queue_input(st, &format!("{action}_y"), f64::from(world[1]))?;
+    queue_input(st, &format!("{action}_z"), f64::from(world[2]))?;
+    queue_input(st, action, 1.0)?;
+    Ok(world)
+}
+
+/// logic.inject_pointer {x, y, action?, width?, height?}:play 态限定;x/y 为归一化视口
+/// 坐标(0..1,左上原点),width/height 为该坐标所在画面尺寸(缺省 = 推流主订阅尺寸,再缺省
+/// 960×540,只影响 aspect)。见 queue_pointer。
+fn logic_inject_pointer(st: &mut HostState, params: &Value) -> HResult {
+    let action = match params.get("action") {
+        None | Some(Value::Null) => "click".to_string(),
+        Some(Value::String(s)) if !s.is_empty() => s.clone(),
+        Some(_) => return param_err("invalid params: action 须为非空字符串"),
+    };
+    let x = params
+        .get("x")
+        .and_then(Value::as_f64)
+        .ok_or((-32602, "invalid params: x 须为数值(0..1)".to_string()))?;
+    let y = params
+        .get("y")
+        .and_then(Value::as_f64)
+        .ok_or((-32602, "invalid params: y 须为数值(0..1)".to_string()))?;
+    let size = match (
+        params.get("width").and_then(Value::as_u64),
+        params.get("height").and_then(Value::as_u64),
+    ) {
+        (Some(w), Some(h)) if w > 0 && h > 0 => Some((w as u32, h as u32)),
+        _ => None,
+    };
+    let world = queue_pointer(st, &action, x, y, size).map_err(|e| (-32000, e))?;
+    push_event(
+        st,
+        "logic.inject_pointer",
+        json!({ "action": action, "x": x, "y": y, "world": world }),
+    );
+    Ok(json!({ "queued": true, "action": action, "world": world, "depth": st.input_queue.len() }))
+}
+
 /// logic.inject_input {action, value}:play 态限定,入队待下一逻辑帧派发(on_input)。
 fn logic_inject_input(st: &mut HostState, params: &Value) -> HResult {
-    if st.play == PlayState::Edit {
-        return domain_err("edit 态禁止 logic.inject_input,请先 play.enter");
-    }
     let action = params
         .get("action")
         .and_then(Value::as_str)
@@ -1772,8 +2063,7 @@ fn logic_inject_input(st: &mut HostState, params: &Value) -> HResult {
         .get("value")
         .and_then(Value::as_f64)
         .ok_or((-32602, "invalid params: value 须为数值".to_string()))?;
-    st.input_queue.push((action.clone(), value));
-    let depth = st.input_queue.len();
+    let depth = queue_input(st, &action, value).map_err(|e| (-32000, e))?;
     push_event(st, "logic.inject_input", json!({ "action": action, "value": value }));
     Ok(json!({ "queued": true, "depth": depth }))
 }
@@ -1842,6 +2132,70 @@ mod tests {
     { "from": ["c", "exec"], "to": ["lc", "exec"] },
     { "from": ["u", "exec"], "to": ["lu", "exec"] }
   ]
+}
+"#,
+            )
+            .unwrap();
+            // 移动图:on_start 立即位移 $self +0.5x(F-TEAM-4 kinematic 正向同步回归用)。
+            std::fs::write(
+                graphs.join("mover.rxgraph"),
+                r#"{
+  "version": 1, "id": "g_mover", "name": "Mover",
+  "nodes": [
+    { "id": "s", "type": "event.on_start", "pos": [0, 0] },
+    { "id": "m", "type": "transform.move_tween", "pos": [1, 0],
+      "inputs": { "target": { "const": "$self" }, "offset": { "const": [0.5, 0.0, 0.0] }, "duration": { "const": 0.0 } } }
+  ],
+  "edges": [ { "from": ["s", "exec"], "to": ["m", "exec"] } ]
+}
+"#,
+            )
+            .unwrap();
+            // F-GAME-4:精灵动画 fixture——.rxsprite(walk 2 帧 @8fps + animator)+ .meta
+            // (纹理文件本测试面不需要:动画系统只读 .rxsprite;渲染面另有 viewport 测试)。
+            let sprites = dir.join("Content").join("Sprites");
+            std::fs::create_dir_all(&sprites).unwrap();
+            std::fs::write(
+                sprites.join("anim_hero.rxsprite"),
+                r#"{
+  "version": 1, "texture": "test-anim-tex-guid", "pivot": [0.5, 1.0],
+  "frames": {
+    "w0": { "bbox": [0, 0, 16, 16] },
+    "w1": { "bbox": [16, 0, 16, 16] }
+  },
+  "clips": {
+    "idle": { "frames": ["w0"], "fps": 4, "loop": true },
+    "walk": { "frames": ["w0", "w1"], "fps": 8, "loop": true }
+  },
+  "animator": {
+    "defaultState": "idle",
+    "parameters": { "isMoving": "bool" },
+    "states": { "idle": { "clip": "idle" }, "walk": { "clip": "walk" } },
+    "transitions": [
+      { "from": "idle", "to": "walk", "when": [{ "param": "isMoving", "eq": true }] },
+      { "from": "walk", "to": "idle", "when": [{ "param": "isMoving", "eq": false }] }
+    ]
+  }
+}
+"#,
+            )
+            .unwrap();
+            std::fs::write(
+                sprites.join("anim_hero.rxsprite.meta"),
+                "guid: test-anim-sprite-guid\ntype: sprite\nimporter: sprite\nbuild_state: current\n",
+            )
+            .unwrap();
+            // 动画驱动图:on_start → animator.set_bool($self, isMoving, true)。
+            std::fs::write(
+                graphs.join("anim.rxgraph"),
+                r#"{
+  "version": 1, "id": "g_anim", "name": "Anim",
+  "nodes": [
+    { "id": "s", "type": "event.on_start", "pos": [0, 0] },
+    { "id": "b", "type": "animator.set_bool", "pos": [1, 0],
+      "inputs": { "entity": { "const": "$self" }, "param": { "const": "isMoving" }, "value": { "const": true } } }
+  ],
+  "edges": [ { "from": ["s", "exec"], "to": ["b", "exec"] } ]
 }
 "#,
             )
@@ -1916,6 +2270,164 @@ mod tests {
         assert!(y < 9.9, "30 帧自由落体后 y 须明显下降,实际 {y}");
         call(&st, "play.exit", json!({}));
         assert!(lock(&st).body_map.is_empty(), "play.exit 须清 body_map");
+    }
+
+    /// F-GAME-3:scene.new mode=2d → 场景模式落库 + 编辑器相机切正交正视;3d 切回透视。
+    #[test]
+    fn scene_new_2d_switches_camera_ortho() {
+        let st = host();
+        let r = call(&st, "scene.new", json!({ "name": "t2d", "mode": "2d" }));
+        assert_eq!(r["mode"], json!("2d"));
+        let cam = call(&st, "viewport.getCamera", json!({}));
+        assert_eq!(cam["ortho"], json!(true), "2d 场景须切正交相机");
+        assert_eq!(cam["yaw"], json!(0.0));
+        assert_eq!(cam["pitch"], json!(0.0));
+        let sum = call(&st, "scene.summary", json!({}));
+        assert_eq!(sum["mode"], json!("2d"));
+        // 非法 mode 如实拒绝。
+        let (code, _msg) = call_err(&st, "scene.new", json!({ "mode": "5d" }));
+        assert_eq!(code, -32602);
+        // 回 3d:相机恢复透视。
+        let r3 = call(&st, "scene.new", json!({ "name": "t3d", "mode": "3d" }));
+        assert_eq!(r3["mode"], json!("3d"));
+        let cam3 = call(&st, "viewport.getCamera", json!({}));
+        assert_eq!(cam3["ortho"], json!(false));
+        // viewport.setCamera 接受 ortho/orthoSize 子集。
+        let cam4 = call(&st, "viewport.setCamera", json!({ "ortho": true, "orthoSize": 8.0 }));
+        assert_eq!(cam4["ortho"], json!(true));
+        assert_eq!(cam4["orthoSize"], json!(8.0));
+    }
+
+    /// F-GAME-3:场景 gravity=[0,0,0] → play.enter 重建零重力世界,动态体不下落。
+    #[test]
+    fn scene_gravity_zero_g_disables_fall() {
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "space", "mode": "2d", "gravity": [0.0, 0.0, 0.0] }));
+        let e = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "ball",
+                "components": [ { "type": "RigidBody", "props": { "kind": "dynamic", "mass": 1.0 } } ],
+                "translation": [0.0, 10.0, 0.0]
+            }),
+        );
+        let id = e["id"].as_u64().unwrap();
+        call(&st, "play.enter", json!({}));
+        assert_eq!(lock(&st).world_gravity, [0.0, 0.0, 0.0], "play.enter 须按场景重力重建世界");
+        call(&st, "play.pause", json!({}));
+        step_n(&st, 30);
+        let t = call(&st, "transform.get", json!({ "id": id }));
+        let y = t["translation"][1].as_f64().unwrap();
+        assert!(y > 9.9, "零重力下 30 帧 y 不应下降,实际 {y}");
+        call(&st, "play.exit", json!({}));
+    }
+
+    /// F-GAME-3:Sprite 组件边界归一(可选字段补缺省)+ 缺 texture 必填拒绝。
+    #[test]
+    fn sprite_component_normalized_at_boundary() {
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t", "mode": "2d" }));
+        let e = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "hero",
+                "components": [ { "type": "Sprite", "props": { "texture": "guid-x" } } ]
+            }),
+        );
+        let comps = e["entity"]["components"].as_array().unwrap();
+        let sp = comps.iter().find(|c| c["type"] == "Sprite").expect("应有 Sprite 组件");
+        assert_eq!(sp["props"]["pixelsPerUnit"], json!(100.0));
+        assert_eq!(sp["props"]["sortingOrder"], json!(0.0));
+        assert_eq!(sp["props"]["flipX"], json!(false));
+        assert_eq!(sp["props"]["tint"], json!([1.0, 1.0, 1.0, 1.0]));
+        // F-GAME-4:texture 转可选(与 sprite 二选一),空 props 合法且缺省全补齐。
+        assert_eq!(sp["props"]["sprite"], json!(""));
+        assert_eq!(sp["props"]["clip"], json!(""));
+        assert_eq!(sp["props"]["frame"], json!(0.0));
+        let e2 = call(
+            &st,
+            "entity.create",
+            json!({ "name": "empty", "components": [ { "type": "Sprite", "props": {} } ] }),
+        );
+        let comps2 = e2["entity"]["components"].as_array().unwrap();
+        let sp2 = comps2.iter().find(|c| c["type"] == "Sprite").expect("应有 Sprite 组件");
+        assert_eq!(sp2["props"]["texture"], json!(""));
+        assert_eq!(sp2["props"]["sprite"], json!(""));
+        // 类型错误仍拒绝(-32602)。
+        let (code, _msg) = call_err(
+            &st,
+            "entity.create",
+            json!({ "name": "bad", "components": [ { "type": "Sprite", "props": { "sprite": 1 } } ] }),
+        );
+        assert_eq!(code, -32602, "Sprite.sprite 非字符串须拒绝");
+    }
+
+    /// F-GAME-4 全链:.rxsprite(animator)+ 图 on_start set_bool → play 帧推进 →
+    /// run_scene 组件 frame/clip 被宿主回写;play.exit 清动画状态。
+    #[test]
+    fn sprite_animation_full_loop_via_play() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "anim", "mode": "2d" }));
+        let e = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "hero",
+                "components": [
+                    { "type": "Sprite", "props": { "sprite": "test-anim-sprite-guid" } },
+                    { "type": "Script", "props": { "graphRef": "Content/Graphs/anim.rxgraph", "module": "", "props": {} } }
+                ]
+            }),
+        );
+        let id = e["entity"]["id"].as_u64().expect("缺实体 id");
+        call(&st, "play.enter", json!({}));
+        call(&st, "play.pause", json!({}));
+
+        let sprite_props = |st: &Mutex<HostState>| -> (String, f64) {
+            // entity.get 顶层即实体 JSON(entity_json_with_category)。
+            let got = call(st, "entity.get", json!({ "id": id }));
+            let sp = got["components"]
+                .as_array()
+                .expect("entity.get 应含 components")
+                .iter()
+                .find(|c| c["type"] == "Sprite")
+                .expect("应有 Sprite 组件")
+                .clone();
+            (
+                sp["props"]["clip"].as_str().unwrap_or("").to_string(),
+                sp["props"]["frame"].as_f64().unwrap_or(-1.0),
+            )
+        };
+
+        // on_start(play.enter 时已入队)→ 第 1 步:isMoving=true → FSM idle→walk。
+        // walk @8fps = 0.125s/帧;第 8 步 elapsed=8/60≈0.133 跨帧 → frame 1;
+        // 再 8 步回卷 → frame 0(loop)。
+        step_n(&st, 9);
+        let (clip, frame) = sprite_props(&st);
+        assert_eq!(clip, "walk", "FSM 应已切到 walk");
+        assert_eq!(frame, 1.0, "9 步后应在第 2 帧");
+        {
+            let guard = lock(&st);
+            assert_eq!(
+                guard.anim.debug_state(id).unwrap().3.as_deref(),
+                Some("walk"),
+                "animator 状态应为 walk"
+            );
+        }
+        step_n(&st, 8);
+        let (_, frame) = sprite_props(&st);
+        assert_eq!(frame, 0.0, "循环 clip 应回卷首帧");
+
+        // 编辑态场景不被污染(唯一写者只写 run_scene)。
+        call(&st, "play.exit", json!({}));
+        let (clip_edit, frame_edit) = sprite_props(&st);
+        assert_eq!(clip_edit, "", "编辑态 clip 不受 play 影响");
+        assert_eq!(frame_edit, 0.0);
+        let guard = lock(&st);
+        assert!(guard.anim.debug_state(id).is_none(), "play.exit 应清动画状态");
     }
 
     /// contact Begin 进环 + 同帧规范序 logic.input < logic.contact < logic.update。
@@ -2074,6 +2586,39 @@ mod tests {
         call(&st, "play.exit", json!({}));
     }
 
+    /// F-TEAM-4 回归:kinematic 运动体由图逻辑驱动(直改 run_scene transform),
+    /// 多帧物理 step 后位置必须保持——修复前物理回写用 body 旧位置逐帧把逻辑
+    /// 写入覆盖掉(实测打砖块挡板/球被拉回原位,游戏不可玩)。
+    #[test]
+    fn kinematic_logic_transform_survives_steps() {
+        test_project_root();
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "t" }));
+        let pad = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "pad",
+                "components": [
+                    { "type": "RigidBody", "props": { "kind": "kinematic", "mass": 1.0 } },
+                    { "type": "Script", "props": { "module": "", "graphRef": "Content/Graphs/mover.rxgraph", "props": {} } }
+                ]
+            }),
+        );
+        let pad_id = pad["id"].as_u64().unwrap();
+        call(&st, "play.enter", json!({}));
+        // on_start 已把 $self 移到 x=0.5(图直改 run_scene,不走 transform.set RPC)。
+        call(&st, "play.pause", json!({}));
+        step_n(&st, 30);
+        let t = call(&st, "transform.get", json!({ "id": pad_id }));
+        let x = t["translation"][0].as_f64().unwrap();
+        assert!(
+            (x - 0.5).abs() < 1e-3,
+            "kinematic 逻辑位移 30 步后不得被物理回写拉回: x={x}"
+        );
+        call(&st, "play.exit", json!({}));
+    }
+
     /// 坏图/缺图如实拒绝:play.enter 报错且不进 play;body_map 不留残。
     #[test]
     fn play_enter_rejects_missing_graph() {
@@ -2198,5 +2743,44 @@ mod tests {
     fn scene_path_rejects_dotdot() {
         assert!(resolve_scene_path("../secret.rxscene").is_err());
         assert!(resolve_scene_path("\\\\server\\share\\a.rxscene").is_err());
+    }
+
+    /// 推流腿空闲跳帧依据:scene_rev 仅在变更方法成功后自增;只读方法不动。
+    #[test]
+    fn scene_rev_bumps_on_mutating_methods_only() {
+        let st = host();
+        let rev0 = lock(&st).scene_rev;
+        call(&st, "play.state", json!({}));
+        call(&st, "viewport.getCamera", json!({}));
+        call(&st, "scene.summary", json!({}));
+        assert_eq!(lock(&st).scene_rev, rev0, "只读方法不 bump");
+        call(&st, "entity.create", json!({ "name": "e" }));
+        assert_eq!(lock(&st).scene_rev, rev0 + 1, "变更方法成功后 bump");
+        call(&st, "viewport.setCamera", json!({ "yaw": 10.0 }));
+        assert_eq!(lock(&st).scene_rev, rev0 + 2, "相机变更是可视变更");
+        let _ = call_err(&st, "entity.destroy", json!({ "id": 9999 }));
+        assert_eq!(lock(&st).scene_rev, rev0 + 2, "失败调用不 bump");
+    }
+
+    /// WS 实时输入与 logic.inject_input 共用入队:edit 态拒、play 态入队计深。
+    #[test]
+    fn queue_input_shared_semantics() {
+        let st = host();
+        {
+            let mut g = lock(&st);
+            assert!(queue_input(&mut g, "left", -1.0).is_err(), "edit 态须拒");
+        }
+        call(&st, "play.enter", json!({}));
+        {
+            let mut g = lock(&st);
+            assert_eq!(queue_input(&mut g, "left", -1.0), Ok(1));
+            assert_eq!(queue_input(&mut g, "right", 1.0), Ok(2));
+            assert_eq!(g.input_queue.len(), 2);
+            // 软上限:塞满后拒收(离线 Paused 不排空时不无界堆积)。
+            for i in 0..EVENT_RING_CAP {
+                let _ = queue_input(&mut g, "x", i as f64);
+            }
+            assert!(queue_input(&mut g, "overflow", 1.0).is_err());
+        }
     }
 }

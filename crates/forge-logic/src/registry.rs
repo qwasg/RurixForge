@@ -65,6 +65,11 @@ const fn inp(name: &'static str, ty: PinType) -> PinSpec {
     PinSpec { name, ty, required: true }
 }
 
+/// 可选输入 pin(未接 = 缺省语义,由解释器给缺省值;F-GAME-4 sprite.play.restart)。
+const fn opt(name: &'static str, ty: PinType) -> PinSpec {
+    PinSpec { name, ty, required: false }
+}
+
 const fn out(name: &'static str, ty: PinType) -> PinSpec {
     PinSpec { name, ty, required: false }
 }
@@ -121,6 +126,13 @@ pub const REGISTRY: &[NodeSpec] = &[
     // ---- debug.*(编辑态)----
     NodeSpec { ntype: "debug.log", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("message", PinType::String)], outputs: &[] },
     NodeSpec { ntype: "debug.draw_debug_line", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("a", PinType::Vec3), inp("b", PinType::Vec3)], outputs: &[] },
+    // ---- sprite.* / animator.*(F-GAME-4 帧动画,加性扩展 40→45;10 §4.2 Errata)----
+    // sprite.play:restart 可选缺省 false = 幂等(同 clip 重复调用 no-op,防每帧重启冻帧坑)。
+    NodeSpec { ntype: "sprite.play", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("clip", PinType::String), opt("restart", PinType::Bool)], outputs: &[] },
+    NodeSpec { ntype: "sprite.stop", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity)], outputs: &[] },
+    NodeSpec { ntype: "sprite.set_frame", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("index", PinType::I32)], outputs: &[] },
+    NodeSpec { ntype: "animator.set_bool", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("param", PinType::String), inp("value", PinType::Bool)], outputs: &[] },
+    NodeSpec { ntype: "animator.set_trigger", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("param", PinType::String)], outputs: &[] },
 ];
 
 /// 按类型名查注册项。
@@ -134,9 +146,8 @@ mod tests {
 
     #[test]
     fn registry_covers_nine_families_frozen_subset() {
-        // 10 §4.2 首发冻结子集全量:10 event + 7 flow + 7 entity + 4 transform
-        // + 3 physics + 2 audio + 3 var + 2 call + 2 debug = 40。
-        assert_eq!(REGISTRY.len(), 40);
+        // 10 §4.2 首发冻结子集 40 + F-GAME-4 加性扩展(sprite 3 + animator 2)= 45。
+        assert_eq!(REGISTRY.len(), 45);
         for t in [
             "event.on_start", "event.on_update", "event.on_contact_begin", "event.on_contact_persist",
             "event.on_contact_end", "event.on_trigger_enter", "event.on_trigger_exit", "event.on_input",
@@ -151,9 +162,29 @@ mod tests {
             "var.get", "var.set", "var.add",
             "call.call_function", "call.send_message",
             "debug.log", "debug.draw_debug_line",
+            "sprite.play", "sprite.stop", "sprite.set_frame",
+            "animator.set_bool", "animator.set_trigger",
         ] {
             assert!(find_spec(t).is_some(), "注册表缺 {t}");
         }
+    }
+
+    #[test]
+    fn sprite_animator_nodes_pins() {
+        // F-GAME-4:sprite.play restart 可选(缺省幂等);其余 pin 必填。
+        let p = find_spec("sprite.play").unwrap();
+        assert_eq!(p.kind, NodeKind::Action);
+        assert!(p.exec_in);
+        assert_eq!(p.exec_out, &["exec"]);
+        assert_eq!(p.inputs.len(), 3);
+        assert!(p.inputs[0].required && p.inputs[1].required);
+        assert!(!p.inputs[2].required, "restart 须为可选 pin");
+        assert_eq!(p.inputs[2].name, "restart");
+        let sb = find_spec("animator.set_bool").unwrap();
+        assert_eq!(sb.inputs[1].ty, PinType::String);
+        assert_eq!(sb.inputs[2].ty, PinType::Bool);
+        let sf = find_spec("sprite.set_frame").unwrap();
+        assert_eq!(sf.inputs[1].ty, PinType::I32);
     }
 
     #[test]

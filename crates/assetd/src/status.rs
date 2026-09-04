@@ -2,7 +2,7 @@
 
 use crate::meta::MetaDoc;
 use crate::project::ForgeProject;
-use crate::{meta_path_for, normalize_rel, AssetError, BuildState, Result};
+use crate::{meta_path_for, normalize_rel, BuildState, Result};
 
 /// 单个资产构建状态。
 #[derive(Debug, Clone)]
@@ -23,13 +23,28 @@ pub fn build_status(project: &ForgeProject, paths: &[String]) -> Result<Vec<Buil
     let mut out = Vec::new();
     for rel in targets {
         let meta_path = meta_path_for(&project.content_root(), &rel);
+        // 单文件缺 .meta/读失败不阻断整批(实测:agent 经 write_file/graph_create 产的
+        // 新资产尚无 .meta,整批 NO_META 会让前端资产面板「构建状态不可用」)——
+        // 如实按「从未构建」stale 报告,不伪造 current。
         if !meta_path.is_file() {
-            return Err(AssetError::new("NO_META", format!("缺 .meta: {rel}")));
+            out.push(BuildStatus { path: rel, state: BuildState::Stale, hash: String::new() });
+            continue;
         }
-        let meta = MetaDoc::load(&meta_path)?;
+        let meta = match MetaDoc::load(&meta_path) {
+            Ok(m) => m,
+            Err(_) => {
+                out.push(BuildStatus { path: rel, state: BuildState::Stale, hash: String::new() });
+                continue;
+            }
+        };
         let source_abs = project.content_root().join(&rel);
-        let source_bytes = std::fs::read(&source_abs)
-            .map_err(|e| AssetError::new("IO", format!("读源文件失败 {rel}: {e}")))?;
+        let source_bytes = match std::fs::read(&source_abs) {
+            Ok(b) => b,
+            Err(_) => {
+                out.push(BuildStatus { path: rel, state: BuildState::Stale, hash: String::new() });
+                continue;
+            }
+        };
         let current_key = meta.cache_key(&source_bytes);
 
         // .meta 记的 buildState 是上次构建后状态;再用当前键比对缓存是否真存在。

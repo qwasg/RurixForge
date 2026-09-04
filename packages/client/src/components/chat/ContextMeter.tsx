@@ -1,6 +1,5 @@
 import {
   BookOpen,
-  Boxes,
   Brain,
   Cpu,
   FileText,
@@ -15,7 +14,7 @@ import { formatTokens, type ContextRowKind, type ContextUsage } from '@/lib/cont
 /**
  * Composer 上下文窗口计量(2026-08-24 用户拍板):
  * 胶囊下方工具行「选择模型」右侧 = 灰色空心圆环 + 内圈按占有率扇形填充 + 右侧百分比数字;
- * 点击在胶囊上方展开明细表(文件 / 上下文引用 / 技能 / 工具结果 / 对话 / 思考 / 系统基线),
+ * 点击在胶囊上方展开明细表(文件 / 技能 / 工具结果 / 对话 / 思考 / 系统基线),
  * 按 token 降序,每行带占比条,底注标明估算口径。
  *
  * 配色:环恒灰(edge-strong);扇形与数字 < 75% 走 text-3 灰,75–90% 转 warn,≥ 90% 转 danger
@@ -32,7 +31,6 @@ const KIND_META: Record<ContextRowKind, { label: string; icon: typeof FileText }
   tool: { label: '工具', icon: Wrench },
   message: { label: '对话', icon: MessageSquare },
   reasoning: { label: '思考', icon: Brain },
-  context: { label: '上下文', icon: Boxes },
   skill: { label: '技能', icon: BookOpen },
   draft: { label: '草稿', icon: PencilLine },
 };

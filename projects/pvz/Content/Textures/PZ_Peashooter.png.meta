@@ -1,0 +1,10 @@
+guid: b78c503a-04ab-58c2-bfa1-868eaa713864
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_Peashooter.png
+    pipeline: ai-atlas-grid-crop
+build_state: current

@@ -1,0 +1,10 @@
+guid: 4adc93b8-66fa-5ed6-86cd-7ecd2eafe325
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ night 场景模板(棋盘/推车/判负线,无关卡逻辑)

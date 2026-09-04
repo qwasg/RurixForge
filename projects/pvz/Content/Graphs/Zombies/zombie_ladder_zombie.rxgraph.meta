@@ -1,0 +1,10 @@
+guid: d5694a5a-3f2d-50cb-9502-07b16d81cc82
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_ladder_zombie

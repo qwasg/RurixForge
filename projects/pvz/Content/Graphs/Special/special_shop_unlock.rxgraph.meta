@@ -1,0 +1,10 @@
+guid: 5b0d71c3-2f50-5ebb-9e94-e42dd634959e
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_shop_unlock

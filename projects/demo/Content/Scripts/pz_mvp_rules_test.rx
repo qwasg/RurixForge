@@ -1,0 +1,75 @@
+// mirror fixture for pz_mvp_rules.rx
+// Rx M6.3: projects/demo 内现有 .rx 没有可验证的跨文件 import/mod/use 范例；
+// 本文件不是跨模块测试。以下 12 个同名纯函数逐项镜像生产规则，供边界测试。
+
+fn input_positive(value: f32) -> bool { value > 0.5 }
+
+fn can_afford_peashooter(sun: f32) -> bool { sun >= 100.0 }
+
+fn spend_peashooter(sun: f32) -> f32 {
+    if sun >= 100.0 { sun - 100.0 } else { sun }
+}
+
+fn sun_tick_ready(seconds: f32) -> bool { seconds >= 10.0 }
+
+fn fire_ready(seconds: f32) -> bool { seconds >= 2.5 }
+
+fn zombie_step_x(dt: f32) -> f32 { 0.0 - 1.5 * dt }
+
+fn pea_step_x(dt: f32) -> f32 { 8.0 * dt }
+
+fn at_lose_line(x: f32) -> bool { x <= -8.0 }
+
+fn hp_dead(hp: f32) -> bool { hp <= 0.0 }
+
+fn is_zombie_kill_message(payload: f32) -> bool {
+    payload >= 200.0 && payload < 300.0
+}
+
+fn is_zombie_hit_message(payload: f32) -> bool {
+    payload >= 100.0 && payload < 200.0
+}
+
+fn is_lose_message(payload: f32) -> bool {
+    payload >= 900.0 && payload < 1000.0
+}
+
+#[test]
+fn lose_message_boundary() -> i32 {
+    if is_lose_message(899.0) == false && is_lose_message(900.0) && is_lose_message(999.9) && is_lose_message(1000.0) == false { 0 } else { 1 }
+}
+
+#[test]
+fn initial_sun_can_plant_and_spend() -> i32 {
+    if can_afford_peashooter(200.0) && spend_peashooter(200.0) == 100.0 { 0 } else { 1 }
+}
+
+#[test]
+fn insufficient_sun_cannot_plant_or_spend() -> i32 {
+    if can_afford_peashooter(99.0) == false && spend_peashooter(99.0) == 99.0 { 0 } else { 1 }
+}
+
+#[test]
+fn sun_tick_boundary() -> i32 {
+    if sun_tick_ready(9.99) == false && sun_tick_ready(10.0) { 0 } else { 1 }
+}
+
+#[test]
+fn fire_boundary() -> i32 {
+    if fire_ready(2.49) == false && fire_ready(2.5) { 0 } else { 1 }
+}
+
+#[test]
+fn lose_line_boundary() -> i32 {
+    if at_lose_line(-7.99) == false && at_lose_line(-8.0) { 0 } else { 1 }
+}
+
+#[test]
+fn hp_dead_boundary() -> i32 {
+    if hp_dead(1.0) == false && hp_dead(0.0) { 0 } else { 1 }
+}
+
+#[test]
+fn movement_speed_at_one_second() -> i32 {
+    if zombie_step_x(1.0) == -1.5 && pea_step_x(1.0) == 8.0 { 0 } else { 1 }
+}

@@ -15,6 +15,7 @@ pub mod meta;
 pub mod ops;
 pub mod project;
 pub mod refs;
+pub mod sprite;
 pub mod status;
 pub mod texture;
 pub mod thumb;
@@ -51,7 +52,7 @@ impl From<std::io::Error> for AssetError {
 
 pub type Result<T> = std::result::Result<T, AssetError>;
 
-/// 资产类型(08 §3.2 闭集)。
+/// 资产类型(08 §3.2 闭集;F-GAME-4 + Sprite,见 E-08-002)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssetType {
     Mesh,
@@ -61,6 +62,8 @@ pub enum AssetType {
     Scene,
     Script,
     Audio,
+    /// 精灵图集定义 .rxsprite(F-GAME-4:帧 bbox + pivot + 动画 clip + animator)。
+    Sprite,
 }
 
 impl AssetType {
@@ -73,6 +76,7 @@ impl AssetType {
             AssetType::Scene => "scene",
             AssetType::Script => "script",
             AssetType::Audio => "audio",
+            AssetType::Sprite => "sprite",
         }
     }
 
@@ -85,6 +89,7 @@ impl AssetType {
             "scene" => AssetType::Scene,
             "script" => AssetType::Script,
             "audio" => AssetType::Audio,
+            "sprite" => AssetType::Sprite,
             _ => return None,
         })
     }
@@ -99,6 +104,7 @@ impl AssetType {
             "rxmat" => (AssetType::Material, "material"),
             "rx" => (AssetType::Script, "rx"),
             "rxgraph" => (AssetType::Script, "rxgraph"),
+            "rxsprite" => (AssetType::Sprite, "sprite"),
             _ => return None,
         })
     }

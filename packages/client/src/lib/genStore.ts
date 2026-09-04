@@ -30,6 +30,8 @@ export interface GenImageParams {
   size: 256 | 512 | 1024;
   n: number;
   backend?: string;
+  /** F10-RAG:绑定资产路径(该资产 .meta 简介+标签并入提示词,服务端 descBinding 如实记录)。 */
+  assetPath?: string;
 }
 
 /** prompt + seed → 入库文件名(ascii slug;与 gen-image-mcp slugify 同规则)。 */
@@ -52,6 +54,8 @@ interface GenState {
   /** GenerateDialog 开关 + 目标文件夹(gen_accept destFolder;'' 已归一为 Textures)。 */
   dialogOpen: boolean;
   destFolder: string;
+  /** F10-RAG:本次生成绑定的资产路径(null = 不绑定;右键资产生成时带上)。 */
+  bindAssetPath: string | null;
   /** CandidatesModal 候选(null = 关闭);全部候选可逐个 accept(不互斥)。 */
   candidates: GenCandidate[] | null;
   lastPrompt: string;
@@ -63,7 +67,7 @@ interface GenState {
   lastErrorCode: string | null;
 
   loadBackends: () => Promise<void>;
-  openDialog: (destFolder: string) => void;
+  openDialog: (destFolder: string, assetPath?: string) => void;
   closeDialog: () => void;
   closeCandidates: () => void;
   /** 提交 gen_image;成功 → 关对话框开候选 modal;失败 → lastError 如实条(码保留)。 */
@@ -78,6 +82,7 @@ export const useGenStore = create<GenState>((set, get) => ({
   backendsError: null,
   dialogOpen: false,
   destFolder: 'Textures',
+  bindAssetPath: null,
   candidates: null,
   lastPrompt: '',
   acceptedRefs: [],
@@ -95,8 +100,14 @@ export const useGenStore = create<GenState>((set, get) => ({
     }
   },
 
-  openDialog: (destFolder) => {
-    set({ dialogOpen: true, destFolder: destFolder || 'Textures', lastError: null, lastErrorCode: null });
+  openDialog: (destFolder, assetPath) => {
+    set({
+      dialogOpen: true,
+      destFolder: destFolder || 'Textures',
+      bindAssetPath: assetPath ?? null,
+      lastError: null,
+      lastErrorCode: null,
+    });
     if (!get().backendsLoaded) void get().loadBackends();
   },
   closeDialog: () => set({ dialogOpen: false }),
@@ -112,6 +123,7 @@ export const useGenStore = create<GenState>((set, get) => ({
       };
       if (params.negativePrompt?.trim()) args.negativePrompt = params.negativePrompt.trim();
       if (params.backend) args.backend = params.backend;
+      if (params.assetPath) args.assetPath = params.assetPath;
       const r = await callGenTool<{ candidates: GenCandidate[] }>('gen_image', args);
       set({ busy: false, dialogOpen: false, candidates: r.candidates, acceptedRefs: [] });
     } catch (err) {

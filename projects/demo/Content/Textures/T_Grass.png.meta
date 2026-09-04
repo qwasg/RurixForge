@@ -1,0 +1,12 @@
+guid: 2d3df82a-4940-4600-be88-b8c19eafe8af
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:44:03Z
+    prompt: seamless cartoon grass ground texture, top strip of green grass with brown dirt below, 2D side-scroller game tile, Angry Birds style, bright colors, fills entire frame edge to edge, no characters, no text
+    seed: 9562466533345616579
+    sourceRefs: []
+build_state: current

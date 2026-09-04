@@ -1,0 +1,13 @@
+guid: 54301b4a-3b53-4f59-89c5-eaeed674646f
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-30T14:55:59Z
+    negativePrompt: multiple peas, pea pod, leaves, plant character, face, weapon, motion blur, trail, photorealistic, text, letters, logo, watermark, signature, UI, border, busy background, cropped object
+    prompt: 'Create an ORIGINAL game projectile asset for a bright whimsical cartoon tower-defense game: one single round green pea, centered and isolated, front orthographic view. Plump spherical seed with a tiny subtle dimple, low-poly sculpted clay material, smooth chunky geometry, vivid fresh green, soft studio light and gentle contact shadow, extremely clear silhouette at small size. Pure clean pale warm background. No text, no logo, no watermark, no frame, no leaves, no pod, no plant, no extra peas, no motion trail. Square 1:1 composition.'
+    seed: 47421
+    sourceRefs: []
+build_state: current

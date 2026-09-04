@@ -1,0 +1,10 @@
+guid: d05d9f6a-f7d6-58df-b3a7-d704b9406a32
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-4(pool,30 波,奖励 shop_key);在 IDE Assets 面板双击即可装进视口试玩

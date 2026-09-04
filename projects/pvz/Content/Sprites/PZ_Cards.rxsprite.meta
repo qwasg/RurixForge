@@ -1,0 +1,9 @@
+guid: 87098564-bbce-5ae1-accc-0c5cc8dc2fb2
+type: sprite
+importer: sprite
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-seed-card-atlas
+build_state: current

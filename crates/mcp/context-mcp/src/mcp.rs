@@ -87,7 +87,7 @@ fn tool_list() -> Value {
             },
             {
                 "name": "asset_set_description",
-                "description": "写入资产 .meta semantic 段(description/tags/source;I-7 溯源:source=human|agent-vision|agent-facts;看过缩略图用 agent-vision,仅凭事实用 agent-facts)。写后需 context_index_build 才进检索",
+                "description": "写入资产 .meta semantic 段(description/tags/source;I-7 溯源:source=human|agent-vision|agent-facts;看过缩略图用 agent-vision,仅凭事实用 agent-facts)。写后自动增量进检索(词法即时;索引为 hybrid 档时向量同步顶量。响应 indexed/tier 如实标注;索引未建则跳过,需 context_index_build 首建)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -281,7 +281,39 @@ fn call_tool(project_root: &Path, docs_root: &Path, params: &Value) -> Result<Va
             match assetd::ops::set_description(
                 &project, asset_path, description, &tags, source, model, content_hash,
             ) {
-                Ok(()) => Ok(json!({ "ok": true, "assetPath": asset_path })),
+                Ok(()) => {
+                    // F10-RAG:写后即增量进检索(词法+向量;未建索引/失败如实标注,不阻断写)。
+                    let mut resp = json!({ "ok": true, "assetPath": asset_path });
+                    match assetd::normalize_rel(asset_path) {
+                        Ok(rel) => {
+                            let embedder = resolve_embedder();
+                            match forge_index::build::upsert_asset_docs(
+                                project_root,
+                                &rel,
+                                embedder.as_ref().map(|e| e as &dyn Embedder),
+                            ) {
+                                Ok(o) => {
+                                    resp["indexed"] = json!(o.indexed);
+                                    resp["indexedDocs"] = json!(o.docs);
+                                    resp["tier"] = json!(o.tier);
+                                    if let Some(e) = o.embed_error {
+                                        resp["embedError"] = json!(e);
+                                    }
+                                }
+                                Err(e) => {
+                                    resp["indexed"] = json!(false);
+                                    resp["indexError"] =
+                                        json!(format!("[{}] {}", e.code, e.message));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            resp["indexed"] = json!(false);
+                            resp["indexError"] = json!(format!("[{}] {}", e.code, e.message));
+                        }
+                    }
+                    Ok(resp)
+                }
                 Err(e) => Ok(json!({ "error": e.code, "message": e.message })),
             }
         }
@@ -474,7 +506,7 @@ fn describe_batch(project_root: &Path, mode: &str, limit: usize) -> Result<Value
         "totalStale": total_stale,
         "hint": "对 texture 可先调 mcp__asset-pipeline__asset_thumbnail 看图(source=agent-vision);\
 仅凭事实撰写用 source=agent-facts。写回调 asset_set_description,contentHash 原样回传 factsHash;\
-全部写完后调 context_index_build 使描述进检索。",
+写入即自动增量进检索,无需再调 context_index_build。",
     }))
 }
 
@@ -613,7 +645,12 @@ mod tests {
             }),
         );
         assert_eq!(r["ok"], true, "{r}");
-        // 重建后检索命中描述文本。
+        // F10-RAG:写后自动增量进检索(indexed=true),无需重建即命中描述文本。
+        assert_eq!(r["indexed"], true, "{r}");
+        let r = call(&dir, "context_search", json!({ "query": "开启角度脚本" }));
+        let hits = r["hits"].as_array().unwrap();
+        assert!(!hits.is_empty(), "写后未重建须已可检索:{r}");
+        // 重建后检索仍命中描述文本(全量路径与增量一致)。
         let r = call(&dir, "context_index_build", json!({}));
         assert!(r["docs"].as_u64().unwrap() > 0);
         let r = call(&dir, "context_search", json!({ "query": "开启角度脚本" }));

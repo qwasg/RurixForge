@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "menu",
+  "name": "menu",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "i",
+      "type": "event.on_input",
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "l",
+      "type": "debug.log",
+      "pos": [
+        1,
+        0
+      ],
+      "inputs": {
+        "message": {
+          "const": "LEVEL_SELECTED"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "i",
+        "exec"
+      ],
+      "to": [
+        "l",
+        "exec"
+      ]
+    }
+  ]
+}

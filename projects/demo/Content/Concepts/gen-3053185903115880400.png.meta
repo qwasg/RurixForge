@@ -1,0 +1,12 @@
+guid: f95d9ea1-3e6f-4aad-96db-31ef73323c76
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-31T13:53:19Z
+    prompt: 生成一张崩坏星穹铁道长月夜的人设图
+    seed: 3053185903115880380
+    sourceRefs: []
+build_state: current

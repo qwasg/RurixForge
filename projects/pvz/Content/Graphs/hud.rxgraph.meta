@@ -1,0 +1,10 @@
+guid: ee91ccf7-72c0-5358-88ab-53025c7291d5
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 hud

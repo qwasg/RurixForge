@@ -1,0 +1,12 @@
+guid: e6ee1fe5-294a-4f0f-be27-022e6e10ae08
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:07:21Z
+    prompt: glowing cartoon sun token, round yellow sun with a smiling face and short light rays, game currency icon, isolated on plain solid magenta background, 2D game asset sprite, crisp edges, no text
+    seed: 12262610527528101604
+    sourceRefs: []
+build_state: current

@@ -1,0 +1,203 @@
+{
+  "entities": [
+    {
+      "components": [
+        { "enabled": true, "props": { "far": 100.0, "fov": 40.0, "near": 0.1 }, "type": "Camera" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" }
+      ],
+      "id": 1,
+      "name": "AB_Camera",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0], "translation": [0.0, 4.0, 26.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "57fa53b4-0787-42ab-895d-d59c24580870", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" }
+      ],
+      "id": 2,
+      "name": "AB_Sky",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [60.0, 30.0, 0.2], "translation": [0.0, 4.0, -6.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "ab491170-87f0-4736-a03c-31b514eda759", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" }
+      ],
+      "id": 3,
+      "name": "AB_Grass",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [50.0, 1.0, 8.0], "translation": [0.0, -3.0, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "6c912d8f-cfc9-4bcf-b16c-fc1012c2e409", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "category": "interaction" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "scoreboard" }, "type": "Tag" },
+        { "enabled": true, "props": { "graphRef": "Content/Graphs/ab_level2.rxgraph", "module": "", "props": {} }, "type": "Script" }
+      ],
+      "id": 4,
+      "name": "AB_Slingshot",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.5, 2.4, 0.5], "translation": [-8.0, -1.3, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "a98f26bd-f794-47ee-94e4-0defd3b88f27", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "category": "role" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "bird" }, "type": "Tag" },
+        { "enabled": true, "props": { "tag": "b1" }, "type": "Tag" },
+        { "enabled": true, "props": { "graphRef": "Content/Graphs/ab_level2.rxgraph", "module": "", "props": {} }, "type": "Script" }
+      ],
+      "id": 5,
+      "name": "AB_Bird1",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.7, 0.7, 0.7], "translation": [-8.0, 0.25, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "a98f26bd-f794-47ee-94e4-0defd3b88f27", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "category": "role" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "b2" }, "type": "Tag" }
+      ],
+      "id": 6,
+      "name": "AB_Bird2",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.7, 0.7, 0.7], "translation": [-9.2, -2.15, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "a98f26bd-f794-47ee-94e4-0defd3b88f27", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "category": "role" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "b3" }, "type": "Tag" }
+      ],
+      "id": 7,
+      "name": "AB_Bird3",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.7, 0.7, 0.7], "translation": [-10.4, -2.15, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "2af9d2fe-405d-48a4-8cc4-518d91f79d11", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "static", "mass": 0.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" }
+      ],
+      "id": 8,
+      "name": "AB_StoneBase",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [5.0, 0.5, 2.0], "translation": [6.0, -2.25, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "2af9d2fe-405d-48a4-8cc4-518d91f79d11", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 9,
+      "name": "AB_Stone_1",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.6, 1.8, 0.8], "translation": [5.0, -1.1, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "2af9d2fe-405d-48a4-8cc4-518d91f79d11", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 10,
+      "name": "AB_Stone_2",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.6, 1.8, 0.8], "translation": [7.0, -1.1, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "74372f44-2991-4be9-91ce-69da7576c1b6", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 11,
+      "name": "AB_Ice_1",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.6, 0.4, 0.8], "translation": [6.0, -0.05, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "2af9d2fe-405d-48a4-8cc4-518d91f79d11", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 12,
+      "name": "AB_Stone_3",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.6, 1.2, 0.8], "translation": [5.0, 0.75, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "2af9d2fe-405d-48a4-8cc4-518d91f79d11", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 13,
+      "name": "AB_Stone_4",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.6, 1.2, 0.8], "translation": [7.0, 0.75, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "74372f44-2991-4be9-91ce-69da7576c1b6", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 14,
+      "name": "AB_Ice_2",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [2.6, 0.4, 0.8], "translation": [6.0, 1.55, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "74372f44-2991-4be9-91ce-69da7576c1b6", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "category": "map" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "block" }, "type": "Tag" }
+      ],
+      "id": 15,
+      "name": "AB_Ice_3",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.8, 0.8, 0.8], "translation": [5.0, 2.15, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "fd06e5c4-8e1a-4b2e-b483-6d0fc96b6478", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "extents": [2, 2, 2], "kind": "box" }, "type": "Trigger" },
+        { "enabled": true, "props": { "category": "interaction" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "pig1" }, "type": "Tag" },
+        { "enabled": true, "props": { "graphRef": "Content/Graphs/ab_level2.rxgraph", "module": "", "props": {} }, "type": "Script" }
+      ],
+      "id": 16,
+      "name": "AB_Pig1",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.8, 0.8, 0.8], "translation": [6.0, -1.6, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "fd06e5c4-8e1a-4b2e-b483-6d0fc96b6478", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "extents": [2, 2, 2], "kind": "box" }, "type": "Trigger" },
+        { "enabled": true, "props": { "category": "interaction" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "pig2" }, "type": "Tag" },
+        { "enabled": true, "props": { "graphRef": "Content/Graphs/ab_level2.rxgraph", "module": "", "props": {} }, "type": "Script" }
+      ],
+      "id": 17,
+      "name": "AB_Pig2",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.8, 0.8, 0.8], "translation": [6.0, 0.45, 0.0] }
+    },
+    {
+      "components": [
+        { "enabled": true, "props": { "material": "fd06e5c4-8e1a-4b2e-b483-6d0fc96b6478", "mesh": "cube" }, "type": "MeshRenderer" },
+        { "enabled": true, "props": { "kind": "dynamic", "mass": 1.0 }, "type": "RigidBody" },
+        { "enabled": true, "props": { "extents": [2, 2, 2], "kind": "box" }, "type": "Trigger" },
+        { "enabled": true, "props": { "category": "interaction" }, "type": "Category" },
+        { "enabled": true, "props": { "tag": "pig3" }, "type": "Tag" },
+        { "enabled": true, "props": { "graphRef": "Content/Graphs/ab_level2.rxgraph", "module": "", "props": {} }, "type": "Script" }
+      ],
+      "id": 18,
+      "name": "AB_Pig3",
+      "transform": { "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [0.8, 0.8, 0.8], "translation": [7.0, 2.15, 0.0] }
+    }
+  ],
+  "mode": "2d",
+  "name": "ab_level2",
+  "next_id": 19
+}

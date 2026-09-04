@@ -615,16 +615,19 @@ async function runSmokeScenario() {
     smokeLog(`scenario=workbench proposal approved: ${approved}`);
     if (approved !== 'approved') throw new Error(`批准未生效: ${approved}`);
     // 底部面板:Agent Logs(真实事件行) + Output(派生行) + Metrics 卡
-    await evalJs("window.__forgeShell.openTab('plan')"); // plan tab 空态(尚无计划)如实
+    // D-035:plan 已是按路径开的计划文件页;本会话没跑过 plan 模式 → 文件不存在,
+    // 页面须如实报「计划打不开」而非伪造空计划。
+    await evalJs("window.__forgeShell.openPlan('.forge/plans/冒烟-不存在.plan.md')");
     await evalJs("window.__forgeShell.toggleBottom()");
-    await sleep(300);
+    await sleep(500);
     const bottom = await evalJs(
-      "(() => { const panel=document.querySelector('[data-testid=\"bottom-panel\"]'); const logs=document.querySelectorAll('[data-testid^=\"log-row-\"]').length; const planEmpty=document.querySelector('[data-testid=\"plan-body\"]')?.textContent.includes('尚无计划') ?? false; return { panel: !!panel, logs, planEmpty }; })()"
+      "(() => { const panel=document.querySelector('[data-testid=\"bottom-panel\"]'); const logs=document.querySelectorAll('[data-testid^=\"log-row-\"]').length; const planErr=document.querySelector('[data-testid=\"plan-load-error\"]')?.textContent ?? null; return { panel: !!panel, logs, planErr }; })()"
     );
     smokeLog(`scenario=workbench bottom logs: ${JSON.stringify(bottom)}`);
     if (!bottom.panel) throw new Error('底部面板未开');
     if (bottom.logs < 2) throw new Error(`Agent Logs 事件行不足: ${bottom.logs}`);
-    if (!bottom.planEmpty) throw new Error('plan tab 空态未如实呈现');
+    if (!bottom.planErr || !bottom.planErr.includes('PATH_NOT_FOUND'))
+      throw new Error(`plan 页缺文件未如实报错: ${bottom.planErr}`);
     const output = await evalJs(
       "(() => { const t=document.querySelector('[data-testid=\"bottom-tab-output\"]'); if(!t) return null; t.click(); return new Promise((r)=>setTimeout(()=>{ const lines=document.querySelector('[data-testid=\"output-lines\"]'); r({ lines: lines ? lines.children.length : 0, text: lines ? lines.textContent.slice(0,120) : '' }); },300)); })()"
     );

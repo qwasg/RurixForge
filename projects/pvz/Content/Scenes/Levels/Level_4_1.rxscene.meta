@@ -1,0 +1,10 @@
+guid: 45ba4b25-b614-5a40-88bd-098012ea9619
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 4-1(fog,10 波,奖励 plantern);在 IDE Assets 面板双击即可装进视口试玩

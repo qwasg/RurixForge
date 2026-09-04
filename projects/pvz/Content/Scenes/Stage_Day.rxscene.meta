@@ -1,0 +1,10 @@
+guid: c82d8048-0bdd-5c67-aefd-86492bd87627
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ day 场景模板(棋盘/推车/判负线,无关卡逻辑)

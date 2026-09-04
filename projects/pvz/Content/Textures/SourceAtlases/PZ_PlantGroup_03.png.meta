@@ -1,0 +1,13 @@
+guid: 85634cff-54fa-4b63-b48d-262e8eb9ac35
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:53:17Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct garden defense plant icons: 1:green underwater kelp tendrils; 2:angry red jalapeno pepper; 3:low spiky grass trap; 4:burning tree stump with face; 5:very tall brown walnut wall; 6:small blue aquatic mushroom; 7:glowing lantern flower; 8:green cactus plant with pink flower. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 200903
+    sourceRefs: []
+build_state: current

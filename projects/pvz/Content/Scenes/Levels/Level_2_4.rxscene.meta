@@ -1,0 +1,10 @@
+guid: d7db1388-7678-59e7-a850-96692252ebcf
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-4(night,20 波,奖励 almanac);在 IDE Assets 面板双击即可装进视口试玩

@@ -179,7 +179,15 @@ impl Supervisor {
             .args(["--port", &port.to_string()])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            // stderr 落文件(性能/故障定位用;F-GAME-2 期间 viewport 分段计时依赖)。
+            .stderr(
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(workspace_root().join("engine-host-err.log"))
+                    .map(Stdio::from)
+                    .unwrap_or(Stdio::null()),
+            )
             .spawn()
             .map_err(|e| format!("spawn engine-host 失败:{e}"))?;
         let stdout = child.stdout.take().ok_or("无 stdout 管道")?;

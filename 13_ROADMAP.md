@@ -126,6 +126,20 @@ F0 地基 → F1 场景编辑闭环 → F2 素材管线 → F3 agent 集群与 s
 
 验收门:见 `milestones/f8/F8_CONTRACT.md`(G-F8-1~5)。
 
+## F-GAME 系列 · 游戏能力波(需求驱动,编号独立于 F 主线)
+
+> F-GAME-1/2(2D 游戏真实画面、贴图精灵管线)为需求驱动轻量波,未立独立契约;
+> F-GAME-3(2026-08-31 立项 D-030):全引擎 2D 支持 + 游戏选型(2D/3D 模式)——
+> forge.toml mode 事实源、XY 侧视约定、正交相机全链路、Sprite 组件、2D 编辑器手势、
+> agent 2D 提示词分流。
+> F-GAME-4(2026-08-31 立项 D-031):2D 帧动画 + 角色素材管理 + Agent 团队规划
+> (参照 VibeGame 机制)。交付:①.rxsprite 精灵图集资产(帧 bbox/pivot 级联/clip/
+> animator)+ 四 MCP 工具 + 自动切帧;②渲染 UV 子矩形(112B push constants)+ 宿主
+> 动画运行时 + 图节点五件(40→45);③客户端 Sprite 编辑器 Workbench tab(bbox/pivot
+> 拖拽、Auto-Detect、clip 编辑、预览 rail);④Agent 团队:并行 task + 按角色配模型 +
+> Plan DAG(兑现 04 §4)+ team 模式代码级编排(qa 修复轮 + reviewer 收工门)+
+> planner/reviewer 角色。验收门见 `milestones/f-game-4/F_GAME_4_CONTRACT.md`。
+
 ## F11 · 资产商店 + Skill 管理(后路线图里程碑,2026-08-25 立项 D-025)
 
 > 编号留痕:F9(全项目 journey)与 F10(context RAG)为需求驱动的轻量波,走 `.trae/specs/` 未立 milestone 契约,故本波取 F11 避让已被脚本名占用的 f9/f10 编号。

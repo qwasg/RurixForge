@@ -1,0 +1,10 @@
+guid: c4c9fd12-ed3a-566e-9ee5-b3aa95d0c920
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-8(night,10 波,奖励 doom_shroom);在 IDE Assets 面板双击即可装进视口试玩

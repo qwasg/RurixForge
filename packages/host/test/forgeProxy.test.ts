@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { ApiError, HealthStatus } from '@forge/protocol';
 import { buildServer, type ForgeServer } from '../src/server.js';
-import { isLongLivedPath, proxyMatches, upstreamTimeoutMs } from '../src/plugins/forgeProxy.js';
+import { isLongLivedPath, mcpCallTool, proxyMatches, upstreamTimeoutMs } from '../src/plugins/forgeProxy.js';
 
 /**
  * forgeProxy 测试:假上游记录请求并回放响应。
@@ -179,6 +179,26 @@ describe('forgeProxy', () => {
     expect(upstreamTimeoutMs('/api/forge/todos/todo_1')).toBe(15_000);
   });
 
+  it('F10-RAG 修复:mcp/call 按体内 tool 名豁免长时生成工具(gen_image 分钟级,15s 必断)', () => {
+    // 长时生成工具 → 0(不限时;agentd GEN_IMAGE_TIMEOUT 360s 兜底)
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_image')).toBe(0);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_texture_set')).toBe(0);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_variations')).toBe(0);
+    // 普通 MCP 工具维持 15s;无 tool 名(非 mcp/call 路径/坏 body)维持 15s
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__engine-scene__host_ping')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__asset-pipeline__asset_list')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', null)).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call')).toBe(15_000);
+    // mcpCallTool 解析:正常/坏 JSON/缺字段/非字符串
+    expect(mcpCallTool(Buffer.from('{"tool":"mcp__gen-image__gen_image","arguments":{}}'))).toBe(
+      'mcp__gen-image__gen_image',
+    );
+    expect(mcpCallTool(Buffer.from('not json'))).toBeNull();
+    expect(mcpCallTool(Buffer.from('{"arguments":{}}'))).toBeNull();
+    expect(mcpCallTool(Buffer.from('{"tool":42}'))).toBeNull();
+    expect(mcpCallTool(Buffer.alloc(0))).toBeNull();
+  });
+
   it('F7 wave.2:runs/todos 请求经代理透传到上游', async () => {
     const res = await fetch(`${base}/api/forge/runs/run_x`);
     expect(res.status).toBe(200);
@@ -292,6 +312,48 @@ describe('forgeProxy', () => {
       fs.rmSync(tmp2, { recursive: true, force: true });
       if (saved === undefined) delete process.env.FORGE_AGENTD_ORIGIN;
       else process.env.FORGE_AGENTD_ORIGIN = saved;
+    }
+  });
+
+  it('F10-RAG 修复:gen_image 慢上游(>15s 场景缩小版)不被代理提前断连', async () => {
+    // 慢上游:延迟 400ms 回应(纯函数测试钉住 15s→0 豁免值;此处端到端验证豁免分支
+    // 上请求正常透传往返,body 解析不破坏转发)。
+    const slow = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        setTimeout(() => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(UPSTREAM_REPLY);
+        }, 400);
+      });
+    });
+    await new Promise<void>((resolve) => slow.listen(0, '127.0.0.1', resolve));
+    const slowPort = (slow.address() as AddressInfo).port;
+
+    const saved = process.env.FORGE_AGENTD_ORIGIN;
+    process.env.FORGE_AGENTD_ORIGIN = `http://127.0.0.1:${slowPort}`;
+    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-proxy-slow-'));
+    const srv = buildServer({ dataDir: tmp2 });
+    const port = await srv.listen(0);
+    try {
+      const payload = JSON.stringify({
+        tool: 'mcp__gen-image__gen_image',
+        arguments: { prompt: 'wood', size: 256, n: 1 },
+      });
+      const res = await fetch(`http://127.0.0.1:${port}/api/forge/mcp/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(UPSTREAM_REPLY);
+    } finally {
+      await srv.close();
+      fs.rmSync(tmp2, { recursive: true, force: true });
+      if (saved === undefined) delete process.env.FORGE_AGENTD_ORIGIN;
+      else process.env.FORGE_AGENTD_ORIGIN = saved;
+      await new Promise<void>((resolve) => slow.close(() => resolve()));
     }
   });
 });

@@ -209,4 +209,33 @@ describe('assetStore', () => {
     await useAssetStore.getState().loadThumb(tex);
     expect(useAssetStore.getState().thumbs['g9']).toBe('none');
   });
+
+  it('F10-RAG:setDescription 写简介(source=human)并返回索引同步状态', async () => {
+    forgeMock.setAssets([{ path: 'Textures/wood.png', guid: 'g2', type: 'texture', size: 1 }]);
+    forgeMock.setBuildStatus([]);
+    forgeMock.setDefault('asset_set_description', {
+      ok: true,
+      indexed: true,
+      indexedDocs: 1,
+      tier: 'lexical',
+    });
+    await useAssetStore.getState().load();
+
+    const r = await useAssetStore.getState().setDescription('Textures/wood.png', '橡木木纹', ['木纹']);
+    expect(r.indexed).toBe(true);
+    expect(r.tier).toBe('lexical');
+    const calls = forgeMock.calls.filter(
+      (c) => c.tool === 'mcp__asset-pipeline__asset_set_description',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0].arguments).toMatchObject({
+      assetPath: 'Textures/wood.png',
+      description: '橡木木纹',
+      tags: ['木纹'],
+      source: 'human',
+    });
+    // 写后列表刷新(简介/标签回读进 items)。
+    const listCalls = forgeMock.calls.filter((c) => c.tool === 'mcp__asset-pipeline__asset_list');
+    expect(listCalls.length).toBeGreaterThanOrEqual(2);
+  });
 });

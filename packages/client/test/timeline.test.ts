@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   argSummary,
   bareName,
+  baseName,
   buildTimeline,
   diffCounts,
   editTargetFiles,
@@ -9,18 +10,22 @@ import {
   groupPhrase,
   groupSegmentItems,
   isMilestoneBlock,
+  lineRange,
   mcpOf,
-  reasoningSummary,
+  reasoningDurationMs,
   runningLabel,
   segmentPhrase,
   segmentStats,
   subagentDispatchSummary,
   subagentLiveSummary,
+  thinkingLabel,
   todoMilestoneLabel,
   toolCategory,
   toolDiffStats,
-  toolSummary,
+  toolLine,
+  toolTarget,
   toolVisual,
+  toolVisualRunning,
   type ChatBlock,
 } from '@/lib/timeline';
 
@@ -53,36 +58,65 @@ describe('timeline 名称工具', () => {
     expect(bareName('swarm.execute')).toBe('swarm.execute');
   });
 
-  it('本仓动词表:具名/通配/未知 MCP/原名', () => {
-    expect(toolVisual('mcp__engine-scene__entity_create')).toBe('创建实体');
-    expect(toolVisual('mcp__engine-scene__entity_destroy')).toBe('删除实体');
-    expect(toolVisual('mcp__engine-scene__scene_save')).toBe('保存场景');
-    expect(toolVisual('mcp__engine-scene__play_step')).toBe('步进');
-    expect(toolVisual('mcp__engine-scene__viewport_set_camera')).toBe('视口操作');
-    expect(toolVisual('mcp__asset-pipeline__asset_import')).toBe('资产操作');
-    expect(toolVisual('mcp__gen-image__gen_image')).toBe('生成贴图');
-    expect(toolVisual('mcp__code-forge__graph_validate')).toBe('校验图');
-    expect(toolVisual('swarm.execute')).toBe('集群执行');
+  it('英文动词表:具名/通配/未知 MCP/原名', () => {
+    expect(toolVisual('mcp__engine-scene__entity_create')).toBe('Created entity');
+    expect(toolVisual('mcp__engine-scene__entity_destroy')).toBe('Deleted entity');
+    expect(toolVisual('mcp__engine-scene__scene_save')).toBe('Saved scene');
+    expect(toolVisual('mcp__engine-scene__play_step')).toBe('Stepped');
+    expect(toolVisual('mcp__engine-scene__viewport_set_camera')).toBe('Adjusted viewport');
+    expect(toolVisual('mcp__asset-pipeline__asset_reimport')).toBe('Handled asset');
+    expect(toolVisual('mcp__asset-pipeline__asset_import')).toBe('Imported asset');
+    expect(toolVisual('mcp__gen-image__gen_image')).toBe('Generated texture');
+    expect(toolVisual('mcp__code-forge__graph_validate')).toBe('Validated graph');
+    expect(toolVisual('swarm.execute')).toBe('Ran swarm');
+    expect(toolVisual('dispatch')).toBe('Dispatched subagent');
+    expect(toolVisual('read_file')).toBe('Read');
+    expect(toolVisual('grep')).toBe('Grepped');
+    expect(toolVisual('glob')).toBe('Searched files');
     // 未知 MCP 名 → server / tool
     expect(toolVisual('mcp__foo__bar_baz')).toBe('foo / bar_baz');
     // 非 MCP 未知名 → 原名
     expect(toolVisual('some_tool')).toBe('some_tool');
   });
 
+  it('运行中动词用现在分词;无表项回落完成态动词不硬造分词', () => {
+    expect(toolVisualRunning('mcp__engine-scene__entity_create')).toBe('Creating entity');
+    expect(toolVisualRunning('read_file')).toBe('Reading');
+    expect(toolVisualRunning('glob')).toBe('Searching files');
+    expect(toolVisualRunning('mcp__foo__bar_baz')).toBe('foo / bar_baz');
+    expect(toolVisualRunning('some_tool')).toBe('some_tool');
+  });
+
+  /// D-036:dispatch 不是里程碑 —— 里程碑工具块在 AssistantMessage 里渲染成待办行,
+  /// 派发该并进活动段读作「派发子代理 · N 次」;真进展在各自的子代理卡片上。
+  it('dispatch 并进活动段(非 milestone),task 仍断段', () => {
+    const blocks: ChatBlock[] = [
+      tool('d1', 'dispatch', { description: '甲' }, true),
+      tool('d2', 'dispatch', { description: '乙' }, true),
+      tool('t1', 'task', { prompt: 'p' }),
+    ];
+    expect(buildTimeline(blocks)).toEqual([
+      { type: 'activity', indices: [0, 1] },
+      { type: 'block', index: 2 },
+    ]);
+    expect(groupPhrase('dispatch', 2)).toBe('Dispatched 2 subagents');
+  });
+
   it('聚合短语 groupPhrase', () => {
-    expect(groupPhrase('mcp__engine-scene__entity_create', 3)).toBe('创建 3 个实体');
-    expect(groupPhrase('mcp__engine-scene__entity_list', 2)).toBe('列出实体 2 次');
+    // 并组只在 n ≥ 2 时成立(groupSegmentItems),故短语固定用复数尾词
+    expect(groupPhrase('mcp__engine-scene__entity_create', 3)).toBe('Created 3 entities');
+    expect(groupPhrase('mcp__engine-scene__entity_list', 2)).toBe('Listed entities 2 times');
+    expect(groupPhrase('read_file', 5)).toBe('Read 5 files');
     expect(groupPhrase('mcp__foo__bar', 2)).toBe('foo / bar ×2');
     expect(groupPhrase('custom_tool', 4)).toBe('custom_tool ×4');
   });
 });
 
 describe('build_timeline 段化规则', () => {
-  it('连续普通 tool 合并;milestone(text/reasoning/subagent/write_todos/task)断段', () => {
+  it('连续普通 tool 合并;milestone(text/subagent/write_todos/task)断段', () => {
     const blocks: ChatBlock[] = [
       tool('t1', 'mcp__engine-scene__entity_list', {}, true),
       tool('t2', 'mcp__engine-scene__entity_create', { name: 'a' }, true),
-      { kind: 'reasoning', text: '思考' },
       tool('t3', 'write_todos', { todos: [] }, true),
       tool('t4', 'task', { prompt: 'p' }), // task → milestone(参考同口径)
       tool('t5', 'mcp__engine-scene__scene_save', {}, true),
@@ -93,10 +127,25 @@ describe('build_timeline 段化规则', () => {
       { type: 'activity', indices: [0, 1] },
       { type: 'block', index: 2 },
       { type: 'block', index: 3 },
-      { type: 'block', index: 4 },
-      { type: 'activity', indices: [5] },
-      { type: 'block', index: 6 },
+      { type: 'activity', indices: [4] },
+      { type: 'block', index: 5 },
     ]);
+  });
+
+  /// 留痕⑧:reasoning 不再断段 —— 思考行与工具行同列并进活动段(目标截图里
+  /// 「Thought 47s」就夹在 Read/Grepped 之间)。
+  it('reasoning 并进活动段,不再作 milestone', () => {
+    const blocks: ChatBlock[] = [
+      tool('t1', 'read_file', { path: 'a.ts' }, true),
+      { kind: 'reasoning', text: '想一下' },
+      tool('t2', 'grep', { query: 'foo' }, true),
+      { kind: 'text', text: '答', final: true },
+    ];
+    expect(buildTimeline(blocks)).toEqual([
+      { type: 'activity', indices: [0, 1, 2] },
+      { type: 'block', index: 3 },
+    ]);
+    expect(isMilestoneBlock({ kind: 'reasoning', text: 'x' })).toBe(false);
   });
 
   it('最终回答永不折叠:text 块恒为独立 block 项(不并入 activity)', () => {
@@ -153,7 +202,20 @@ describe('segment 统计与短语', () => {
       removed: 1,
       errors: 0,
     });
-    expect(segmentPhrase(st)).toBe('编辑 1 个文件，探索 1 个文件，1 次搜索，执行 1 条命令');
+    expect(segmentPhrase(st)).toBe('Edited 1 file, explored 1 file, 1 search, ran 1 command');
+  });
+
+  /// 目标截图逐字:running 时首动词换现在分词,其余从句维持过去式。
+  it('段短语英文语法:首动词大写(running → 现在分词),后续从句小写', () => {
+    const stats = { ...segmentStats([], []), explores: 12, searches: 9, commands: 2 };
+    expect(segmentPhrase(stats, true)).toBe('Exploring 12 files, 9 searches, ran 2 commands');
+    expect(segmentPhrase(stats)).toBe('Explored 12 files, 9 searches, ran 2 commands');
+    expect(segmentPhrase({ ...segmentStats([], []), searches: 2 })).toBe('Explored 2 searches');
+    expect(segmentPhrase({ ...segmentStats([], []), commands: 2 })).toBe('Ran 2 commands');
+    expect(segmentPhrase({ ...segmentStats([], []), edits: 2, explores: 2 })).toBe(
+      'Edited 2 files, explored 2 files',
+    );
+    expect(segmentPhrase({ ...segmentStats([], []), others: 2 })).toBe('Performed 2 operations');
   });
 
   it('目标键序:path/file/filePath/scenePath/assetPath/destFolder 取一;无键按块占位', () => {
@@ -183,20 +245,23 @@ describe('segment 统计与短语', () => {
     expect(diffCounts('a\nb', '')).toEqual({ added: 0, removed: 2 });
   });
 
-  it('失败计数 + 运行中短语', () => {
+  /// 留痕⑦:errors 仍如实统计(渲染层不再上屏,颜色与「n 失败」后缀一并下线)。
+  it('失败仍进统计但不进文案;运行中取现在分词', () => {
     const blocks: ChatBlock[] = [
       tool('t1', 'mcp__engine-scene__entity_create', { name: 'a' }, false, 'boom'),
       tool('t2', 'mcp__engine-scene__entity_create', { name: 'b' }),
     ];
     const st = segmentStats(blocks, [0, 1]);
     expect(st.errors).toBe(1);
-    expect(runningLabel(blocks, [0, 1])).toBe('正在创建实体…');
+    expect(segmentPhrase(st, true)).not.toContain('fail');
+    expect(runningLabel(blocks, [0, 1])).toBe('Creating entity');
     // 全完成 → null
     expect(runningLabel([tool('t3', 'mcp__engine-scene__entity_list', {}, true)], [0])).toBeNull();
   });
 
-  it('空段短语「工作中」', () => {
-    expect(segmentPhrase(segmentStats([], []))).toBe('工作中');
+  it('空段短语 Working(running 带省略号)', () => {
+    expect(segmentPhrase(segmentStats([], []))).toBe('Working');
+    expect(segmentPhrase(segmentStats([], []), true)).toBe('Working…');
   });
 });
 
@@ -210,23 +275,51 @@ describe('行级摘要', () => {
     expect(argSummary(JSON.stringify({ other: 1 }))).toBeNull();
   });
 
-  it('toolSummary:arg + 运行中/失败后缀;done 带结果首行', () => {
-    const running = tool('t1', 'mcp__engine-scene__entity_create', { name: 'a' });
-    expect(toolSummary(running)).toBe('a · 运行中…');
-    const failed = tool('t2', 'mcp__engine-scene__entity_create', { name: 'a' }, false, '首行错\n次行');
-    expect(toolSummary(failed)).toBe('a · 失败：首行错');
-    const failedNoMsg = tool('t3', 'mcp__engine-scene__entity_create', {}, false, '');
-    expect(toolSummary(failedNoMsg)).toBe('失败');
-    const done = tool('t4', 'mcp__engine-scene__entity_create', { name: 'a' }, true);
-    expect(toolSummary(done)).toBe('a');
-    const withResult = { ...done, result: 'created #12\nmore' };
-    expect(toolSummary(withResult)).toBe('a · created #12');
+  /// 目标截图逐字:「Read timeline.ts L90-625」「Grepped danger|--fg in theme.css」
+  /// 「Searched files packages/client/src/components/chat/*.tsx」。
+  it('toolTarget/toolLine:读写取 basename + 行区间;grep 带 in 作用域;glob 给整串 pattern', () => {
+    const read = tool('t1', 'read_file', { path: 'packages/client/src/lib/timeline.ts' }, true);
+    expect(toolLine(read)).toBe('Read timeline.ts');
+    const win = tool('t2', 'read_file', { path: 'src/lib/timeline.ts', offset: 90, limit: 536 }, true);
+    expect(toolLine(win)).toBe('Read timeline.ts L90-625');
+    const grepped = tool('t3', 'grep', { query: 'danger|--fg', path: 'src/styles/theme.css' }, true);
+    expect(toolLine(grepped)).toBe('Grepped danger|--fg in theme.css');
+    expect(toolTarget(tool('t4', 'grep', { query: 'foo' }, true))).toBe('foo');
+    const globbed = tool('t5', 'glob', { pattern: 'packages/client/src/components/chat/*.tsx' }, true);
+    expect(toolLine(globbed)).toBe('Searched files packages/client/src/components/chat/*.tsx');
+    const patched = tool('t6', 'apply_patch', {
+      patch: '*** Begin Patch\n*** Update File: packages/client/src/lib/cn.ts\n+x\n*** End Patch',
+    }, true);
+    expect(toolLine(patched)).toBe('Patched cn.ts');
+    // 无目标键 → 只剩动词;运行中换现在分词
+    expect(toolLine(tool('t7', 'mcp__engine-scene__scene_save', {}, true))).toBe('Saved scene');
+    expect(toolLine(tool('t8', 'mcp__engine-scene__entity_create', { name: 'e1' }))).toBe(
+      'Creating entity e1',
+    );
   });
 
-  it('reasoningSummary/ellipsize/todoMilestoneLabel/subagent 摘要', () => {
-    expect(reasoningSummary('')).toBe('0 字');
-    // N 字 = 原文全字符数(参考 text.chars().count(),含空白换行)
-    expect(reasoningSummary('  第一行\n第二行  ')).toBe('第一行 第二行 · 11 字');
+  /// 留痕⑦:失败不再进行内文案(不缀「失败」、不缀错误首行),错误只在展开详情里可见。
+  it('失败/成功行文案同形,不夹带状态词与结果摘录', () => {
+    const failed = tool('t1', 'read_file', { path: 'a/b.ts' }, false, '首行错\n次行');
+    expect(toolLine(failed)).toBe('Read b.ts');
+    const done = tool('t2', 'read_file', { path: 'a/b.ts' }, true);
+    expect(toolLine({ ...done, result: 'created #12\nmore' })).toBe('Read b.ts');
+  });
+
+  it('baseName/lineRange:分隔符两制;缺行号参数不伪造区间', () => {
+    expect(baseName('packages/client/src/lib/timeline.ts')).toBe('timeline.ts');
+    expect(baseName('crates\\forge-agentd\\src\\llm.rs')).toBe('llm.rs');
+    expect(baseName('Content/Textures/')).toBe('Textures');
+    expect(baseName('theme.css')).toBe('theme.css');
+    expect(lineRange(JSON.stringify({ offset: 66, limit: 20 }))).toBe('L66-85');
+    expect(lineRange(JSON.stringify({ startLine: 1, endLine: 96 }))).toBe('L1-96');
+    expect(lineRange(JSON.stringify({ offset: 4 }))).toBe('L4');
+    expect(lineRange(JSON.stringify({ limit: 50 }))).toBe('');
+    expect(lineRange(JSON.stringify({ path: 'a.ts' }))).toBe('');
+    expect(lineRange('not-json')).toBe('');
+  });
+
+  it('ellipsize/todoMilestoneLabel/subagent 摘要', () => {
     expect(ellipsize('abcdef', 3)).toBe('abc…');
     expect(todoMilestoneLabel(JSON.stringify({ todos: [
       { content: '已完成项', status: 'completed' },
@@ -242,11 +335,29 @@ describe('行级摘要', () => {
     expect(subagentLiveSummary('', [], 'running')).toBe('Planning next moves');
     expect(todoMilestoneLabel(JSON.stringify({ todos: [{ title: '写材质' }] }))).toBe('写材质');
     expect(isMilestoneBlock(tool('t9', 'todo_write', { todos: [] }, true))).toBe(true);
-    expect(toolVisual('read_file')).toBe('读取');
-    expect(toolVisual('apply_patch')).toBe('补丁');
+    expect(toolVisual('apply_patch')).toBe('Patched');
     expect(toolCategory('grep')).toBe('search');
     expect(toolDiffStats(JSON.stringify({
       patch: '*** Begin Patch\n*** Add File: a.txt\n+one\n+two\n*** End Patch',
     }))).toEqual({ added: 2, removed: 0 });
+  });
+
+  it('思考时长取事件 ts 之差;缺计时/倒挂不伪造秒数', () => {
+    const at = (ms: number) => new Date(Date.parse('2026-09-03T10:00:00.000Z') + ms).toISOString();
+    const think = (from: string | undefined, to: string | undefined): Extract<ChatBlock, { kind: 'reasoning' }> =>
+      ({ kind: 'reasoning', text: '想', startedTs: from, endedTs: to });
+    expect(reasoningDurationMs(think(at(0), at(12_400)))).toBe(12_400);
+    expect(reasoningDurationMs(think(undefined, at(0)))).toBeNull();
+    expect(reasoningDurationMs(think(at(500), at(0)))).toBeNull();
+    expect(reasoningDurationMs(think('不是时间', at(0)))).toBeNull();
+  });
+
+  /// 目标截图逐字:「Thought 47s」「Thought briefly」「Thought 106s」(过分钟仍报秒)。
+  it('思考行文案:无计时 Thought briefly;有计时进位到秒且不进位到分钟', () => {
+    expect(thinkingLabel(null)).toBe('Thought briefly');
+    expect(thinkingLabel(0)).toBe('Thought 1s');
+    expect(thinkingLabel(12_400)).toBe('Thought 12s');
+    expect(thinkingLabel(47_000)).toBe('Thought 47s');
+    expect(thinkingLabel(106_000)).toBe('Thought 106s');
   });
 });

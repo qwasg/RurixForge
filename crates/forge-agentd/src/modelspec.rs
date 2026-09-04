@@ -117,7 +117,9 @@ const CTX_TIERS: &[ContextOption] = &[
 pub const DEFAULT_CONTEXT_TOKENS: u64 = 65_536;
 
 /// 会话未选模型时的默认(design-snapshot defaultModelId 同源)。
-pub const DEFAULT_MODEL_ID: &str = "deepseek-chat";
+/// D-F8-C 延伸:默认 = openai-compat 渠道(resolve_provider 同纪律:配齐即默认,
+/// 未配齐时 llm 层按优先级回落 deepseek/mock,此处只声明菜单默认选中项)。
+pub const DEFAULT_MODEL_ID: &str = "openai-compat";
 
 /// 模型能力目录(条目顺序即菜单顺序;label 对 openai-compat 由 snapshot 侧按实配覆盖)。
 pub const CATALOG: &[ModelCard] = &[
@@ -155,7 +157,8 @@ pub const CATALOG: &[ModelCard] = &[
         effort_options: EFFORTS_FULL,
         default_effort: Some("medium"),
         context_options: CTX_TIERS,
-        default_context: "128k",
+        // 用户拍板(2026-08-29):k3 渠道按 1M 上下文使用,默认档直接给 1m。
+        default_context: "1m",
     },
 ];
 
@@ -316,7 +319,7 @@ mod tests {
         // 越界 effort(deepseek 才有的空档)与越界 context → 回落该模型默认档。
         let fallback = resolve(Some("openai-compat"), true, Some("ludicrous"), Some("9m"));
         assert_eq!(fallback.reasoning_effort.as_deref(), Some("medium"));
-        assert_eq!(fallback.context_tokens, 131_072);
+        assert_eq!(fallback.context_tokens, 1_048_576);
     }
 
     /// mock 不支持思考:开关打开也不换名不发 effort(恒绿 seam 行为不变)。
@@ -326,14 +329,16 @@ mod tests {
         assert_eq!(r, ResolvedSpec::default());
     }
 
-    /// 未选模型 = 走 defaultModelId 能力;完全未知 id 走全默认。
+    /// 未选模型 = 走 defaultModelId(openai-compat)能力;完全未知 id 走全默认。
     #[test]
     fn unknown_and_absent_model_fall_back() {
+        let r = resolve(None, true, None, None);
         assert_eq!(
-            resolve(None, true, None, None).model.as_deref(),
-            Some("deepseek-reasoner"),
-            "未选模型应按 defaultModelId(deepseek-chat)解析"
+            r.model, None,
+            "未选模型应按 defaultModelId(openai-compat)解析:思考开但无思考换名"
         );
+        assert_eq!(r.reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(r.context_tokens, 1_048_576);
         assert_eq!(resolve(Some("不存在的模型"), true, Some("max"), Some("1m")), ResolvedSpec::default());
     }
 
@@ -349,6 +354,6 @@ mod tests {
         assert_eq!(v["effortOptions"][3]["label"], "Extra High");
         assert_eq!(v["contextOptions"][4]["id"], "1m");
         assert_eq!(v["contextOptions"][4]["tokens"], 1_048_576);
-        assert_eq!(v["defaultContext"], "128k");
+        assert_eq!(v["defaultContext"], "1m");
     }
 }

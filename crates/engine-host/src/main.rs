@@ -3,10 +3,12 @@
 //! 控制通道:JSON-RPC 2.0 over TCP(4 字节小端长度前缀帧),绑定 127.0.0.1;
 //! 后台线程以真实时间 accumulator 驱动 rurix-physics 固定步(dt=1/60)空跑。
 
+mod anim;
 mod frame;
 mod meshres;
 mod rpc;
 mod share;
+mod stream;
 mod viewport;
 
 use std::io::Write;
@@ -30,6 +32,14 @@ fn main() {
         }
     }
     spawn_physics_thread(Arc::clone(&state));
+
+    // 视口直连推流通道(WS 帧推送 + 实时输入;地址经 viewport.streamInfo 下发)。
+    // 失败不致命:视口自然回退 MCP 轮询腿。日志走 stderr——stdout 是 MCP autoStart
+    // 的就绪行协议面,不得混入其他行。
+    match stream::spawn(Arc::clone(&state)) {
+        Ok(ws_port) => eprintln!("engine-host: 视口推流 WS 就绪 127.0.0.1:{ws_port}"),
+        Err(e) => eprintln!("engine-host: 推流服务器启动失败(视口走轮询回退腿): {e}"),
+    }
 
     let listener = match TcpListener::bind(("127.0.0.1", port)) {
         Ok(l) => l,

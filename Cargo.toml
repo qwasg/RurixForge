@@ -28,6 +28,16 @@ rust-version = "1.80"
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# ── 上游 rurix 内核依赖(开源 git 锚定)─────────────────────────────
+# 锚定 rev = Rurix main @1478859a(2026-09-01 双仓同步开源时点,对账见 RURIX_PIN.json)。
+# 本地双仓开发:取消注释文件尾 [patch."https://github.com/qwasg/Rurix"] 节,以本地
+# H:/rurix 工作树覆盖(D-016/D-029 path 依赖常态的 git 化等价物);提交前须重新注释。
+rurix-asset = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-geom-build = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-pkg = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-physics = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-rt = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+soft-raster = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
 tokio = { version = "1.44", features = ["rt-multi-thread", "net", "macros", "time", "process", "sync"] }
 axum = "0.8"
 tower = "0.5"
@@ -45,3 +55,14 @@ windows = { version = "=0.61.3", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_HiDpi",
 ] }
+
+# ── 本地双仓开发(可选,勿在提交状态启用)──────────────────────────
+# 指向本地 rurix 工作树开发时,取消注释以下 [patch] 节;发布/提交前恢复注释,
+# 否则其他克隆者因缺少本地路径无法构建。对账纪律同 RURIX_PIN.json(D-016/D-029)。
+# [patch."https://github.com/qwasg/Rurix"]
+# rurix-asset = { path = "H:/rurix/src/rurix-asset" }
+# rurix-geom-build = { path = "H:/rurix/src/rurix-geom-build" }
+# rurix-pkg = { path = "H:/rurix/src/rurix-pkg" }
+# rurix-physics = { path = "H:/rurix/src/rurix-physics" }
+# rurix-rt = { path = "H:/rurix/src/rurix-rt" }
+# soft-raster = { path = "H:/rurix/src/soft-raster" }

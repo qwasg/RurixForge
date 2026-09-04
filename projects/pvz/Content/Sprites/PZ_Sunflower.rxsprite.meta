@@ -1,0 +1,10 @@
+guid: 1b8c7ea2-01ff-5442-a810-5f00c124c6f1
+type: sprite
+importer: sprite
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_Sunflower.png
+    pipeline: deterministic-frame-sheet
+build_state: current

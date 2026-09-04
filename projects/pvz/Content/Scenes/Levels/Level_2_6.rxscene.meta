@@ -1,0 +1,10 @@
+guid: adc07c92-f170-5db6-8c17-47dee12565dc
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-6(night,10 波,奖励 scaredy_shroom);在 IDE Assets 面板双击即可装进视口试玩

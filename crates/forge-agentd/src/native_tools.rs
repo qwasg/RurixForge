@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-use crate::agent::{PatchTodoRequest, TodoStore};
+use crate::agent::{NewTodo, PatchTodoRequest, TodoStore};
 use crate::engine::is_native_tool;
 use crate::events::{EventBus, EventDraft};
 
@@ -34,6 +34,18 @@ pub fn dispatch_native(
         "str_replace_edit" => str_replace_edit(ws_root, args),
         "apply_patch" => apply_patch(ws_root, args),
         "task" => (false, "task 须由引擎嵌套循环处理".into()),
+        // D-036:dispatch 要起后台 run(RunRegistry + 回执收件箱),同 task 由 agent.rs
+        // 父执行闭包接管;走到这里说明是子代理路径 —— 子代理不许再派后台子代理(防递归)。
+        crate::engine::DISPATCH_TOOL => (
+            false,
+            "dispatch 只能由主代理在 multitask 模式下调用(子代理不可再派)".into(),
+        ),
+        // D-035:create_plan 要写会话 activePlanPath,拿不到 SessionStore,故由 agent.rs
+        // 父执行闭包接管(同 task 形态)。走到这里说明是子代理路径 —— 计划只归父代理落。
+        crate::engine::CREATE_PLAN_TOOL => (
+            false,
+            "create_plan 只能由主代理在 plan 模式下调用".into(),
+        ),
         other => (false, format!("未知原生工具: {other}")),
     }
 }
@@ -46,6 +58,7 @@ fn handle_todo_write(
     args: &Value,
 ) -> String {
     let mut n = 0usize;
+    let mut ids: Vec<String> = Vec::new();
     if let Some(items) = args.get("todos").and_then(|v| v.as_array()) {
         for item in items {
             let title = item
@@ -56,15 +69,32 @@ fn handle_todo_write(
             if title.is_empty() {
                 continue;
             }
-            let desc = item
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let kind = item
-                .get("kind")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            match todos.create(session_id, title, desc, kind) {
+            let s = |k: &str| item.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            // F-GAME-4 wave.3:Plan DAG 可选字段(stage/deps/role/prompt/verify)落入 TodoItem。
+            let deps: Vec<String> = item
+                .get("deps")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|d| d.as_str())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            match todos.create(
+                session_id,
+                NewTodo {
+                    title: title.to_string(),
+                    description: s("description"),
+                    kind: s("kind"),
+                    stage: s("stage"),
+                    deps,
+                    role: s("role"),
+                    prompt: s("prompt"),
+                    verify: s("verify"),
+                    ..Default::default()
+                },
+            ) {
                 Ok(todo) => {
                     events.emit(
                         EventDraft::new(session_id, "todo.created", "todo").payload(json!({
@@ -73,16 +103,26 @@ fn handle_todo_write(
                             "kind": todo.kind,
                             "status": todo.status,
                             "description": todo.description,
+                            "stage": todo.stage,
+                            "deps": todo.deps,
+                            "role": todo.role,
+                            "prompt": todo.prompt,
+                            "verify": todo.verify,
                             "runId": run_id,
                         })),
                     );
+                    ids.push(format!("- {} :: {}", todo.id, todo.title));
                     n += 1;
                 }
                 Err(_) => {}
             }
         }
     }
-    format!("recorded {n} todos\n提醒：开始任何一项前先用 todo_update 标记 running，完成后立即标记 completed 并附 summary。")
+    // 回显完整 id:todo_update 按 id 精确 patch,不回显 id 会被 LLM 编号猜测(实测 NotFound)。
+    format!(
+        "recorded {n} todos(后续 todo_update 必须用下列完整 id,不要自编序号):\n{}\n提醒：开始任何一项前先用 todo_update 标记 running，完成后立即标记 completed 并附 summary。",
+        ids.join("\n")
+    )
 }
 
 fn handle_todo_update(events: &EventBus, todos: &TodoStore, args: &Value) -> (bool, String) {
@@ -122,6 +162,15 @@ fn arg_str(args: &Value, key: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// 非负整数参数(数字或数字串;负数/非数一律 None,不猜)。
+fn arg_usize(args: &Value, key: &str) -> Option<usize> {
+    match args.get(key) {
+        Some(Value::Number(n)) => n.as_u64().map(|v| v as usize),
+        Some(Value::String(s)) => s.trim().parse::<usize>().ok(),
+        _ => None,
+    }
 }
 
 fn confine_existing(ws_root: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -196,6 +245,21 @@ fn read_file(ws_root: &Path, args: &Value) -> (bool, String) {
     let Some(path) = arg_str(args, "path") else {
         return (false, "path required".into());
     };
+    // 2026-09-03:可选 offset(1 基起行)+ limit(最多行数)——大文件按需分段读,
+    // 且前端过程链据此如实显示「Read x.ts L90-625」的行区间(无参数时不伪造区间)。
+    // 两参都缺省时走原路径,行为与此前逐字节一致。
+    let (offset, limit) = (arg_usize(args, "offset"), arg_usize(args, "limit"));
+    if offset.is_some() || limit.is_some() {
+        let start = offset.unwrap_or(1).max(1);
+        let end = match limit {
+            Some(n) if n > 0 => start.saturating_add(n - 1),
+            _ => usize::MAX,
+        };
+        return match read_lines(ws_root, &path, start, end) {
+            Ok(t) => (true, t),
+            Err(e) => (false, e),
+        };
+    }
     match confine_existing(ws_root, &path) {
         Ok(p) if p.is_file() => match std::fs::read_to_string(&p) {
             Ok(t) => (true, t),
@@ -677,6 +741,31 @@ mod tests {
             let (ok, listed) = glob_files(&root, &json!({ "pattern": "notes/**" }));
             assert!(ok);
             assert!(listed.contains("notes/hi.txt"), "{listed}");
+        });
+    }
+
+    /// 2026-09-03:read_file 可选行区间。offset/limit 缺省 = 全文原样(旧行为不变);
+    /// 给了就如实只回该段,越界收敛到文件末尾而非报错。
+    #[test]
+    fn read_file_line_window_is_optional_and_clamped() {
+        with_root(|dir| {
+            let root = dir.canonicalize().unwrap();
+            let (ok, msg) =
+                write_file(&root, &json!({ "path": "n.txt", "content": "l1\nl2\nl3\nl4\nl5" }));
+            assert!(ok, "{msg}");
+            let (ok, all) = read_file(&root, &json!({ "path": "n.txt" }));
+            assert!(ok && all == "l1\nl2\nl3\nl4\nl5", "缺省应全文原样: {all}");
+            let (ok, win) = read_file(&root, &json!({ "path": "n.txt", "offset": 2, "limit": 2 }));
+            assert!(ok);
+            assert_eq!(win, "l2\nl3", "offset 为 1 基起行,limit 为行数");
+            let (ok, tail) = read_file(&root, &json!({ "path": "n.txt", "offset": 4 }));
+            assert!(ok);
+            assert_eq!(tail, "l4\nl5", "只给 offset = 读到末尾");
+            let (ok, head) = read_file(&root, &json!({ "path": "n.txt", "limit": 2 }));
+            assert!(ok);
+            assert_eq!(head, "l1\nl2", "只给 limit = 从首行起");
+            let (ok, over) = read_file(&root, &json!({ "path": "n.txt", "offset": 9, "limit": 3 }));
+            assert!(ok && over.is_empty(), "越界收敛为空串,不报错: {over}");
         });
     }
 }

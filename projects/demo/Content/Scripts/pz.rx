@@ -1,0 +1,22 @@
+// pz.rx — PZ 关卡规则单一事实源(pz_level1)
+// 限制绕行(同 sling_rules rev2):
+//   1. 图内无法比较字符串消息名 → send_message 统一 "ev",payload f32 区间解码
+//      (kill=100, lose=900)。
+//   2. call.call_function 标量编组只支持同构参数、图内 args 只能单动态值
+//      → 全部函数单参/同构、自包含无跨函数调用(RD-F6-001 规避)。
+
+// 豌豆射手发射间隔:t 为 on_update 累计秒数,>= 3.0 即可发射
+#[export(c)]
+pub fn fire_ready(t: f32) -> bool { t >= 3.0 }
+
+// 消息解码:击杀 +100
+#[export(c)]
+pub fn is_kill(p: f32) -> bool { p >= 100.0 && p < 200.0 }
+
+// 消息解码:僵尸进屋
+#[export(c)]
+pub fn is_lose(p: f32) -> bool { p >= 900.0 && p < 1000.0 }
+
+// 胜利判定:6 只僵尸全灭
+#[export(c)]
+pub fn all_dead(kills: f32) -> bool { kills >= 6.0 }

@@ -1,0 +1,10 @@
+guid: dd8a555f-4a88-5acc-a280-701aa1b1e26c
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_bobsled_team

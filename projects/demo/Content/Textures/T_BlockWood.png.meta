@@ -1,0 +1,12 @@
+guid: ec5e959d-7763-41c1-b796-cd8137cb9d5f
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:41:44Z
+    prompt: wooden crate plank block, cartoon 2D game asset for a physics puzzle game, warm brown wood texture with visible grain and nail heads, square shape, Angry Birds style, isolated on plain solid magenta background, crisp edges, no text
+    seed: 3928275814228786467
+    sourceRefs: []
+build_state: current

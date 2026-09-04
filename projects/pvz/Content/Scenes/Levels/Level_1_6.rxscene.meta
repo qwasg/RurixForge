@@ -1,0 +1,10 @@
+guid: 850077de-c4b7-562f-978d-f290f97acfe2
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-6(day,10 波,奖励 snow_pea);在 IDE Assets 面板双击即可装进视口试玩

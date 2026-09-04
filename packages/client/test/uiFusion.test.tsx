@@ -1,10 +1,9 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Composer from '@/components/chat/Composer';
 import EntityRefText from '@/components/chat/EntityRefText';
 import { useAssetStore } from '@/lib/assetStore';
 import { useChatStore } from '@/lib/chatStore';
-import { chipsPrefix, useContextChips, type ContextChip } from '@/lib/contextChips';
 import { useEditorStore, type EntityData } from '@/lib/editorStore';
 import { notifyAgentToolSettled } from '@/lib/editorSync';
 import { jumpToEntity } from '@/lib/entityJump';
@@ -14,10 +13,9 @@ import { mockForgeBackend } from './forgeMock';
 
 /**
  * UI 融合波(2026-08-20)测试:
- * C1 上下文 chip(三源装配 / 剔除 / 发送前缀注入);
  * C2 #id 实体引用链接化 + 回跳守卫;
  * C3 agent 工具落定 → 编辑器/资产精准刷新(白名单 + 300ms 拖尾防抖)。
- * C4 collectProblems 用例随底栏波 Problems 面板退役删除。
+ * C1 上下文 chip 与 C4 collectProblems 用例随各自功能退役删除。
  */
 
 const E42: EntityData = {
@@ -50,38 +48,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// ---------- C1 上下文 chip ----------
+// ---------- C1 上下文 chip 退役守卫 ----------
 
-describe('C1 chipsPrefix / useContextChips', () => {
-  it('chipsPrefix:空返空串;非空 = 【上下文】a | b + 空行', () => {
-    expect(chipsPrefix([])).toBe('');
-    const chips: ContextChip[] = [
-      { key: 'scene', kind: 'scene', label: '@maze', refText: '场景:maze.rxscene' },
-      { key: 'entity:42', kind: 'entity', label: '#42 Crate', refText: '实体:#42 Crate' },
-    ];
-    expect(chipsPrefix(chips)).toBe('【上下文】场景:maze.rxscene | 实体:#42 Crate\n\n');
-  });
-
-  it('useContextChips:场景/选中实体/选中资产三源装配', () => {
-    useEditorStore.setState({ sceneName: 'maze.rxscene', entities: [E42], selectedId: 42 });
-    useAssetStore.setState({
-      items: [{ path: 'Content/Textures/brick.png', guid: 'g1', type: 'texture', size: 1 }],
-      selectedGuid: 'g1',
-    });
-    function Probe() {
-      const chips = useContextChips();
-      return <div data-testid="chips">{JSON.stringify(chips.map((c) => c.key))}</div>;
-    }
-    render(<Probe />);
-    expect(screen.getByTestId('chips')).toHaveTextContent('["scene","entity:42","asset:g1"]');
-  });
-
-  it('空场景 + 无选中 → 无 chip(Composer 不渲染 chip 行)', () => {
-    render(<Composer />);
-    expect(screen.queryByTestId('context-chips')).toBeNull();
-  });
-
-  it('Composer:chip 渲染;剔除实体后发送前缀不含实体;发送后剔除态复位', () => {
+describe('C1 上下文 chip 已退役', () => {
+  it('三源全选中也不渲染 chip 行;发送正文即草稿原文,不带【上下文】前缀', () => {
     useEditorStore.setState({ sceneName: 'maze.rxscene', entities: [E42], selectedId: 42 });
     useAssetStore.setState({
       items: [{ path: 'Content/Textures/brick.png', guid: 'g1', type: 'texture', size: 1 }],
@@ -92,21 +62,10 @@ describe('C1 chipsPrefix / useContextChips', () => {
     useSessionStore.setState({ activeSessionId: 'sess_1' });
     render(<Composer />);
 
-    expect(screen.getByTestId('ctx-chip-scene')).toHaveTextContent('@maze.rxscene');
-    expect(screen.getByTestId('ctx-chip-entity')).toHaveTextContent('#42 Crate');
-    expect(screen.getByTestId('ctx-chip-asset')).toHaveTextContent('brick.png');
-
-    fireEvent.click(screen.getByTestId('ctx-chip-toggle-entity'));
+    expect(screen.queryByTestId('context-chips')).toBeNull();
     fireEvent.change(screen.getByTestId('composer-input'), { target: { value: '调整一下' } });
     fireEvent.click(screen.getByTestId('composer-send'));
-
-    const arg = sendMessage.mock.calls[0]?.[0] as string;
-    expect(arg).toContain('场景:maze.rxscene');
-    expect(arg).toContain('资产:Content/Textures/brick.png');
-    expect(arg).not.toContain('实体:');
-    expect(arg.endsWith('调整一下')).toBe(true);
-    // 剔除态发送后复位(chip 恢复 acc 态可再注入)
-    expect(screen.getByTestId('ctx-chip-toggle-entity')).toHaveAccessibleName('移除上下文 #42 Crate');
+    expect(sendMessage).toHaveBeenCalledWith('调整一下', 'build');
   });
 });
 

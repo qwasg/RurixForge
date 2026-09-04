@@ -1,0 +1,1159 @@
+{
+ "version": 1,
+ "id": "sun_fall",
+ "name": "sun_fall",
+ "exposedProps": [
+  {
+   "name": "poolId",
+   "kind": "F32",
+   "default": 1.0
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "event.on_update",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n2",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "sun_active"
+    }
+   }
+  },
+  {
+   "id": "n3",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n2",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n4",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    },
+    "value": {
+     "node": "n1",
+     "pin": "dt"
+    }
+   }
+  },
+  {
+   "id": "n5",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "sun_fall_secs"
+    },
+    "args": {
+     "ref": "poolId"
+    }
+   }
+  },
+  {
+   "id": "n6",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n5",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n7",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "fallT"
+    }
+   }
+  },
+  {
+   "id": "n8",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "neg"
+    },
+    "args": {
+     "node": "n7",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n9",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n8",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n10",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n11",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "sun_landed"
+    },
+    "args": {
+     "node": "n10",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n12",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n11",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n13",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "fallT"
+    },
+    "value": {
+     "node": "n1",
+     "pin": "dt"
+    }
+   }
+  },
+  {
+   "id": "n14",
+   "type": "transform.move_tween",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "target": {
+     "const": "$self"
+    },
+    "offset": {
+     "const": [
+      0.0,
+      -0.16,
+      0.0
+     ]
+    },
+    "duration": {
+     "const": 0.1
+    }
+   }
+  },
+  {
+   "id": "n15",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    }
+   }
+  },
+  {
+   "id": "n16",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "sun_expired"
+    },
+    "args": {
+     "node": "n15",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n17",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n16",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n18",
+   "type": "entity.set_transform",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "transform": {
+     "const": {
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "translation": [
+       0.0,
+       -80.0,
+       0.0
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "n19",
+   "type": "entity.add_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "sun_free"
+    }
+   }
+  },
+  {
+   "id": "n20",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n21",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "fallT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n22",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "sun_placed"
+    }
+   }
+  },
+  {
+   "id": "n23",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n22",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n24",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    },
+    "value": {
+     "node": "n1",
+     "pin": "dt"
+    }
+   }
+  },
+  {
+   "id": "n25",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    }
+   }
+  },
+  {
+   "id": "n26",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "sun_expired"
+    },
+    "args": {
+     "node": "n25",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n27",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n26",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n28",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n29",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "fallT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n30",
+   "type": "event.on_input",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n31",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "unpack_action"
+    },
+    "args": {
+     "node": "n30",
+     "pin": "value"
+    }
+   }
+  },
+  {
+   "id": "n32",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n33",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n31",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n34",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": -3.0
+    }
+   }
+  },
+  {
+   "id": "n35",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n36",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "is_zero"
+    },
+    "args": {
+     "node": "n35",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n37",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n36",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n38",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "sun_active"
+    }
+   }
+  },
+  {
+   "id": "n39",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n38",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n40",
+   "type": "entity.set_transform",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "transform": {
+     "const": {
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "translation": [
+       0.0,
+       -80.0,
+       0.0
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "n41",
+   "type": "entity.add_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "sun_free"
+    }
+   }
+  },
+  {
+   "id": "n42",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "liveT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n43",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "fallT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n44",
+   "type": "call.send_message",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sun_gained"
+    },
+    "payload": {
+     "const": 25.0
+    }
+   }
+  },
+  {
+   "id": "n45",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "const": "$self"
+    },
+    "tag": {
+     "const": "sun_placed"
+    }
+   }
+  },
+  {
+   "id": "n46",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n45",
+     "pin": "out"
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": [
+    "n1",
+    "exec"
+   ],
+   "to": [
+    "n3",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n4",
+    "exec"
+   ],
+   "to": [
+    "n5",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n5",
+    "exec"
+   ],
+   "to": [
+    "n6",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n6",
+    "exec"
+   ],
+   "to": [
+    "n8",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n8",
+    "exec"
+   ],
+   "to": [
+    "n9",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n9",
+    "exec"
+   ],
+   "to": [
+    "n11",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n11",
+    "exec"
+   ],
+   "to": [
+    "n12",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n13",
+    "exec"
+   ],
+   "to": [
+    "n14",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n12",
+    "else"
+   ],
+   "to": [
+    "n13",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n16",
+    "exec"
+   ],
+   "to": [
+    "n17",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n18",
+    "exec"
+   ],
+   "to": [
+    "n19",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n19",
+    "exec"
+   ],
+   "to": [
+    "n20",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n20",
+    "exec"
+   ],
+   "to": [
+    "n21",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n17",
+    "then"
+   ],
+   "to": [
+    "n18",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n12",
+    "then"
+   ],
+   "to": [
+    "n16",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n14",
+    "exec"
+   ],
+   "to": [
+    "n16",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "then"
+   ],
+   "to": [
+    "n4",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "else"
+   ],
+   "to": [
+    "n23",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n24",
+    "exec"
+   ],
+   "to": [
+    "n26",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n26",
+    "exec"
+   ],
+   "to": [
+    "n27",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n27",
+    "then"
+   ],
+   "to": [
+    "n18",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n23",
+    "then"
+   ],
+   "to": [
+    "n24",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n28",
+    "exec"
+   ],
+   "to": [
+    "n29",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n23",
+    "else"
+   ],
+   "to": [
+    "n28",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n30",
+    "exec"
+   ],
+   "to": [
+    "n31",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n31",
+    "exec"
+   ],
+   "to": [
+    "n32",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n32",
+    "exec"
+   ],
+   "to": [
+    "n33",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n33",
+    "exec"
+   ],
+   "to": [
+    "n34",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n34",
+    "exec"
+   ],
+   "to": [
+    "n36",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n36",
+    "exec"
+   ],
+   "to": [
+    "n37",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n37",
+    "then"
+   ],
+   "to": [
+    "n39",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n40",
+    "exec"
+   ],
+   "to": [
+    "n41",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n41",
+    "exec"
+   ],
+   "to": [
+    "n42",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n42",
+    "exec"
+   ],
+   "to": [
+    "n43",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n43",
+    "exec"
+   ],
+   "to": [
+    "n44",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n39",
+    "then"
+   ],
+   "to": [
+    "n40",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n39",
+    "else"
+   ],
+   "to": [
+    "n46",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n46",
+    "then"
+   ],
+   "to": [
+    "n40",
+    "exec"
+   ]
+  }
+ ]
+}

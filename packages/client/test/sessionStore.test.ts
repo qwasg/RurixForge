@@ -120,6 +120,24 @@ describe('sessionStore', () => {
     expect(calls[0].method).toBe('POST');
   });
 
+  it('create:把 Composer 规格带进 POST,供无会话直发继承 thinking', async () => {
+    const created = makeSession('sess_spec', { thinkingEnabled: true, reasoningEffort: 'max' });
+    const calls = stubRest({
+      'POST /api/forge/sessions': { session: created },
+    });
+    await useSessionStore.getState().create(undefined, {
+      thinkingEnabled: true,
+      reasoningEffort: 'max',
+      contextOptionId: '1m',
+    });
+    expect(calls[0].body).toEqual({
+      title: '',
+      thinkingEnabled: true,
+      reasoningEffort: 'max',
+      contextOptionId: '1m',
+    });
+  });
+
   it('rename:乐观改名 + PATCH title;失败回滚 + toast', async () => {
     const prev = makeSession('sess_a', { title: '旧名' });
     const calls = stubRest({

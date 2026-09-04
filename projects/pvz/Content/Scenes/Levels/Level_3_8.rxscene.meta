@@ -1,0 +1,10 @@
+guid: 70f2ca9d-036d-50ba-aff1-d1fddbde804d
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-8(pool,20 波,奖励 tall_nut);在 IDE Assets 面板双击即可装进视口试玩

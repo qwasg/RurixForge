@@ -72,9 +72,9 @@ describe('useHomeMode 判定', () => {
   it('手动「工作台」暂避;再开任一 tab 复位暂避态', () => {
     useWorkbenchStore.getState().setHomeDismissed(true);
     expect(home()).toBe(false);
-    useWorkbenchStore.getState().openTab('plan');
+    useWorkbenchStore.getState().openTab('todo');
     expect(useWorkbenchStore.getState().homeDismissed).toBe(false);
-    useWorkbenchStore.getState().closeTab('plan');
+    useWorkbenchStore.getState().closeTab('todo');
     expect(home()).toBe(true);
   });
 
@@ -144,6 +144,37 @@ describe('<ChatColumn variant="home" /> 无会话直发', () => {
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith('做个迷宫', 'build'));
     expect(create).toHaveBeenCalled();
     expect(selectSession).toHaveBeenCalledWith('sess_new');
+  });
+
+  it('无会话直发:把主页已勾的 thinking/effort/context 传给 create', async () => {
+    const created = session('sess_think');
+    const create = vi.fn(async () => {
+      useSessionStore.setState({ activeSessionId: created.id, sessions: [created] });
+      return created;
+    });
+    const selectSession = vi.fn(async () => {});
+    const sendMessage = vi.fn(async () => {});
+    useSessionStore.setState({ create });
+    useChatStore.setState({
+      thinkingEnabled: true,
+      reasoningEffort: 'max',
+      contextOptionId: '1m',
+      selectedModelId: 'openai-compat',
+      selectSession,
+      sendMessage,
+    });
+
+    render(<ChatColumn variant="home" />);
+    fireEvent.change(screen.getByTestId('composer-input'), { target: { value: '你好' } });
+    fireEvent.click(screen.getByTestId('composer-send'));
+
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    expect(create).toHaveBeenCalledWith(undefined, {
+      selectedModelId: 'openai-compat',
+      thinkingEnabled: true,
+      reasoningEffort: 'max',
+      contextOptionId: '1m',
+    });
   });
 
   it('建会话失败(后端不可达)不发消息', async () => {

@@ -1,0 +1,9 @@
+guid: e22ae9b0-8dd4-5e17-a241-859d842c5488
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-sun-panel
+build_state: current

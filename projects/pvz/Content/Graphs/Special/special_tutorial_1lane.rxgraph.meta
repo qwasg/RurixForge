@@ -1,0 +1,10 @@
+guid: ae9f9de8-bf2b-5c81-8386-2471c60f9a79
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_tutorial_1lane

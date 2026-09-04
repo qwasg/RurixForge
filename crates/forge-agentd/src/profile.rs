@@ -68,7 +68,7 @@ impl AgentProfile {
 
     pub fn allowed_modes(&self) -> &'static [&'static str] {
         match self.kind {
-            AgentKind::Coding => &["build", "plan", "debug", "ask", "multitask"],
+            AgentKind::Coding => &["build", "plan", "team", "debug", "ask", "multitask"],
             AgentKind::Document | AgentKind::General | AgentKind::Studio => &["ask", "build"],
         }
     }
@@ -120,6 +120,9 @@ mod tests {
             AgentProfile::from_kind_str("general").allowed_modes(),
             &["ask", "build"]
         );
+        // team(游戏制作多代理)仅 Coding 可用。
+        assert!(AgentProfile::from_kind_str("coding").allowed_modes().contains(&"team"));
+        assert!(!AgentProfile::from_kind_str("general").allowed_modes().contains(&"team"));
         assert!(AgentProfile::from_kind_str("coding").wants_edit_tools());
         assert!(!AgentProfile::from_kind_str("document").wants_edit_tools());
         assert_eq!(AgentKind::from_str("studio"), AgentKind::Studio);

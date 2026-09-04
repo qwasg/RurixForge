@@ -1,0 +1,13 @@
+guid: 369fa8be-6ed8-4ccc-be70-06c794dce1bc
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-30T14:54:26Z
+    negativePrompt: photorealistic, graphic gore, blood, terrifying horror, dark scene, text, letters, logo, watermark, signature, UI, border, multiple characters, busy background, cropped body, side view, copyrighted character exact replica
+    prompt: 'Create an ORIGINAL game asset for a bright whimsical cartoon tower-defense game: one comical ordinary garden zombie enemy, full body, front orthographic view, centered single subject. Distinct original design: lanky uneven posture, oversized worn jacket and trousers, goofy dazed expression, muted green-gray clay skin, clearly readable arms and legs, amusing rather than frightening. Low-poly sculpted clay aesthetic, chunky clean forms, soft studio lighting, strong readable silhouette at small size. Pure clean pale warm background, no ground clutter. No text, no logo, no watermark, no frame, no extra characters, no gore, no props. Square 1:1 composition.'
+    seed: 27421
+    sourceRefs: []
+build_state: current

@@ -7,4 +7,4 @@ edition.workspace = true
 [dependencies]
 # hashutil 算法根:rurix-pkg 手写 SHA-256(FIPS 180-4,自身零第三方依赖)。
 # 引入后本 crate 不再是「零依赖」,取舍如实记于 src/hashutil.rs 文件头。
-rurix-pkg = { path = "H:/rurix/src/rurix-pkg" }
+rurix-pkg.workspace = true

@@ -1,0 +1,10 @@
+guid: 53a61b5d-9bcb-504f-9074-9b56b680b039
+type: sprite
+importer: sprite
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/SourceAtlases/PZ_PlantGroup_06.png
+    pipeline: deterministic-frame-sheet
+build_state: current

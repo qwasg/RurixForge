@@ -1,0 +1,10 @@
+guid: e6335ec0-932b-5fb0-9aae-c5d70ee3ce42
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_conveyor

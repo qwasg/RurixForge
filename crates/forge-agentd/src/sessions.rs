@@ -80,6 +80,11 @@ pub struct DebugSession {
     pub purpose: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub studio_node_id: Option<String>,
+    /// D-035:当前计划文件(工作区相对路径 `.forge/plans/<名>.plan.md`)。
+    /// plan 模式 create_plan 落盘时写入;前端据此在快照回放后重开 Plan 页签,
+    /// 后续 plan 轮据此原地迭代同一份计划。旧 sessions.json 无此字段 → None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_plan_path: Option<String>,
 }
 
 impl DebugSession {
@@ -97,8 +102,9 @@ impl DebugSession {
             status: default_status(),
             agent_kind: agent_kind.to_string(),
             selected_model_id: model_id,
-            // 规格三档不进 create 入参:新会话一律起于该模型默认档(resolve 现算),
-            // fork 侧显式拷贝源会话的选择(见 fork_session)。
+            // 缺省起于该模型默认档(resolve 现算)。全屏主页无会话先改规格再发送时,
+            // create_session 可把 thinking/effort/context 一并写入(见 CreateSessionRequest);
+            // fork 侧仍显式拷贝源会话的选择。
             thinking_enabled: false,
             reasoning_effort: None,
             context_option_id: None,
@@ -112,6 +118,7 @@ impl DebugSession {
             workspace_id,
             purpose: default_purpose(),
             studio_node_id: None,
+            active_plan_path: None,
         }
     }
 
@@ -201,6 +208,59 @@ impl SessionStore {
         SessionStore {
             path,
             inner: Mutex::new(map),
+        }
+    }
+
+    /// 崩溃恢复清扫:run 只存内存(agent.rs RunRegistry),持久层的 active_run_id 在
+    /// 进程重启后必然是残留(实测:强杀 agentd 留下幽灵 run,前端回放 run.created
+    /// 无终止事件 → activeRunId 永久卡住、「中止运行」常驻、发送被软禁)。
+    /// 清空并返回 (sessionId, runId) 清单,由调用方补发 run.failed 终止事件。
+    pub fn clear_stale_active_runs(&self) -> Vec<(String, String)> {
+        let mut inner = self.inner.lock().unwrap();
+        let mut swept: Vec<(String, String)> = Vec::new();
+        for s in inner.values_mut() {
+            if let Some(rid) = s.active_run_id.take() {
+                swept.push((s.id.clone(), rid));
+            }
+        }
+        if !swept.is_empty() {
+            self.persist_locked(&inner);
+            eprintln!(
+                "[sessions] 清扫 stale activeRunId × {}(进程重启崩溃恢复)",
+                swept.len()
+            );
+        }
+        swept
+    }
+
+    /// D-038:原子认领 activeRunId(CAS)。会话空闲 → 置 run_id 并落盘,Ok;
+    /// 已有运行中的 run → Err(其 id),调用方不得起第二条 turn。
+    /// 此前 execute_turn 是「读-改-写」三步无锁覆盖——用户轮之间靠前端 canSend 挡着尚可,
+    /// 服务端自起的回执唤醒轮与用户轮之间没有任何前端门,必须在存贮层做原子性。
+    pub fn claim_active_run(&self, id: &str, run_id: &str) -> Result<(), String> {
+        let mut inner = self.inner.lock().unwrap();
+        let Some(s) = inner.get_mut(id) else {
+            return Err("SESSION_NOT_FOUND".to_string());
+        };
+        if let Some(existing) = &s.active_run_id {
+            return Err(existing.clone());
+        }
+        s.active_run_id = Some(run_id.to_string());
+        s.touch();
+        self.persist_locked(&inner);
+        Ok(())
+    }
+
+    /// D-038:释放 activeRunId —— 只清自己认领的那一个(别的 turn 已接管则不动)。
+    pub fn release_active_run(&self, id: &str, run_id: &str) {
+        let mut inner = self.inner.lock().unwrap();
+        let Some(s) = inner.get_mut(id) else {
+            return;
+        };
+        if s.active_run_id.as_deref() == Some(run_id) {
+            s.active_run_id = None;
+            s.touch();
+            self.persist_locked(&inner);
         }
     }
 
@@ -563,6 +623,13 @@ pub struct CreateSessionRequest {
     agent_kind: Option<String>,
     #[serde(default)]
     selected_model_id: Option<String>,
+    /// 全屏主页无会话直发:把 Composer 里先勾的规格带进新会话;缺省 = 模型默认档。
+    #[serde(default)]
+    thinking_enabled: Option<bool>,
+    #[serde(default)]
+    reasoning_effort: Option<String>,
+    #[serde(default)]
+    context_option_id: Option<String>,
     #[serde(default)]
     web_search_enabled: Option<bool>,
     #[serde(default)]
@@ -573,7 +640,10 @@ pub struct CreateSessionRequest {
 pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSessionRequest>,
-) -> Json<Value> {
+) -> Response {
+    if let Err(msg) = validate_create_spec(&req) {
+        return bad_request("INVALID_MODEL_SPEC", &msg);
+    }
     let title = req
         .title
         .map(|t| t.trim().to_string())
@@ -584,7 +654,7 @@ pub async fn create_session(
         .map(|k| k.trim().to_string())
         .filter(|k| !k.is_empty())
         .unwrap_or_else(|| "coding".to_string());
-    let session = state.sessions.create(
+    let mut session = state.sessions.create(
         &title,
         &kind,
         req.selected_model_id,
@@ -593,11 +663,55 @@ pub async fn create_session(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty()),
     );
+    if req.thinking_enabled.is_some()
+        || req.reasoning_effort.is_some()
+        || req.context_option_id.is_some()
+    {
+        match state.sessions.patch(
+            &session.id,
+            &PatchSessionRequest {
+                thinking_enabled: req.thinking_enabled,
+                reasoning_effort: req.reasoning_effort.map(Some),
+                context_option_id: req.context_option_id.map(Some),
+                ..Default::default()
+            },
+        ) {
+            Ok(s) => session = s,
+            Err(PatchError::InvalidModelSpec(msg)) => {
+                return bad_request("INVALID_MODEL_SPEC", &msg)
+            }
+            Err(_) => {}
+        }
+    }
     state.events.emit(
         EventDraft::new(&session.id, "session.created", "session")
             .payload(json!({ "sessionId": session.id, "title": session.title })),
     );
-    Json(json!({ "session": session }))
+    Json(json!({ "session": session })).into_response()
+}
+
+fn validate_create_spec(req: &CreateSessionRequest) -> Result<(), String> {
+    if let Some(e) = req
+        .reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if !crate::modelspec::is_known_effort(e) {
+            return Err(format!("未知 effort 档: {e}"));
+        }
+    }
+    if let Some(c) = req
+        .context_option_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if !crate::modelspec::is_known_context(c) {
+            return Err(format!("未知 context 档: {c}"));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -701,6 +815,9 @@ pub async fn fork_session(State(state): State<Arc<AppState>>, Path(id): Path<Str
     forked.thinking_enabled = src.thinking_enabled;
     forked.reasoning_effort = src.reasoning_effort.clone();
     forked.context_option_id = src.context_option_id.clone();
+    // D-035:计划文件是工作区文件、两个会话共用同一份;分支会话继承指针,
+    // Plan 页签在分支里照常可见可 Build(后续 create_plan 也会原地迭代同一文件)。
+    forked.active_plan_path = src.active_plan_path.clone();
     forked.touch();
     state.sessions.save(&forked);
     // 事件流克隆(磁盘全文,sessionId 换新,seq/id/ts 保持 → 单调)。
@@ -951,6 +1068,31 @@ mod tests {
             )
             .unwrap();
         assert!(p3.folder_id.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// D-035:旧 sessions.json(无 activePlanPath)反序列化兼容;未设置不进 wire;
+    /// 落库后可读回(Plan 页签刷新后据此重开)。
+    #[test]
+    fn active_plan_path_defaults_and_persists() {
+        let dir = temp_dir("planptr");
+        let old = r#"{ "sessions": [{
+            "id": "sess_old", "title": "旧会话", "status": "idle", "agentKind": "coding",
+            "webSearchEnabled": true, "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z", "pinned": false, "titleManuallySet": false
+        }] }"#;
+        std::fs::write(dir.join("sessions.json"), old).unwrap();
+        let s = store(&dir);
+        let got = s.get("sess_old").expect("旧会话可读回");
+        assert!(got.active_plan_path.is_none());
+        let wire = serde_json::to_value(&got).unwrap();
+        assert!(wire.get("activePlanPath").is_none(), "未设置不该进 wire: {wire}");
+
+        let mut got = got;
+        got.active_plan_path = Some(".forge/plans/甲.plan.md".to_string());
+        s.save(&got);
+        let reread = store(&dir).get("sess_old").expect("落盘后可读回");
+        assert_eq!(reread.active_plan_path.as_deref(), Some(".forge/plans/甲.plan.md"));
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -199,11 +199,11 @@ describe('<App /> 新壳', () => {
     render(<App />);
     useThemeStore.getState().setMode('light');
     expect(document.documentElement.dataset.theme).toBe('light');
-    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#C96442');
+    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#C94F12');
     useThemeStore.getState().toggleMode();
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#E2886A');
-    expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#1C1B18');
+    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#F47B33');
+    expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#191A1D');
   });
 
   it('会话流:New Agent 建行 → 选中 → 对话列头标题;重命名/置顶/删除', async () => {

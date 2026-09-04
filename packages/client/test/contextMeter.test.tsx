@@ -58,7 +58,7 @@ describe('contextUsage 估算', () => {
     expect(formatTokens(65536)).toBe('66k');
   });
 
-  it('无实测:系统行走静态基线;文件/工具/对话/引用/技能/草稿各成行并按 token 降序', () => {
+  it('无实测:系统行走静态基线;文件/工具/对话/技能/草稿各成行并按 token 降序', () => {
     const usage = computeContextUsage(
       [
         { id: 'u1', role: 'user', text: '把箱子挪到原点', blocks: [], time: '10:00' },
@@ -86,7 +86,6 @@ describe('contextUsage 估算', () => {
         ]),
       ],
       {
-        chips: [{ key: 'scene', kind: 'scene', label: '@Main', refText: '场景:Main' }],
         skills: ['scene-greybox'],
         draft: '再加个碰撞体',
         contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -97,8 +96,8 @@ describe('contextUsage 估算', () => {
     const byKey = new Map(usage.rows.map((r) => [r.key, r]));
     expect(byKey.get('base')?.tokens).toBe(BASE_PROMPT_TOKENS);
     expect(byKey.get('file:Content/Scripts/box.rx')?.label).toBe('box.rx');
-    expect(byKey.get('tool:列出实体')).toBeDefined();
-    expect(byKey.get('context:scene')).toBeDefined();
+    // 工具行标签取 timeline 动词表(2026-09-03 起过程链文案统一英文)
+    expect(byKey.get('tool:Listed entities')).toBeDefined();
     expect(byKey.get('skill:scene-greybox')).toBeDefined();
     expect(byKey.get('draft')).toBeDefined();
     expect(byKey.get('reasoning')).toBeDefined();
@@ -117,7 +116,6 @@ describe('contextUsage 估算', () => {
     ];
     const attributed = estimateTokens('你好');
     const usage = computeContextUsage(messages, {
-      chips: [],
       skills: [],
       draft: '',
       contextWindow: 65536,
@@ -133,7 +131,6 @@ describe('contextUsage 估算', () => {
   it('实测小于可归因时基线夹到 0,ratio 超窗封顶 1 而 percent 如实 > 100', () => {
     const huge = 'x'.repeat(400000); // ≈ 120k tokens > 64k 窗口
     const usage = computeContextUsage([{ id: 'u1', role: 'user', text: huge, blocks: [], time: '' }], {
-      chips: [],
       skills: [],
       draft: '',
       contextWindow: 65536,
@@ -179,7 +176,7 @@ describe('<Composer /> 上下文计量环', () => {
     expect(screen.queryByTestId('composer-context-panel')).not.toBeInTheDocument();
   });
 
-  it('表内含文件行/上下文引用行/草稿行;剔除的引用 chip 不计入', () => {
+  it('表内含文件行与草稿行;上下文引用行随 chip 退役消失', () => {
     useChatStore.setState({
       messages: [
         assistantWith([
@@ -200,10 +197,7 @@ describe('<Composer /> 上下文计量环', () => {
     fireEvent.click(screen.getByTestId('composer-context'));
     const panel = screen.getByTestId('composer-context-panel');
     expect(within(panel).getByText('a.rx')).toBeInTheDocument();
-    expect(within(panel).getByText('@Main')).toBeInTheDocument();
     expect(within(panel).getByText('当前草稿')).toBeInTheDocument();
-    // 剔除场景 chip → 引用行消失
-    fireEvent.click(screen.getByTestId('ctx-chip-toggle-scene'));
-    expect(within(screen.getByTestId('composer-context-panel')).queryByText('@Main')).toBeNull();
+    expect(within(panel).queryByText('@Main')).toBeNull();
   });
 });

@@ -13,7 +13,9 @@
  *   T4 chat 指令创建实体经 agent 工具循环真 engine 链:openai-compat 渠道指向本脚本
  *      内置确定性 mock OpenAI 服务器(仅 LLM 决策桩,agent 工具循环/MCP/engine 链全真),
  *      断言 entity_list 出现新实体 + 视口 nonZeroPixels>0
- *   T5 multitask 碰撞体 swarm:断言工具段「集群执行」+ completed
+ *   T5 multitask 异步委派(D-036/D-038):派发轮秒收束(dispatch 只回受理)→ 后台子代理经真
+ *      engine 链建实体 → 各自一张卡片走到 done → 回执落地即唤醒主 agent(source=receipt 系统卡
+ *      + 一轮总结;agent.receipts.injected 合计 ≥2)
  *   T6 提案批准流:workbench 提案 tab pending 行「批准」→ approved
  *   T7 设置主题切换:dark/light 切,断言 data-theme 与 --accent computed 值变化
  *   T8 会话管理:fork(标题「分支 · 」)/重命名/置顶/删除,逐项 UI+后端断言
@@ -51,6 +53,9 @@ const HOST_PORT = 3080;
 const HOST_ORIGIN = `http://127.0.0.1:${HOST_PORT}`;
 const AGENTD_ORIGIN = `http://127.0.0.1:${AGENTD_PORT}`;
 const ENT_NAME = `E2E-Cube-${TS.replace(/[^0-9A-Za-z]/g, '').slice(-8)}`;
+// D-036 T5:两个后台子代理各建一个实体 —— 派发轮结束后它们才动手,是异步链的实证。
+const BG_ENT_A = `${ENT_NAME}-BG-A`;
+const BG_ENT_B = `${ENT_NAME}-BG-B`;
 const OAI_MODEL = 'e2e-deterministic-llm';
 // 假 key:仅写入隔离数据目录 keystore(FORGE_GEN_DATA_DIR 临时目录),非任何真实机密;
 // 刻意不带 sk- 前缀,防日志/截图红线误伤。
@@ -310,7 +315,7 @@ async function chatState(page) {
       selectedModelId: c.selectedModelId,
       messages: c.messages.map((m) => ({
         id: m.id, role: m.role, text: m.text, status: m.status, model: m.model,
-        provider: m.provider, error: m.error ?? null,
+        provider: m.provider, error: m.error ?? null, runId: m.runId ?? null, source: m.source ?? null,
         texts: m.blocks.filter((b) => b.kind === 'text').map((b) => b.text),
         tools: m.blocks.filter((b) => b.kind === 'tool').map((b) => ({ name: b.name, ok: b.ok ?? null, error: b.error ?? null })),
       })),
@@ -424,10 +429,57 @@ async function main() {
         toolsCount: Array.isArray(body.tools) ? body.tools.length : 0,
         hasAuthorization: typeof req.headers.authorization === 'string' && req.headers.authorization.length > 0,
         hasToolRole,
+        stream: body.stream === true,
       });
-      const reply = hasToolRole
-        ? { choices: [{ message: { role: 'assistant', content: `已创建 1 个实体(${ENT_NAME}),agent 工具循环闭环` } }], usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 } }
-        : { choices: [{ message: { role: 'assistant', tool_calls: [{ id: 'call_e2e_1', type: 'function', function: { name: 'mcp__engine-scene__entity_create', arguments: JSON.stringify({ name: ENT_NAME }) } }] } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } };
+      // 工具面区分两种角色:带 dispatch 的是 multitask 调度台(T5 leader),
+      // 其余是执行层(T4 主轮 / T5 派出去的后台子代理)。
+      const toolNames = Array.isArray(body.tools)
+        ? body.tools.map((t) => t?.function?.name).filter(Boolean)
+        : [];
+      const isDispatcher = toolNames.includes('dispatch');
+      // 后台子代理靠委派词自带上下文(它看不到对话历史),实体名从 prompt 里取。
+      const lastUser = [...messages].reverse().find((m) => m?.role === 'user');
+      const lastUserText = String(lastUser?.content ?? '');
+      const named = lastUserText.match(/名为\s*(\S+?)\s*的实体/);
+      const entityName = named ? named[1] : ENT_NAME;
+      // D-038:回执唤醒轮(user 正文以【系统唤醒】开头)—— 调度台该收尾总结,不能再派单,
+      // 否则桩会无限派发。
+      const isWake = lastUserText.startsWith('【系统唤醒】');
+      let reply;
+      if (isDispatcher && isWake) {
+        reply = { choices: [{ message: { role: 'assistant', content: `回执已收:${BG_ENT_A} 与 ${BG_ENT_B} 均已创建,任务完成,收尾。` } }], usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 } };
+      } else if (isDispatcher) {
+        reply = hasToolRole
+          ? { choices: [{ message: { role: 'assistant', content: `已派 2 个后台子代理(${BG_ENT_A} / ${BG_ENT_B}),回执完成后送达` } }], usage: { prompt_tokens: 9, completion_tokens: 6, total_tokens: 15 } }
+          : {
+              choices: [{ message: { role: 'assistant', tool_calls: [
+                { id: 'call_e2e_bg_a', type: 'function', function: { name: 'dispatch', arguments: JSON.stringify({ description: `后台建 ${BG_ENT_A}`, prompt: `创建一个名为 ${BG_ENT_A} 的实体,完成后简短汇报` }) } },
+                { id: 'call_e2e_bg_b', type: 'function', function: { name: 'dispatch', arguments: JSON.stringify({ description: `后台建 ${BG_ENT_B}`, prompt: `创建一个名为 ${BG_ENT_B} 的实体,完成后简短汇报` }) } },
+              ] } }],
+              usage: { prompt_tokens: 6, completion_tokens: 4, total_tokens: 10 },
+            };
+      } else {
+        reply = hasToolRole
+          ? { choices: [{ message: { role: 'assistant', content: `已创建 1 个实体(${entityName}),agent 工具循环闭环` } }], usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 } }
+          : { choices: [{ message: { role: 'assistant', tool_calls: [{ id: 'call_e2e_1', type: 'function', function: { name: 'mcp__engine-scene__entity_create', arguments: JSON.stringify({ name: entityName }) } }] } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } };
+      }
+      // agentd 的 turn 面现在一律以 stream:true 发起(F-TEAM-5 起),故桩必须会说 SSE:
+      // 非流式整包 JSON 会被流解析器逐行跳过(无 `data:` 前缀),表现为「模型什么都没说」。
+      // 非流式分支保留给 /api/forge/llm/chat 这类不带 stream 的调用方。
+      const message = reply.choices[0].message;
+      if (body.stream === true) {
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+        const frame = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+        if (Array.isArray(message.tool_calls)) {
+          message.tool_calls.forEach((tc, index) => frame({ choices: [{ delta: { tool_calls: [{ index, ...tc }] } }] }));
+        } else {
+          frame({ choices: [{ delta: { content: message.content } }] });
+        }
+        frame({ choices: [{ delta: {} }], usage: reply.usage });
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(reply));
     });
@@ -629,13 +681,13 @@ async function main() {
     check(t, 'tool-loop-entity-create', term.tools.some((x) => x.name === 'mcp__engine-scene__entity_create' && x.ok === true), JSON.stringify(term.tools));
     check(t, 'model-label-oai', term.model === OAI_MODEL, `model=${term.model}`);
 
-    // DOM:工具段「创建实体」
+    // DOM:工具段「Created entity」(2026-09-03 起过程链文案统一英文)
     const segCount = await page.getByTestId('activity-segment').count();
     check(t, 'activity-segment-dom', segCount >= 1, `segments=${segCount}`);
     if (segCount >= 1) {
       await page.getByTestId('activity-segment').last().click();
       const segText = await page.locator('[data-testid^="tool-line-"]').last().textContent().catch(() => '');
-      check(t, 'tool-line-create-entity', String(segText).includes('创建实体'), String(segText).slice(0, 120));
+      check(t, 'tool-line-create-entity', String(segText).includes('Created entity'), String(segText).slice(0, 120));
     }
     await shot(page, t, 'entity-created-chat');
 
@@ -663,7 +715,10 @@ async function main() {
   });
 
   // ================= T5 =================
-  await task('T5', 'multitask 碰撞体 swarm(工具段「集群执行」+ completed)', async (t) => {
+  // D-036/D-038:multitask 由「碰撞体模板 + swarm 分片」改为异步子代理委派 + 回执唤醒。
+  // 本腿要证的是异步性本身:派发轮秒收束(不等子代理)→ 后台子代理经真 engine 链落实体 →
+  // 各自一张卡片走到 done → 回执落地即唤醒主 agent(source=receipt 的系统卡 + 一轮总结)。
+  await task('T5', 'multitask 异步委派(派发即返回 → 后台子代理真 engine 链 → 回执唤醒主 agent)', async (t) => {
     // 回 chat 视(T4 后停在 editor tab;对话列恒在,无需切 tab)
     await page.getByTestId('composer-add').click();
     await page.getByTestId('composer-add-menu').waitFor({ timeout: 5000 });
@@ -671,25 +726,89 @@ async function main() {
     const chip = await page.getByTestId('composer-mode-chip').textContent().catch(() => '');
     check(t, 'mode-chip-multitask', String(chip).includes('Multitask'), String(chip));
 
-    const before = await sendChat(page, '给场景加碰撞体 collider');
-    const term = await waitNewTerminal(page, before, 90000);
+    const assistantsBefore = (await chatState(page)).messages.filter((m) => m.role === 'assistant').length;
+    const before = await sendChat(page, '并行建两个实体:A 与 B');
+    // 派发轮收束后唤醒轮可能立刻接上(activeRunId 再次非空),不能用「activeRunId 为空」判终态——
+    // 直接等「第 before 条之后出现一张带 dispatch 工具且已 completed 的助手卡」。
+    await page.waitForFunction((from) => {
+      const c = window.__forgeShell?.stores?.chat?.getState?.();
+      if (!c) return false;
+      const assistants = c.messages.filter((m) => m.role === 'assistant').slice(from);
+      return assistants.some((m) => m.status === 'completed' && m.blocks.some((b) => b.kind === 'tool' && b.name === 'dispatch'));
+    }, before, { timeout: 90000 }).catch(() => {});
+    const stAfter = await chatState(page);
+    const term = stAfter.messages.filter((m) => m.role === 'assistant').slice(before).find((m) => m.tools.some((x) => x.name === 'dispatch'))
+      ?? { status: 'missing', tools: [], texts: [], error: '未找到带 dispatch 的助手卡' };
     check(t, 'run-completed', term.status === 'completed', `status=${term.status};err=${term.error ?? ''}`);
-    check(t, 'swarm-tool-ok', term.tools.some((x) => x.name === 'swarm.execute' && x.ok === true), JSON.stringify(term.tools));
-    check(t, 'summary-text', term.texts.some((x) => x.includes('swarm 分片聚合') && x.includes('失败 0')), term.texts.join(' | ').slice(0, 160));
+    // 派发轮只应看到 dispatch 工具行,且返回的是「受理」而非执行结果。
+    const dispatches = term.tools.filter((x) => x.name === 'dispatch');
+    check(t, 'dispatch-tool-rows', dispatches.length === 2 && dispatches.every((x) => x.ok === true), JSON.stringify(term.tools));
+    check(t, 'no-swarm-template', !term.tools.some((x) => x.name === 'swarm.execute'), '模板链已退役');
+    check(t, 'leader-text-dispatched', term.texts.some((x) => x.includes('已派 2 个后台子代理')), term.texts.join(' | ').slice(0, 160));
 
-    // DOM:工具段「集群执行」
+    // DOM:工具段动词「Dispatched subagent(s)」(取含该动词的任一活动段,不假定它是最后
+    // 一段——后台卡片/唤醒轮可能已经排在它后面)。并组时读作「Dispatched 2 subagents」,
+    // 故只匹配到 Dispatched 为止。
     const segCount = await page.getByTestId('activity-segment').count();
     check(t, 'activity-segment-dom', segCount >= 1, `segments=${segCount}`);
     if (segCount >= 1) {
-      await page.getByTestId('activity-segment').last().click();
-      const line = await page.locator('[data-testid^="tool-line-"]').last().textContent().catch(() => '');
-      check(t, 'tool-line-swarm-verb', String(line).includes('集群执行'), String(line).slice(0, 120));
+      const segTexts = await page.getByTestId('activity-segment').allTextContents();
+      check(t, 'tool-line-dispatch-verb', segTexts.some((s) => s.includes('Dispatched')), segTexts.join(' | ').slice(0, 160));
     }
-    // 后端:swarm state 分片全 done
-    const sw = await hapi('GET', '/api/forge/swarm/state');
-    const shards = sw.json?.shards ?? [];
-    check(t, 'swarm-shards-done', shards.length >= 1 && shards.every((s) => s.status === 'done'), `shards=${shards.length}`);
-    await shot(page, t, 'multitask-swarm');
+
+    // 异步实证:派发轮已终态,两个后台实体此刻才由子代理经真 engine 链落地。
+    let bgNames = [];
+    const entDeadline = Date.now() + 120000;
+    for (;;) {
+      const list = await mcp('mcp__engine-scene__entity_list');
+      bgNames = (list?.entities ?? []).map((e) => e.name).filter((n) => n === BG_ENT_A || n === BG_ENT_B);
+      if (bgNames.length >= 2 || Date.now() > entDeadline) break;
+      await sleep(1000);
+    }
+    check(t, 'background-entities-created', bgNames.length === 2, `落地实体=${JSON.stringify(bgNames)}`);
+
+    // UI:每个后台子代理自己一张卡片,最终走到 done(父轮早已收束,靠 SSE 续推)。
+    const cardsOk = await page.waitForFunction(() => {
+      const c = window.__forgeShell?.stores?.chat?.getState?.();
+      if (!c) return false;
+      const subs = c.messages
+        .filter((m) => m.role === 'assistant')
+        .flatMap((m) => m.blocks.filter((b) => b.kind === 'subagent' && b.detachedRunId));
+      return subs.length >= 2 && subs.every((s) => s.status === 'done');
+    }, null, { timeout: 60000 }).then(() => true).catch(() => false);
+    check(t, 'detached-subagent-cards-done', cardsOk, '两张后台子代理卡片走到 done');
+    await shot(page, t, 'multitask-dispatch-cards');
+
+    // D-038 回执唤醒:子代理落地 → 系统以 source=receipt 的用户卡唤醒主 agent 一轮(或两轮,
+    // 取决于两条回执是否赶在同一次取件),收件箱清空、会话回到空闲。
+    const wakeOk = await page.waitForFunction(() => {
+      const c = window.__forgeShell?.stores?.chat?.getState?.();
+      if (!c || c.activeRunId !== null) return false;
+      const wakes = c.messages.filter((m) => m.role === 'user' && m.source === 'receipt');
+      if (wakes.length === 0) return false;
+      return wakes.every((w) => c.messages.some((a) => a.role === 'assistant' && a.runId === w.runId && a.status === 'completed'));
+    }, null, { timeout: 90000 }).then(() => true).catch(() => false);
+    check(t, 'receipt-wake-turn-completed', wakeOk, '回执唤醒轮(source=receipt 用户卡 + 同 runId 助手卡 completed)');
+    const stWake = await chatState(page);
+    const wakeUsers = stWake.messages.filter((m) => m.role === 'user' && m.source === 'receipt');
+    check(t, 'wake-user-text-system', wakeUsers.length >= 1 && wakeUsers.every((w) => w.text.startsWith('【系统唤醒】')), JSON.stringify(wakeUsers.map((w) => w.text.slice(0, 40))));
+    const wakeAssistants = stWake.messages.filter((m) => m.role === 'assistant' && wakeUsers.some((w) => w.runId === m.runId));
+    check(t, 'wake-assistant-summarized', wakeAssistants.some((a) => a.texts.some((x) => x.includes('回执已收'))), JSON.stringify(wakeAssistants.map((a) => a.texts)).slice(0, 200));
+    const cardCount = stWake.messages.filter((m) => m.role === 'assistant').length;
+    check(t, 'cards-appended-after-turn', cardCount >= assistantsBefore + 4, `助手卡 ${assistantsBefore} → ${cardCount}(派发轮 1 + 后台 2 + 唤醒 ≥1)`);
+    // 唤醒轮收束后输入框回到可用(activeRunId 空)。
+    check(t, 'composer-unlocked-after-wake', stWake.activeRunId === null, `activeRunId=${stWake.activeRunId}`);
+    // 后端留痕:agent.receipts.injected 合计 ≥2(两条回执都送达了主 agent),且都挂在唤醒轮 run 上。
+    const sid5 = await activeSessionId(page);
+    const snap = await hapi('GET', `/api/forge/design-snapshot?sessionId=${encodeURIComponent(sid5)}`);
+    const evs5 = snap.json?.events ?? [];
+    const injected = evs5.filter((e) => e.type === 'agent.receipts.injected');
+    const injectedTotal = injected.reduce((n, e) => n + (e.payload?.injected ?? 0), 0);
+    check(t, 'receipts-injected-total', injectedTotal >= 2, JSON.stringify(injected.map((e) => e.payload)).slice(0, 240));
+    const wakeRunIds = new Set(evs5.filter((e) => e.type === 'composer.user.message' && e.payload?.source === 'receipt').map((e) => e.payload?.runId));
+    check(t, 'wake-runs-trigger', wakeRunIds.size >= 1 && [...wakeRunIds].every((rid) => injected.some((e) => e.payload?.runId === rid)), `wakeRuns=${wakeRunIds.size}`);
+    t.notes.push('派发轮不等子代理即收束;后台子代理经真 MCP/engine 链建实体;回执落地即唤醒主 agent(D-038,取代 D-036 的「下轮注入」)');
+    await shot(page, t, 'multitask-receipt-wake');
   });
 
   // ================= T6 =================

@@ -10,6 +10,11 @@ import EntityRefText from './EntityRefText';
  *
  * 差异留痕:参考非流式代码块接自研 syntax 高亮;本仓不接高亮库(纯样式渲染,
  * 需求驱动再评,不伪造)。
+ *
+ * 2026-09-03 用户指令(正文加黑加粗)留痕:新增 strong 档 —— 助手正文(中文)一律
+ * text 全黑 + font-bold,且流式期间不退灰,与英文过程链的两档灰拉开三级层级;
+ * 围栏代码块在 strong 档下显式回正常字重(bold 等宽代码糊成一团,可读性倒退)。
+ * strong 只作用于「助手对用户说的话」,子代理 PROMPT/SUMMARY 等辅助文本不传该档。
  */
 function Block({ block, streaming }: { block: MdBlock; streaming: boolean }) {
   switch (block.kind) {
@@ -44,7 +49,7 @@ function Block({ block, streaming }: { block: MdBlock; streaming: boolean }) {
       return (
         <div
           data-testid="md-code"
-          className="rounded-md bg-shell-sunk px-2.5 py-2 font-code text-shell-code text-fg-2"
+          className="rounded-md bg-shell-sunk px-2.5 py-2 font-code text-shell-code font-normal text-fg-2"
         >
           {block.lines.map((l, i) => (
             <div key={i}>{l === '' ? ' ' : l}</div>
@@ -65,18 +70,22 @@ function Block({ block, streaming }: { block: MdBlock; streaming: boolean }) {
 export default function MarkdownFlat({
   text,
   streaming = false,
+  strong = false,
 }: {
   text: string;
   streaming?: boolean;
+  /** 助手正文档:全黑 + 加粗,流式期间不退灰(2026-09-03 用户指令)。 */
+  strong?: boolean;
 }) {
   const blocks = useMemo(
     () => visibleBlocks(parseMarkdownBlocks(text), streaming),
     [text, streaming],
   );
+  const tone = strong ? 'font-bold text-fg' : streaming ? 'text-fg-2' : 'text-fg';
   return (
     <div
       data-testid="markdown-flat"
-      className={`flex flex-col gap-1 text-[13px] ${streaming ? 'text-fg-2' : 'text-fg'}`}
+      className={`flex flex-col gap-1 text-[13px] ${tone}`}
     >
       {blocks.map((b, i) => (
         <Block key={i} block={b} streaming={streaming} />

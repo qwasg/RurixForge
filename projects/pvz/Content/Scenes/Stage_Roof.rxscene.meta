@@ -1,0 +1,10 @@
+guid: 30f61456-5d52-5334-abf4-bdf35bfbf8a5
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ roof 场景模板(棋盘/推车/判负线,无关卡逻辑)

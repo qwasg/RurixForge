@@ -129,7 +129,8 @@ pub fn list_subagents(dir: &Path) -> (Vec<SubagentProfile>, Vec<String>) {
 /// - 模式尾 `*` → 前缀匹配(模式内点号归一为下划线,适配 component.* 写法);
 /// - 否则精确匹配(模式点号同样归一)。
 pub fn tool_allowed(allowlist: &[String], tool: &str) -> bool {
-    if tool == "task" {
+    // D-036:dispatch(异步派单)与 task 同列——子代理一律不可再委派。
+    if tool == "task" || tool == crate::engine::DISPATCH_TOOL {
         return false;
     }
     allowlist.iter().any(|p| {

@@ -1,0 +1,10 @@
+guid: a7991561-f719-5e0c-9ac5-c23e66c27bfc
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-2(roof,20 波,奖励 kernel_pult);在 IDE Assets 面板双击即可装进视口试玩

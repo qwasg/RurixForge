@@ -1,0 +1,10 @@
+guid: 3df4ff67-a878-55ef-9f6a-0019fa3eec80
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 4-2(fog,20 波,奖励 cactus);在 IDE Assets 面板双击即可装进视口试玩

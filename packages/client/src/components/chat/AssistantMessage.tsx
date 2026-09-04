@@ -1,13 +1,8 @@
 import { useState } from 'react';
-import { useChatStore, type ChatMsg } from '@/lib/chatStore';
-import {
-  buildTimeline,
-  reasoningSummary,
-  todoMilestoneLabel,
-  type ChatBlock,
-} from '@/lib/timeline';
+import { type ChatMsg } from '@/lib/chatStore';
+import { buildTimeline, todoMilestoneLabel, type ChatBlock } from '@/lib/timeline';
 import MarkdownFlat from './MarkdownFlat';
-import ActivitySegment, { SummaryLine, ToolLine } from './ActivitySegment';
+import ActivitySegment, { ReasoningLine, SummaryLine } from './ActivitySegment';
 import SubagentRow from './SubagentRow';
 import StreamCaret from './StreamCaret';
 import { StatusDot } from '../shell/primitives';
@@ -15,26 +10,32 @@ import { StatusDot } from '../shell/primitives';
 /**
  * F7 wave.4 助手消息(参考 render_agent_message):
  * 头 = 22×22 圆角 6「铸」方块(bg=text text_inv serif 11px,替参考「月」)+「Agent」
- * + 状态点(streaming 脉冲/completed sage/failed danger/cancelled 灰)+ 模型 label + 右侧时间。
- * blocks 经 buildTimeline:末 text 块=最终回答 MarkdownFlat 全量不折叠;中间 text 块
- * =text_2 13px 内联;tool 段=ActivitySegment;write_todos 里程碑=「待办 · …」折叠行;
- * reasoning=「思考 · {摘录} · {N} 字」折叠行(本仓事件面不产生,组件就绪);
- * subagent=SubagentRow。streaming 时消息末挂 StreamCaret。
+ * + 状态点(streaming 脉冲/completed sage/其余灰)+ 模型 label + 右侧时间。
+ * blocks 经 buildTimeline:text 块 = 中文正文,MarkdownFlat 加黑加粗全量不折叠;
+ * tool/reasoning 段 = ActivitySegment(英文过程链两段式灰行,思考行并列其中);
+ * write_todos 里程碑 =「Todos · …」折叠行;subagent = SubagentRow。streaming 时消息末挂 StreamCaret。
+ *
+ * 2026-09-03 用户指令留痕:
+ * ① 正文强化 —— 中间叙述与最终回答同款(不再把中间叙述压成 13px text_2 弱文),
+ *    统一交 MarkdownFlat strong 渲染(text 全黑 + font-bold),与灰色过程链拉开层级;
+ *    流式期间也不再退成 text_2 灰,免得「正在说的话」比说完的话淡。
+ * ② 报错不特别标明 —— 失败态状态点退成 dot-idle、错误行退成 text_3 灰(原 danger 红下线),
+ *    错误原文照旧如实上屏,只是不再用颜色喊话。
+ * ③ 思考行不再由本组件单列渲染(reasoning 已并进活动段);此处仅留防御分支,
+ *    应对直接构造的 reasoning 块(旧快照/测试)。
  */
 export default function AssistantMessage({ msg }: { msg: ChatMsg }) {
   const streaming = msg.status === 'streaming';
   const dotColor =
     msg.status === 'completed'
       ? 'var(--dot-done)'
-      : msg.status === 'failed'
-        ? 'var(--dot-blocked)'
-        : msg.status === 'cancelled'
-          ? 'var(--dot-idle)'
-          : 'var(--dot-running)';
+      : msg.status === 'streaming'
+        ? 'var(--dot-running)'
+        : 'var(--dot-idle)';
 
   const blocks = msg.blocks;
-  const finalTextIdx = blocks.map((b) => b.kind).lastIndexOf('text');
   const timeline = buildTimeline(blocks);
+  const hasVisibleText = blocks.some((b) => b.kind === 'text' && b.text.trim() !== '');
 
   return (
     <div data-testid="assistant-message" className="flex flex-col gap-1">
@@ -55,23 +56,22 @@ export default function AssistantMessage({ msg }: { msg: ChatMsg }) {
       {/* 时间线 */}
       {timeline.map((item, i) => {
         if (item.type === 'activity') {
-          return <ActivitySegment key={i} blocks={blocks} indices={item.indices} />;
+          return (
+            <ActivitySegment
+              key={i}
+              blocks={blocks}
+              indices={item.indices}
+              streaming={streaming}
+            />
+          );
         }
         const block = blocks[item.index];
         const isTrailing = item.index === blocks.length - 1;
         switch (block.kind) {
           case 'text':
-            if (item.index === finalTextIdx) {
-              // 最终回答:完整 markdown,永不折叠
-              return (
-                <MarkdownFlat key={i} text={block.text} streaming={streaming && isTrailing} />
-              );
-            }
-            // 中间叙述:text_2 13px 内联
+            // 正文(中文):加黑加粗全量 markdown,永不折叠
             return (
-              <div key={i} className="text-[13px] text-fg-2">
-                <MarkdownFlat text={block.text} streaming={false} />
-              </div>
+              <MarkdownFlat key={i} text={block.text} strong streaming={streaming && isTrailing} />
             );
           case 'reasoning':
             return <ReasoningLine key={i} block={block} live={streaming && isTrailing} />;
@@ -85,8 +85,13 @@ export default function AssistantMessage({ msg }: { msg: ChatMsg }) {
         }
       })}
       {streaming && <StreamCaret />}
+      {msg.status === 'completed' && !hasVisibleText && !msg.error && (
+        <div className="text-[12px] text-fg-3" data-testid="assistant-empty">
+          模型没有返回正文
+        </div>
+      )}
       {msg.status === 'failed' && msg.error && (
-        <div className="text-[12px] text-danger" data-testid="assistant-error">
+        <div className="text-[12px] text-fg-3" data-testid="assistant-error">
           {msg.error}
         </div>
       )}
@@ -94,34 +99,14 @@ export default function AssistantMessage({ msg }: { msg: ChatMsg }) {
   );
 }
 
-/** 思考折叠行(参考:「思考 · {摘录} · {N} 字」,点击展开 12px text_4 全文)。 */
-function ReasoningLine({
-  block,
-  live,
-}: {
-  block: Extract<ChatBlock, { kind: 'reasoning' }>;
-  live: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <SummaryLine
-      text={`思考 · ${reasoningSummary(block.text)}`}
-      running={live}
-      expanded={open}
-      onToggle={() => setOpen((v) => !v)}
-      testId="reasoning-line"
-    >
-      <div className="whitespace-pre-wrap text-[12px] text-fg-4">{block.text}</div>
-    </SummaryLine>
-  );
-}
-
-/** write_todos 里程碑行(参考:「待办 · {headline}」;本仓无该工具,组件就绪)。 */
+/** write_todos 里程碑行(参考:「Todos · {headline}」;本仓无该工具,组件就绪)。 */
 function TodoMilestoneLine({ block }: { block: Extract<ChatBlock, { kind: 'tool' }> }) {
   const [open, setOpen] = useState(false);
   return (
     <SummaryLine
-      text={`待办 · ${todoMilestoneLabel(block.args)}`}
+      verb="Todos"
+      detail={todoMilestoneLabel(block.args)}
+      chevron
       expanded={open}
       onToggle={() => setOpen((v) => !v)}
       testId="todo-milestone"

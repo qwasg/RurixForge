@@ -1,0 +1,13 @@
+guid: baff2fa2-1aad-4904-ade5-b8f56e7d8ef1
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-30T14:58:52Z
+    negativePrompt: perspective, horizon, landscape scene, central object, lawn mower, flowers, rocks, path, checkerboard, grid, seams, edge border, text, logo, watermark, signature, photorealistic, dark patches, high contrast shadows
+    prompt: Create an ORIGINAL seamless lawn texture tile for a bright whimsical cartoon tower-defense game. Strict top-down orthographic view of dense short grass, stylized low-poly sculpted clay look, fresh cheerful medium green, subtle small blade clumps and gentle color variation, evenly distributed detail, game-board readability, flat diffuse lighting. Must tile seamlessly on all four edges with no visible seams, no central focal object, no perspective, no horizon. Full-bleed square texture. No text, no logo, no watermark, no border, no flowers, no stones, no dirt paths, no objects, no grid lines. Square 1:1.
+    seed: 37421
+    sourceRefs: []
+build_state: current

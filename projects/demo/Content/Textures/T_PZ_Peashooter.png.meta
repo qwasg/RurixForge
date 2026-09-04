@@ -1,0 +1,12 @@
+guid: 9d7a4631-782e-47d9-98e6-22f80a26d6c4
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:04:24Z
+    prompt: cute cartoon green pea shooter plant character, round head with a snout-like mouth tube for shooting peas, big friendly eyes, small leaves at base, front-side view, isolated on plain solid magenta background, 2D game asset sprite, crisp edges, no text
+    seed: 13721698119608016579
+    sourceRefs: []
+build_state: current

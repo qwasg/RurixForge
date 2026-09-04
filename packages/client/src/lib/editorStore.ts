@@ -93,22 +93,32 @@ function persistPanePref(p: EditorPanes): void {
   }
 }
 
-/** 编辑器相机(与服务端 EditorCamera 字段一一对应) */
+/** 编辑器相机(与服务端 EditorCamera 字段一一对应;F-GAME-3:+ortho/orthoSize 正交) */
 export interface CameraData {
   target: number[];
   yaw: number;
   pitch: number;
   dist: number;
   fovY: number;
+  /** true = 正交(2D 视口);false = 透视 */
+  ortho: boolean;
+  /** 正交半高(世界单位;2D 缩放即调它) */
+  orthoSize: number;
 }
 
-/** viewport_frame 诊断面 */
+/** 视口帧诊断面(轮询腿来自 viewport_frame 响应;直连流腿来自 1Hz status 消息) */
 export interface ViewportInfo {
   deviceName: string;
   draws: number;
-  frames: number;
-  nonZeroPixels: number;
   truncated: boolean;
+  /** 累计帧数(轮询腿) */
+  frames?: number;
+  /** 非背景像素数(轮询腿诊断;流腿跳过全帧扫描,无此值) */
+  nonZeroPixels?: number;
+  /** 服务端实测推流 fps(流腿) */
+  fps?: number;
+  /** 当前帧通道(直连流 / 轮询回退) */
+  channel?: 'stream' | 'poll';
 }
 
 export interface PickResult {
@@ -139,6 +149,14 @@ function cameraBasis(c: CameraData): { right: number[]; up: number[] } {
   return { right, up };
 }
 
+/** 像素→世界换算(F-GAME-3:正交 = 2·orthoSize/视口高;透视 = 2·dist·tan(fovY/2)/视口高) */
+function worldPerPixel(c: CameraData, viewH: number): number {
+  const h = Math.max(viewH, 1);
+  return c.ortho
+    ? (2 * c.orthoSize) / h
+    : (2 * c.dist * Math.tan((c.fovY * Math.PI) / 360)) / h;
+}
+
 /** 四元数乘法 a⊗b([x,y,z,w]) */
 function quatMul(a: number[], b: number[]): number[] {
   return [
@@ -154,6 +172,8 @@ interface SceneSummary {
   entityCount: number;
   playState: PlayState;
   render: RenderStats;
+  /** F-GAME-3:场景模式("2d"|"3d";旧服务端无此字段 → undefined 按 3d) */
+  mode?: string;
 }
 
 interface EditorState {
@@ -169,6 +189,8 @@ interface EditorState {
 
   gizmo: GizmoMode;
   centerTab: CenterTab;
+  /** F-GAME-3:当前场景模式(2d/3d;驱动视口手势/网格/徽标) */
+  sceneMode: '2d' | '3d';
   /** F2 wave.3:Assets 右键「生成」预填 seam(F7 wave.3 保留;wave.4 composer 消费) */
   chatPrefill: string | null;
 
@@ -210,6 +232,8 @@ interface EditorState {
   redo: () => Promise<void>;
   saveScene: () => Promise<void>;
   loadScene: () => Promise<void>;
+  /** 打开指定 .rxscene(项目相对路径;Assets 面板双击 Scene 资产的入口;play 态先退出)。 */
+  openScenePath: (path: string) => Promise<void>;
   /** 空场景时加载默认场景(demo 迷宫;entityCount>0 不动)——打开 IDE 即见真实场景而非空工程。 */
   ensureDefaultScene: () => Promise<void>;
 
@@ -224,23 +248,35 @@ interface EditorState {
 
   loadCamera: () => Promise<void>;
   updateCamera: (patch: Partial<CameraData>) => Promise<void>;
+  /** 直连流模式本地先行:只改本地相机态(钳制与服务端一致);引擎侧由 WS camera 消息喂回 */
+  setCameraLocal: (patch: Partial<CameraData>) => void;
   orbitCamera: (dxPx: number, dyPx: number) => Promise<void>;
+  /** F-GAME-3:2D 平移(像素 → 世界,按投影模式换算);3D 下等效于移动 target 的平移手势 */
+  panCamera: (dxPx: number, dyPx: number, viewH: number) => Promise<void>;
+  /** 直连流本地先行平移(与 panCamera 同公式,只改本地相机态;引擎侧由 WS camera 消息喂回) */
+  panCameraLocal: (dxPx: number, dyPx: number, viewH: number) => void;
   zoomCamera: (wheelDeltaY: number) => Promise<void>;
   focusSelected: () => Promise<void>;
   pickAt: (x: number, y: number, w: number, h: number) => Promise<void>;
-  /** gizmo 拖拽提交(拖拽结束一次性 transform_set,可 undo) */
-  gizmoDragSelected: (dxPx: number, dyPx: number, viewH: number) => Promise<void>;
+  /** gizmo 拖拽提交(拖拽结束一次性 transform_set,可 undo);F-GAME-3:snap=false 临时禁用 2D 网格吸附(Ctrl) */
+  gizmoDragSelected: (dxPx: number, dyPx: number, viewH: number, snap?: boolean) => Promise<void>;
   setViewportStatus: (degraded: string | null, info: ViewportInfo | null) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => {
-  /** 统一错误出口:写入 lastError,UI 如实显示 */
-  async function run(fn: () => Promise<void>): Promise<void> {
+  /**
+   * 统一错误出口:写入 lastError。`toast` = 用户主动触发的动作(Play/存取场景等)失败时
+   * 同时弹错误 toast——此前 Play 失败(如图加载失败)只写 lastError 而界面毫无反馈;
+   * 轮询类调用(refreshSummary 等)不弹,免刷屏。
+   */
+  async function run(fn: () => Promise<void>, opts: { toast?: string } = {}): Promise<void> {
     try {
       await fn();
       set({ lastError: null });
     } catch (err) {
-      set({ lastError: (err as Error).message });
+      const message = (err as Error).message;
+      set({ lastError: message });
+      if (opts.toast) useToastStore.getState().push('error', `${opts.toast}:${message}`);
     }
   }
 
@@ -262,6 +298,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     gizmo: 'translate',
     centerTab: 'viewport',
+    sceneMode: '3d',
     chatPrefill: null,
 
     editorPanes: loadPanePref(),
@@ -275,7 +312,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     refreshSummary: () =>
       run(async () => {
         const s = await callTool<SceneSummary>('scene_summary');
-        set({ stats: s.render, sceneName: s.name, playState: s.playState });
+        set({ stats: s.render, sceneName: s.name, playState: s.playState, sceneMode: s.mode === '2d' ? '2d' : '3d' });
         // F9(D1):entityCount 与本地清单漂移 = 外部(MCP/agent)实体变更 → 真实 entity_list 重拉。
         // 不伪造同步:漂移只作触发信号,面板数据始终来自后端 entity_list 实返。
         if (s.entityCount !== get().entities.length) await reload();
@@ -394,36 +431,51 @@ export const useEditorStore = create<EditorState>((set, get) => {
       }),
 
     playEnter: () =>
-      run(async () => {
-        const r = await callTool<{ state: PlayState }>('play_enter');
-        set({ playState: r.state });
-        await reload(); // play 态列表为运行态克隆
-      }),
+      run(
+        async () => {
+          const r = await callTool<{ state: PlayState }>('play_enter');
+          set({ playState: r.state });
+          await reload(); // play 态列表为运行态克隆
+        },
+        { toast: 'Play 失败' },
+      ),
 
     playPause: () =>
-      run(async () => {
-        const r = await callTool<{ state: PlayState }>('play_pause');
-        set({ playState: r.state });
-      }),
+      run(
+        async () => {
+          const r = await callTool<{ state: PlayState }>('play_pause');
+          set({ playState: r.state });
+        },
+        { toast: 'Pause 失败' },
+      ),
 
     playResume: () =>
-      run(async () => {
-        const r = await callTool<{ state: PlayState }>('play_resume');
-        set({ playState: r.state });
-      }),
+      run(
+        async () => {
+          const r = await callTool<{ state: PlayState }>('play_resume');
+          set({ playState: r.state });
+        },
+        { toast: 'Resume 失败' },
+      ),
 
     playStep: () =>
-      run(async () => {
-        const r = await callTool<{ state: PlayState }>('play_step');
-        set({ playState: r.state });
-      }),
+      run(
+        async () => {
+          const r = await callTool<{ state: PlayState }>('play_step');
+          set({ playState: r.state });
+        },
+        { toast: 'Step 失败' },
+      ),
 
     playExit: () =>
-      run(async () => {
-        const r = await callTool<{ state: PlayState }>('play_exit');
-        set({ playState: r.state });
-        await reload(); // 回到编辑态
-      }),
+      run(
+        async () => {
+          const r = await callTool<{ state: PlayState }>('play_exit');
+          set({ playState: r.state });
+          await reload(); // 回到编辑态
+        },
+        { toast: 'Stop 失败' },
+      ),
 
     undo: () =>
       run(async () => {
@@ -438,31 +490,65 @@ export const useEditorStore = create<EditorState>((set, get) => {
       }),
 
     saveScene: () =>
-      run(async () => {
-        const r = await callTool<{ path: string; bytes: number }>('scene_save');
-        set({ scenePath: r.path });
-      }),
+      run(
+        async () => {
+          const r = await callTool<{ path: string; bytes: number }>('scene_save');
+          set({ scenePath: r.path });
+        },
+        { toast: '保存场景失败' },
+      ),
 
     loadScene: () =>
-      run(async () => {
-        const path = get().scenePath ?? 'data/scene.rxscene';
-        await callTool('scene_load', { path });
-        await reload();
-        const s = await callTool<SceneSummary>('scene_summary');
-        set({ stats: s.render, sceneName: s.name, playState: s.playState });
-      }),
+      run(
+        async () => {
+          const path = get().scenePath ?? 'data/scene.rxscene';
+          await callTool('scene_load', { path });
+          await reload();
+          const s = await callTool<SceneSummary>('scene_summary');
+          set({ stats: s.render, sceneName: s.name, playState: s.playState, sceneMode: s.mode === '2d' ? '2d' : '3d' });
+        },
+        { toast: '加载场景失败' },
+      ),
+
+    openScenePath: (path) =>
+      run(
+        async () => {
+          if (get().playState !== 'edit') {
+            await callTool('play_exit');
+          }
+          await callTool('scene_load', { path });
+          await reload();
+          const s = await callTool<SceneSummary>('scene_summary');
+          set({
+            stats: s.render,
+            sceneName: s.name,
+            playState: s.playState,
+            scenePath: path,
+            selectedId: null,
+            sceneMode: s.mode === '2d' ? '2d' : '3d',
+          });
+          await get().loadCamera();
+        },
+        { toast: `打开场景失败(${path})` },
+      ),
 
     ensureDefaultScene: () =>
       run(async () => {
         const s = await callTool<SceneSummary>('scene_summary');
         if (s.entityCount > 0) {
-          set({ stats: s.render, sceneName: s.name, playState: s.playState });
+          set({ stats: s.render, sceneName: s.name, playState: s.playState, sceneMode: s.mode === '2d' ? '2d' : '3d' });
           return;
         }
-        await callTool('scene_load', { path: 'Content/Scenes/maze.rxscene' });
+        // 空场景兜底装 demo 迷宫;非 demo 项目(如 PvZ)没有这条路径,静默留空——
+        // 用户从 Assets 面板双击 .rxscene 打开自己的场景,不把 demo 的缺省当错误弹出。
+        try {
+          await callTool('scene_load', { path: 'Content/Scenes/maze.rxscene' });
+        } catch {
+          return;
+        }
         await reload();
         const s2 = await callTool<SceneSummary>('scene_summary');
-        set({ stats: s2.render, sceneName: s2.name, playState: s2.playState, scenePath: 'Content/Scenes/maze.rxscene' });
+        set({ stats: s2.render, sceneName: s2.name, playState: s2.playState, scenePath: 'Content/Scenes/maze.rxscene', sceneMode: s2.mode === '2d' ? '2d' : '3d' });
       }),
 
     setGizmo: (g) => set({ gizmo: g }),
@@ -490,17 +576,63 @@ export const useEditorStore = create<EditorState>((set, get) => {
         set({ camera: c });
       }),
 
+    setCameraLocal: (patch) =>
+      set((s) => {
+        if (!s.camera) return {};
+        const next = { ...s.camera, ...patch };
+        // 与服务端 viewport.setCamera 同套钳制,避免本地/引擎两份相机态漂移。
+        next.pitch = Math.min(89, Math.max(-89, next.pitch));
+        next.dist = Math.min(500, Math.max(0.2, next.dist));
+        next.fovY = Math.min(120, Math.max(10, next.fovY));
+        next.orthoSize = Math.min(1000, Math.max(0.01, next.orthoSize));
+        return { camera: next };
+      }),
+
     orbitCamera: async (dxPx, dyPx) => {
       const c = get().camera;
-      if (!c) return;
+      if (!c || c.ortho) return; // F-GAME-3:2D 正交视口禁用环绕(正视 XY 平面不倾斜)
       // Alt+左键拖拽:右拖 → 方位角减(视线右移),下拖 → 俯仰角增(视线上移)
       await get().updateCamera({ yaw: c.yaw - dxPx * 0.35, pitch: c.pitch + dyPx * 0.35 });
+    },
+
+    panCamera: async (dxPx, dyPx, viewH) => {
+      const c = get().camera;
+      if (!c) return;
+      // 视野中心(target)沿相机右/上轴平移;右拖 → 视野左移(内容跟手)。
+      const wpp = worldPerPixel(c, viewH);
+      const { right, up } = cameraBasis(c);
+      await get().updateCamera({
+        target: [
+          c.target[0] - right[0] * dxPx * wpp + up[0] * dyPx * wpp,
+          c.target[1] - right[1] * dxPx * wpp + up[1] * dyPx * wpp,
+          c.target[2] - right[2] * dxPx * wpp + up[2] * dyPx * wpp,
+        ],
+      });
+    },
+
+    panCameraLocal: (dxPx, dyPx, viewH) => {
+      const c = get().camera;
+      if (!c) return;
+      const wpp = worldPerPixel(c, viewH);
+      const { right, up } = cameraBasis(c);
+      get().setCameraLocal({
+        target: [
+          c.target[0] - right[0] * dxPx * wpp + up[0] * dyPx * wpp,
+          c.target[1] - right[1] * dxPx * wpp + up[1] * dyPx * wpp,
+          c.target[2] - right[2] * dxPx * wpp + up[2] * dyPx * wpp,
+        ],
+      });
     },
 
     zoomCamera: async (wheelDeltaY) => {
       const c = get().camera;
       if (!c) return;
-      await get().updateCamera({ dist: c.dist * Math.pow(1.0015, wheelDeltaY) });
+      // F-GAME-3:正交缩放调 orthoSize(滚轮上=放大=半高缩);透视沿视轴 dolly。
+      if (c.ortho) {
+        await get().updateCamera({ orthoSize: c.orthoSize * Math.pow(1.0015, wheelDeltaY) });
+      } else {
+        await get().updateCamera({ dist: c.dist * Math.pow(1.0015, wheelDeltaY) });
+      }
     },
 
     focusSelected: async () => {
@@ -517,7 +649,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         if (r.hit) useWorkbenchStore.getState().setRightTab('properties');
       }),
 
-    gizmoDragSelected: (dxPx, dyPx, viewH) =>
+    gizmoDragSelected: (dxPx, dyPx, viewH, snap) =>
       run(async () => {
         const { selectedId, gizmo, camera, entities } = get();
         if (selectedId == null || !camera) return;
@@ -525,22 +657,28 @@ export const useEditorStore = create<EditorState>((set, get) => {
         if (!e) return;
         const t = e.transform;
         if (gizmo === 'translate') {
-          // 相机平面拖动:像素→世界 = 2·dist·tan(fovY/2)/视口高
-          const wpp = (2 * camera.dist * Math.tan((camera.fovY * Math.PI) / 360)) / Math.max(viewH, 1);
+          // 相机平面拖动:像素→世界按投影模式换算(F-GAME-3 正交分支)
+          const wpp = worldPerPixel(camera, viewH);
           const { right, up } = cameraBasis(camera);
           const t0 = t.translation;
-          await get().setTransform(selectedId, {
-            translation: [
-              t0[0] + right[0] * dxPx * wpp - up[0] * dyPx * wpp,
-              t0[1] + right[1] * dxPx * wpp - up[1] * dyPx * wpp,
-              t0[2] + right[2] * dxPx * wpp - up[2] * dyPx * wpp,
-            ],
-          });
+          const next = [
+            t0[0] + right[0] * dxPx * wpp - up[0] * dyPx * wpp,
+            t0[1] + right[1] * dxPx * wpp - up[1] * dyPx * wpp,
+            t0[2] + right[2] * dxPx * wpp - up[2] * dyPx * wpp,
+          ];
+          // F-GAME-3:2D 模式平移吸附 0.5 网格(07 §2 规范;Ctrl 临时禁用),z 保持不动。
+          if (get().sceneMode === '2d' && snap !== false) {
+            next[0] = Math.round(next[0] * 2) / 2;
+            next[1] = Math.round(next[1] * 2) / 2;
+          }
+          await get().setTransform(selectedId, { translation: next });
         } else if (gizmo === 'rotate') {
-          // 绕世界 Y 轴:dx 像素 → 0.5°/px
+          // F-GAME-3:2D 模式绕视线轴 Z(XY 平面内旋转);3D 模式绕世界 Y。dx 像素 → 0.5°/px
           const rad = (dxPx * 0.5 * Math.PI) / 360;
-          const qYaw = [0, Math.sin(rad), 0, Math.cos(rad)];
-          await get().setTransform(selectedId, { rotation: quatMul(qYaw, t.rotation) });
+          const q = get().sceneMode === '2d'
+            ? [0, 0, Math.sin(rad), Math.cos(rad)]
+            : [0, Math.sin(rad), 0, Math.cos(rad)];
+          await get().setTransform(selectedId, { rotation: quatMul(q, t.rotation) });
         } else {
           // 均匀缩放:dx → 1.005^dx,钳 [0.01, 100]
           const f = Math.pow(1.005, dxPx);

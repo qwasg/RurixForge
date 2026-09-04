@@ -1,0 +1,10 @@
+guid: a86639c3-88c6-54ee-8351-f22dfc83b7b8
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-1(day,5 波,奖励 sunflower);在 IDE Assets 面板双击即可装进视口试玩

@@ -1,0 +1,13 @@
+guid: fa88c7ca-9f59-442c-813a-c86301cca434
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:53:50Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct garden defense plant icons: 1:green four-leaf clover fan plant; 2:two-headed front-and-back pea shooter; 3:yellow star fruit plant; 4:orange protective pumpkin shell; 5:red horseshoe magnet mushroom; 6:green cabbage catapult plant; 7:yellow corn kernel catapult plant; 8:small brown coffee bean with face. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 200904
+    sourceRefs: []
+build_state: current

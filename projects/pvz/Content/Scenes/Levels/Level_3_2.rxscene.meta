@@ -1,0 +1,10 @@
+guid: 773c81d5-f781-580a-aa62-f4f32818a2a1
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-2(pool,20 波,奖励 threepeater);在 IDE Assets 面板双击即可装进视口试玩

@@ -1,0 +1,9 @@
+guid: dec8c57b-e57e-510d-93e3-a9bfeac3e65e
+type: sprite
+importer: sprite
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-digit-atlas
+build_state: current

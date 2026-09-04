@@ -1,0 +1,10 @@
+guid: ad5e9598-3e96-542e-931b-ef5db225de59
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-10(night,20 波,奖励 lily_pad);在 IDE Assets 面板双击即可装进视口试玩

@@ -1,0 +1,10 @@
+guid: f8e66428-94ac-5220-be57-09925a7e3a0d
+type: sprite
+importer: sprite
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_SeedCards.png
+    pipeline: exact-7x7-seed-card-grid
+build_state: current

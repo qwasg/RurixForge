@@ -1,0 +1,10 @@
+guid: 22ec0136-9c4d-5d3f-af83-449b282166d1
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_Zombie.png
+    pipeline: ai-atlas-grid-crop
+build_state: current

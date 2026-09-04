@@ -1,0 +1,11 @@
+{
+  "params": {
+    "metallic": 0,
+    "roughness": 1
+  },
+  "shader": "pbr-default",
+  "textures": {
+    "albedo": "2d3df82a-4940-4600-be88-b8c19eafe8af"
+  },
+  "version": 1
+}

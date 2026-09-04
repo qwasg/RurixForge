@@ -1,0 +1,10 @@
+guid: ed751cfa-9357-5a10-b40b-fe8cb8203b51
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-3(pool,20 波,奖励 tangle_kelp);在 IDE Assets 面板双击即可装进视口试玩

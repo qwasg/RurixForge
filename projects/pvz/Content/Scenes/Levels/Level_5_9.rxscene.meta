@@ -1,0 +1,10 @@
+guid: 3435786d-3379-51c4-b48d-f408f48183e3
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-9(roof,30 波,奖励 note);在 IDE Assets 面板双击即可装进视口试玩

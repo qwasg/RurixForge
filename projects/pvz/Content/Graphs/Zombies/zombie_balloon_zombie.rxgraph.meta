@@ -1,0 +1,10 @@
+guid: 3c85cd59-fb34-5e7b-937a-312c8916ff66
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_balloon_zombie

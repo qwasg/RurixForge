@@ -1,6 +1,6 @@
 # F7 wave.2 turn 执行事件化冒烟(G-F7-2):ask:execute 五模式 / runs 控制 / todos REST / 事件序列。
 # 流程全经 host http://127.0.0.1:3080(forgeProxy 透传;ask:execute 已入长生命周期豁免)。
-# 腿:①build(mock)SSE 序列+run 终态+自动命名 ②ask 零 tool.invoked ③multitask 命中/未命中(真 engine 链)
+# 腿:①build(mock)SSE 序列+run 终态+自动命名 ②ask 零 tool.invoked ③multitask 异步委派基线(D-036 模板退役)
 #   ④todos REST+todo.* 事件+snapshot 填真 ⑤cancel 非 running ok:false ⑥revert before 首个 composer.user.message 截断
 #   ⑦deepseek live(有 key 实测/无 key 如实 SKIP) ⑧PASS/FAIL 汇总。
 # mock 确定性:agentd#1 以 FORGE_GEN_DATA_DIR=临时目录 + 清 FORGE_LLM_API_KEY 启动(keystore/env 均不命中 → mock);
@@ -171,44 +171,33 @@ try {
   Check ($sse2.Text -notmatch 'agent\.tool\.invoked') "ask 全程零 agent.tool.invoked"
   Check (Test-SeqOrder $sse2.Text @('composer.user.message','agent.started','agent.message','agent.completed')) "ask SSE 序列齐"
 
-  # ── 腿 3:multitask 命中(真 engine 链)+ 未命中如实 ──
-  Log "== 腿3:multitask 命中/未命中 =="
-  if (-not $engineBinsReady) {
-    Skip 'multitask-hit' 'engine bin missing'
-    Skip 'multitask-miss' 'engine bin missing'
-  } else {
-    $r = Invoke-Json POST "$H/api/forge/sessions" @{ title = 'w2-腿3' }
-    $sid3 = $r.json.session.id
-    # 场景准备:scene_new + 3 实体(经 3080 mcp/call 透传,spawn engine-scene-mcp/engine-host)。
-    $null = Invoke-Json POST "$H/api/forge/mcp/call" @{ tool = 'mcp__engine-scene__scene_new'; arguments = @{ name = 'f7w2-mt' } } 60
-    $created = 0
-    foreach ($n in @('block-a','block-b','block-c')) {
-      $cr = Invoke-Json POST "$H/api/forge/mcp/call" @{ tool = 'mcp__engine-scene__entity_create'; arguments = @{ name = $n } } 60
-      if ($cr.status -eq 200) { $created++ }
-    }
-    Check ($created -eq 3) "场景准备:3 实体创建(实际 $created)"
-    $script:__r3 = $null
-    $sse3 = Read-Sse "$H/api/forge/sessions/$sid3/events/stream?fromSeq=0" 30 {
-      $script:__r3 = Invoke-Json POST "$H/api/forge/sessions/$sid3/ask:execute" @{ userInput = '给所有关卡块加碰撞体'; mode = 'multitask' } 90
-    }
-    $r3 = $script:__r3
-    Check ($r3.status -eq 200 -and $r3.json.run.status -eq 'completed') "multitask 命中 run completed(实际 $($r3.json.run.status);err=$($r3.json.error))"
-    Check ($sse3.Text -match 'event: agent\.tool\.invoked' -and $sse3.Text -match '"name":"swarm\.execute"') "agent.tool.invoked(name=swarm.execute)"
-    Check ($sse3.Text -match 'event: agent\.tool\.completed' -and $sse3.Text -match '"durationMs":\d+') "agent.tool.completed(durationMs)"
-    Check ($sse3.Text -match 'swarm 分片聚合' -and $sse3.Text -match '失败 0') "agent.message 分片聚合(失败 0)"
-    # 未命中腿:模板未命中如实 failed。
-    $r = Invoke-Json POST "$H/api/forge/sessions" @{ title = 'w2-腿3-未命中' }
-    $sid3b = $r.json.session.id
-    $script:__r3b = $null
-    $sse3b = Read-Sse "$H/api/forge/sessions/$sid3b/events/stream?fromSeq=0" 4 {
-      $script:__r3b = Invoke-Json POST "$H/api/forge/sessions/$sid3b/ask:execute" @{ userInput = '随便聊聊天气'; mode = 'multitask' }
-    }
-    $r3b = $script:__r3b
-    Check ($r3b.status -eq 200 -and $r3b.json.run.status -eq 'failed') "未命中 run.status=failed 如实(实际 $($r3b.json.run.status))"
-    Check ($r3b.json.error -match '模板未命中') "error 含「模板未命中」"
-    Check ($sse3b.Text -match 'event: agent\.failed' -and $sse3b.Text -match '模板未命中') "agent.failed 事件(模板未命中)"
-    Check ($sse3b.Text -notmatch 'agent\.tool\.invoked') "未命中零 tool.invoked"
+  # ── 腿 3:multitask 异步委派(D-036;原「碰撞体模板 + swarm 分片」链已退役)──
+  # 本腿在 mock provider 面能验的是「模式基线」:mock 步进不产 tool_calls,HTTP 面驱动不出
+  # dispatch,故派发链本身(受理即返回 / 后台卡片 / 回执落盘 / 回执唤醒与中途收件,D-038)由
+  # cargo test agent::tests::{multitask_*,receipt_*} 覆盖,这里如实 SKIP 不充绿。
+  Log "== 腿3:multitask 异步委派基线(模板退役)=="
+  $r = Invoke-Json POST "$H/api/forge/sessions" @{ title = 'w2-腿3' }
+  $sid3 = $r.json.session.id
+  $script:__r3 = $null
+  $sse3 = Read-Sse "$H/api/forge/sessions/$sid3/events/stream?fromSeq=0" 6 {
+    $script:__r3 = Invoke-Json POST "$H/api/forge/sessions/$sid3/ask:execute" @{ userInput = '给所有关卡块加碰撞体'; mode = 'multitask' } 30
   }
+  $r3 = $script:__r3
+  Check ($r3.status -eq 200 -and $r3.json.run.status -eq 'completed') "multitask run completed(实际 $($r3.json.run.status);err=$($r3.json.error))"
+  Check (Test-SeqOrder $sse3.Text @('composer.user.message','agent.started','agent.message','agent.completed')) "multitask SSE 序列齐(普通工具循环轮)"
+  Check ($sse3.Text -notmatch 'swarm\.execute') "swarm.execute 模板已退役(零合成工具事件)"
+  Check ($null -eq (Invoke-Json GET "$H/api/forge/sessions/$sid3").json.session.activeRunId) "activeRunId 终态清理(后台派发不占用输入)"
+  # 旧「模板未命中 → run failed」口径随模板退役:同一句闲聊现在照常收束。
+  $r = Invoke-Json POST "$H/api/forge/sessions" @{ title = 'w2-腿3-闲聊' }
+  $sid3b = $r.json.session.id
+  $script:__r3b = $null
+  $sse3b = Read-Sse "$H/api/forge/sessions/$sid3b/events/stream?fromSeq=0" 4 {
+    $script:__r3b = Invoke-Json POST "$H/api/forge/sessions/$sid3b/ask:execute" @{ userInput = '随便聊聊天气'; mode = 'multitask' }
+  }
+  $r3b = $script:__r3b
+  Check ($r3b.status -eq 200 -and $r3b.json.run.status -eq 'completed') "闲聊不再 failed(模板未命中口径已退役;实际 $($r3b.json.run.status))"
+  Check ($sse3b.Text -notmatch '模板未命中') "零「模板未命中」文案"
+  Skip 'multitask-dispatch-chain' 'mock 步进不产 tool_calls,派发/唤醒链由 cargo test multitask_*/receipt_* 覆盖'
 
   # ── 腿 4:todos REST + todo.* 事件 + snapshot 填真 ──
   Log "== 腿4:todos =="

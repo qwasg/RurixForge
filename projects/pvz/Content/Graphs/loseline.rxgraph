@@ -1,0 +1,121 @@
+{
+ "version": 1,
+ "id": "loseline",
+ "name": "loseline",
+ "exposedProps": [
+  {
+   "name": "row",
+   "kind": "F32",
+   "default": 3.0
+  }
+ ],
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "event.on_trigger_enter",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n2",
+   "type": "entity.has_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n1",
+     "pin": "otherEntity"
+    },
+    "tag": {
+     "const": "zombie_active"
+    }
+   }
+  },
+  {
+   "id": "n3",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n2",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n4",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "msg_loseline"
+    },
+    "args": {
+     "ref": "row"
+    }
+   }
+  },
+  {
+   "id": "n5",
+   "type": "call.send_message",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "loseline_hit_row"
+    },
+    "payload": {
+     "node": "n4",
+     "pin": "result"
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": [
+    "n1",
+    "exec"
+   ],
+   "to": [
+    "n3",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n4",
+    "exec"
+   ],
+   "to": [
+    "n5",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "then"
+   ],
+   "to": [
+    "n4",
+    "exec"
+   ]
+  }
+ ]
+}

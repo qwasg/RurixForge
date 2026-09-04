@@ -1,0 +1,10 @@
+guid: a89d42f1-98d9-5a62-83b2-b39c8de1f4d9
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-1(pool,10 波,奖励 squash);在 IDE Assets 面板双击即可装进视口试玩

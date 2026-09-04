@@ -1,0 +1,9 @@
+guid: ed354777-f305-5467-9241-a6281e257a18
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-digit-atlas
+build_state: current

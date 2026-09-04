@@ -1,0 +1,10 @@
+guid: 7b5cdd3c-edd5-58da-9747-380e60cdf626
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-10(pool,30 波,奖励 sea_shroom);在 IDE Assets 面板双击即可装进视口试玩

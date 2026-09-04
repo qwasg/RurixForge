@@ -1,0 +1,10 @@
+guid: cd8bcb40-08e6-5017-97b5-84738bf4858a
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ fog 场景模板(棋盘/推车/判负线,无关卡逻辑)

@@ -1,0 +1,79 @@
+{
+  "animator": {
+    "defaultState": "idle",
+    "parameters": {
+      "isMoving": "bool"
+    },
+    "states": {
+      "idle": {
+        "clip": "idle"
+      },
+      "walk": {
+        "clip": "walk"
+      }
+    },
+    "transitions": [
+      {
+        "from": "idle",
+        "to": "walk",
+        "when": [
+          {
+            "eq": true,
+            "param": "isMoving"
+          }
+        ]
+      },
+      {
+        "from": "walk",
+        "to": "idle",
+        "when": [
+          {
+            "eq": false,
+            "param": "isMoving"
+          }
+        ]
+      }
+    ]
+  },
+  "clips": {
+    "idle": {
+      "fps": 4,
+      "frames": [
+        "walk_0"
+      ],
+      "loop": true
+    },
+    "walk": {
+      "fps": 6,
+      "frames": [
+        "walk_0",
+        "walk_1"
+      ],
+      "loop": true
+    }
+  },
+  "frames": {
+    "walk_0": {
+      "bbox": [
+        8,
+        8,
+        512,
+        512
+      ]
+    },
+    "walk_1": {
+      "bbox": [
+        536,
+        39,
+        512,
+        481
+      ]
+    }
+  },
+  "pivot": [
+    0.5,
+    1.0
+  ],
+  "texture": "b7b035cf-44c9-4097-b91d-b29bb791dc41",
+  "version": 1
+}

@@ -1,0 +1,13 @@
+guid: 151ea390-cc0e-4a3b-ba1e-1acd79ae2a45
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:55:15Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct garden defense plant icons: 1:icy blue winter melon catapult; 2:gold coin magnet mushroom; 3:jagged stone spike trap; 4:large twin corn cob cannon; 5:gray mime potato imitating a plant; 6:terracotta flower pot with face. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 200906
+    sourceRefs: []
+build_state: current

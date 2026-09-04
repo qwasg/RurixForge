@@ -1,0 +1,10 @@
+guid: 3ed4fb77-233a-5a09-bf47-aded73b25fd0
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/PZ_Sunflower.png
+    pipeline: ai-atlas-grid-crop
+build_state: current

@@ -30,7 +30,14 @@ const CANDIDATES = [0, 1, 2, 3].map((i) => ({
   dataUrl: 'data:image/png;base64,AAAA',
 }));
 
-const ITEM = { path: 'Textures/wood_albedo.png', guid: 'g-wood', type: 'texture', size: 10 };
+const ITEM = {
+  path: 'Textures/wood_albedo.png',
+  guid: 'g-wood',
+  type: 'texture',
+  size: 10,
+  description: '橡木木纹贴图,暖色调',
+  tags: ['木纹'],
+};
 
 function setupFetch() {
   const state = { accepted: false };
@@ -63,6 +70,7 @@ beforeEach(() => {
     backendsError: null,
     dialogOpen: false,
     destFolder: 'Textures',
+    bindAssetPath: null,
     candidates: null,
     lastPrompt: '',
     acceptedRefs: [],
@@ -102,6 +110,12 @@ describe('<AssetsPanel /> F5 生成链', () => {
       ).toBe(1),
     );
 
+    // F10-RAG:右键资产 → 对话框显示绑定行(有简介 → 并入提示词)。
+    const bindRow = document.querySelector('[data-gen-bind-asset]');
+    expect(bindRow).not.toBeNull();
+    expect(bindRow!.textContent).toContain('wood_albedo.png');
+    expect(bindRow!.textContent).toContain('简介+标签将并入提示词');
+
     // 填 prompt 提交。
     fireEvent.change(document.querySelector('[data-gen-prompt]')!, {
       target: { value: 'wood 木纹' },
@@ -110,7 +124,7 @@ describe('<AssetsPanel /> F5 生成链', () => {
     await waitFor(() => expect(submit.disabled).toBe(false));
     fireEvent.click(submit);
 
-    // gen_image 调用断言(n=4 默认,prompt 透传)。
+    // gen_image 调用断言(n=4 默认,prompt 透传,assetPath 绑定右键资产)。
     await waitFor(() =>
       expect(toolCalls(fetchMock).some((c) => c.tool === 'mcp__gen-image__gen_image')).toBe(true),
     );
@@ -118,6 +132,7 @@ describe('<AssetsPanel /> F5 生成链', () => {
     expect(genCall.arguments.prompt).toBe('wood 木纹');
     expect(genCall.arguments.n).toBe(4);
     expect(genCall.arguments.backend).toBe('local-mock');
+    expect(genCall.arguments.assetPath).toBe('Textures/wood_albedo.png');
 
     // CandidatesModal 4 卡(dataUrl img + seed 标注)。
     await waitFor(() =>

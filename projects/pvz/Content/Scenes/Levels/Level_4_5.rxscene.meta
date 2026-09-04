@@ -1,0 +1,10 @@
+guid: 0f2594ba-f39b-5a9b-83a9-7b80e923712c
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 4-5(fog,5 波,奖励 split_pea);在 IDE Assets 面板双击即可装进视口试玩

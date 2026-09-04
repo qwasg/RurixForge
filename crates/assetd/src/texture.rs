@@ -12,9 +12,40 @@ use crate::project::ForgeProject;
 use crate::{meta_path_for, normalize_rel, AssetError, Result};
 
 /// 解码贴图尺寸(png/jpg;image 读头部,不全量解码)。
+/// 解码贴图并求平均 RGBA(0-1;视口无纹理采样管线的保真着色替身,解码一次缓存)。
+/// 直均含背景色:精灵类图背景会渗入,先按此近似交付(F-GAME-2)。
+pub fn decode_average_rgba(path: &Path) -> Result<[f32; 4]> {
+    let img = image::open(path)
+        .map_err(|e| AssetError::new("DECODE_ERR", format!("贴图解码失败 {}: {e}", path.display())))?;
+    let img = img.to_rgba8();
+    let (w, h) = img.dimensions();
+    let mut acc = [0u64; 4];
+    for px in img.pixels() {
+        for k in 0..4 {
+            acc[k] += px.0[k] as u64;
+        }
+    }
+    let n = (w as u64 * h as u64).max(1);
+    Ok([
+        (acc[0] / n) as f32 / 255.0,
+        (acc[1] / n) as f32 / 255.0,
+        (acc[2] / n) as f32 / 255.0,
+        (acc[3] / n) as f32 / 255.0,
+    ])
+}
+
 pub fn decode_size(path: &Path) -> Result<(u32, u32)> {
     image::image_dimensions(path)
         .map_err(|e| AssetError::new("DECODE_ERR", format!("贴图解码失败 {}: {e}", path.display())))
+}
+
+/// 全量解码贴图为 RGBA8(视口贴图精灵管线用;F-GAME-2)。
+pub fn decode_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
+    let img = image::open(path)
+        .map_err(|e| AssetError::new("DECODE_ERR", format!("贴图解码失败 {}: {e}", path.display())))?;
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    Ok((w, h, rgba.into_raw()))
 }
 
 /// texture_process 返回。

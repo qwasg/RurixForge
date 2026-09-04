@@ -1,0 +1,10 @@
+guid: cf4e5a45-5d81-5bcb-a24d-1458d61517cc
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_snorkel_zombie

@@ -1,0 +1,9 @@
+guid: 3af430dd-c1c7-5c50-8623-8ef432a19bdc
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-card-cursor
+build_state: current

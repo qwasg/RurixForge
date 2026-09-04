@@ -166,6 +166,44 @@ describe('chatStore.applyEvent(全类型)', () => {
     expect(tool).toMatchObject({ kind: 'tool', args: '{"path"}' });
   });
 
+  it('思考块计时:首末 reasoning 事件 ts 入块,终稿只推进末 ts', () => {
+    const at = (ts: string, type: string, payload: Record<string, unknown>) => ({ ...evt(type, payload), ts });
+    const s = useChatStore.getState();
+    s.applyEvent(evt('agent.started', { runId: 'rt' }));
+    s.applyEvent(at('2026-08-18T10:24:00.000Z', 'agent.reasoning.delta', { runId: 'rt', delta: '想' }));
+    s.applyEvent(at('2026-08-18T10:24:09.000Z', 'agent.reasoning.delta', { runId: 'rt', delta: '好' }));
+    const think = () =>
+      useChatStore.getState().messages.find((x) => x.runId === 'rt')?.blocks.find((b) => b.kind === 'reasoning');
+    expect(think()).toMatchObject({
+      text: '想好',
+      startedTs: '2026-08-18T10:24:00.000Z',
+      endedTs: '2026-08-18T10:24:09.000Z',
+    });
+    s.applyEvent(at('2026-08-18T10:24:11.000Z', 'agent.reasoning', { runId: 'rt', text: '想好了' }));
+    expect(think()).toMatchObject({
+      text: '想好了',
+      startedTs: '2026-08-18T10:24:00.000Z',
+      endedTs: '2026-08-18T10:24:11.000Z',
+    });
+  });
+
+  it('思考流完再吐正文后收到 reasoning 终稿:不另开第二套 Thought/正文', () => {
+    const s = useChatStore.getState();
+    s.applyEvent(evt('agent.started', { runId: 'rdup' }));
+    s.applyEvent(evt('agent.reasoning.delta', { runId: 'rdup', delta: '想一下' }));
+    s.applyEvent(evt('agent.token.stream.delta', { runId: 'rdup', delta: '你好' }));
+    s.applyEvent(evt('agent.reasoning', { runId: 'rdup', text: '想一下' }));
+    s.applyEvent(evt('agent.message', { runId: 'rdup', text: '你好，需要我帮你制作 2D 场景吗？' }));
+    s.applyEvent(evt('agent.completed', { runId: 'rdup', text: '你好，需要我帮你制作 2D 场景吗？' }));
+    const blocks = useChatStore.getState().messages.find((m) => m.runId === 'rdup')?.blocks ?? [];
+    expect(blocks.filter((b) => b.kind === 'reasoning')).toHaveLength(1);
+    expect(blocks.filter((b) => b.kind === 'text')).toHaveLength(1);
+    expect(blocks.find((b) => b.kind === 'text')).toMatchObject({
+      text: '你好，需要我帮你制作 2D 场景吗？',
+      final: true,
+    });
+  });
+
   it('completed 带 output → result;denied 标失败;permission.requested 不进气泡', () => {
     const s = useChatStore.getState();
     s.applyEvent(evt('agent.started', { runId: 'ro' }));
@@ -207,6 +245,99 @@ describe('chatStore.applyEvent(全类型)', () => {
     expect(sub.summary).toBe('查完了');
     expect(sub.work.some((b) => b.kind === 'tool' && b.name === 'read_file')).toBe(true);
     expect(sub.work.some((b) => b.kind === 'text' && b.text === '子文')).toBe(true);
+  });
+
+  it('D-036 后台子代理:自带 runId 单开卡片,回执落地且不锁输入框', () => {
+    const s = useChatStore.getState();
+    // 派发轮:dispatch 是普通工具行(不是 subagent 块),结果只是「已受理」。
+    s.applyEvent(evt('agent.started', { runId: 'run_p', model: 'mock' }));
+    s.applyEvent(evt('agent.tool.invoked', { runId: 'run_p', name: 'dispatch', args: { prompt: '摆僵尸', description: '摆放僵尸' }, toolCallId: 'c1' }));
+    s.applyEvent(evt('agent.tool.completed', { runId: 'run_p', name: 'dispatch', ok: true, toolCallId: 'c1', output: '已受理:「摆放僵尸」…' }));
+    s.applyEvent(evt('agent.message', { runId: 'run_p', text: '已派 1 个子代理' }));
+    s.applyEvent(evt('agent.completed', { runId: 'run_p', text: '已派 1 个子代理' }));
+    expect(useChatStore.getState().activeRunId).toBeNull();
+    const parent = useChatStore.getState().messages[0];
+    expect(parent.blocks[0]).toMatchObject({ kind: 'tool', name: 'dispatch', status: 'done' });
+
+    // 后台腿:parentRunId = 自己的后台 run，无 agent.started —— 新卡片 + 元数据补齐。
+    s.applyEvent(evt('subagent.started', {
+      parentRunId: 'run_bg', subRunId: 'run_bg', parentToolCallId: 'run_bg',
+      description: '摆放僵尸', prompt: '摆 5 个僵尸', detached: true, dispatchedBy: 'run_p', model: 'mock',
+    }));
+    let msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(2);
+    const card = msgs[1];
+    expect(card.runId).toBe('run_bg');
+    expect(card.model).toBe('mock');
+    expect(card.time).not.toBe('');
+    const sub = card.blocks[0];
+    expect(sub).toMatchObject({ kind: 'subagent', id: 'run_bg', label: '摆放僵尸', status: 'running', detachedRunId: 'run_bg' });
+    // 关键:后台跑着也不占 activeRunId,用户能继续发指令。
+    expect(useChatStore.getState().activeRunId).toBeNull();
+
+    // 完成:块结态 + 回执正文进同一张卡。
+    s.applyEvent(evt('subagent.completed', { parentRunId: 'run_bg', subRunId: 'run_bg', summary: '已摆 5 个', detached: true }));
+    s.applyEvent(evt('agent.message', { runId: 'run_bg', text: '子代理回执 · 摆放僵尸\n\n已摆 5 个', detached: true }));
+    s.applyEvent(evt('agent.completed', { runId: 'run_bg', text: '子代理回执 · 摆放僵尸\n\n已摆 5 个', detached: true }));
+    msgs = useChatStore.getState().messages;
+    const done = msgs[1];
+    expect(done.status).toBe('completed');
+    expect(done.blocks[0]).toMatchObject({ kind: 'subagent', status: 'done', summary: '已摆 5 个' });
+    expect(done.blocks.some((b) => b.kind === 'text' && b.text.includes('已摆 5 个'))).toBe(true);
+    expect(useChatStore.getState().activeRunId).toBeNull();
+  });
+
+  it('D-038 回执唤醒轮:composer.user.message source=receipt → 用户卡标 source,照常挂助手卡并锁/解锁 activeRunId', () => {
+    const s = useChatStore.getState();
+    s.applyEvent(evt('composer.user.message', {
+      text: '【系统唤醒】后台子代理回执送达(1 条)…', composerMode: 'multitask', runId: 'run_wake',
+      source: 'receipt', receiptIds: ['rcpt_1'],
+    }));
+    s.applyEvent(evt('agent.started', { runId: 'run_wake', model: 'mock' }));
+    let msgs = useChatStore.getState().messages;
+    expect(msgs[0]).toMatchObject({ role: 'user', runId: 'run_wake', source: 'receipt', mode: 'multitask' });
+    expect(msgs[1]).toMatchObject({ role: 'assistant', runId: 'run_wake', status: 'streaming' });
+    // 唤醒轮是完整 turn:主 agent 在工作,输入框按常规锁住。
+    expect(useChatStore.getState().activeRunId).toBe('run_wake');
+    s.applyEvent(evt('agent.message', { runId: 'run_wake', text: '两项都完成了,总结如下…' }));
+    s.applyEvent(evt('agent.completed', { runId: 'run_wake', text: '两项都完成了,总结如下…' }));
+    msgs = useChatStore.getState().messages;
+    expect(msgs[1].status).toBe('completed');
+    expect(useChatStore.getState().activeRunId).toBeNull();
+    // 普通用户消息不带 source。
+    s.applyEvent(evt('composer.user.message', { text: '继续', composerMode: 'build', runId: 'run_u' }));
+    const plain = useChatStore.getState().messages.find((m) => m.runId === 'run_u');
+    expect(plain?.source).toBeUndefined();
+  });
+
+  it('D-038 SESSION_BUSY 409:撤掉乐观回显 + warning toast(不留幽灵用户卡)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown) => {
+        if (String(_url).includes('ask:execute')) {
+          return {
+            ok: false,
+            status: 409,
+            json: async () => ({ error: { code: 'SESSION_BUSY', message: '会话已有运行中的 run(run_wake)' } }),
+            text: async () => '',
+          } as Response;
+        }
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '{}' } as Response;
+      }),
+    );
+    await useChatStore.getState().sendMessage('抢发', 'build');
+    expect(useChatStore.getState().messages.some((m) => m.role === 'user' && m.text === '抢发')).toBe(false);
+    const toast = useToastStore.getState().items.find((t) => t.title.includes('后台回执'));
+    expect(toast).toBeTruthy();
+    expect(toast?.kind).toBe('warning');
+  });
+
+  it('D-036 cancelSubagent:打后台 run 自己的 cancel 端点', async () => {
+    const fetchSpy = vi.mocked(fetch);
+    await useChatStore.getState().cancelSubagent('run_bg');
+    const call = fetchSpy.mock.calls.find((c) => String(c[0]).includes('/runs/run_bg/cancel'));
+    expect(call).toBeTruthy();
+    expect((call?.[1] as { method?: string })?.method).toBe('POST');
   });
 
   it('去重:同 id 二次到达不重复应用;空 id 走 fallback 签名', () => {

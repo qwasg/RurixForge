@@ -1,0 +1,10 @@
+guid: 72fe647c-35da-50c8-871d-03cf7db7e931
+type: sprite
+importer: sprite
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/SourceAtlases/PZ_ZombieGroup_01.png
+    pipeline: deterministic-frame-sheet
+build_state: current

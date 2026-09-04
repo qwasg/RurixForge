@@ -1,0 +1,10 @@
+guid: bd4a73bf-d2f9-55e8-9d9a-9a0605968b30
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-7(day,20 波,奖励 chomper);在 IDE Assets 面板双击即可装进视口试玩

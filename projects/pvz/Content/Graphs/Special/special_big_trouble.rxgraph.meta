@@ -1,0 +1,10 @@
+guid: 148f11e1-9e30-5625-b74b-7265462487fd
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_big_trouble

@@ -1,0 +1,10 @@
+guid: afc967e6-071c-5e00-b2c0-47eb07483ba6
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 pea_fly

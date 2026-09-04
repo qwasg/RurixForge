@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { runCommand } from '@/lib/commands';
 import { useOverlayStore } from '@/lib/overlayStore';
 import { useSessionStore } from '@/lib/sessionStore';
+import { useChatStore } from '@/lib/chatStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
 import { PANE_CLAMP, useHomeMode, useWorkbenchStore } from '@/lib/workbenchStore';
 import { clampMiniPos, MINI_CHAT } from '@/lib/chatVariant';
@@ -57,10 +58,11 @@ export default function Shell() {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [miniDragging, setMiniDragging] = useState(false);
 
-  // 首次加载会话 + 文件夹 + 工作区
+  // 首次加载会话 + 文件夹 + 工作区 + 模型快照
   useEffect(() => {
     void loadAll();
     void loadWorkspaces();
+    void useChatStore.getState().ensureModels();
   }, [loadAll, loadWorkspaces]);
 
   // 全局快捷键:Esc 关全部浮层;Ctrl+K 命令面板;Ctrl+Shift+N 新建会话;Ctrl+J 底部面板;Ctrl+S 挡浏览器保存

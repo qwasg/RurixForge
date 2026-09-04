@@ -87,8 +87,20 @@ fn extract_assets(
     // 引用图出边(读缓存 refgraph.json;缺失 = 空图,不在抽取期重建 O(n²))。
     let refgraph = assetd::refs::RefGraph::load(project).unwrap_or_default();
 
-    let mut out = Vec::new();
-    for rel in rels {
+    rels.iter()
+        .map(|rel| asset_doc(project, rel, metas, guid_to_path, &refgraph))
+        .collect()
+}
+
+/// 单资产文档抽取(extract_assets 循环体;upsert 单资产增量时复用,保 hash 与全量一致)。
+fn asset_doc(
+    project: &ForgeProject,
+    rel: &str,
+    metas: &HashMap<String, MetaDoc>,
+    guid_to_path: &HashMap<String, String>,
+    refgraph: &assetd::refs::RefGraph,
+) -> IndexDoc {
+    {
         let meta = metas.get(rel);
         let ext = Path::new(rel)
             .extension()
@@ -186,6 +198,23 @@ fn extract_assets(
                     }
                 }
             }
+            // F-GAME-4:.rxsprite 帧/clip 统计 + 贴图引用进检索面。
+            ("sprite", _) => {
+                if let Ok(doc) = assetd::sprite::load_rxsprite(&abs) {
+                    let clips: Vec<&str> = doc.clips.keys().map(String::as_str).collect();
+                    let tex = guid_to_path
+                        .get(&doc.texture)
+                        .map(String::as_str)
+                        .unwrap_or(doc.texture.as_str());
+                    facts.push_str(&format!(
+                        ";帧数:{};clip:{};贴图:{}{}",
+                        doc.frames.len(),
+                        if clips.is_empty() { "无".to_string() } else { clips.join(",") },
+                        tex,
+                        if doc.animator.is_some() { ";含animator" } else { "" },
+                    ));
+                }
+            }
             _ => {}
         }
 
@@ -212,11 +241,11 @@ fn extract_assets(
             Some(g) => format!("asset:{g}"),
             None => format!("asset:path:{rel}"),
         };
-        out.push(IndexDoc {
+        IndexDoc {
             id,
             kind: DocKind::Asset,
             title: file_name_of(rel),
-            path: rel.clone(),
+            path: rel.to_string(),
             guid,
             atype,
             description,
@@ -224,9 +253,8 @@ fn extract_assets(
             tags,
             refs,
             content_hash: String::new(),
-        });
+        }
     }
-    out
 }
 
 // ---------- 2. 场景实体 ----------
@@ -311,6 +339,27 @@ fn component_brief(
             }
         }
         "RigidBody" => format!("(kind={})", get("kind")),
+        // F-GAME-3:Sprite 贴图 GUID 解析入 refs(asset_delete 引用阻断覆盖 2D 精灵);
+        // F-GAME-4:sprite(.rxsprite GUID)引用亦入 refs,clip 名入 facts。
+        "Sprite" => {
+            let order = props
+                .get("sortingOrder")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let sprite_ref = get("sprite");
+            if !sprite_ref.is_empty() {
+                let sp = resolve(sprite_ref, refs);
+                let clip = get("clip");
+                if clip.is_empty() {
+                    format!("(sprite={sp},order={order})")
+                } else {
+                    format!("(sprite={sp},clip={clip},order={order})")
+                }
+            } else {
+                let tex = resolve(get("texture"), refs);
+                format!("(texture={tex},order={order})")
+            }
+        }
         "Light" => {
             let intensity = props
                 .get("intensity")
@@ -320,7 +369,9 @@ fn component_brief(
         }
         "Camera" => {
             let fov = props.get("fov").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            format!("(fov={fov})")
+            // F-GAME-3:投影方式进索引(正交相机可被 context_search 检索)。
+            let proj = props.get("projection").and_then(|v| v.as_str()).unwrap_or("perspective");
+            format!("(fov={fov},projection={proj})")
         }
         "Trigger" => {
             let ext = props
@@ -364,58 +415,66 @@ fn extract_graphs(
     rels: &[String],
     metas: &HashMap<String, MetaDoc>,
 ) -> Vec<IndexDoc> {
-    let mut out = Vec::new();
-    for rel in rels.iter().filter(|r| r.ends_with(".rxgraph")) {
-        let abs = project.content_root().join(rel);
-        let Ok(text) = std::fs::read_to_string(&abs) else { continue };
-        let Ok(g) = GraphDoc::from_json(&text) else { continue };
-        let (description, tags) = semantic_of(metas, rel);
+    rels.iter()
+        .filter(|r| r.ends_with(".rxgraph"))
+        .filter_map(|rel| graph_doc(project, rel, metas))
+        .collect()
+}
 
-        let mut facts = format!("节点图 {}({} 节点,{} 执行边)", g.name, g.nodes.len(), g.edges.len());
-        if !g.exposed_props.is_empty() {
-            let props: Vec<String> = g
-                .exposed_props
-                .iter()
-                .map(|p| format!("{}({:?})", p.name, p.kind))
-                .collect();
-            facts.push_str(&format!(";暴露属性:{}", props.join(",")));
-        }
-        for n in &g.nodes {
-            let kind = node_registry::find_spec(&n.ntype)
-                .map(|s| format!("{:?}", s.kind))
-                .unwrap_or_else(|| "?".into());
-            facts.push_str(&format!(";节点 {}:{}[{kind}]", n.id, n.ntype));
-            // 常量输入是最有语义价值的部分(tag="player"、消息名等)。
-            for (pin, src) in &n.inputs {
-                if let ValueSource::Const { konst } = src {
-                    facts.push_str(&format!(" {pin}={}", compact_value(konst)));
-                }
+/// 单图文档(extract_graphs 循环体;upsert 复用)。文件不可读/解析失败 → None。
+fn graph_doc(
+    project: &ForgeProject,
+    rel: &str,
+    metas: &HashMap<String, MetaDoc>,
+) -> Option<IndexDoc> {
+    let abs = project.content_root().join(rel);
+    let text = std::fs::read_to_string(&abs).ok()?;
+    let g = GraphDoc::from_json(&text).ok()?;
+    let (description, tags) = semantic_of(metas, rel);
+
+    let mut facts = format!("节点图 {}({} 节点,{} 执行边)", g.name, g.nodes.len(), g.edges.len());
+    if !g.exposed_props.is_empty() {
+        let props: Vec<String> = g
+            .exposed_props
+            .iter()
+            .map(|p| format!("{}({:?})", p.name, p.kind))
+            .collect();
+        facts.push_str(&format!(";暴露属性:{}", props.join(",")));
+    }
+    for n in &g.nodes {
+        let kind = node_registry::find_spec(&n.ntype)
+            .map(|s| format!("{:?}", s.kind))
+            .unwrap_or_else(|| "?".into());
+        facts.push_str(&format!(";节点 {}:{}[{kind}]", n.id, n.ntype));
+        // 常量输入是最有语义价值的部分(tag="player"、消息名等)。
+        for (pin, src) in &n.inputs {
+            if let ValueSource::Const { konst } = src {
+                facts.push_str(&format!(" {pin}={}", compact_value(konst)));
             }
         }
-        if !g.edges.is_empty() {
-            let chain: Vec<String> = g
-                .edges
-                .iter()
-                .map(|e| format!("{}.{}→{}", e.from[0], e.from[1], e.to[0]))
-                .collect();
-            facts.push_str(&format!(";执行链:{}", chain.join(" ")));
-        }
-
-        out.push(IndexDoc {
-            id: format!("graph:{rel}"),
-            kind: DocKind::Graph,
-            title: g.name.clone(),
-            path: rel.clone(),
-            guid: None,
-            atype: String::new(),
-            description,
-            facts: truncate_facts(facts),
-            tags,
-            refs: Vec::new(),
-            content_hash: String::new(),
-        });
     }
-    out
+    if !g.edges.is_empty() {
+        let chain: Vec<String> = g
+            .edges
+            .iter()
+            .map(|e| format!("{}.{}→{}", e.from[0], e.from[1], e.to[0]))
+            .collect();
+        facts.push_str(&format!(";执行链:{}", chain.join(" ")));
+    }
+
+    Some(IndexDoc {
+        id: format!("graph:{rel}"),
+        kind: DocKind::Graph,
+        title: g.name.clone(),
+        path: rel.to_string(),
+        guid: None,
+        atype: String::new(),
+        description,
+        facts: truncate_facts(facts),
+        tags,
+        refs: Vec::new(),
+        content_hash: String::new(),
+    })
 }
 
 fn compact_value(v: &serde_json::Value) -> String {
@@ -439,44 +498,11 @@ fn extract_rx_symbols(
     for rel in rels.iter().filter(|r| r.ends_with(".rx")) {
         let abs = project.content_root().join(rel);
         let Ok(text) = std::fs::read_to_string(&abs) else { continue };
-        let (description, tags) = semantic_of(metas, rel);
+        if let Some(d) = symbol_file_doc(rel, &text, metas) {
+            out.push(d);
+        }
 
-        // 文件头注释块(往往是最有 RAG 价值的自然语言,如 maze.rx 的迷宫图)。
-        let header: String = text
-            .lines()
-            .take_while(|l| l.trim_start().starts_with("//") || l.trim().is_empty())
-            .map(|l| l.trim_start().trim_start_matches("//").trim())
-            .filter(|l| !l.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
         let fns = scan_export_c_fns(&text);
-
-        let stem = file_name_of(rel);
-        let mut file_facts = String::new();
-        if !header.is_empty() {
-            file_facts.push_str(&format!("头注释:{header}"));
-        }
-        if !fns.is_empty() {
-            let sigs: Vec<String> = fns.iter().map(fn_signature).collect();
-            if !file_facts.is_empty() {
-                file_facts.push(';');
-            }
-            file_facts.push_str(&format!("导出函数:{}", sigs.join(" | ")));
-        }
-        out.push(IndexDoc {
-            id: format!("symbol:{rel}"),
-            kind: DocKind::Symbol,
-            title: stem,
-            path: rel.clone(),
-            guid: None,
-            atype: String::new(),
-            description,
-            facts: truncate_facts(file_facts),
-            tags,
-            refs: Vec::new(),
-            content_hash: String::new(),
-        });
-
         for f in &fns {
             out.push(IndexDoc {
                 id: format!("symbol:{rel}#{}", f.name),
@@ -494,6 +520,95 @@ fn extract_rx_symbols(
         }
     }
     out
+}
+
+/// rx 文件级符号文档(头注释 + 导出签名 + .meta 简介;upsert 复用)。
+fn symbol_file_doc(
+    rel: &str,
+    text: &str,
+    metas: &HashMap<String, MetaDoc>,
+) -> Option<IndexDoc> {
+    let (description, tags) = semantic_of(metas, rel);
+
+    // 文件头注释块(往往是最有 RAG 价值的自然语言,如 maze.rx 的迷宫图)。
+    let header: String = text
+        .lines()
+        .take_while(|l| l.trim_start().starts_with("//") || l.trim().is_empty())
+        .map(|l| l.trim_start().trim_start_matches("//").trim())
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let fns = scan_export_c_fns(text);
+
+    let stem = file_name_of(rel);
+    let mut file_facts = String::new();
+    if !header.is_empty() {
+        file_facts.push_str(&format!("头注释:{header}"));
+    }
+    if !fns.is_empty() {
+        let sigs: Vec<String> = fns.iter().map(fn_signature).collect();
+        if !file_facts.is_empty() {
+            file_facts.push(';');
+        }
+        file_facts.push_str(&format!("导出函数:{}", sigs.join(" | ")));
+    }
+    Some(IndexDoc {
+        id: format!("symbol:{rel}"),
+        kind: DocKind::Symbol,
+        title: stem,
+        path: rel.to_string(),
+        guid: None,
+        atype: String::new(),
+        description,
+        facts: truncate_facts(file_facts),
+        tags,
+        refs: Vec::new(),
+        content_hash: String::new(),
+    })
+}
+
+/// 单文件全量文档(asset + graph + symbol 文件级;资产简介 upsert 用——
+/// .meta semantic 同时喂这三类文档,单点写入后须同步增量)。
+/// 返回 None = rel 不在 Content 扫描内。
+pub fn extract_file_docs(project_root: &Path, rel: &str) -> Result<Option<Vec<IndexDoc>>> {
+    let project = ForgeProject::load(project_root)
+        .unwrap_or_else(|_| ForgeProject::with_defaults(project_root.to_path_buf()));
+    let rels = project.scan_content().unwrap_or_default();
+    if !rels.iter().any(|r| r == rel) {
+        return Ok(None);
+    }
+    // 与 extract_all 同一 meta 扫描/guid 映射,保 content_hash 与全量构建一致。
+    let mut guid_to_path: HashMap<String, String> = HashMap::new();
+    let mut metas: HashMap<String, MetaDoc> = HashMap::new();
+    for r in &rels {
+        let mp = meta_path_for(&project.content_root(), r);
+        if mp.is_file() {
+            if let Ok(m) = MetaDoc::load(&mp) {
+                guid_to_path.insert(m.guid.clone(), r.clone());
+                metas.insert(r.clone(), m);
+            }
+        }
+    }
+    let refgraph = assetd::refs::RefGraph::load(&project).unwrap_or_default();
+
+    let mut out = vec![asset_doc(&project, rel, &metas, &guid_to_path, &refgraph)];
+    if rel.ends_with(".rxgraph") {
+        if let Some(d) = graph_doc(&project, rel, &metas) {
+            out.push(d);
+        }
+    }
+    if rel.ends_with(".rx") {
+        let abs = project.content_root().join(rel);
+        if let Ok(text) = std::fs::read_to_string(&abs) {
+            if let Some(d) = symbol_file_doc(rel, &text, &metas) {
+                out.push(d);
+            }
+        }
+    }
+    for d in &mut out {
+        d.finalize_hash();
+    }
+    Ok(Some(out))
 }
 
 fn fn_signature(f: &forge_logic::rxexport::ExportedFn) -> String {

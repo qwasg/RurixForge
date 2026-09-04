@@ -1,0 +1,10 @@
+guid: c5f0d92e-be59-5290-881c-78e1048609f1
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 3-5(pool,20 波,奖励 jalapeno);在 IDE Assets 面板双击即可装进视口试玩

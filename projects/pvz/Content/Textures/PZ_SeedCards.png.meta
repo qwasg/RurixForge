@@ -1,0 +1,10 @@
+guid: d7ef537b-2960-5f46-a693-8707268130c2
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: generated plant sprite collection
+    pipeline: ai-derived-7x7-seed-card-atlas
+build_state: current

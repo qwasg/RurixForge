@@ -1,0 +1,262 @@
+{
+  "zombie": {
+    "zombieCode": 1,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "slow",
+    "dps": 100,
+    "armor": null,
+    "special": "基础僵尸",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "flag_zombie": {
+    "zombieCode": 2,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "slow",
+    "dps": 100,
+    "armor": null,
+    "special": "标志一波的领头僵尸",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "conehead_zombie": {
+    "zombieCode": 3,
+    "adapter": "walker",
+    "hp": 640,
+    "speed": "normal",
+    "dps": 100,
+    "armor": "路障吸收370伤害",
+    "special": "头戴路障，耐久更高",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "pole_vaulting_zombie": {
+    "zombieCode": 4,
+    "adapter": "walker",
+    "hp": 340,
+    "speed": "fast",
+    "dps": 100,
+    "armor": null,
+    "special": "撑杆跳过遇到的第一株植物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "buckethead_zombie": {
+    "zombieCode": 5,
+    "adapter": "walker",
+    "hp": 1370,
+    "speed": "slow",
+    "dps": 100,
+    "armor": "铁桶吸收1100伤害",
+    "special": "铁桶提供高额护甲",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "newspaper_zombie": {
+    "zombieCode": 6,
+    "adapter": "walker",
+    "hp": 340,
+    "speed": "slow",
+    "dps": 100,
+    "armor": "报纸吸收150伤害",
+    "special": "报纸被破坏后加速狂奔",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "screen_door_zombie": {
+    "zombieCode": 7,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "slow",
+    "dps": 100,
+    "armor": "铁门吸收1100伤害，可挡射击",
+    "special": "铁门阻挡正面投射物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "football_zombie": {
+    "zombieCode": 8,
+    "adapter": "walker",
+    "hp": 1670,
+    "speed": "fast",
+    "dps": 100,
+    "armor": "头盔吸收1400伤害",
+    "special": "高速高耐久",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "dancing_zombie": {
+    "zombieCode": 9,
+    "adapter": "walker",
+    "hp": 500,
+    "speed": "normal",
+    "dps": 100,
+    "armor": null,
+    "special": "召唤伴舞僵尸并改变队形",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "backup_dancer": {
+    "zombieCode": 10,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "normal",
+    "dps": 100,
+    "armor": null,
+    "special": "由舞王召唤",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "ducky_tube_zombie": {
+    "zombieCode": 11,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "slow",
+    "dps": 100,
+    "armor": null,
+    "special": "在泳池水路行进",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "snorkel_zombie": {
+    "zombieCode": 12,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "normal",
+    "dps": 100,
+    "armor": null,
+    "special": "潜水时躲避直线攻击，靠近植物后浮出",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "zomboni": {
+    "zombieCode": 13,
+    "adapter": "walker",
+    "hp": 1350,
+    "speed": "fast",
+    "dps": 100,
+    "armor": "冰车车体高耐久",
+    "special": "碾压植物并留下冰道",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "bobsled_team": {
+    "zombieCode": 14,
+    "adapter": "walker",
+    "hp": 640,
+    "speed": "fast",
+    "dps": 100,
+    "armor": "雪橇提供额外耐久",
+    "special": "四只僵尸乘雪橇在冰道滑行",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "dolphin_rider_zombie": {
+    "zombieCode": 15,
+    "adapter": "walker",
+    "hp": 500,
+    "speed": "fast",
+    "dps": 100,
+    "armor": null,
+    "special": "骑海豚跳过第一株水生植物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "jack_in_the_box_zombie": {
+    "zombieCode": 16,
+    "adapter": "walker",
+    "hp": 340,
+    "speed": "fast",
+    "dps": 100,
+    "armor": null,
+    "special": "随机引爆手中的盒子",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "balloon_zombie": {
+    "zombieCode": 17,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "normal",
+    "dps": 100,
+    "armor": null,
+    "special": "漂浮越过植物，需三叶草或尖刺类处理",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "digger_zombie": {
+    "zombieCode": 18,
+    "adapter": "walker",
+    "hp": 500,
+    "speed": "normal",
+    "dps": 100,
+    "armor": null,
+    "special": "挖至最左列后反向行进并啃食植物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "pogo_zombie": {
+    "zombieCode": 19,
+    "adapter": "walker",
+    "hp": 500,
+    "speed": "fast",
+    "dps": 100,
+    "armor": null,
+    "special": "跳过植物并可偷取植物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "zombie_yeti": {
+    "zombieCode": 20,
+    "adapter": "walker",
+    "hp": 1350,
+    "speed": "fast",
+    "dps": 100,
+    "armor": null,
+    "special": "隐藏彩蛋：短暂出现，受伤后可能逃跑并掉落奖励",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "bungee_zombie": {
+    "zombieCode": 21,
+    "adapter": "walker",
+    "hp": 450,
+    "speed": "fast",
+    "dps": 100,
+    "armor": null,
+    "special": "从天降落偷走植物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "ladder_zombie": {
+    "zombieCode": 22,
+    "adapter": "walker",
+    "hp": 500,
+    "speed": "normal",
+    "dps": 100,
+    "armor": "梯子吸收500伤害并可架在植物上",
+    "special": "放梯子后越过防御",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "catapult_zombie": {
+    "zombieCode": 23,
+    "adapter": "walker",
+    "hp": 850,
+    "speed": "slow",
+    "dps": 100,
+    "armor": null,
+    "special": "向植物投掷篮球",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "gargantuar": {
+    "zombieCode": 24,
+    "adapter": "walker",
+    "hp": 3000,
+    "speed": "slow",
+    "dps": 100,
+    "armor": null,
+    "special": "半血时抛出小鬼僵尸",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "imp": {
+    "zombieCode": 25,
+    "adapter": "walker",
+    "hp": 270,
+    "speed": "very_fast",
+    "dps": 100,
+    "armor": null,
+    "special": "被巨人抛入场内",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  },
+  "dr_zomboss": {
+    "zombieCode": 26,
+    "adapter": "walker",
+    "hp": 10000,
+    "speed": "normal",
+    "dps": 100,
+    "armor": "机甲与驾驶舱护甲",
+    "special": "BOSS：召唤僵尸、投掷冰球和火球、踩踏植物",
+    "runtimeStatus": "stats-driven-walker-with-special-config"
+  }
+}

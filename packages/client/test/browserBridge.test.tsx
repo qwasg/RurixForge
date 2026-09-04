@@ -228,7 +228,7 @@ describe('<ViewportCanvas /> 浏览器回退腿(canvas readback)', () => {
     );
     render(<ViewportCanvas />);
     expect(
-      await screen.findByText((_, el) => el?.textContent === 'mock-gpu · draws 1 · frames 1 · px 5'),
+      await screen.findByText((_, el) => el?.textContent === 'mock-gpu · draws 1 · px 5 · 轮询回退'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Viewport 帧通道降级/)).toBeNull();
     expect(useEditorStore.getState().viewportDegraded).toBeNull();

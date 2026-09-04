@@ -1,0 +1,10 @@
+guid: ded59585-5650-5cab-9f2b-6180bc4e301b
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-10(roof,1 波,奖励 silver_trophy);在 IDE Assets 面板双击即可装进视口试玩

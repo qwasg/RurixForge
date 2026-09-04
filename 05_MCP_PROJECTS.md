@@ -1,4 +1,4 @@
-# 05 · MCP 工程集(核心设计点)
+﻿# 05 · MCP 工程集(核心设计点)
 
 > 全部重复性/批量性/可程序化操作的**唯一执行面**(不变量 I-2,红线 R-1/R-2)。
 > agent 经 `mcp__{server}__{tool}` 调用;人类用户的 UI 操作在底层也复用同一工具面
@@ -201,3 +201,16 @@
 1. 新工具必须登记本章表格 + JSON Schema + 错误码,PR 引用条款号(对标 rurix 规范条款↔conformance↔PR 三角)。
 2. 禁止「万能工具」(如 `engine_eval` 任意脚本执行):agent 能力扩张走新工具而非 eval 后门(安全,`12 §2`)。
 3. 任何 UI 新操作先问「对应工具是哪个」;没有就先补工具(P-2)。
+
+## Errata(只追加区)
+
+- **E-05-002(2026-09-03,PvZ 可玩化波 / D-037)——engine-scene 工具面加一件 `logic_inject_pointer`**:`{ x, y, action?="click", width?, height? }`,x/y 为归一化视口坐标(0..1,左上原点),play 态限定。宿主按**游戏相机**(PIE 画面 = 场景 Camera 实体;无则编辑器相机)把点反投影到游戏平面(2d 场景 z=0 / 3d 场景 y=0),**同一逻辑帧按序**入队四条 `logic.inject_input`:`<action>_x` / `<action>_y` / `<action>_z`(世界坐标)+ `<action>`(value=1)。图侧用 `var.set(name=<action pin>)` 即可按动作名接住坐标;只认 `<action>` 正值的旧图(breakout/maze/旧 PvZ demo)行为不变。视口 WS 直连通道同契约(`{type:"pointer", action, x, y}`,aspect 取该订阅者流尺寸)。qa-tester / reviewer 子代理白名单同步加入(试玩即可「点格子」而非只会键盘)。engine-scene 工具 45→46(KNOWN_TOOLS 同步)。
+
+| 工具 | 参数 | 返回 | 错误码 |
+|---|---|---|---|
+| `sprite_create` | `{ name, texture(GUID), destFolder?=Sprites, pivot?, frames?, clips?, animator?, autoslice?, minArea? }` | `{ assetPath, guid, textureGuid, frameCount, clipCount }` | `UNKNOWN_GUID`(texture 不存在)/ `WRONG_TYPE`(非贴图)/ `SPRITE_INVALID` / `INVALID_OPS`(名非法) |
+| `sprite_get` | `{ assetPath }` | `{ guid, doc }`(解析+校验后的规范形态) | `SPRITE_INVALID` / `IO` |
+| `sprite_set` | `{ assetPath, doc }` | `{ ok, frameCount, clipCount }`(整文档覆盖,GUID 稳定) | `SPRITE_INVALID`(先校验后落盘,坏文档拒)/ `NO_META` / `WRONG_TYPE` |
+| `sprite_autoslice` | `{ assetPath(贴图), minArea?=16, alphaThreshold?=5 }` | `{ width, height, boxes: [[x,y,w,h]] }`(只读不落盘;行带分组序) | `WRONG_TYPE`(非贴图)/ `SPRITE_SLICE`(连通域超上限,建议调高 minArea)/ `NO_META` |
+
+  幂等性:`sprite_create` 同名重建复用既有 `.meta` GUID(reimport 语义);`sprite_set` 同文档重写字节稳定(确定性键序)。校验规则见 08 E-08-002;agentd 白名单同步(WRITE_TOOLS + KNOWN_TOOLS)。

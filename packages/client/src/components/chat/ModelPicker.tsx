@@ -17,19 +17,35 @@ import { cn } from '@/lib/cn';
  *
  * 三档能力面全部来自后端 design-snapshot models[](agentd modelspec.rs),本组件不内置
  * 任何模型知识;四个选择均即时 PATCH 会话落库(chatStore patchSpec:乐观 + 失败回滚)。
- * 菜单整体 bottom-full 上弹,子菜单 left-full 右展——与 Composer 另两个下拉同锚 rootRef。
+ * 默认菜单 bottom-full 上弹、子菜单 left-full 右展——与 Composer 另两个下拉同锚 rootRef。
+ * D-035:Plan 页签把它放到贴顶的头栏右端,故加 placement/align 两个方向开关
+ * (Composer 用默认值,行为逐字不变)。
  */
 
 type SubMenu = 'context' | 'effort' | 'model' | null;
 
+/** 弹出方向:up = 贴屏幕底的 Composer(默认);down = 贴顶的页签头栏。 */
+export type PickerPlacement = 'up' | 'down';
+/** 横向对齐:left = 锚左边缘(默认);right = 锚右边缘(靠右侧边时用)。 */
+export type PickerAlign = 'left' | 'right';
+
 /** onOpen:本菜单展开时通知 Composer 关掉它自己的两个下拉(反向由本组件的 outside-click 承担)。 */
-export default function ModelPicker({ onOpen }: { onOpen?: () => void }) {
+export default function ModelPicker({
+  onOpen,
+  placement = 'up',
+  align = 'left',
+}: {
+  onOpen?: () => void;
+  placement?: PickerPlacement;
+  align?: PickerAlign;
+}) {
   const models = useChatStore((st) => st.models);
   const thinkingEnabled = useChatStore((st) => st.thinkingEnabled);
   const pickModel = useChatStore((st) => st.pickModel);
   const setThinking = useChatStore((st) => st.setThinking);
   const pickEffort = useChatStore((st) => st.pickEffort);
   const pickContext = useChatStore((st) => st.pickContext);
+  const ensureModels = useChatStore((st) => st.ensureModels);
   const spec = useEffectiveSpec();
 
   const [open, setOpen] = useState(false);
@@ -80,7 +96,10 @@ export default function ModelPicker({ onOpen }: { onOpen?: () => void }) {
         aria-expanded={open}
         data-testid="composer-model"
         onClick={() => {
-          if (!open) onOpen?.();
+          if (!open) {
+            onOpen?.();
+            if (models.length === 0) void ensureModels();
+          }
           setOpen((v) => !v);
         }}
         className={cn(
@@ -102,7 +121,13 @@ export default function ModelPicker({ onOpen }: { onOpen?: () => void }) {
         <div
           role="menu"
           data-testid="composer-model-menu"
-          className="absolute bottom-full left-0 z-40 mb-1.5 flex min-w-[212px] flex-col rounded-[10px] border border-edge bg-shell-float p-1 shadow-float"
+          data-placement={placement}
+          data-align={align}
+          className={cn(
+            'absolute z-40 flex min-w-[212px] flex-col rounded-[10px] border border-edge bg-shell-float p-1 shadow-float',
+            placement === 'down' ? 'top-full mt-1.5' : 'bottom-full mb-1.5',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
         >
           <SpecRow
             testId="spec-row-thinking"
@@ -155,7 +180,7 @@ export default function ModelPicker({ onOpen }: { onOpen?: () => void }) {
           />
 
           {sub === 'context' && (
-            <SubPanel testId="spec-submenu-context">
+            <SubPanel testId="spec-submenu-context" placement={placement} align={align}>
               {spec.contextOptions.map((o) => (
                 <OptionRow
                   key={o.id}
@@ -172,7 +197,7 @@ export default function ModelPicker({ onOpen }: { onOpen?: () => void }) {
           )}
 
           {sub === 'effort' && (
-            <SubPanel testId="spec-submenu-effort">
+            <SubPanel testId="spec-submenu-effort" placement={placement} align={align}>
               {spec.effortOptions.map((o) => (
                 <OptionRow
                   key={o.id}
@@ -195,6 +220,8 @@ export default function ModelPicker({ onOpen }: { onOpen?: () => void }) {
               query={query}
               onQuery={setQuery}
               searchRef={searchRef}
+              placement={placement}
+              align={align}
               onPick={(id) => {
                 closeAll();
                 void pickModel(id);
@@ -259,15 +286,31 @@ function SpecRow({
 }
 
 /**
- * 子菜单浮层(主菜单右侧展开)。底边与主菜单底边对齐、向上生长:Composer 贴屏幕底,
- * 向下是唯一会被视口切掉的方向,故一律往上长,再由 max-h + 滚动兜住超长模型清单。
+ * 子菜单浮层(主菜单侧向展开)。生长方向跟着主菜单走:up 时与主菜单底边对齐向上长
+ * (Composer 贴屏幕底,向下是唯一会被视口切掉的方向),down 时顶边对齐向下长;
+ * 横向对齐 right 时改朝左展(菜单已贴右边缘,再往右就出界了)。
+ * 两种情形都由 max-h + 滚动兜住超长模型清单。
  */
-function SubPanel({ testId, children }: { testId: string; children: React.ReactNode }) {
+function SubPanel({
+  testId,
+  placement,
+  align,
+  children,
+}: {
+  testId: string;
+  placement: PickerPlacement;
+  align: PickerAlign;
+  children: React.ReactNode;
+}) {
   return (
     <div
       role="menu"
       data-testid={testId}
-      className="absolute bottom-0 left-full ml-1 flex max-h-[300px] min-w-[152px] flex-col overflow-y-auto rounded-[10px] border border-edge bg-shell-float p-1 shadow-float"
+      className={cn(
+        'absolute flex max-h-[300px] min-w-[152px] flex-col overflow-y-auto rounded-[10px] border border-edge bg-shell-float p-1 shadow-float',
+        placement === 'down' ? 'top-0' : 'bottom-0',
+        align === 'right' ? 'right-full mr-1' : 'left-full ml-1',
+      )}
     >
       {children}
     </div>
@@ -321,6 +364,8 @@ function ModelSubMenu({
   query,
   onQuery,
   searchRef,
+  placement,
+  align,
   onPick,
 }: {
   models: SnapshotModel[];
@@ -328,6 +373,8 @@ function ModelSubMenu({
   query: string;
   onQuery: (v: string) => void;
   searchRef: React.RefObject<HTMLInputElement>;
+  placement: PickerPlacement;
+  align: PickerAlign;
   onPick: (id: string) => void;
 }) {
   const groups = useMemo(() => {
@@ -350,7 +397,7 @@ function ModelSubMenu({
   }, [models, query]);
 
   return (
-    <SubPanel testId="spec-submenu-model">
+    <SubPanel testId="spec-submenu-model" placement={placement} align={align}>
       <div className="flex items-center gap-1.5 px-1.5 pb-1 pt-0.5">
         <Search size={10} className="shrink-0 text-fg-4" />
         <input

@@ -104,13 +104,13 @@ describe('外观页 · 控件族', () => {
     fireEvent.click(screen.getByTestId('theme-mode-dark'));
     expect(useThemeStore.getState().mode).toBe('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#E2886A');
+    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#F47B33');
   });
 
   it('半透明侧边栏 toggle:双 alpha 0xCC 实测(sidebar 变量带 alpha)', () => {
     render(<AppearancePage />);
     const before = document.documentElement.style.getPropertyValue('--bg-sidebar');
-    expect(before.endsWith('CC')).toBe(false); // moonlit 默认实体
+    expect(before.endsWith('CC')).toBe(false); // forge 默认实体
     fireEvent.click(screen.getByTestId('translucent-light'));
     expect(useThemeStore.getState().light.translucentSidebar).toBe(true);
     expect(document.documentElement.style.getPropertyValue('--bg-sidebar')).toMatch(/CC$/);

@@ -4,6 +4,7 @@ import {
   FileAudio,
   FileCode,
   FileImage,
+  Film,
   FolderOpen,
   LayoutGrid,
   Package,
@@ -29,6 +30,9 @@ export function typeIcon(type: string, size: number) {
       return <FolderOpen size={size} strokeWidth={1.5} />;
     case 'script':
       return <FileCode size={size} strokeWidth={1.5} />;
+    case 'sprite':
+      // F-GAME-4:精灵图集(.rxsprite 帧动画语义 → 胶片图标)。
+      return <Film size={size} strokeWidth={1.5} />;
     case 'audio':
       return <FileAudio size={size} strokeWidth={1.5} />;
     default:

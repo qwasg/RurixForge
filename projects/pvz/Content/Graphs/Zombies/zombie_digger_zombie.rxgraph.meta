@@ -1,0 +1,10 @@
+guid: 64896829-dfdc-58a2-977f-cf2c235fe384
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_digger_zombie

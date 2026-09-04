@@ -1,0 +1,9 @@
+guid: a34658a6-46a6-506a-8b03-c195c019f5ba
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-seed-panel
+build_state: current

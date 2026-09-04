@@ -282,9 +282,9 @@ describe('文件编辑器:草稿跨 tab 切换暂存', () => {
     const view = await openEditor('Content/f.txt');
     typeAtStart(view, 'draft-');
     expect(screen.getByTestId('tab-dirty-file:Content/f.txt')).toBeInTheDocument();
-    // 切到 Plan tab(文件编辑器卸载)
+    // 切到别的 tab(文件编辑器卸载)
     act(() => {
-      useWorkbenchStore.getState().openTab('plan');
+      useWorkbenchStore.getState().openTab('todo');
     });
     expect(screen.queryByTestId('ws-preview-content')).not.toBeInTheDocument();
     // dirty 圆点在 tabbar 上保持

@@ -1,0 +1,9 @@
+guid: adcd53f3-1f69-5845-9549-a4fe1ff23fbe
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-cell-overlay
+build_state: current

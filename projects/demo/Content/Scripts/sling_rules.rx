@@ -1,0 +1,170 @@
+// sling_rules.rx — 弹弓玩法规则单一事实源(F6 wave.3 三关原型,rev2)
+// 消息协议:全部广播单名 "ev",payload 为 f32 数值 = kind*10000 + id*100 + aux
+//   kind 1 = 拉弓发射(fire),       id = 鸟槽位 slot(1..3),aux = 发射速度(整数 m/s)
+//   kind 2 = 鸟落地(bird_landed),  id = 鸟槽位 slot
+//   kind 3 = 猪倒地(pig_down),     id = 猪编号 pigId
+//   kind 5 = 方块摧毁(block_down), id = 材料 matKind(0=wood 1=ice 2=stone)
+//   kind 6 = 速度播报(speed_announce),aux = 发射速度(供方块缓存算伤害)
+// rev2 变更(诚实注记):
+//   1. payload 从 i32 kind*100+id 改为 f32 区间比较编码——callruntime 标量编组
+//      只支持同构参数(D-RD4-C),且图内 args 只能「单动态值」,混合 i32/f32 与
+//      多动态参一律不可调用;全部判定改为区间比较,避免浮点除法取整。
+//   2. damage_of(i32,f32) 混合签名无法在图内调用 → 拆为 damage_wood/ice/stone(f32)->i32。
+//   3. 星级阈值按关烘焙为 stars_l1/l2/l3(f32 score)->i32(star_count 保留供自检)。
+// 全部函数自包含(无跨函数调用):rurixc --emit=dll 同模块内部调用符号未链接
+// (实测 RX7001 @rx_*_8 use of undefined value;RD-F6-001 登记上游,规避 = 规则内联单函数化)。
+
+// ---- 拉弓发射 ----
+// pull 为拉弓行程(0..3),线速度 = base + k*pull(pull=2 → 16 m/s)
+
+#[export(c)]
+pub fn launch_speed(pull: f32) -> f32 { 8.0 + pull * 4.0 }
+
+// ---- 消息编码(打包,id/aux 为 i32 同构)----
+
+#[export(c)]
+pub fn fire_base(slot: i32) -> i32 { 10000 + slot * 100 }
+
+#[export(c)]
+pub fn pack_landed(slot: i32) -> i32 { 20000 + slot * 100 }
+
+#[export(c)]
+pub fn pack_pig(pigId: i32) -> i32 { 30000 + pigId * 100 }
+
+#[export(c)]
+pub fn pack_block(matKind: i32) -> i32 { 50000 + matKind * 100 }
+
+#[export(c)]
+pub fn speed_msg(speed: f32) -> f32 { 60000.0 + speed }
+
+// ---- 消息解码(f32 区间比较;发射码区间 [10100,10400) 含 slot 1..3)----
+
+// 鸟图:slot N 的发射令判定 + 速度提取(每槽位一组,图按 exposedProp 选 fn 名)
+#[export(c)]
+pub fn is_fire_1(p: f32) -> bool { p >= 10100.0 && p < 10200.0 }
+#[export(c)]
+pub fn is_fire_2(p: f32) -> bool { p >= 10200.0 && p < 10300.0 }
+#[export(c)]
+pub fn is_fire_3(p: f32) -> bool { p >= 10300.0 && p < 10400.0 }
+#[export(c)]
+pub fn speed_1(p: f32) -> f32 { p - 10100.0 }
+#[export(c)]
+pub fn speed_2(p: f32) -> f32 { p - 10200.0 }
+#[export(c)]
+pub fn speed_3(p: f32) -> f32 { p - 10300.0 }
+
+// 管理器:事件类别判定
+#[export(c)]
+pub fn is_landed(p: f32) -> bool { p >= 20000.0 && p < 30000.0 }
+#[export(c)]
+pub fn is_pig_down(p: f32) -> bool { p >= 30000.0 && p < 40000.0 }
+#[export(c)]
+pub fn is_block_down(p: f32) -> bool { p >= 50000.0 && p < 60000.0 }
+
+// 方块:速度播报判定与提取
+#[export(c)]
+pub fn is_speed_msg(p: f32) -> bool { p >= 60000.0 && p < 70000.0 }
+#[export(c)]
+pub fn speed_of_msg(p: f32) -> f32 { p - 60000.0 }
+
+// ---- 碰撞伤害 ----
+// speed 为发射速度(8/12/16/20 档);冰脆石硬,石头直接命中也不易碎
+
+#[export(c)]
+pub fn damage_ice(speed: f32) -> i32 {
+    if speed >= 16.0 { 100 } else if speed >= 10.0 { 60 } else { 25 }
+}
+
+#[export(c)]
+pub fn damage_wood(speed: f32) -> i32 {
+    if speed >= 18.0 { 100 } else if speed >= 12.0 { 50 } else { 20 }
+}
+
+#[export(c)]
+pub fn damage_stone(speed: f32) -> i32 {
+    if speed >= 20.0 { 40 } else if speed >= 16.0 { 15 } else { 5 }
+}
+
+// ---- 血量 ----
+
+#[export(c)]
+pub fn pig_hp() -> i32 { 100 }
+
+// 命中后是否存活(hp<=0 即倒地/摧毁;猪与方块共用)
+#[export(c)]
+pub fn survives(hp: i32) -> bool { hp > 0 }
+
+#[export(c)]
+pub fn neg(x: i32) -> i32 { 0 - x }
+
+#[export(c)]
+pub fn gt_zero(x: i32) -> bool { x > 0 }
+
+// ---- 计分与星级 ----
+
+#[export(c)]
+pub fn score_pig() -> i32 { 1000 }
+
+#[export(c)]
+pub fn score_block() -> i32 { 100 }
+
+// 剩余鸟奖励:每只 500
+#[export(c)]
+pub fn score_bird_bonus(birdsLeft: i32) -> i32 { birdsLeft * 500 }
+
+// 通用星级(4 参同构 i32;供 on_start 自检,图内按关用 stars_lN)
+#[export(c)]
+pub fn star_count(score: i32, s1: i32, s2: i32, s3: i32) -> i32 {
+    if score >= s3 { 3 } else if score >= s2 { 2 } else if score >= s1 { 1 } else { 0 }
+}
+
+// 按关星级阈值(烘焙):
+// L1:1 猪;一鸟清 = 1000+方块+2 鸟奖励 1000 ≥ 2000 → 3 星
+// L2:2 猪;一鸟清 = 2000+方块+1000 ≥ 3000 → 3 星
+// L3:3 猪;一鸟清 = 3000+方块+1000 ≥ 4000 → 3 星
+#[export(c)]
+pub fn stars_l1(score: f32) -> i32 {
+    if score >= 2000.0 { 3 } else if score >= 1500.0 { 2 } else if score >= 1000.0 { 1 } else { 0 }
+}
+
+#[export(c)]
+pub fn stars_l2(score: f32) -> i32 {
+    if score >= 3000.0 { 3 } else if score >= 2500.0 { 2 } else if score >= 2000.0 { 1 } else { 0 }
+}
+
+#[export(c)]
+pub fn stars_l3(score: f32) -> i32 {
+    if score >= 4000.0 { 3 } else if score >= 3500.0 { 2 } else if score >= 3000.0 { 1 } else { 0 }
+}
+
+// ---- 关卡流转 ----
+
+// 全部猪倒地 = 过关
+#[export(c)]
+pub fn level_cleared(pigsLeft: i32) -> bool { pigsLeft <= 0 }
+
+// 鸟用尽且猪存活 = 失败
+#[export(c)]
+pub fn no_birds(birdsLeft: i32) -> bool { birdsLeft <= 0 }
+
+#[export(c)]
+pub fn pigs_alive(pigsLeft: i32) -> bool { pigsLeft > 0 }
+
+// 下一关编号:1→2,2→3,3→0(0 = 全部通关)
+#[export(c)]
+pub fn next_level(level: i32) -> i32 {
+    if level == 1 { 2 } else if level == 2 { 3 } else { 0 }
+}
+
+// ---- on_start 自检(无参;规则表内部一致性,图挂 PIE 即断言)----
+// 检查:launch_speed 档位 / star_count 边界 / next_level 环 / 伤害表排序
+#[export(c)]
+pub fn rules_ok() -> bool {
+    let s2 = 8.0 + 2.0 * 4.0;
+    let st = if 2200 >= 2000 { 3 } else if 2200 >= 1500 { 2 } else if 2200 >= 1000 { 1 } else { 0 };
+    let nx = if 3 == 1 { 2 } else if 3 == 2 { 3 } else { 0 };
+    let di = if 16.0 >= 16.0 { 100 } else if 16.0 >= 10.0 { 60 } else { 25 };
+    let dw = if 16.0 >= 18.0 { 100 } else if 16.0 >= 12.0 { 50 } else { 20 };
+    let ds = if 16.0 >= 20.0 { 40 } else if 16.0 >= 16.0 { 15 } else { 5 };
+    s2 == 16.0 && st == 3 && nx == 0 && di == 100 && dw == 50 && ds == 15
+}

@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "count": 50,
+  "levels": [
+    {
+      "id": "1-1",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_1.rxscene",
+      "manifest": "Content/Levels/Adventure/1-1.json",
+      "reward": "sunflower",
+      "specialRule": "tutorial_1lane"
+    },
+    {
+      "id": "1-2",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_2.rxscene",
+      "manifest": "Content/Levels/Adventure/1-2.json",
+      "reward": "cherry_bomb",
+      "specialRule": "tutorial_3lane"
+    },
+    {
+      "id": "1-3",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_3.rxscene",
+      "manifest": "Content/Levels/Adventure/1-3.json",
+      "reward": "wall_nut",
+      "specialRule": "tutorial_3lane"
+    },
+    {
+      "id": "1-4",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_4.rxscene",
+      "manifest": "Content/Levels/Adventure/1-4.json",
+      "reward": "shovel",
+      "specialRule": null
+    },
+    {
+      "id": "1-5",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_5.rxscene",
+      "manifest": "Content/Levels/Adventure/1-5.json",
+      "reward": "potato_mine",
+      "specialRule": "bowling"
+    },
+    {
+      "id": "1-6",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_6.rxscene",
+      "manifest": "Content/Levels/Adventure/1-6.json",
+      "reward": "snow_pea",
+      "specialRule": null
+    },
+    {
+      "id": "1-7",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_7.rxscene",
+      "manifest": "Content/Levels/Adventure/1-7.json",
+      "reward": "chomper",
+      "specialRule": null
+    },
+    {
+      "id": "1-8",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_8.rxscene",
+      "manifest": "Content/Levels/Adventure/1-8.json",
+      "reward": "repeater",
+      "specialRule": null
+    },
+    {
+      "id": "1-9",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_9.rxscene",
+      "manifest": "Content/Levels/Adventure/1-9.json",
+      "reward": "note",
+      "specialRule": null
+    },
+    {
+      "id": "1-10",
+      "stage": "day",
+      "scene": "Content/Scenes/Levels/Level_1_10.rxscene",
+      "manifest": "Content/Levels/Adventure/1-10.json",
+      "reward": "puff_shroom",
+      "specialRule": "conveyor"
+    },
+    {
+      "id": "2-1",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_1.rxscene",
+      "manifest": "Content/Levels/Adventure/2-1.json",
+      "reward": "sun_shroom",
+      "specialRule": null
+    },
+    {
+      "id": "2-2",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_2.rxscene",
+      "manifest": "Content/Levels/Adventure/2-2.json",
+      "reward": "fume_shroom",
+      "specialRule": null
+    },
+    {
+      "id": "2-3",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_3.rxscene",
+      "manifest": "Content/Levels/Adventure/2-3.json",
+      "reward": "grave_buster",
+      "specialRule": null
+    },
+    {
+      "id": "2-4",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_4.rxscene",
+      "manifest": "Content/Levels/Adventure/2-4.json",
+      "reward": "almanac",
+      "specialRule": null
+    },
+    {
+      "id": "2-5",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_5.rxscene",
+      "manifest": "Content/Levels/Adventure/2-5.json",
+      "reward": "hypno_shroom",
+      "specialRule": "whack"
+    },
+    {
+      "id": "2-6",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_6.rxscene",
+      "manifest": "Content/Levels/Adventure/2-6.json",
+      "reward": "scaredy_shroom",
+      "specialRule": null
+    },
+    {
+      "id": "2-7",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_7.rxscene",
+      "manifest": "Content/Levels/Adventure/2-7.json",
+      "reward": "ice_shroom",
+      "specialRule": null
+    },
+    {
+      "id": "2-8",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_8.rxscene",
+      "manifest": "Content/Levels/Adventure/2-8.json",
+      "reward": "doom_shroom",
+      "specialRule": null
+    },
+    {
+      "id": "2-9",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_9.rxscene",
+      "manifest": "Content/Levels/Adventure/2-9.json",
+      "reward": "note",
+      "specialRule": null
+    },
+    {
+      "id": "2-10",
+      "stage": "night",
+      "scene": "Content/Scenes/Levels/Level_2_10.rxscene",
+      "manifest": "Content/Levels/Adventure/2-10.json",
+      "reward": "lily_pad",
+      "specialRule": "conveyor"
+    },
+    {
+      "id": "3-1",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_1.rxscene",
+      "manifest": "Content/Levels/Adventure/3-1.json",
+      "reward": "squash",
+      "specialRule": null
+    },
+    {
+      "id": "3-2",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_2.rxscene",
+      "manifest": "Content/Levels/Adventure/3-2.json",
+      "reward": "threepeater",
+      "specialRule": "minigame_unlock"
+    },
+    {
+      "id": "3-3",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_3.rxscene",
+      "manifest": "Content/Levels/Adventure/3-3.json",
+      "reward": "tangle_kelp",
+      "specialRule": null
+    },
+    {
+      "id": "3-4",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_4.rxscene",
+      "manifest": "Content/Levels/Adventure/3-4.json",
+      "reward": "shop_key",
+      "specialRule": "shop_unlock"
+    },
+    {
+      "id": "3-5",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_5.rxscene",
+      "manifest": "Content/Levels/Adventure/3-5.json",
+      "reward": "jalapeno",
+      "specialRule": "big_trouble"
+    },
+    {
+      "id": "3-6",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_6.rxscene",
+      "manifest": "Content/Levels/Adventure/3-6.json",
+      "reward": "spikeweed",
+      "specialRule": null
+    },
+    {
+      "id": "3-7",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_7.rxscene",
+      "manifest": "Content/Levels/Adventure/3-7.json",
+      "reward": "torchwood",
+      "specialRule": null
+    },
+    {
+      "id": "3-8",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_8.rxscene",
+      "manifest": "Content/Levels/Adventure/3-8.json",
+      "reward": "tall_nut",
+      "specialRule": null
+    },
+    {
+      "id": "3-9",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_9.rxscene",
+      "manifest": "Content/Levels/Adventure/3-9.json",
+      "reward": "note",
+      "specialRule": null
+    },
+    {
+      "id": "3-10",
+      "stage": "pool",
+      "scene": "Content/Scenes/Levels/Level_3_10.rxscene",
+      "manifest": "Content/Levels/Adventure/3-10.json",
+      "reward": "sea_shroom",
+      "specialRule": "conveyor"
+    },
+    {
+      "id": "4-1",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_1.rxscene",
+      "manifest": "Content/Levels/Adventure/4-1.json",
+      "reward": "plantern",
+      "specialRule": null
+    },
+    {
+      "id": "4-2",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_2.rxscene",
+      "manifest": "Content/Levels/Adventure/4-2.json",
+      "reward": "cactus",
+      "specialRule": null
+    },
+    {
+      "id": "4-3",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_3.rxscene",
+      "manifest": "Content/Levels/Adventure/4-3.json",
+      "reward": "blover",
+      "specialRule": null
+    },
+    {
+      "id": "4-4",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_4.rxscene",
+      "manifest": "Content/Levels/Adventure/4-4.json",
+      "reward": "taco",
+      "specialRule": null
+    },
+    {
+      "id": "4-5",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_5.rxscene",
+      "manifest": "Content/Levels/Adventure/4-5.json",
+      "reward": "split_pea",
+      "specialRule": "vasebreaker"
+    },
+    {
+      "id": "4-6",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_6.rxscene",
+      "manifest": "Content/Levels/Adventure/4-6.json",
+      "reward": "starfruit",
+      "specialRule": "puzzle_unlock"
+    },
+    {
+      "id": "4-7",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_7.rxscene",
+      "manifest": "Content/Levels/Adventure/4-7.json",
+      "reward": "pumpkin",
+      "specialRule": null
+    },
+    {
+      "id": "4-8",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_8.rxscene",
+      "manifest": "Content/Levels/Adventure/4-8.json",
+      "reward": "magnet_shroom",
+      "specialRule": null
+    },
+    {
+      "id": "4-9",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_9.rxscene",
+      "manifest": "Content/Levels/Adventure/4-9.json",
+      "reward": "note",
+      "specialRule": null
+    },
+    {
+      "id": "4-10",
+      "stage": "fog",
+      "scene": "Content/Scenes/Levels/Level_4_10.rxscene",
+      "manifest": "Content/Levels/Adventure/4-10.json",
+      "reward": "cabbage_pult",
+      "specialRule": "storm"
+    },
+    {
+      "id": "5-1",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_1.rxscene",
+      "manifest": "Content/Levels/Adventure/5-1.json",
+      "reward": "flower_pot",
+      "specialRule": null
+    },
+    {
+      "id": "5-2",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_2.rxscene",
+      "manifest": "Content/Levels/Adventure/5-2.json",
+      "reward": "kernel_pult",
+      "specialRule": null
+    },
+    {
+      "id": "5-3",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_3.rxscene",
+      "manifest": "Content/Levels/Adventure/5-3.json",
+      "reward": "coffee_bean",
+      "specialRule": null
+    },
+    {
+      "id": "5-4",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_4.rxscene",
+      "manifest": "Content/Levels/Adventure/5-4.json",
+      "reward": "watering_can",
+      "specialRule": "zen_garden_unlock"
+    },
+    {
+      "id": "5-5",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_5.rxscene",
+      "manifest": "Content/Levels/Adventure/5-5.json",
+      "reward": "garlic",
+      "specialRule": "bobsled"
+    },
+    {
+      "id": "5-6",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_6.rxscene",
+      "manifest": "Content/Levels/Adventure/5-6.json",
+      "reward": "umbrella_leaf",
+      "specialRule": null
+    },
+    {
+      "id": "5-7",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_7.rxscene",
+      "manifest": "Content/Levels/Adventure/5-7.json",
+      "reward": "marigold",
+      "specialRule": null
+    },
+    {
+      "id": "5-8",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_8.rxscene",
+      "manifest": "Content/Levels/Adventure/5-8.json",
+      "reward": "melon_pult",
+      "specialRule": null
+    },
+    {
+      "id": "5-9",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_9.rxscene",
+      "manifest": "Content/Levels/Adventure/5-9.json",
+      "reward": "note",
+      "specialRule": null
+    },
+    {
+      "id": "5-10",
+      "stage": "roof",
+      "scene": "Content/Scenes/Levels/Level_5_10.rxscene",
+      "manifest": "Content/Levels/Adventure/5-10.json",
+      "reward": "silver_trophy",
+      "specialRule": "boss"
+    }
+  ]
+}

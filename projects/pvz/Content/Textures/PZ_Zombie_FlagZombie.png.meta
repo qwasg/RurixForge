@@ -1,0 +1,10 @@
+guid: c33fcb0d-0397-5746-ba88-975b84555f49
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/SourceAtlases/PZ_ZombieGroup_01.png
+    pipeline: ai-atlas-grid-crop
+build_state: current

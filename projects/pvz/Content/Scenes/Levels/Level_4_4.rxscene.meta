@@ -1,0 +1,10 @@
+guid: 1bf16496-b5fa-5444-852e-8d7f4c67017d
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 4-4(fog,20 波,奖励 taco);在 IDE Assets 面板双击即可装进视口试玩

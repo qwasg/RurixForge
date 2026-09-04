@@ -89,13 +89,13 @@ describe('<Composer /> 发送状态机', () => {
 });
 
 describe('<Composer /> 模式与技能', () => {
-  it('+ 菜单含 AgentKind 三节与五模式;非 build 出 chip;x 复位', () => {
+  it('+ 菜单含 AgentKind 三节与六模式;非 build 时 + 钮内出模式标签;x 复位', () => {
     render(<Composer />);
     fireEvent.click(screen.getByTestId('composer-add'));
     for (const id of ['coding', 'general', 'document']) {
       expect(screen.getByTestId(`kind-item-${id}`)).toBeInTheDocument();
     }
-    for (const id of ['build', 'plan', 'debug', 'multitask', 'ask']) {
+    for (const id of ['build', 'plan', 'team', 'debug', 'multitask', 'ask']) {
       expect(screen.getByTestId(`mode-item-${id}`)).toBeInTheDocument();
     }
     fireEvent.click(screen.getByTestId('mode-item-multitask'));
@@ -220,13 +220,36 @@ describe('<Composer /> 单行胶囊', () => {
     );
   });
 
-  it('模式 chip 移到胶囊上方 chip 行', () => {
+  it('模式 chip 与 [+] 钮融合:非 build 时 + 钮拉宽显示模式并带 × 复位,不再另占 chip 行', () => {
     render(<Composer />);
+    // build:纯 + 圆钮,无模式标签/复位钮
+    const pill = screen.getByTestId('composer-mode-pill');
+    expect(pill).toHaveAttribute('data-mode', 'build');
+    expect(screen.queryByTestId('composer-mode-chip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('composer-mode-reset')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('composer-add'));
     fireEvent.click(screen.getByTestId('mode-item-plan'));
-    expect(screen.getByTestId('composer-chips')).toContainElement(
+    // plan:模式标签落在 + 钮内部,× 与其同壳;胶囊保持单行,上方无 chip 行
+    expect(pill).toHaveAttribute('data-mode', 'plan');
+    expect(screen.getByTestId('composer-add')).toContainElement(
       screen.getByTestId('composer-mode-chip'),
     );
+    expect(pill).toContainElement(screen.getByTestId('composer-mode-reset'));
+    expect(screen.getByTestId('composer-capsule')).toContainElement(pill);
+    expect(screen.queryByTestId('composer-chips')).not.toBeInTheDocument();
     expect(screen.getByTestId('composer')).toHaveAttribute('data-capsule', '1');
+    // × 复位:回到纯 + 圆钮,+ 钮本身仍在
+    fireEvent.click(screen.getByTestId('composer-mode-reset'));
+    expect(pill).toHaveAttribute('data-mode', 'build');
+    expect(screen.queryByTestId('composer-mode-chip')).not.toBeInTheDocument();
+    expect(screen.getByTestId('composer-add')).toBeInTheDocument();
+  });
+
+  it('技能 chip 行独立于模式:只选技能时出 chip 行,只切模式时不出', () => {
+    render(<Composer />);
+    fireEvent.click(screen.getByTestId('composer-add'));
+    fireEvent.click(screen.getByTestId('mode-item-debug'));
+    expect(screen.queryByTestId('composer-chips')).not.toBeInTheDocument();
+    expect(screen.getByTestId('composer-mode-chip')).toHaveTextContent('Debug');
   });
 });

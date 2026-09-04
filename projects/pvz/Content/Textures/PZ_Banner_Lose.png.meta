@@ -1,0 +1,9 @@
+guid: 93e49b3a-4955-5377-afc0-781d1f16fc30
+type: texture
+importer: png
+provenance:
+  origin: tool
+  detail:
+    tool: tools/polish_assets.py
+    pipeline: pil-banner
+build_state: current

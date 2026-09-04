@@ -3,6 +3,8 @@ import {
   applyPalette,
   defaultAppearance,
   effectiveDark,
+  FORGE_DARK,
+  FORGE_LIGHT,
   mixHex,
   MOONLIT_DARK,
   MOONLIT_LIGHT,
@@ -44,7 +46,7 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     expect(t['text-2']).toBe('#767470'); // mix(fg,bg,0.42·(1.1-0.225))
     expect(t['text-3']).toBe('#9D9B97');
     expect(t['text-4']).toBe('#BDBBB7');
-    expect(t['text-inv']).toBe('#FAF9F5'); // 亮:固定奶油
+    expect(t['text-inv']).toBe('#FFFFFF'); // 净化波:亮反色文字 → 纯白
     expect(t['accent']).toBe('#C96442');
     expect(t['accent-soft']).toBe('#B85C3C'); // 压暗 0.08
     expect(t['accent-bg']).toBe('#C9644214'); // alpha 0x14
@@ -122,17 +124,72 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     expect(normalizeHex('339cff')).toBe('#339CFF');
     expect(normalizeHex('gggggg')).toBeNull();
   });
+
+  it('forge 亮表固定输入 → 全 token 期望值(净化波默认,兜底 theme.css 静态表)', () => {
+    const t = applyPalette(FORGE_LIGHT, false);
+    expect(t['bg']).toBe('#FFFFFF');
+    expect(t['bg-sunk']).toBe('#F4F4F4'); // 压暗 0.04
+    expect(t['bg-panel']).toBe('#FFFFFF'); // 亮:panel=bg
+    expect(t['bg-input']).toBe('#FFFFFF');
+    expect(t['text']).toBe('#1B1D21');
+    expect(t['text-2']).toBe('#6A6B6D'); // mix(fg,bg,0.42·(1.1-0.275))
+    expect(t['text-3']).toBe('#949597');
+    expect(t['text-4']).toBe('#B7B8B9');
+    expect(t['text-inv']).toBe('#FFFFFF');
+    expect(t['accent']).toBe('#C94F12');
+    expect(t['accent-soft']).toBe('#B84810'); // 压暗 0.08
+    expect(t['accent-bg']).toBe('#C94F1214');
+    expect(t['accent-ring']).toBe('#C94F1247');
+    expect(t['bg-selection']).toBe('#C94F1214');
+    expect(t['line']).toBe('#1B1D2117');
+    expect(t['line-strong']).toBe('#1B1D2124');
+    expect(t['bg-hover']).toBe('#1B1D210A'); // 净化波:fg 派生
+    expect(t['bg-active']).toBe('#1B1D2112');
+    expect(t['bg-sidebar']).toBe('#F4F4F4');
+    expect(t['bg-float']).toBe('#FFFFFF');
+    expect(t['dot-running']).toBe('#C94F12');
+    expect(t['sage']).toBe('#1D7A46'); // 净化波语义色
+    expect(t['danger']).toBe('#CE3A1E');
+    expect(t['warn']).toBe('#9A6A0A');
+    expect(t['info']).toBe('#2563EB');
+  });
+
+  it('forge 暗表固定输入 → 全 token 期望值', () => {
+    const t = applyPalette(FORGE_DARK, true);
+    expect(t['bg']).toBe('#191A1D');
+    expect(t['bg-sunk']).toBe('#17181B'); // 压暗 0.06
+    expect(t['bg-panel']).toBe('#222326'); // 暗:提亮 0.04
+    expect(t['text']).toBe('#E8E9EC');
+    expect(t['text-2']).toBe('#A2A3A6'); // mix(fg,bg,0.42·(1.1-0.3))
+    expect(t['text-3']).toBe('#7C7D80');
+    expect(t['text-4']).toBe('#5B5C5F');
+    expect(t['text-inv']).toBe('#191A1D');
+    expect(t['accent']).toBe('#F47B33');
+    expect(t['accent-soft']).toBe('#F58E51'); // 提亮 0.15
+    expect(t['accent-bg']).toBe('#F47B3324');
+    expect(t['accent-ring']).toBe('#F47B336B');
+    expect(t['line']).toBe('#E8E9EC12');
+    expect(t['line-strong']).toBe('#E8E9EC21');
+    expect(t['bg-hover']).toBe('#FFFFFF0D');
+    expect(t['bg-active']).toBe('#FFFFFF14');
+    expect(t['bg-sidebar']).toBe('#17181B');
+    expect(t['bg-float']).toBe('#222326');
+    expect(t['sage']).toBe('#7BC996');
+    expect(t['danger']).toBe('#F0755A');
+    expect(t['warn']).toBe('#E0B45C');
+    expect(t['info']).toBe('#7AA8F0');
+  });
 });
 
 describe('themeStore', () => {
-  it('默认 = moonlit 预设,mode auto,13/12', () => {
+  it('默认 = forge 预设(净化波),mode auto,13/12', () => {
     const d = defaultAppearance();
-    expect(d.presetId).toBe('moonlit');
-    expect(d.light.accent).toBe('#C96442');
-    expect(d.dark.accent).toBe('#E2886A');
+    expect(d.presetId).toBe('forge');
+    expect(d.light.accent).toBe('#C94F12');
+    expect(d.dark.accent).toBe('#F47B33');
     expect(d.uiSize).toBe(13);
     expect(d.codeSize).toBe(12);
-    expect(THEME_PRESETS).toHaveLength(10);
+    expect(THEME_PRESETS).toHaveLength(11);
     expect(presetById('codex')?.light.translucentSidebar).toBe(true);
   });
 
@@ -147,13 +204,13 @@ describe('themeStore', () => {
     useThemeStore.getState().setMode('dark');
     expect(useThemeStore.getState().isDark).toBe(true);
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#E2886A');
+    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#F47B33');
     const raw = globalThis.localStorage?.getItem('forge:appearance');
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw as string).mode).toBe('dark');
     useThemeStore.getState().setMode('light');
     expect(document.documentElement.dataset.theme).toBe('light');
-    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#C96442');
+    expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#C94F12');
   });
 
   it('applyPreset(github):亮暗双表切换 + 预设 id 记录', () => {
@@ -202,6 +259,43 @@ describe('themeStore', () => {
     expect(s.mode).toBe('dark');
     expect(s.presetId).toBe('gruvbox');
     expect(s.light.accent).toBe('#B57614'); // 局部覆盖
-    expect(s.light.background).toBe('#FAF9F5'); // 缺省回默认 moonlit
+    expect(s.light.background).toBe('#FFFFFF'); // 缺省回默认 forge
+  });
+
+  it('净化波迁移:moonlit 预设 + 双表未自定义 → 自动切 forge', async () => {
+    globalThis.localStorage?.setItem(
+      'forge:appearance',
+      JSON.stringify({
+        ...defaultAppearance(),
+        presetId: 'moonlit',
+        light: { ...MOONLIT_LIGHT },
+        dark: { ...MOONLIT_DARK },
+      }),
+    );
+    vi.resetModules();
+    const mod = await import('@/lib/themeStore');
+    const s = mod.useThemeStore.getState();
+    expect(s.presetId).toBe('forge');
+    expect(s.light).toEqual(FORGE_LIGHT);
+    expect(s.dark).toEqual(FORGE_DARK);
+  });
+
+  it('净化波迁移:moonlit 预设但配色已自定义 → 保留不动', async () => {
+    const customLight = { ...MOONLIT_LIGHT, accent: '#123456' };
+    globalThis.localStorage?.setItem(
+      'forge:appearance',
+      JSON.stringify({
+        ...defaultAppearance(),
+        presetId: 'moonlit',
+        light: customLight,
+        dark: { ...MOONLIT_DARK },
+      }),
+    );
+    vi.resetModules();
+    const mod = await import('@/lib/themeStore');
+    const s = mod.useThemeStore.getState();
+    expect(s.presetId).toBe('moonlit');
+    expect(s.light.accent).toBe('#123456');
+    expect(s.light.background).toBe('#FAF9F5'); // 自定义表原样保留
   });
 });

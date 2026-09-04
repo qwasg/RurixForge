@@ -1,0 +1,13 @@
+guid: 9d25bc9b-1c76-496c-85d0-38e2630edc1c
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:56:26Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct invading zombie full-body icons: 1:backup dancer zombie; 2:zombie wearing yellow duck swim ring; 3:zombie with snorkel and goggles; 4:zombie driving ice resurfacing machine; 5:four zombies riding red bobsled; 6:zombie riding cartoon dolphin; 7:zombie holding jack-in-the-box; 8:zombie floating under red balloon. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 201902
+    sourceRefs: []
+build_state: current

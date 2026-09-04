@@ -1,0 +1,10 @@
+guid: 670d30d0-226b-5f76-85b7-ca80eb90a245
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-8(roof,20 波,奖励 melon_pult);在 IDE Assets 面板双击即可装进视口试玩

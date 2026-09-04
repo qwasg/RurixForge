@@ -2,11 +2,12 @@
  * F7 wave.4 build_timeline TS 移植(参考 ui/chat.rs 逐规则;G-F7-4)。
  *
  * 规则(与参考逐条对齐):
- * - 连续普通 tool 块合并为 activity segment;milestone 断段(text/reasoning/subagent 块,
+ * - 连续普通 tool 块合并为 activity segment;milestone 断段(text/subagent 块,
  *   或 tool 名 === "task" | "write_todos")。
  * - 段统计:Edit=写改删类按目标文件去重(args path/file/filePath/scenePath/assetPath/
  *   destFolder 取一)、Explore=读取浏览类按路径去重、Search 计数、Command 计数、Other 计数;
- *   短语「编辑 3 个文件，探索 2 个文件，1 次搜索，执行 1 条命令，2 次其他操作」(全空「工作中」)。
+ *   短语「Edited 3 files, explored 2 files, 1 search, ran 1 command」(全空「Working」;
+ *   原中文短语见留痕⑥)。
  * - +added/-removed 估算:args 含 old_str/new_str 或 oldContent/newContent → 行级 LCS 最小
  *   增删数(与参考 Myers 同计数语义);仅 content/newContent → 全行计 added;都没有 → 0(不显示)。
  * - 「· n 失败」;段尾仍运行 →「{汇总} · 正在{动词}…」。
@@ -18,6 +19,18 @@
  *    故先剥前缀查动词表,仅未知 MCP 名才回退「server / tool」;
  * ③ 参考 apply_patch 的 *** Add/Update/Delete File 头解析不移植(本仓无该工具);
  * ④ 参考段短语「探索」= read_file/list_dir,本仓 Explore 为实体/场景/资产读取类,措辞保持参考。
+ * ⑤ 2026-09-03 用户指令:思考行改「进行中渐变 Thinking / 结束 Thinking for {时长}」,
+ *    参考 reasoning_summary(摘录 + N 字)随之下线,时长由 reasoning 事件 ts 之差如实得出。
+ * ⑥ 2026-09-03 用户指令(过程链英文 / 正文中文加粗):本文件承担的**过程链文案整体转英文**,
+ *    行形态对齐用户给的目标截图 ——「{动词} {目标}」两段式(`Read timeline.ts L90-625`、
+ *    `Grepped danger|dot-blocked in theme.css`、`Searched files components/chat` + glob 串、
+ *    `Ran cargo test`),段汇总「Exploring 12 files, 9 searches, ran 2 commands」
+ *    (段内有 running 工具 → 首动词用现在分词),思考行「Thought 47s」/ 无计时「Thought briefly」。
+ *    面向用户的正文仍是中文(后端 SYSTEM_PROMPT 约定),渲染层加粗加黑,与灰色过程链拉开层级。
+ * ⑦ 同批指令(报错不特别标明):失败不再进文案(原「· n 失败」「失败:{首行}」下线),
+ *    错误原文只在展开的工具详情里如实可见;SegmentStats.errors 仍如实统计,只是不再上屏。
+ * ⑧ 同批指令:reasoning 不再是 milestone —— 思考行与工具行同列并进活动段(截图里
+ *    「Thought 47s」就夹在 Read/Grepped 之间);孤立 reasoning 段由渲染层裸行呈现。
  */
 
 // ---- 块模型(chatStore 与渲染层共用) ----
@@ -26,7 +39,14 @@ export type BlockStatus = 'running' | 'done' | 'error';
 
 export type ChatBlock =
   | { kind: 'text'; text: string; final: boolean }
-  | { kind: 'reasoning'; text: string }
+  | {
+      kind: 'reasoning';
+      text: string;
+      /** 该块首个 reasoning 事件 ts(ISO);缺省 = 无计时(旧快照/直接构造的块)。 */
+      startedTs?: string;
+      /** 该块末个 reasoning 事件 ts(ISO);与 startedTs 之差即思考时长。 */
+      endedTs?: string;
+    }
   | {
       kind: 'tool';
       /** = 事件 payload.toolCallId。 */
@@ -52,6 +72,12 @@ export type ChatBlock =
       summary?: string;
       prompt?: string;
       parentToolCallId?: string;
+      /**
+       * D-036:后台子代理(multitask dispatch)自己的 runId —— Stop 要打它,
+       * 不能打全局 activeRunId(后台跑的时候父轮早结束了,activeRunId 是空的)。
+       * 同步 task 子代理无此字段,Stop 维持中止父轮的原语义。
+       */
+      detachedRunId?: string;
       work: ChatBlock[];
     };
 
@@ -80,81 +106,121 @@ export function bareName(name: string): string {
   return m ? m[1] : name;
 }
 
-// ---- 本仓动词表(留痕:按 KNOWN_TOOLS 全量核对重写;label=单次行首标签,prefix/suffix=聚合短语) ----
+// ---- 本仓动词表(留痕⑥:按 KNOWN_TOOLS 全量核对逐条转英文;done=完成态行首动词、
+// running=运行中现在分词、prefix/suffix=同类并组短语「{prefix} {n} {suffix}」) ----
 
 interface ToolMeta {
-  label: string;
+  /** 完成态行首动词(过去式,如 `Read` / `Created entity`)。 */
+  done: string;
+  /** 运行中行首动词(现在分词,如 `Reading` / `Creating entity`)。 */
+  running: string;
   groupPrefix: string;
   groupSuffix: string;
 }
 
+/** 表项构造(四段固定序,免逐行写键名)。 */
+const m = (done: string, running: string, groupPrefix: string, groupSuffix: string): ToolMeta => ({
+  done,
+  running,
+  groupPrefix,
+  groupSuffix,
+});
+
 const TOOL_META: Record<string, ToolMeta> = {
   // engine-scene:实体/组件/变换
-  entity_create: { label: '创建实体', groupPrefix: '创建', groupSuffix: '个实体' },
-  entity_destroy: { label: '删除实体', groupPrefix: '删除', groupSuffix: '个实体' },
-  entity_rename: { label: '重命名', groupPrefix: '重命名', groupSuffix: '个实体' },
-  entity_list: { label: '列出实体', groupPrefix: '列出实体', groupSuffix: '次' },
-  entity_get: { label: '读取实体', groupPrefix: '读取实体', groupSuffix: '次' },
-  entity_batch_apply: { label: '批量应用', groupPrefix: '批量应用', groupSuffix: '次' },
-  transform_set: { label: '设置变换', groupPrefix: '设置变换', groupSuffix: '次' },
-  transform_get: { label: '读取变换', groupPrefix: '读取变换', groupSuffix: '次' },
-  transform_batch_set: { label: '批量设置变换', groupPrefix: '批量设置变换', groupSuffix: '次' },
-  component_add: { label: '添加组件', groupPrefix: '添加组件', groupSuffix: '次' },
-  component_remove: { label: '移除组件', groupPrefix: '移除组件', groupSuffix: '次' },
-  component_set: { label: '设置组件', groupPrefix: '设置组件', groupSuffix: '次' },
-  component_get: { label: '读取组件', groupPrefix: '读取组件', groupSuffix: '次' },
-  component_list_types: { label: '列出组件类型', groupPrefix: '列出组件类型', groupSuffix: '次' },
+  entity_create: m('Created entity', 'Creating entity', 'Created', 'entities'),
+  entity_destroy: m('Deleted entity', 'Deleting entity', 'Deleted', 'entities'),
+  entity_rename: m('Renamed entity', 'Renaming entity', 'Renamed', 'entities'),
+  entity_list: m('Listed entities', 'Listing entities', 'Listed entities', 'times'),
+  entity_get: m('Read entity', 'Reading entity', 'Read', 'entities'),
+  entity_batch_apply: m('Applied batch', 'Applying batch', 'Applied', 'batches'),
+  transform_set: m('Set transform', 'Setting transform', 'Set', 'transforms'),
+  transform_get: m('Read transform', 'Reading transform', 'Read', 'transforms'),
+  transform_batch_set: m('Set transforms', 'Setting transforms', 'Set', 'transform batches'),
+  component_add: m('Added component', 'Adding component', 'Added', 'components'),
+  component_remove: m('Removed component', 'Removing component', 'Removed', 'components'),
+  component_set: m('Set component', 'Setting component', 'Set', 'components'),
+  component_get: m('Read component', 'Reading component', 'Read', 'components'),
+  component_list_types: m('Listed component types', 'Listing component types', 'Listed component types', 'times'),
   // engine-scene:场景/编辑
-  scene_save: { label: '保存场景', groupPrefix: '保存场景', groupSuffix: '次' },
-  scene_load: { label: '加载场景', groupPrefix: '加载场景', groupSuffix: '次' },
-  scene_new: { label: '新建场景', groupPrefix: '新建场景', groupSuffix: '次' },
-  scene_summary: { label: '场景摘要', groupPrefix: '场景摘要', groupSuffix: '次' },
-  scene_graph_dump: { label: '导出场景图', groupPrefix: '导出场景图', groupSuffix: '次' },
-  scene_diff: { label: '场景对比', groupPrefix: '场景对比', groupSuffix: '次' },
-  scene_checkpoint: { label: '场景检查点', groupPrefix: '场景检查点', groupSuffix: '次' },
-  scene_rollback: { label: '场景回滚', groupPrefix: '场景回滚', groupSuffix: '次' },
-  edit_undo: { label: '撤销', groupPrefix: '撤销', groupSuffix: '次' },
-  edit_redo: { label: '重做', groupPrefix: '重做', groupSuffix: '次' },
-  host_events: { label: '读取事件', groupPrefix: '读取事件', groupSuffix: '次' },
-  host_events_drain: { label: '排空事件', groupPrefix: '排空事件', groupSuffix: '次' },
-  host_ping: { label: '探测宿主', groupPrefix: '探测宿主', groupSuffix: '次' },
-  render_once: { label: '渲染一帧', groupPrefix: '渲染一帧', groupSuffix: '次' },
+  scene_save: m('Saved scene', 'Saving scene', 'Saved', 'scenes'),
+  scene_load: m('Loaded scene', 'Loading scene', 'Loaded', 'scenes'),
+  scene_new: m('Created scene', 'Creating scene', 'Created', 'scenes'),
+  scene_summary: m('Read scene', 'Reading scene', 'Read scene', 'times'),
+  scene_index: m('Indexed scene', 'Indexing scene', 'Indexed scene', 'times'),
+  scene_graph_dump: m('Dumped scene graph', 'Dumping scene graph', 'Dumped scene graph', 'times'),
+  scene_diff: m('Diffed scene', 'Diffing scene', 'Diffed scene', 'times'),
+  scene_checkpoint: m('Checkpointed scene', 'Checkpointing scene', 'Checkpointed scene', 'times'),
+  scene_rollback: m('Rolled back scene', 'Rolling back scene', 'Rolled back scene', 'times'),
+  edit_undo: m('Undid edit', 'Undoing edit', 'Undid', 'edits'),
+  edit_redo: m('Redid edit', 'Redoing edit', 'Redid', 'edits'),
+  host_events: m('Read host events', 'Reading host events', 'Read host events', 'times'),
+  host_events_drain: m('Drained host events', 'Draining host events', 'Drained host events', 'times'),
+  host_ping: m('Pinged host', 'Pinging host', 'Pinged host', 'times'),
+  render_once: m('Rendered frame', 'Rendering frame', 'Rendered', 'frames'),
   // engine-scene:播放/视口
-  play_enter: { label: '进入播放', groupPrefix: '进入播放', groupSuffix: '次' },
-  play_exit: { label: '退出播放', groupPrefix: '退出播放', groupSuffix: '次' },
-  play_pause: { label: '暂停', groupPrefix: '暂停', groupSuffix: '次' },
-  play_resume: { label: '继续', groupPrefix: '继续', groupSuffix: '次' },
-  play_step: { label: '步进', groupPrefix: '步进', groupSuffix: '次' },
-  play_state: { label: '播放状态', groupPrefix: '播放状态', groupSuffix: '次' },
-  logic_inject_input: { label: '注入输入', groupPrefix: '注入输入', groupSuffix: '次' },
+  play_enter: m('Entered play', 'Entering play', 'Entered play', 'times'),
+  play_exit: m('Exited play', 'Exiting play', 'Exited play', 'times'),
+  play_pause: m('Paused', 'Pausing', 'Paused', 'times'),
+  play_resume: m('Resumed', 'Resuming', 'Resumed', 'times'),
+  play_step: m('Stepped', 'Stepping', 'Stepped', 'times'),
+  play_state: m('Read play state', 'Reading play state', 'Read play state', 'times'),
+  logic_inject_input: m('Injected input', 'Injecting input', 'Injected', 'inputs'),
   // code-forge / gen-image / gen-model(任务书具名项)
-  graph_get: { label: '读取节点图', groupPrefix: '读取节点图', groupSuffix: '次' },
-  graph_validate: { label: '校验图', groupPrefix: '校验图', groupSuffix: '次' },
-  graph_create: { label: '写入图', groupPrefix: '写入图', groupSuffix: '次' },
-  gen_image: { label: '生成贴图', groupPrefix: '生成贴图', groupSuffix: '次' },
-  gen_accept: { label: '入库', groupPrefix: '入库', groupSuffix: '次' },
-  gen_mesh: { label: '生成网格', groupPrefix: '生成网格', groupSuffix: '次' },
+  graph_get: m('Read graph', 'Reading graph', 'Read', 'graphs'),
+  graph_validate: m('Validated graph', 'Validating graph', 'Validated', 'graphs'),
+  graph_create: m('Wrote graph', 'Writing graph', 'Wrote', 'graphs'),
+  code_structured_edit: m('Edited', 'Editing', 'Edited', 'files'),
+  code_symbol_search: m('Searched symbols', 'Searching symbols', 'Searched symbols', 'times'),
+  code_references: m('Found references', 'Finding references', 'Found references', 'times'),
+  rx_check: m('Checked', 'Checking', 'Checked', 'times'),
+  rx_fmt: m('Formatted', 'Formatting', 'Formatted', 'files'),
+  rx_build: m('Built', 'Building', 'Built', 'times'),
+  rx_run: m('Ran', 'Running', 'Ran', 'times'),
+  rx_test: m('Tested', 'Testing', 'Tested', 'times'),
+  gen_image: m('Generated texture', 'Generating texture', 'Generated', 'textures'),
+  gen_texture_set: m('Generated texture set', 'Generating texture set', 'Generated', 'texture sets'),
+  gen_accept: m('Imported asset', 'Importing asset', 'Imported', 'assets'),
+  gen_mesh: m('Generated mesh', 'Generating mesh', 'Generated', 'meshes'),
+  // 资产/精灵/检索(通配族之上的具名项,措辞比「Handled asset」如实)
+  asset_list: m('Listed assets', 'Listing assets', 'Listed assets', 'times'),
+  asset_import: m('Imported asset', 'Importing asset', 'Imported', 'assets'),
+  asset_get_meta: m('Read asset meta', 'Reading asset meta', 'Read asset meta', 'times'),
+  asset_refs: m('Queried asset refs', 'Querying asset refs', 'Queried asset refs', 'times'),
+  sprite_create: m('Created sprite', 'Creating sprite', 'Created', 'sprites'),
+  sprite_set: m('Set sprite', 'Setting sprite', 'Set', 'sprites'),
+  material_create: m('Created material', 'Creating material', 'Created', 'materials'),
+  texture_process: m('Processed texture', 'Processing texture', 'Processed', 'textures'),
+  context_search: m('Searched context', 'Searching context', 'Searched context', 'times'),
+  context_index_build: m('Built index', 'Building index', 'Built index', 'times'),
+  project_list: m('Listed projects', 'Listing projects', 'Listed projects', 'times'),
+  resource_search: m('Searched resources', 'Searching resources', 'Searched resources', 'times'),
   // 合成工具(F3 multitask)
-  'swarm.execute': { label: '集群执行', groupPrefix: '集群执行', groupSuffix: '次' },
-  // 运行时原生工具(对齐参考仓 IDE 动词)
-  read_file: { label: '读取', groupPrefix: '读取', groupSuffix: '个文件' },
-  list_dir: { label: '列出目录', groupPrefix: '列出', groupSuffix: '个目录' },
-  glob: { label: '查找文件', groupPrefix: '查找', groupSuffix: '次' },
-  grep: { label: '搜索', groupPrefix: '搜索', groupSuffix: '次' },
-  write_file: { label: '写入', groupPrefix: '写入', groupSuffix: '个文件' },
-  str_replace_edit: { label: '替换', groupPrefix: '替换', groupSuffix: '个文件' },
-  apply_patch: { label: '补丁', groupPrefix: '补丁', groupSuffix: '个文件' },
-  todo_write: { label: '待办', groupPrefix: '待办', groupSuffix: '次' },
-  write_todos: { label: '待办', groupPrefix: '待办', groupSuffix: '次' },
-  plan_write: { label: '计划', groupPrefix: '计划', groupSuffix: '次' },
-  todo_update: { label: '更新待办', groupPrefix: '更新待办', groupSuffix: '次' },
-  task: { label: '委派', groupPrefix: '委派', groupSuffix: '次' },
+  'swarm.execute': m('Ran swarm', 'Running swarm', 'Ran swarm', 'times'),
+  // 运行时原生工具(行首动词与目标截图逐字同款:Read / Grepped / Searched files / Ran)
+  read_file: m('Read', 'Reading', 'Read', 'files'),
+  read_skill: m('Read skill', 'Reading skill', 'Read', 'skills'),
+  list_dir: m('Listed', 'Listing', 'Listed', 'directories'),
+  glob: m('Searched files', 'Searching files', 'Searched files', 'times'),
+  grep: m('Grepped', 'Grepping', 'Grepped', 'times'),
+  write_file: m('Wrote', 'Writing', 'Wrote', 'files'),
+  str_replace_edit: m('Edited', 'Editing', 'Edited', 'files'),
+  apply_patch: m('Patched', 'Patching', 'Patched', 'files'),
+  todo_write: m('Updated todos', 'Updating todos', 'Updated todos', 'times'),
+  write_todos: m('Updated todos', 'Updating todos', 'Updated todos', 'times'),
+  plan_write: m('Wrote plan', 'Writing plan', 'Wrote plan', 'times'),
+  todo_update: m('Updated todo', 'Updating todo', 'Updated', 'todos'),
+  task: m('Delegated', 'Delegating', 'Delegated', 'times'),
+  // D-036:multitask 异步派发。刻意不进 isMilestoneBlock —— 里程碑工具块在
+  // AssistantMessage 里走 TodoMilestoneLine(待办行),派发该并进活动段读作
+  // 「Dispatched N subagents」;真正的子代理进展另有卡片(subagent.* 事件)。
+  dispatch: m('Dispatched subagent', 'Dispatching subagent', 'Dispatched', 'subagents'),
 };
 
-/** 通配族(viewport_*=视口操作 / asset_*=资产操作,任务书具名)。 */
+/** 通配族(viewport_* / asset_* 的兜底,具名项见上表)。 */
 const WILDCARD_META: Array<[string, ToolMeta]> = [
-  ['viewport_', { label: '视口操作', groupPrefix: '视口操作', groupSuffix: '次' }],
-  ['asset_', { label: '资产操作', groupPrefix: '资产操作', groupSuffix: '次' }],
+  ['viewport_', m('Adjusted viewport', 'Adjusting viewport', 'Adjusted viewport', 'times')],
+  ['asset_', m('Handled asset', 'Handling asset', 'Handled', 'assets')],
 ];
 
 export function toolMetaOf(name: string): ToolMeta | null {
@@ -167,31 +233,43 @@ export function toolMetaOf(name: string): ToolMeta | null {
   return null;
 }
 
-/** 单次行首标签(参考 tool_visual;未知 MCP 名 →「server / tool」,其余未知 → 原名)。 */
+/** 完成态行首动词(未知 MCP 名 →「server / tool」,其余未知 → 原名)。 */
 export function toolVisual(name: string): string {
   const meta = toolMetaOf(name);
-  if (meta) return meta.label;
-  const m = mcpOf(name);
-  if (m) return `${m[0]} / ${m[1]}`;
+  if (meta) return meta.done;
+  const mcp = mcpOf(name);
+  if (mcp) return `${mcp[0]} / ${mcp[1]}`;
   return name;
+}
+
+/** 运行中行首动词(现在分词;无表项回落完成态动词,不硬造分词)。 */
+export function toolVisualRunning(name: string): string {
+  const meta = toolMetaOf(name);
+  return meta ? meta.running : toolVisual(name);
 }
 
 /** 展开段内同类并组 key(参考 tool_group_key)。 */
 export function toolGroupKey(name: string): string {
   const meta = toolMetaOf(name);
-  if (meta) return `kind:${meta.label}`;
-  const m = mcpOf(name);
-  if (m) return `mcp:${m[0]}/${m[1]}`;
+  if (meta) return `kind:${meta.done}`;
+  const mcp = mcpOf(name);
+  if (mcp) return `mcp:${mcp[0]}/${mcp[1]}`;
   return `name:${name}`;
 }
 
-/** 「创建 3 个实体」式聚合短语(参考 group_phrase)。 */
-export function groupPhrase(name: string, n: number): string {
+/** 「Created 3 entities」式聚合短语两段式(渲染层分两档灰:动词深 / 计数浅)。 */
+export function groupPhraseParts(name: string, n: number): { verb: string; detail: string } {
   const meta = toolMetaOf(name);
-  if (meta) return `${meta.groupPrefix} ${n} ${meta.groupSuffix}`;
-  const m = mcpOf(name);
-  if (m) return `${m[0]} / ${m[1]} ×${n}`;
-  return `${name} ×${n}`;
+  if (meta) return { verb: meta.groupPrefix, detail: `${n} ${meta.groupSuffix}` };
+  const mcp = mcpOf(name);
+  if (mcp) return { verb: `${mcp[0]} / ${mcp[1]}`, detail: `×${n}` };
+  return { verb: name, detail: `×${n}` };
+}
+
+/** 「Created 3 entities」式聚合短语整串(参考 group_phrase)。 */
+export function groupPhrase(name: string, n: number): string {
+  const { verb, detail } = groupPhraseParts(name, n);
+  return `${verb} ${detail}`;
 }
 
 // ---- 段化(参考 build_timeline / is_milestone_block / group_segment_items) ----
@@ -201,7 +279,9 @@ export type TimelineItem =
   | { type: 'activity'; indices: number[] };
 
 export function isMilestoneBlock(block: ChatBlock): boolean {
-  if (block.kind !== 'tool') return true; // text / reasoning / subagent
+  // 留痕⑧:reasoning 不断段 —— 思考行与工具行同列并进活动段。
+  if (block.kind === 'reasoning') return false;
+  if (block.kind !== 'tool') return true; // text / subagent
   const bare = bareName(block.name);
   return bare === 'write_todos' || bare === 'todo_write' || bare === 'plan_write' || bare === 'task';
 }
@@ -440,23 +520,65 @@ export function segmentStats(blocks: ChatBlock[], indices: number[]): SegmentSta
   return stats;
 }
 
-/** 「编辑 3 个文件，探索 2 个文件，1 次搜索，执行 1 条命令，2 次其他操作」(参考 segment_phrase 逐字)。 */
-export function segmentPhrase(stats: SegmentStats): string {
-  const parts: string[] = [];
-  if (stats.edits > 0) parts.push(`编辑 ${stats.edits} 个文件`);
-  if (stats.explores > 0) parts.push(`探索 ${stats.explores} 个文件`);
-  if (stats.searches > 0) parts.push(`${stats.searches} 次搜索`);
-  if (stats.commands > 0) parts.push(`执行 ${stats.commands} 条命令`);
-  if (stats.others > 0) parts.push(`${stats.others} 次其他操作`);
-  return parts.length === 0 ? '工作中' : parts.join('，');
+/** 「2 files」式计数短语(many 缺省 = one + s)。 */
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
-/** 段尾运行中标签(参考:「正在{动词}…」,取倒数第一个 running 工具)。 */
+/**
+ * 段汇总两段式(留痕⑥,与目标截图逐字对齐):首动词深灰 + 其余浅灰。
+ * 「Edited 2 files, explored 2 files, 2 searches, ran 2 commands」;
+ * running=true 时首动词换现在分词:「Exploring 12 files, 9 searches, ran 2 commands」。
+ */
+export function segmentPhraseParts(
+  stats: SegmentStats,
+  running = false,
+): { verb: string; detail: string } {
+  const clauses: string[] = [];
+  let verb = '';
+  /** 首个非零类目定首动词(过去式/现在分词);其余类目退成小写从句。 */
+  const lead = (past: string, gerund: string): boolean => {
+    if (verb !== '') return false;
+    verb = running ? gerund : past;
+    return true;
+  };
+  if (stats.edits > 0) {
+    const n = plural(stats.edits, 'file');
+    clauses.push(lead('Edited', 'Editing') ? n : `edited ${n}`);
+  }
+  if (stats.explores > 0) {
+    const n = plural(stats.explores, 'file');
+    clauses.push(lead('Explored', 'Exploring') ? n : `explored ${n}`);
+  }
+  if (stats.searches > 0) {
+    const n = plural(stats.searches, 'search', 'searches');
+    lead('Explored', 'Exploring');
+    clauses.push(n);
+  }
+  if (stats.commands > 0) {
+    const n = plural(stats.commands, 'command');
+    clauses.push(lead('Ran', 'Running') ? n : `ran ${n}`);
+  }
+  if (stats.others > 0) {
+    const n = plural(stats.others, 'operation');
+    clauses.push(lead('Performed', 'Performing') ? n : `${stats.others} other operations`);
+  }
+  if (verb === '') return { verb: running ? 'Working…' : 'Working', detail: '' };
+  return { verb, detail: clauses.join(', ') };
+}
+
+/** 段汇总整串(渲染层用 parts 分两档灰;此串供嵌套摘要/测试用)。 */
+export function segmentPhrase(stats: SegmentStats, running = false): string {
+  const { verb, detail } = segmentPhraseParts(stats, running);
+  return detail === '' ? verb : `${verb} ${detail}`;
+}
+
+/** 段内是否仍有工具在跑(有 → 段首动词用现在分词);取倒数第一个 running 工具的分词。 */
 export function runningLabel(blocks: ChatBlock[], indices: number[]): string | null {
   for (let k = indices.length - 1; k >= 0; k -= 1) {
     const b = blocks[indices[k]];
     if (b.kind === 'tool' && toolStatus(b) === 'running') {
-      return `正在${toolVisual(b.name)}…`;
+      return toolVisualRunning(b.name);
     }
   }
   return null;
@@ -490,7 +612,8 @@ export function compactText(s: string): string {
 /** arg_summary:键序截 48(任务书键序;参考无 scenePath/assetPath/destFolder/id/entityId,本仓扩)。 */
 const ARG_KEYS = [
   'path', 'file', 'filePath', 'scenePath', 'assetPath', 'destFolder',
-  'command', 'query', 'pattern', 'url', 'dir', 'skill', 'prompt', 'name', 'id', 'entityId',
+  'command', 'query', 'pattern', 'url', 'dir', 'skill', 'description', 'prompt',
+  'name', 'id', 'entityId',
 ] as const;
 
 export function argSummary(args: string): string | null {
@@ -504,33 +627,108 @@ export function argSummary(args: string): string | null {
   return null;
 }
 
-/**
- * 单行工具摘要(参考 tool_summary):arg + 状态后缀。
- * 留痕:参考 completed 追加结果首行 48 摘要;本仓工具事件无 result 载荷(仅 ok/durationMs),
- * 如实不显示结果摘要。
- */
-export function toolSummary(b: Extract<ChatBlock, { kind: 'tool' }>): string {
-  const parts: string[] = [];
-  const a = argSummary(b.args);
-  if (a) parts.push(a);
-  const st = toolStatus(b);
-  if (st === 'running') parts.push('运行中…');
-  else if (st === 'error') {
-    const head = firstLine(b.error ?? '');
-    parts.push(head === '' ? '失败' : `失败：${ellipsize(head, 48)}`);
-  } else if (st === 'done' && b.result) {
-    const head = firstLine(b.result);
-    if (head !== '') parts.push(ellipsize(head, 48));
-  }
-  return parts.join(' · ');
+/** 末段文件名(带路径分隔符时取 basename;截图里「Read timeline.ts」即此口径)。 */
+export function baseName(p: string): string {
+  const norm = p.replace(/[\\/]+$/, '');
+  const cut = Math.max(norm.lastIndexOf('/'), norm.lastIndexOf('\\'));
+  return cut >= 0 ? norm.slice(cut + 1) : norm;
 }
 
-/** 思考折叠行摘要(参考 reasoning_summary:「{摘录} · {N} 字」)。 */
-export function reasoningSummary(text: string): string {
-  const head = compactText(text);
-  const chars = [...text].length;
-  if (head === '') return `${chars} 字`;
-  return `${ellipsize(head, 200)} · ${chars} 字`;
+/**
+ * 行号区间后缀「L90-625」:offset(1 基起行)+ limit,或 startLine/endLine 直给。
+ * 参数里没有行号信息 → 空串,绝不按内容长度伪造区间。
+ */
+export function lineRange(args: string): string {
+  const obj = parseArgs(args);
+  if (!obj) return '';
+  const num = (...keys: string[]): number | null => {
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === 'number' && Number.isInteger(v)) return v;
+      if (typeof v === 'string' && /^\d+$/.test(v.trim())) return Number(v.trim());
+    }
+    return null;
+  };
+  const start = num('offset', 'startLine', 'start_line', 'lineStart');
+  const end = num('endLine', 'end_line', 'lineEnd');
+  if (start === null && end === null) return '';
+  const from = start ?? 1;
+  if (from < 1) return '';
+  const limit = num('limit', 'maxLines');
+  const to = end ?? (limit === null ? null : from + limit - 1);
+  return to === null ? `L${from}` : `L${from}-${to}`;
+}
+
+/**
+ * 行尾目标串(留痕⑥,截图口径):
+ * grep →「{query} in {文件名}」、glob → 整个 pattern、读写类 →「{文件名} L{a}-{b}」、
+ * apply_patch → 补丁头里的文件名,其余按 ARG_KEYS 键序兜底(路径值取 basename)。
+ */
+export function toolTarget(b: Extract<ChatBlock, { kind: 'tool' }>): string {
+  const bare = bareName(b.name);
+  const str = (k: string): string | null => jsonArgStr(b.args, k);
+  if (bare === 'grep') {
+    const q = str('query') ?? str('pattern');
+    const head = q === null ? '' : ellipsize(compactText(q), 72);
+    const scope = str('path');
+    if (scope === null) return head;
+    return head === '' ? `in ${baseName(scope)}` : `${head} in ${baseName(scope)}`;
+  }
+  if (bare === 'glob') return ellipsize(str('pattern') ?? str('glob_pattern') ?? '', 72);
+  if (bare === 'apply_patch') {
+    const hit = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/m.exec(str('patch') ?? '');
+    return hit ? baseName(hit[1].trim()) : '';
+  }
+  const range = lineRange(b.args);
+  const withRange = (s: string): string => (range === '' ? s : `${s} ${range}`);
+  for (const k of TARGET_KEYS) {
+    const v = str(k);
+    if (v) return withRange(baseName(v));
+  }
+  const fallback = argSummary(b.args);
+  return fallback === null ? '' : withRange(fallback);
+}
+
+/** 行首动词(running → 现在分词)。 */
+export function toolVerb(b: Extract<ChatBlock, { kind: 'tool' }>): string {
+  return toolStatus(b) === 'running' ? toolVisualRunning(b.name) : toolVisual(b.name);
+}
+
+/**
+ * 单行工具串「{动词} {目标}」(嵌套摘要与测试取整串,渲染层分两档灰)。
+ * 留痕⑦:失败不再进文案(不缀「失败」也不缀错误首行),错误原文只在展开详情里如实可见。
+ */
+export function toolLine(b: Extract<ChatBlock, { kind: 'tool' }>): string {
+  const target = toolTarget(b);
+  return target === '' ? toolVerb(b) : `${toolVerb(b)} ${target}`;
+}
+
+/**
+ * 思考时长(ms):块首末 reasoning 事件 ts 之差。无计时(旧快照/直接构造)或时钟倒挂 → null,
+ * 由调用方退到无时长文案,不伪造秒数。
+ */
+export function reasoningDurationMs(b: Extract<ChatBlock, { kind: 'reasoning' }>): number | null {
+  if (b.startedTs === undefined || b.endedTs === undefined) return null;
+  const from = Date.parse(b.startedTs);
+  const to = Date.parse(b.endedTs);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return null;
+  return to - from;
+}
+
+/**
+ * 思考行两段式:完成「Thought」+「47s」(不足 1 秒进位 1s,过分钟仍报秒——截图里
+ * 「Thought 106s」逐字如此);无计时 →「Thought briefly」。进行中不走这里(渲染层出渐变
+ * 「Thinking」)。
+ */
+export function thinkingParts(durationMs: number | null): { verb: string; detail: string } {
+  if (durationMs === null) return { verb: 'Thought', detail: 'briefly' };
+  return { verb: 'Thought', detail: `${Math.max(1, Math.round(durationMs / 1000))}s` };
+}
+
+/** 思考折叠行整串:「Thought 47s」/「Thought briefly」。 */
+export function thinkingLabel(durationMs: number | null): string {
+  const { verb, detail } = thinkingParts(durationMs);
+  return `${verb} ${detail}`;
 }
 
 /** write_todos 里程碑标签(参考 todo_milestone_label;本仓无该工具,组件就绪)。 */
@@ -564,7 +762,7 @@ export function subagentDispatchSummary(label: string, prompt: string): string {
 export function workLine(block: ChatBlock): string {
   if (block.kind === 'text') return block.text;
   if (block.kind === 'reasoning') return block.text;
-  if (block.kind === 'tool') return toolSummary(block) || toolVisual(block.name);
+  if (block.kind === 'tool') return toolLine(block);
   if (block.kind === 'subagent') return block.label;
   return '';
 }

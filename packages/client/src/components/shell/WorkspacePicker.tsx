@@ -14,8 +14,12 @@ import {
 } from 'lucide-react';
 import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { cn } from '@/lib/cn';
+import { apiPost, ForgeApiError } from '@/lib/forgeApi';
 import { useToastStore } from '@/lib/toastStore';
 import { displayRoot, useWorkspaceStore, type ForgeWorkspace } from '@/lib/workspaceStore';
+
+/** F-GAME-3:新建工作区时的游戏选型(制作前定 2D/3D,写入 forge.toml [project] mode) */
+type GameTypeChoice = '2d' | '3d' | 'none';
 
 /**
  * 工作区选择器(2026-08-25 用户拍板:WORKSPACES 由会话列上方搬到底部用户卡上方)。
@@ -98,6 +102,9 @@ export default function WorkspacePicker() {
   const [name, setName] = useState('');
   const [root, setRoot] = useState('');
   const [picking, setPicking] = useState(false);
+  /** F-GAME-3:游戏类型选择(默认 2D;选 none = 仅登记目录,不初始化项目) */
+  const [gameType, setGameType] = useState<GameTypeChoice>('2d');
+  const [submitting, setSubmitting] = useState(false);
 
   const pickFolder = isDesktopBridge() ? bridge().workspace?.pickFolder : undefined;
 
@@ -127,6 +134,7 @@ export default function WorkspacePicker() {
   const resetForm = () => {
     setName('');
     setRoot('');
+    setGameType('2d');
   };
 
   const openPanel = (withForm: boolean) => {
@@ -150,10 +158,30 @@ export default function WorkspacePicker() {
   const submitWorkspace = () => {
     const n = name.trim();
     const r = root.trim();
-    if (n === '' || r === '') return;
+    if (n === '' || r === '' || submitting) return;
+    const gt = gameType;
     setCreating(false);
     resetForm();
-    void createWorkspace(n, r);
+    setSubmitting(true);
+    void (async () => {
+      // F-GAME-3:选了游戏类型 → 先 project/init 落定模式(forge.toml + 起始场景,
+      // 目录不存在时由它创建),再登记工作区;仅目录 = 老行为直接登记。
+      if (gt !== 'none') {
+        try {
+          await apiPost('/api/forge/project/init', { root: r, name: n, mode: gt });
+          pushToast('success', `已按 ${gt === '2d' ? '2D' : '3D'} 模式初始化项目「${n}」`);
+        } catch (err) {
+          // 目录已是项目(含 forge.toml)→ 保留其既有模式,继续登记工作区。
+          if (err instanceof ForgeApiError && err.code === 'PROJECT_ALREADY_INITIALIZED') {
+            pushToast('info', `「${n}」已是游戏项目,沿用其既有模式登记`);
+          } else {
+            pushToast('error', `项目初始化失败:${(err as Error).message}`);
+            return;
+          }
+        }
+      }
+      await createWorkspace(n, r);
+    })().finally(() => setSubmitting(false));
   };
 
   /** Esc 先收表单再轮到面板,所以这里吃掉冒泡 */
@@ -356,11 +384,48 @@ export default function WorkspacePicker() {
                   data-testid="sidebar-workspace-root"
                   onChange={(e) => setRoot(e.target.value)}
                   onKeyDown={onFormKeyDown}
-                  placeholder="根目录绝对路径…"
+                  placeholder="根目录绝对路径(不存在则创建)…"
                   className="w-full bg-transparent px-0.5 font-code text-[11px] text-fg outline-none placeholder:text-fg-4"
                 />
-                <button type="button" onClick={submitWorkspace} className="self-end text-[11px] text-acc">
-                  创建
+                {/* F-GAME-3:游戏选型——制作前定 2D/3D,写入 forge.toml,引擎/Agent 全链路透传 */}
+                <div className="flex flex-col gap-1">
+                  <span className="px-0.5 text-[10px] text-fg-4">游戏类型(写入项目 forge.toml)</span>
+                  <div className="flex gap-1" role="radiogroup" aria-label="游戏类型">
+                    {(
+                      [
+                        ['2d', '2D 游戏', 'XY 平面 · 正交相机 · Sprite 精灵'],
+                        ['3d', '3D 游戏', '透视相机 · 网格 · 3D 物理'],
+                        ['none', '仅目录', '不初始化项目'],
+                      ] as Array<[GameTypeChoice, string, string]>
+                    ).map(([value, label, tip]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={gameType === value}
+                        title={tip}
+                        data-testid={`workspace-gametype-${value}`}
+                        onClick={() => setGameType(value)}
+                        className={cn(
+                          'h-[22px] flex-1 rounded-[5px] border text-[11px] transition-colors',
+                          gameType === value
+                            ? 'border-acc-ring bg-shell-active text-acc'
+                            : 'border-edge text-fg-3 hover:bg-shell-hover',
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={submitWorkspace}
+                  className="self-end text-[11px] text-acc disabled:opacity-40"
+                  data-testid="sidebar-workspace-create"
+                >
+                  {submitting ? '创建中…' : '创建'}
                 </button>
               </div>
             )}

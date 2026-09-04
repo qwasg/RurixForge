@@ -1,0 +1,12 @@
+guid: 1452ddc8-64a7-4fcf-a7bf-0334385d84aa
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:42:12Z
+    prompt: ice glass block, translucent light blue crystal cube with cracks and frost, cartoon 2D game asset for a physics puzzle game, Angry Birds style, square shape, isolated on plain solid magenta background, crisp edges, no text
+    seed: 16231336899615083
+    sourceRefs: []
+build_state: current

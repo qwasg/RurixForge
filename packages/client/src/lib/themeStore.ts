@@ -10,6 +10,13 @@ import { create } from 'zustand';
  * 差异留痕:参考 moonlit-uikit crate(Tokens::claude_light/dark 的 sage/danger/warn/info
  * 与 dot_done/idle/blocked/queued 具体色值)未随拷贝仓提供(path dep 缺失),语义色为本仓
  * 派生值(见 theme.css 注释);apply_palette 派生面(本模块)与参考逐值一致。
+ *
+ * 主题净化波(2026-08-31 用户拍板:默认暖奶油显脏、字不清楚):
+ * - 新增 forge 预设(中性净底 + 精炼锻橙)并取代 moonlit 成为默认;moonlit 原值保留可选。
+ * - applyPalette 两处泛化:亮色 hover/active 由硬编码 #2A27240A/12 改为 fg+0x0A/0x12
+ *   (对 moonlit 逐值等价,fg=#2A2724);亮色 text_inv 由 #FAF9F5 改为 #FFFFFF。
+ * - 语义色 SEMANTIC_LIGHT/DARK 全局换干净同族(对所有预设生效,差异如实留档)。
+ * - loadSettings 一次性迁移:presetId=moonlit 且双表未自定义 → 自动切 forge。
  */
 
 // ---------- 十六进制颜色工具(对应 appearance.rs parse_hex_rgb/mix_hex/darken_hex/lighten_hex) ----------
@@ -107,7 +114,12 @@ function palette(
 export const MOONLIT_LIGHT: ThemePalette = palette('#C96442', '#FAF9F5', '#2A2724', false, 45);
 export const MOONLIT_DARK: ThemePalette = palette('#E2886A', '#1C1B18', '#ECE8DF', false, 60);
 
+/** 主题净化波默认预设:中性净底(去黄去暖)+ 精炼锻橙 accent;contrast 55/60 抬高二级文字对比 */
+export const FORGE_LIGHT: ThemePalette = palette('#C94F12', '#FFFFFF', '#1B1D21', false, 55);
+export const FORGE_DARK: ThemePalette = palette('#F47B33', '#191A1D', '#E8E9EC', false, 60);
+
 export const THEME_PRESETS: ThemePreset[] = [
+  { id: 'forge', name: 'Forge', swatch: '#C94F12', light: FORGE_LIGHT, dark: FORGE_DARK },
   { id: 'moonlit', name: 'Moonlit', swatch: '#C96442', light: MOONLIT_LIGHT, dark: MOONLIT_DARK },
   {
     id: 'absolutely', name: 'Absolutely', swatch: '#FF6B35',
@@ -174,24 +186,24 @@ export interface ThemeTokens {
  * uikit 源不在拷贝仓 → 本仓派生值,与奶油底/陶土 accent 同族,差异已留档)。
  */
 const SEMANTIC_LIGHT: Record<string, string> = {
-  sage: '#5F8D6A',
-  'sage-bg': 'rgba(95,141,106,0.12)',
-  danger: '#B8432F',
-  'danger-bg': 'rgba(184,67,47,0.10)',
-  warn: '#B2862C',
-  'warn-bg': 'rgba(178,134,44,0.12)',
-  info: '#3E74C2',
-  'info-bg': 'rgba(62,116,194,0.10)',
+  sage: '#1D7A46',
+  'sage-bg': 'rgba(29,122,70,0.12)',
+  danger: '#CE3A1E',
+  'danger-bg': 'rgba(206,58,30,0.10)',
+  warn: '#9A6A0A',
+  'warn-bg': 'rgba(154,106,10,0.12)',
+  info: '#2563EB',
+  'info-bg': 'rgba(37,99,235,0.10)',
 };
 const SEMANTIC_DARK: Record<string, string> = {
-  sage: '#8FBF9B',
-  'sage-bg': 'rgba(143,191,155,0.16)',
-  danger: '#DD6B55',
-  'danger-bg': 'rgba(221,107,85,0.16)',
-  warn: '#D4AC55',
-  'warn-bg': 'rgba(212,172,85,0.16)',
-  info: '#6FA3E0',
-  'info-bg': 'rgba(111,163,224,0.16)',
+  sage: '#7BC996',
+  'sage-bg': 'rgba(123,201,150,0.16)',
+  danger: '#F0755A',
+  'danger-bg': 'rgba(240,117,90,0.16)',
+  warn: '#E0B45C',
+  'warn-bg': 'rgba(224,180,92,0.16)',
+  info: '#7AA8F0',
+  'info-bg': 'rgba(122,168,240,0.16)',
 };
 
 export function applyPalette(p: ThemePalette, dark: boolean): ThemeTokens {
@@ -216,11 +228,11 @@ export function applyPalette(p: ThemePalette, dark: boolean): ThemeTokens {
   const accentRing = hexWithAlpha(accent, dark ? 0x6b : 0x47);
 
   // 线与 hover/active(参考:hover/active 硬编码——亮 rgba(42,39,36,0.04/0.07)、
-  // 暗 #FFFFFF alpha 0x0d/0x14;参考 rust 字面量按此语义值移植)
+  // 暗 #FFFFFF alpha 0x0d/0x14。净化波泛化:亮色改 fg+0x0A/0x12,对 moonlit 逐值等价)
   const line = hexWithAlpha(fg, dark ? 0x12 : 0x17);
   const lineStrong = hexWithAlpha(fg, dark ? 0x21 : 0x24);
-  const hover = dark ? '#FFFFFF0D' : '#2A27240A';
-  const active = dark ? '#FFFFFF14' : '#2A272412';
+  const hover = dark ? '#FFFFFF0D' : hexWithAlpha(fg, 0x0a);
+  const active = dark ? '#FFFFFF14' : hexWithAlpha(fg, 0x12);
 
   // translucent 双 alpha(参考:sidebar=sunk+0xCC、float=panel+0xEE;否则实体)
   const sidebar = p.translucentSidebar ? hexWithAlpha(sunk, 0xcc) : sunk;
@@ -241,7 +253,7 @@ export function applyPalette(p: ThemePalette, dark: boolean): ThemeTokens {
     'text-2': text2,
     'text-3': text3,
     'text-4': text4,
-    'text-inv': dark ? bg : '#FAF9F5',
+    'text-inv': dark ? bg : '#FFFFFF', // 净化波:亮反色文字奶油 #FAF9F5 → 纯白
     line,
     'line-strong': lineStrong,
     accent,
@@ -257,14 +269,14 @@ export function applyPalette(p: ThemePalette, dark: boolean): ThemeTokens {
   };
 }
 
-// ---------- 默认设置(参考 Default:moonlit 双表,mode=auto,13/12) ----------
+// ---------- 默认设置(净化波:forge 双表取代参考 moonlit,mode=auto,13/12) ----------
 
 export function defaultAppearance(): AppearanceSettings {
   return {
     mode: 'auto',
-    presetId: 'moonlit',
-    light: { ...MOONLIT_LIGHT },
-    dark: { ...MOONLIT_DARK },
+    presetId: 'forge',
+    light: { ...FORGE_LIGHT },
+    dark: { ...FORGE_DARK },
     uiFont: '',
     codeFont: '',
     uiSize: 13,
@@ -280,8 +292,18 @@ function clampSettings(s: AppearanceSettings): AppearanceSettings {
   s.codeSize = Math.min(20, Math.max(10, Math.round(s.codeSize)));
   s.light.contrast = Math.min(100, Math.max(0, Math.round(s.light.contrast)));
   s.dark.contrast = Math.min(100, Math.max(0, Math.round(s.dark.contrast)));
-  if (!presetById(s.presetId)) s.presetId = 'moonlit';
+  if (!presetById(s.presetId)) s.presetId = 'forge';
   return s;
+}
+
+function paletteEqual(a: ThemePalette, b: ThemePalette): boolean {
+  return (
+    a.accent === b.accent &&
+    a.background === b.background &&
+    a.foreground === b.foreground &&
+    a.translucentSidebar === b.translucentSidebar &&
+    a.contrast === b.contrast
+  );
 }
 
 function loadSettings(): AppearanceSettings {
@@ -296,6 +318,16 @@ function loadSettings(): AppearanceSettings {
         light: { ...d.light, ...parsed.light },
         dark: { ...d.dark, ...parsed.dark },
       };
+      // 净化波一次性迁移:moonlit 预设且双表仍是旧默认(从未自定义配色)→ 切 forge
+      if (
+        merged.presetId === 'moonlit' &&
+        paletteEqual(merged.light, MOONLIT_LIGHT) &&
+        paletteEqual(merged.dark, MOONLIT_DARK)
+      ) {
+        merged.presetId = 'forge';
+        merged.light = { ...FORGE_LIGHT };
+        merged.dark = { ...FORGE_DARK };
+      }
       return clampSettings(merged);
     }
   } catch {
@@ -322,10 +354,10 @@ export function effectiveDark(mode: ThemeMode, sysDark: boolean): boolean {
   return sysDark;
 }
 
-// ---------- 字体栈(参考:系统栈,不引新 webfont) ----------
+// ---------- 字体栈(净化波:Inter Variable 包接管西文/数字,中文仍系统栈;代码字体已有包) ----------
 
 export const FONT_SANS_STACK =
-  '"HarmonyOS Sans SC","Microsoft YaHei UI",system-ui,-apple-system,"Segoe UI",sans-serif';
+  '"Inter Variable","HarmonyOS Sans SC","Microsoft YaHei UI","PingFang SC","Noto Sans SC",system-ui,-apple-system,"Segoe UI",sans-serif';
 export const FONT_SERIF_STACK = '"Noto Serif SC","SimSun",serif';
 export const FONT_MONO_STACK = '"JetBrains Mono Variable","JetBrains Mono",Consolas,monospace';
 

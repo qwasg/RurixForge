@@ -8,10 +8,14 @@ rust-version.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# D-035:计划文件 front matter(与 assetd 的 .meta sidecar 同一 YAML 实现,锁文件已有)。
+serde_yaml = "0.9"
 # F5 wave.3:gen 配置 REST 面(gen-backends.json / keystore.json 读写,R-5 密钥不出)。
 gend = { path = "../gend" }
 # F9 D6:pack 闭包 guid 引用解析——复用 assetd MetaDoc::load 读 .meta guid 索引。
 assetd = { path = "../assetd" }
+# F-GAME-3:项目脚手架起始场景(Scene/Component 模型 + 规范序列化)与项目模式解析。
+forge-scene = { path = "../forge-scene" }
 # F11(D-025):资产商店 REST 面内嵌 registry 内核(源/搜索/安装长任务/个人库/发布)。
 forge-store = { path = "../forge-store" }
 # io-util:stdin/stdout 异步读写(MCP stdio 客户端与测试所需)

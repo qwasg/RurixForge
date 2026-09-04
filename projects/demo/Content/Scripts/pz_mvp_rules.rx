@@ -1,0 +1,48 @@
+// pz_mvp_rules.rx — PZ 第一阶段纯标量规则单一事实源。
+// 图的 call_function 只可靠支持一个动态参数，因此所有导出规则均为单参函数。
+fn main() {}
+
+#[export(c)]
+pub fn input_positive(value: f32) -> bool { value > 0.5 }
+
+#[export(c)]
+pub fn can_afford_peashooter(sun: f32) -> bool { sun >= 100.0 }
+
+#[export(c)]
+pub fn spend_peashooter(sun: f32) -> f32 {
+    if sun >= 100.0 { sun - 100.0 } else { sun }
+}
+
+#[export(c)]
+pub fn sun_tick_ready(seconds: f32) -> bool { seconds >= 10.0 }
+
+#[export(c)]
+pub fn fire_ready(seconds: f32) -> bool { seconds >= 2.5 }
+
+#[export(c)]
+pub fn zombie_step_x(dt: f32) -> f32 { 0.0 - 1.5 * dt }
+
+#[export(c)]
+pub fn pea_step_x(dt: f32) -> f32 { 8.0 * dt }
+
+#[export(c)]
+pub fn at_lose_line(x: f32) -> bool { x <= -8.0 }
+
+#[export(c)]
+pub fn hp_dead(hp: f32) -> bool { hp <= 0.0 }
+
+#[export(c)]
+pub fn is_zombie_kill_message(payload: f32) -> bool {
+    payload >= 200.0 && payload < 300.0
+}
+
+#[export(c)]
+pub fn is_zombie_hit_message(payload: f32) -> bool {
+    payload >= 100.0 && payload < 200.0
+}
+
+#[export(c)]
+pub fn is_lose_message(payload: f32) -> bool {
+    payload >= 900.0 && payload < 1000.0
+}
+

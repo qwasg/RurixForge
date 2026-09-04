@@ -8,7 +8,7 @@ import { useSettingsStore } from '@/lib/settingsStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { mockForgeBackend } from './forgeMock';
 
-/** F7 wave.5 Composer 收尾:TodoStrip「打开看板 ↗」/ Ctrl+Enter 发送设置消费 / 外部预填 seam。 */
+/** F7 wave.5 Composer 收尾:TodoStrip 就地展开精简面板 / Ctrl+Enter 发送设置消费 / 外部预填 seam。 */
 
 const initialChat = useChatStore.getState();
 const initialSessions = useSessionStore.getState();
@@ -34,13 +34,19 @@ afterEach(() => {
 });
 
 describe('Composer wave.5 接线', () => {
-  it('TodoStrip「打开看板 ↗」→ 开 todo tab', () => {
+  it('TodoStrip「展开」→ 就地向上展开精简列表(不再开 workbench tab)', () => {
     useChatStore.setState({ todos: [{ id: 't1', title: '改场景', status: 'queued' }] });
     render(<Composer />);
-    fireEvent.click(screen.getByTestId('todo-open-board'));
-    const tabs = useWorkbenchStore.getState().tabs;
-    expect(tabs.some((t) => t.id === 'todo' && t.kind === 'todo')).toBe(true);
-    expect(useWorkbenchStore.getState().activeTabId).toBe('todo');
+    // 默认折叠无行
+    expect(screen.queryByTestId('todo-row-t1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('todo-strip-toggle'));
+    // 就地展开,精简行出现
+    expect(screen.getByTestId('todo-row-t1')).toHaveTextContent('改场景');
+    // 不再跳转 workbench todo tab
+    expect(useWorkbenchStore.getState().tabs.some((t) => t.id === 'todo')).toBe(false);
+    // 再点收起
+    fireEvent.click(screen.getByTestId('todo-strip-toggle'));
+    expect(screen.queryByTestId('todo-row-t1')).not.toBeInTheDocument();
   });
 
   it('Ctrl+Enter 发送开启:Enter 换行(不发送),Ctrl+Enter 发送', () => {

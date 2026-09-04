@@ -1,0 +1,13 @@
+{
+  "params": {
+    "baseColor": [
+      1,
+      0.9,
+      0.05
+    ],
+    "roughness": 0.4
+  },
+  "shader": "pbr-default",
+  "textures": {},
+  "version": 1
+}

@@ -161,6 +161,14 @@ fn import_one(
         height = Some(h);
         meta.build_state = Some("current".into());
         meta.save(&meta_path)?;
+    } else if atype == AssetType::Sprite {
+        // F-GAME-4:.rxsprite 导入即校验(坏文档 → 导入失败,不静默登记)。
+        let text = std::fs::read_to_string(dest_abs)?;
+        let v: Value = serde_json::from_str(&text)
+            .map_err(|e| AssetError::new("SPRITE_INVALID", format!(".rxsprite 非合法 JSON: {e}")))?;
+        crate::sprite::validate_rxsprite(&v)?;
+        meta.build_state = Some("current".into());
+        meta.save(&meta_path)?;
     } else {
         meta.build_state = Some("current".into());
         meta.save(&meta_path)?;

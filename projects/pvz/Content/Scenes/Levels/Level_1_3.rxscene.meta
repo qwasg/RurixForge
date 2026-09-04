@@ -1,0 +1,10 @@
+guid: 606a8895-8e7e-548a-84f6-1555cd88b135
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-3(day,10 波,奖励 wall_nut);在 IDE Assets 面板双击即可装进视口试玩

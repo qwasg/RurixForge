@@ -1,13 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   BookOpen,
   Box,
-  Boxes,
   Check,
   ChevronDown,
   ChevronUp,
-  FileImage,
   ListTodo,
   Plus,
   Sparkles,
@@ -18,13 +16,11 @@ import { apiGet } from '@/lib/forgeApi';
 import { useChatStore } from '@/lib/chatStore';
 import { HOME_INPUT_MIN, type ChatVariant } from '@/lib/chatVariant';
 import { useComposerPrefillStore } from '@/lib/composerStore';
-import { chipsPrefix, useContextChips } from '@/lib/contextChips';
 import { useContextUsage } from '@/lib/contextUsage';
 import { useSessionStore } from '@/lib/sessionStore';
 import { useSettingsStore } from '@/lib/settingsStore';
 import { useSpeechInput } from '@/lib/speechInput';
 import { useToastStore } from '@/lib/toastStore';
-import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { COMPOSER_INPUT_MIN, composerInputHeight } from '@/lib/inputHeight';
 import { cn } from '@/lib/cn';
 import { COMPOSER_MODES, composerModeMeta } from './composerModes';
@@ -50,9 +46,11 @@ function modesForKind(kind: string) {
  * 「单行胶囊 + 上下附属行」三层竖排:
  * 上方(胶囊外)= TodoStrip(todos 非空:list-todo 图标+「TODO」+{done}/{total}+120×4 进度条
  * bg_active/accent 填充+折叠 chevron;展开最多 4 行 running→queued→done 排序,完成行 sage
- * check+划线)/ 上下文 chip 行 / 模式 chip(非 build,accent_bg 胶囊 + x 复位)+ 技能 chips;
+ * check+划线)/ 技能 chips;
  * 胶囊(p-1,内容 26px → 36px 高,单行 rounded-full 紧贴圆钮,换行转 rounded-2xl 并底对齐)=
- * + 26px 圆钮开 add menu / textarea(44 列估行与实测 scrollHeight 取大,clamp 26–200,13.5px;
+ * 模式钮(2026-09-03 用户拍板与模式 chip 融合:build = + 26px 圆钮;非 build = 同一胶囊拉宽为
+ * [+ 模式图标 标签 ×],accent_bg 底,主体开 add menu,× 复位 Agent——不再在胶囊上方另出一行 chip)
+ * / textarea(44 列估行与实测 scrollHeight 取大,clamp 26–200,13.5px;
  * Enter 发送 / Shift+Enter 换行 / isComposing 防中文误发)/ 发送区(running=26px danger 圆方块
  * cancelRun;可发送=accent 圆 arrow-up;空文本=禁用态);
  * 下方(胶囊外)= 技能钮(每次开菜单重拉 GET skills/list,只列启用项,最多 16 条双行,选中
@@ -101,14 +99,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
   const [skills, setSkills] = useState<SkillItem[] | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  // UI 融合波 C1:编辑器上下文 chip(场景/选中实体/选中资产);excluded = 本次剔除的 chip key
-  const ctxChips = useContextChips();
-  const [excludedCtx, setExcludedCtx] = useState<ReadonlySet<string>>(new Set());
-  const includedCtx = useMemo(
-    () => ctxChips.filter((c) => !excludedCtx.has(c.key)),
-    [ctxChips, excludedCtx],
-  );
-  const contextUsage = useContextUsage(includedCtx, selectedSkills, text);
+  const contextUsage = useContextUsage(selectedSkills, text);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const submitCtrlEnter = useSettingsStore((st) => st.submitCtrlEnter);
@@ -202,22 +193,26 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
     // 前缀服务端零解析,SKILL.md 全文从未进过模型上下文(E-06-002)。
     const picked = [...selectedSkills].sort();
     if (picked.length > 0) setSelectedSkills([]);
-    // C1:未剔除的上下文 chip 注入消息前缀(07 §5 上下文注入落地)
-    const included = includedCtx;
-    setExcludedCtx(new Set());
     setText('');
     closeMenus();
-    const body = `${chipsPrefix(included)}${text.trim()}`;
+    const body = text.trim();
     const args: [string, string, string[]?] =
       picked.length > 0 ? [body, mode, picked] : [body, mode];
     if (hasSession) {
       void sendMessage(...args);
       return;
     }
-    // 全屏主页无会话直发:建会话 → 主动订阅(ChatColumn 副作用见 currentSessionId 已对齐会跳过,
-    // 否则它的 reset() 会把下面这条乐观回显抹掉)→ 再发。
+    // 全屏主页无会话直发:建会话(带上 Composer 已勾的模型规格,否则 selectSession
+    // 回放默认档会把 thinking 等冲掉)→ 主动订阅(ChatColumn 副作用见 currentSessionId
+    // 已对齐会跳过,否则它的 reset() 会把下面这条乐观回显抹掉)→ 再发。
     void (async () => {
-      const s = await createSession();
+      const chat = useChatStore.getState();
+      const s = await createSession(undefined, {
+        selectedModelId: chat.selectedModelId,
+        thinkingEnabled: chat.thinkingEnabled,
+        reasoningEffort: chat.reasoningEffort,
+        contextOptionId: chat.contextOptionId,
+      });
       if (!s) return;
       await useChatStore.getState().selectSession(s.id);
       await useChatStore.getState().sendMessage(...args);
@@ -234,7 +229,9 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
     200,
   );
   const capsule = inputHeight <= COMPOSER_INPUT_MIN;
-  const hasChips = mode !== 'build' || selectedSkills.length > 0;
+  // 非 build 模式:[+] 圆钮拉宽为模式胶囊(图标 + 标签 + × 复位),模式态不再另占一行 chip
+  const modeActive = mode !== 'build';
+  const hasChips = selectedSkills.length > 0;
 
   return (
     <div className={cn('shrink-0', !home && 'border-t border-dashed border-edge px-4 pb-2.5 pt-3.5')}>
@@ -246,67 +243,9 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
         className="relative flex flex-col gap-1.5"
       >
         <TodoStrip />
-        {/* C1 上下文 chip 行:场景/选中实体/选中资产;X 剔除(再点 + 恢复),发送后复位 */}
-        {ctxChips.length > 0 && (
-          <div data-testid="context-chips" className="flex flex-wrap items-center gap-1 px-1">
-            <span className="text-[10px] text-fg-4">上下文</span>
-            {ctxChips.map((c) => {
-              const off = excludedCtx.has(c.key);
-              const Icon = c.kind === 'scene' ? Boxes : c.kind === 'entity' ? Box : FileImage;
-              return (
-                <span
-                  key={c.key}
-                  data-testid={`ctx-chip-${c.kind}`}
-                  title={c.refText}
-                  className={cn(
-                    'flex h-[20px] items-center gap-1 rounded-full px-2 text-[11px]',
-                    off ? 'bg-shell-active text-fg-4 line-through' : 'bg-acc-bg text-acc',
-                  )}
-                >
-                  <Icon size={10} />
-                  <span className="max-w-[160px] truncate">{c.label}</span>
-                  <button
-                    type="button"
-                    aria-label={off ? `恢复上下文 ${c.label}` : `移除上下文 ${c.label}`}
-                    data-testid={`ctx-chip-toggle-${c.kind}`}
-                    onClick={() =>
-                      setExcludedCtx((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(c.key)) next.delete(c.key);
-                        else next.add(c.key);
-                        return next;
-                      })
-                    }
-                    className="flex items-center"
-                  >
-                    {off ? <Plus size={9} /> : <X size={9} />}
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        )}
-        {/* 模式 / 技能 chip 行(胶囊外,上方) */}
+        {/* 技能 chip 行(胶囊外,上方;模式态已融进胶囊内的 [+] 钮) */}
         {hasChips && (
           <div data-testid="composer-chips" className="flex flex-wrap items-center gap-1.5 px-1">
-            {mode !== 'build' && (
-              <span
-                data-testid="composer-mode-chip"
-                className="flex h-[22px] items-center gap-1 rounded-full bg-acc-bg px-2 text-[11px] text-acc"
-              >
-                <modeMeta.icon size={11} />
-                {modeMeta.label}
-                <button
-                  type="button"
-                  aria-label="复位为 Agent"
-                  data-testid="composer-mode-reset"
-                  onClick={() => setMode('build')}
-                  className="flex items-center"
-                >
-                  <X size={10} />
-                </button>
-              </span>
-            )}
             {[...selectedSkills].sort().map((name) => (
               <span
                 key={name}
@@ -335,26 +274,62 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
         <div
           data-testid="composer-capsule"
           className={cn(
-            'flex items-end gap-1.5 border border-edge bg-shell-panel shadow-sh1 transition-[border-radius] duration-150',
+            'flex items-end gap-1.5 border border-edge bg-shell-panel shadow-sh1 transition-[border-radius,border-color,box-shadow] duration-150 focus-within:border-acc-ring focus-within:shadow-[0_0_0_3px_var(--accent-bg)]',
             home ? 'p-2' : 'p-1',
             capsule ? 'rounded-full' : 'rounded-2xl',
           )}
         >
-          <button
-            type="button"
-            aria-label="模式菜单"
-            data-testid="composer-add"
-            onClick={() => {
-              setAddMenuOpen((v) => !v);
-              setSkillMenuOpen(false);
-            }}
+          {/* 模式钮:build = 26px 圆 [+];非 build = 同一胶囊拉宽为 [+ 图标 标签 ×]。
+              外壳承担边框/圆角/裁切,内部两个 button 不嵌套(主体开菜单,× 复位)。 */}
+          <div
+            data-testid="composer-mode-pill"
+            data-mode={mode}
             className={cn(
-              'flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border text-fg-2 hover:bg-shell-hover',
-              addMenuOpen ? 'border-acc-ring' : 'border-edge',
+              'flex h-[26px] shrink-0 items-stretch overflow-hidden rounded-full border transition-colors duration-150',
+              modeActive ? 'bg-acc-bg text-acc' : 'text-fg-2',
+              addMenuOpen ? 'border-acc-ring' : modeActive ? 'border-transparent' : 'border-edge',
             )}
           >
-            <Plus size={14} />
-          </button>
+            <button
+              type="button"
+              aria-label="模式菜单"
+              aria-expanded={addMenuOpen}
+              data-testid="composer-add"
+              onClick={() => {
+                setAddMenuOpen((v) => !v);
+                setSkillMenuOpen(false);
+              }}
+              className={cn(
+                'flex items-center justify-center hover:bg-shell-hover',
+                modeActive ? 'gap-1 pl-1.5 pr-1' : 'w-6',
+              )}
+            >
+              <Plus size={14} />
+              {modeActive && (
+                <span
+                  data-testid="composer-mode-chip"
+                  className="flex items-center gap-1 whitespace-nowrap text-[11px]"
+                >
+                  <modeMeta.icon size={11} />
+                  {modeMeta.label}
+                </span>
+              )}
+            </button>
+            {modeActive && (
+              <button
+                type="button"
+                aria-label="复位为 Agent"
+                data-testid="composer-mode-reset"
+                onClick={() => {
+                  setMode('build');
+                  setAddMenuOpen(false);
+                }}
+                className="flex items-center pl-0.5 pr-1.5 hover:bg-shell-hover"
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
           <div className="min-w-0 flex-1" style={{ height: inputHeight }}>
             <textarea
               ref={inputRef}
@@ -585,7 +560,6 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
 /** TodoStrip(参考 render_todo_strip;todos 为空不渲染)。 */
 function TodoStrip() {
   const todos = useChatStore((st) => st.todos);
-  const openTab = useWorkbenchStore((st) => st.openTab);
   const [open, setOpen] = useState(false);
   if (todos.length === 0) return null;
   const isDone = (s: string) => s === 'completed' || s === 'done';
@@ -601,11 +575,35 @@ function TodoStrip() {
   return (
     <div
       data-testid="todo-strip"
-      className={cn(
-        'flex flex-col rounded-xl border border-edge bg-shell-panel px-3 pt-2',
-        open ? 'pb-1.5' : 'pb-2',
-      )}
+      className="flex flex-col rounded-xl border border-edge bg-shell-panel px-3 py-2"
     >
+      {/* 精简列表渲染在头部行上方:展开时面板朝消息区方向向上增长,不遮挡输入框 */}
+      {open && (
+        <div className="flex flex-col pb-1">
+          {display.slice(0, 4).map((t) => {
+            const doneRow = isDone(t.status);
+            return (
+              <div key={t.id} className="flex items-center gap-2 py-[3px] text-[11.5px]" data-testid={`todo-row-${t.id}`}>
+                {doneRow ? (
+                  <Check size={11} className="shrink-0 text-sage" />
+                ) : isRunning(t.status) ? (
+                  <span className="h-[6px] w-[6px] shrink-0 animate-pulse rounded-full bg-dot-running" />
+                ) : (
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-[3px] border border-edge-strong" />
+                )}
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 truncate',
+                    doneRow ? 'text-fg-4 line-through' : 'text-fg-2',
+                  )}
+                >
+                  {t.title === '' ? t.id : t.title}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="flex items-center gap-2 text-[11px] text-fg-3">
         <ListTodo size={12} />
         <span className="font-semibold">TODO</span>
@@ -619,50 +617,19 @@ function TodoStrip() {
             style={{ width: `${Math.round(progress * 100)}%` }}
           />
         </span>
-        {/* F7 wave.5:打开看板 ↗(开 todo tab,真实接线) */}
-        <button
-          type="button"
-          aria-label="打开看板"
-          data-testid="todo-open-board"
-          onClick={() => openTab('todo')}
-          className="flex h-5 items-center gap-0.5 rounded px-1 text-[10.5px] text-fg-3 hover:bg-shell-hover hover:text-fg-2"
-        >
-          打开看板 ↗
-        </button>
         <span className="flex-1" />
+        {/* 就地向上展开/收起精简面板(原「打开看板 ↗」跳 workbench tab 已移除) */}
         <button
           type="button"
-          aria-label="折叠待办"
+          aria-label={open ? '收起待办' : '展开待办'}
           data-testid="todo-strip-toggle"
           onClick={() => setOpen((v) => !v)}
-          className="flex h-5 w-5 items-center justify-center rounded text-fg-3 hover:bg-shell-hover"
+          className="flex h-5 items-center gap-0.5 rounded px-1 text-[10.5px] text-fg-3 hover:bg-shell-hover hover:text-fg-2"
         >
+          {open ? '收起' : '展开'}
           {open ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
         </button>
       </div>
-      {open &&
-        display.slice(0, 4).map((t) => {
-          const doneRow = isDone(t.status);
-          return (
-            <div key={t.id} className="flex items-center gap-2 py-[3px] text-[11.5px]" data-testid={`todo-row-${t.id}`}>
-              {doneRow ? (
-                <Check size={11} className="shrink-0 text-sage" />
-              ) : isRunning(t.status) ? (
-                <span className="h-[6px] w-[6px] shrink-0 animate-pulse rounded-full bg-dot-running" />
-              ) : (
-                <span className="h-2.5 w-2.5 shrink-0 rounded-[3px] border border-edge-strong" />
-              )}
-              <span
-                className={cn(
-                  'min-w-0 flex-1 truncate',
-                  doneRow ? 'text-fg-4 line-through' : 'text-fg-2',
-                )}
-              >
-                {t.title === '' ? t.id : t.title}
-              </span>
-            </div>
-          );
-        })}
     </div>
   );
 }

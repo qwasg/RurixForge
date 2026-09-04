@@ -1,0 +1,1059 @@
+{
+ "version": 1,
+ "id": "hud",
+ "name": "hud",
+ "exposedProps": [],
+ "nodes": [
+  {
+   "id": "n1",
+   "type": "event.on_message",
+   "pos": [
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "n2",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "msg_kind"
+    },
+    "args": {
+     "node": "n1",
+     "pin": "payload"
+    }
+   }
+  },
+  {
+   "id": "n3",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hudKind"
+    },
+    "value": {
+     "node": "n2",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n4",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n5",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hudKind"
+    }
+   }
+  },
+  {
+   "id": "n6",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n5",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n7",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": -1.0
+    }
+   }
+  },
+  {
+   "id": "n8",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n9",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "is_zero"
+    },
+    "args": {
+     "node": "n8",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n10",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n9",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n11",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "msg_value"
+    },
+    "args": {
+     "node": "n1",
+     "pin": "payload"
+    }
+   }
+  },
+  {
+   "id": "n12",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sunV"
+    },
+    "value": {
+     "node": "n11",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n13",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sunV"
+    }
+   }
+  },
+  {
+   "id": "n14",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "digit_thousands"
+    },
+    "args": {
+     "node": "n13",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n15",
+   "type": "entity.find_by_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "tag": {
+     "const": "hud_d1000"
+    }
+   }
+  },
+  {
+   "id": "n16",
+   "type": "sprite.set_frame",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n15",
+     "pin": "entity"
+    },
+    "index": {
+     "node": "n14",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n17",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sunV"
+    }
+   }
+  },
+  {
+   "id": "n18",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "digit_hundreds"
+    },
+    "args": {
+     "node": "n17",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n19",
+   "type": "entity.find_by_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "tag": {
+     "const": "hud_d100"
+    }
+   }
+  },
+  {
+   "id": "n20",
+   "type": "sprite.set_frame",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n19",
+     "pin": "entity"
+    },
+    "index": {
+     "node": "n18",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n21",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sunV"
+    }
+   }
+  },
+  {
+   "id": "n22",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "digit_tens"
+    },
+    "args": {
+     "node": "n21",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n23",
+   "type": "entity.find_by_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "tag": {
+     "const": "hud_d10"
+    }
+   }
+  },
+  {
+   "id": "n24",
+   "type": "sprite.set_frame",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n23",
+     "pin": "entity"
+    },
+    "index": {
+     "node": "n22",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n25",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "sunV"
+    }
+   }
+  },
+  {
+   "id": "n26",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "digit_ones"
+    },
+    "args": {
+     "node": "n25",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n27",
+   "type": "entity.find_by_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "tag": {
+     "const": "hud_d1"
+    }
+   }
+  },
+  {
+   "id": "n28",
+   "type": "sprite.set_frame",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n27",
+     "pin": "entity"
+    },
+    "index": {
+     "node": "n26",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n29",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n30",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hudKind"
+    }
+   }
+  },
+  {
+   "id": "n31",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n30",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n32",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": -3.0
+    }
+   }
+  },
+  {
+   "id": "n33",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n34",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "is_zero"
+    },
+    "args": {
+     "node": "n33",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n35",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n34",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n36",
+   "type": "entity.find_by_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "tag": {
+     "const": "banner_win"
+    }
+   }
+  },
+  {
+   "id": "n37",
+   "type": "entity.set_transform",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n36",
+     "pin": "entity"
+    },
+    "transform": {
+     "const": {
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "translation": [
+       0.0,
+       0.8,
+       0.5
+      ]
+     }
+    }
+   }
+  },
+  {
+   "id": "n38",
+   "type": "var.set",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": 0.0
+    }
+   }
+  },
+  {
+   "id": "n39",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "hudKind"
+    }
+   }
+  },
+  {
+   "id": "n40",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "node": "n39",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n41",
+   "type": "var.add",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    },
+    "value": {
+     "const": -4.0
+    }
+   }
+  },
+  {
+   "id": "n42",
+   "type": "var.get",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "name": {
+     "const": "cmpT"
+    }
+   }
+  },
+  {
+   "id": "n43",
+   "type": "call.call_function",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "module": {
+     "const": "Content/Scripts/pvz_rules.rx"
+    },
+    "fn": {
+     "const": "is_zero"
+    },
+    "args": {
+     "node": "n42",
+     "pin": "out"
+    }
+   }
+  },
+  {
+   "id": "n44",
+   "type": "flow.branch",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "condition": {
+     "node": "n43",
+     "pin": "result"
+    }
+   }
+  },
+  {
+   "id": "n45",
+   "type": "entity.find_by_tag",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "tag": {
+     "const": "banner_lose"
+    }
+   }
+  },
+  {
+   "id": "n46",
+   "type": "entity.set_transform",
+   "pos": [
+    0.0,
+    0.0
+   ],
+   "inputs": {
+    "entity": {
+     "node": "n45",
+     "pin": "entity"
+    },
+    "transform": {
+     "const": {
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "translation": [
+       0.0,
+       0.8,
+       0.5
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": [
+    "n1",
+    "exec"
+   ],
+   "to": [
+    "n2",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n2",
+    "exec"
+   ],
+   "to": [
+    "n3",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n3",
+    "exec"
+   ],
+   "to": [
+    "n4",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n4",
+    "exec"
+   ],
+   "to": [
+    "n6",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n6",
+    "exec"
+   ],
+   "to": [
+    "n7",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n7",
+    "exec"
+   ],
+   "to": [
+    "n9",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n9",
+    "exec"
+   ],
+   "to": [
+    "n10",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n11",
+    "exec"
+   ],
+   "to": [
+    "n12",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n12",
+    "exec"
+   ],
+   "to": [
+    "n14",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n14",
+    "exec"
+   ],
+   "to": [
+    "n16",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n16",
+    "exec"
+   ],
+   "to": [
+    "n18",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n18",
+    "exec"
+   ],
+   "to": [
+    "n20",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n20",
+    "exec"
+   ],
+   "to": [
+    "n22",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n22",
+    "exec"
+   ],
+   "to": [
+    "n24",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n24",
+    "exec"
+   ],
+   "to": [
+    "n26",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n26",
+    "exec"
+   ],
+   "to": [
+    "n28",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n10",
+    "then"
+   ],
+   "to": [
+    "n11",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n29",
+    "exec"
+   ],
+   "to": [
+    "n31",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n31",
+    "exec"
+   ],
+   "to": [
+    "n32",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n32",
+    "exec"
+   ],
+   "to": [
+    "n34",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n34",
+    "exec"
+   ],
+   "to": [
+    "n35",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n10",
+    "else"
+   ],
+   "to": [
+    "n29",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n35",
+    "then"
+   ],
+   "to": [
+    "n37",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n38",
+    "exec"
+   ],
+   "to": [
+    "n40",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n40",
+    "exec"
+   ],
+   "to": [
+    "n41",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n41",
+    "exec"
+   ],
+   "to": [
+    "n43",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n43",
+    "exec"
+   ],
+   "to": [
+    "n44",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n35",
+    "else"
+   ],
+   "to": [
+    "n38",
+    "exec"
+   ]
+  },
+  {
+   "from": [
+    "n44",
+    "then"
+   ],
+   "to": [
+    "n46",
+    "exec"
+   ]
+  }
+ ]
+}

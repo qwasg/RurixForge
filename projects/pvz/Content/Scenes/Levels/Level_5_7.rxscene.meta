@@ -1,0 +1,10 @@
+guid: 9a2a6b73-f5a1-585e-b12d-f3c985f83f38
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 5-7(roof,30 波,奖励 marigold);在 IDE Assets 面板双击即可装进视口试玩

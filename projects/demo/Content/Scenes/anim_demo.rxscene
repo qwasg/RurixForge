@@ -1,0 +1,105 @@
+{
+  "entities": [
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "far": 500.0,
+            "fov": 60.0,
+            "near": 0.1,
+            "orthoSize": 3.0,
+            "projection": "orthographic"
+          },
+          "type": "Camera"
+        }
+      ],
+      "id": 1,
+      "name": "Camera2D",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, 1.0, 1.0],
+        "translation": [0.0, 0.0, 10.0]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "clip": "",
+            "flipX": false,
+            "flipY": false,
+            "frame": 0.0,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 1.0,
+            "sprite": "59f84caa-69f5-4286-be42-8639f85b5f18",
+            "texture": "",
+            "tint": [1.0, 1.0, 1.0, 1.0]
+          },
+          "type": "Sprite"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie"
+          },
+          "type": "Tag"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "graphRef": "Content/Graphs/anim_demo.rxgraph",
+            "module": "",
+            "props": {}
+          },
+          "type": "Script"
+        }
+      ],
+      "id": 2,
+      "name": "Zombie_Animator",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [0.35, 0.35, 1.0],
+        "translation": [-1.2, -2.5, 0.0]
+      }
+    },
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "clip": "walk",
+            "flipX": true,
+            "flipY": false,
+            "frame": 0.0,
+            "pixelsPerUnit": 100.0,
+            "sortingOrder": 1.0,
+            "sprite": "59f84caa-69f5-4286-be42-8639f85b5f18",
+            "texture": "",
+            "tint": [1.0, 1.0, 1.0, 1.0]
+          },
+          "type": "Sprite"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "tag": "zombie_manual"
+          },
+          "type": "Tag"
+        }
+      ],
+      "id": 3,
+      "name": "Zombie_ClipOnly",
+      "transform": {
+        "rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [0.35, 0.35, 1.0],
+        "translation": [1.2, -2.5, 0.0]
+      }
+    }
+  ],
+  "gravity": [0.0, 0.0, 0.0],
+  "mode": "2d",
+  "name": "AnimDemo",
+  "next_id": 4
+}

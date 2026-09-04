@@ -14,10 +14,16 @@ mod mcp;
 mod modelspec;
 mod native_tools;
 mod permission;
+mod plan;
+/// D-035:plan 模式产物 = `.forge/plans/<slug>.plan.md` 计划文件(front matter + Markdown)。
+mod plan_doc;
 mod profile;
 mod playtest;
 mod pack;
+mod project;
 mod proposals;
+/// D-036:后台子代理回执收件箱(multitask 异步委派的送达面)。
+mod receipts;
 mod resources;
 mod scope;
 mod sessions;
@@ -58,6 +64,10 @@ pub(crate) struct AppState {
     pub(crate) runs: Arc<agent::RunRegistry>,
     /// F7 wave.2:待办存贮(data/agent-sessions/todos.json 读-改-写)。
     pub(crate) todos: Arc<agent::TodoStore>,
+    /// D-036:后台子代理回执收件箱(data/agent-sessions/receipts.json)。
+    pub(crate) receipts: Arc<receipts::ReceiptStore>,
+    /// D-038:会话 → 回执唤醒上下文(内存,派发时抓拍;子代理跑完据此起唤醒轮)。
+    pub(crate) wakes: Arc<agent::WakeRegistry>,
     /// 会话工具权限(bypass/plan/auto)。
     pub(crate) permissions: Arc<permission::PermissionService>,
 }
@@ -89,14 +99,48 @@ fn agent_data_root() -> std::path::PathBuf {
 /// 构建路由表(main 与测试复用)
 fn build_app() -> Router {
     let data_root = agent_data_root();
+    let events = Arc::new(events::EventBus::from_env(data_root.join("agent-events")));
+    let sessions = Arc::new(sessions::SessionStore::load(
+        data_root.join("agent-sessions").join("sessions.json"),
+    ));
+    // 崩溃恢复:run 注册表随进程消失,持久层残留的 activeRunId 一律补 run.failed
+    // 终止事件——否则前端事件回放里 run.created 永远等不到终止,activeRunId 卡死。
+    for (sid, rid) in sessions.clear_stale_active_runs() {
+        events.emit(
+            events::EventDraft::new(&sid, "agent.failed", "run")
+                .payload(json!({
+                    "runId": rid,
+                    "error": "agentd 进程重启,运行中断(崩溃恢复自动终止)",
+                })),
+        );
+    }
+    // D-036 同源清扫:后台子代理 run 也只存内存,进程重启后 receipts.json 里残留的
+    // running 条目一律是幽灵——置 failed 并补发 subagent.failed,否则前端子代理卡片
+    // 永远转圈,主 agent 下一轮也等不到这条回执。
+    let receipts = Arc::new(receipts::ReceiptStore::load(
+        data_root.join("agent-sessions").join("receipts.json"),
+    ));
+    for r in receipts.sweep_running("agentd 进程重启,后台子代理中断(崩溃恢复自动终止)") {
+        events.emit(
+            events::EventDraft::new(&r.session_id, "subagent.failed", "subagent").payload(json!({
+                "subRunId": r.run_id,
+                "subagentRunId": r.run_id,
+                "parentRunId": r.run_id,
+                "parentToolCallId": r.run_id,
+                "detached": true,
+                "dispatchedBy": r.dispatched_by,
+                "error": r.summary,
+            })),
+        );
+    }
     let state = Arc::new(AppState {
         started: Instant::now(),
         proposals: proposals::ProposalStore::default(),
         swarm: swarm::SwarmCoordinator::default(),
-        events: Arc::new(events::EventBus::from_env(data_root.join("agent-events"))),
-        sessions: Arc::new(sessions::SessionStore::load(
-            data_root.join("agent-sessions").join("sessions.json"),
-        )),
+        events,
+        sessions,
+        receipts,
+        wakes: Arc::new(agent::WakeRegistry::default()),
         folders: Arc::new(sessions::ChatFolderStore::load(
             data_root.join("agent-sessions").join("chat-folders.json"),
         )),
@@ -199,6 +243,8 @@ fn build_app() -> Router {
         .route("/api/forge/llm/embedding/status", get(embedcfg::embedding_status_handler))
         .route("/api/forge/playtest/run", post(playtest_run))
         .route("/api/forge/project/pack", post(project_pack))
+        // F-GAME-3:项目选型脚手架(2d/3d → forge.toml + Content 骨架 + 起始场景)
+        .route("/api/forge/project/init", post(project::project_init))
         .route(
             "/api/forge/proposals",
             get(proposals_list).post(proposals_create),
@@ -295,10 +341,16 @@ struct McpCallRequest {
     tool: String,
     #[serde(default)]
     arguments: Option<Value>,
+    /// 作用域工作区(客户端当前工作区 id;缺省/未注册 → 默认工作区 → projects/demo 兜底)。
+    /// 此前 REST 面恒锚 projects/demo,IDE 视口/层级/资产面与会话工作区各看各的项目
+    /// (双真相源);与 turn 面同走 scope::project_of,同一工作区共用同一 engine-host 池槽。
+    #[serde(default, rename = "workspaceId")]
+    workspace_id: Option<String>,
 }
 
 /// MCP 工具调用透传:未知工具 404;子进程调用失败 502;成功返回 MCP result 本体。
 /// F2 wave.5:destructive 强制门(asset_delete force=true 须 approved Proposal 覆盖,I-6)。
+/// 项目根按 `workspaceId` 经 scope::project_of 解析(与 agent turn 面同一事实源)。
 async fn mcp_call(State(state): State<Arc<AppState>>, Json(req): Json<McpCallRequest>) -> Response {
     if !mcp::KNOWN_TOOLS.contains(&req.tool.as_str()) {
         return (
@@ -332,7 +384,8 @@ async fn mcp_call(State(state): State<Arc<AppState>>, Json(req): Json<McpCallReq
                 .into_response();
         }
     }
-    match mcp::call_tool(&req.tool, req.arguments).await {
+    let project_root = scope::project_of(&state, req.workspace_id.as_deref()).project_root;
+    match mcp::call_tool_in(&project_root, &req.tool, req.arguments).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => (
             StatusCode::BAD_GATEWAY,
@@ -1377,8 +1430,22 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let tools = v["tools"].as_array().expect("tools 应为数组");
-        // F10:+1 asset_set_description +6 context 六工具 = 83;F11:+12 store = 95;+library_search = 96。
-        assert_eq!(tools.len(), 96);
+        // F10:+1 asset_set_description +6 context 六工具 = 83;F11:+12 store = 95;+library_search = 96;
+        // 视口直连推流:+viewport_stream_info = 97。F-GAME-3:+sprite_create = 98。
+        // F-GAME-4 wave.2:+asset-pipeline sprite_create/get/set/autoslice 四工具 = 102。
+        // 补账(D-036 波发现):logic_inject_pointer 落 KNOWN_TOOLS 时漏改本计数 = 103。
+        assert_eq!(tools.len(), 103);
+        assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_stream_info"));
+        assert!(tools.iter().any(|t| t == "mcp__engine-scene__logic_inject_pointer"));
+        assert!(tools.iter().any(|t| t == "mcp__engine-scene__sprite_create"));
+        for t in [
+            "mcp__asset-pipeline__sprite_create",
+            "mcp__asset-pipeline__sprite_get",
+            "mcp__asset-pipeline__sprite_set",
+            "mcp__asset-pipeline__sprite_autoslice",
+        ] {
+            assert!(tools.iter().any(|x| x == t), "缺精灵图集资产工具 {t}");
+        }
         assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_set_description"));
         assert!(tools.iter().any(|t| t == "mcp__context__context_index_build"));
         assert!(tools.iter().any(|t| t == "mcp__context__context_search"));
@@ -1443,10 +1510,9 @@ mod tests {
     #[tokio::test]
     async fn llm_chat_mock_provider_when_no_key() {
         // 无密钥环境(env 清空 + keystore 指空目录)→ provider=mock 恒绿,不触网不触 MCP。
-        // 双锁:GEN_REST_LOCK(gen 测试组亦读写 FORGE_GEN_DATA_DIR)与 llm::TEST_ENV_LOCK,
-        // 防跨锁竞态(真实 data/keystore.json 存在后,gen 测试 remove_var 会致本测试串扰解析到真 key)。
-        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // 全部读写 FORGE_GEN_DATA_DIR 的测试统一持 llm::TEST_ENV_LOCK 一把锁,
+        // 防跨组竞态(真实渠道配置存在后,串扰会让本测试解析到真 key 而触网)。
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("FORGE_LLM_API_KEY");
         std::env::remove_var("FORGE_GEN_API_KEY");
         let dir = std::env::temp_dir().join(format!("agentd-chat-test-{}", std::process::id()));
@@ -1612,6 +1678,34 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 全屏主页无会话直发:POST 可带 thinking/effort/context,新会话不再回落到默认档。
+    #[tokio::test]
+    async fn create_session_inherits_composer_spec() {
+        let (app, dir) = f7_app("create-spec");
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/sessions",
+                r#"{"thinkingEnabled":true,"reasoningEffort":"max","contextOptionId":"1m"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let s = &json_body(r).await["session"];
+        assert_eq!(s["thinkingEnabled"], true);
+        assert_eq!(s["reasoningEffort"], "max");
+        assert_eq!(s["contextOptionId"], "1m");
+        let r = app
+            .oneshot(post_json(
+                "/api/forge/sessions",
+                r#"{"thinkingEnabled":true,"reasoningEffort":"ludicrous"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1806,8 +1900,7 @@ mod tests {
     #[tokio::test]
     async fn f7_design_snapshot_fields_and_models_two_states() {
         // key 判定读 FORGE_LLM_API_KEY + keystore(请求时判定):三锁同源纪律(同 llm 测试组)。
-        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let (app, dir) = f7_app("snap");
         std::env::remove_var("FORGE_LLM_API_KEY");
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -1825,7 +1918,7 @@ mod tests {
         keys.sort_unstable();
         assert_eq!(
             keys,
-            ["activeSession", "chatFolders", "events", "latestSeq", "models", "run", "sessions", "todos"],
+            ["activeSession", "chatFolders", "events", "latestSeq", "models", "project", "run", "sessions", "todos"],
             "字段穷举: {keys:?}"
         );
         assert_eq!(v["activeSession"], Value::Null);
@@ -1833,6 +1926,10 @@ mod tests {
         assert_eq!(v["todos"], json!([]));
         assert_eq!(v["run"], Value::Null);
         assert_eq!(v["latestSeq"], 0);
+        // F-GAME-3:project 面恒在(无会话按默认工作区解析 → projects/demo;
+        // demo forge.toml mode=2d,2026-08-31 迁移)。
+        assert_eq!(v["project"]["mode"], json!("2d"));
+        assert!(v["project"]["name"].as_str().unwrap().len() > 0);
         let models = v["models"]["models"].as_array().unwrap();
         assert_eq!(models.len(), 3);
         assert_eq!(models[2]["id"], "openai-compat");
@@ -1843,7 +1940,7 @@ mod tests {
         assert_eq!(models[0]["availability"], "needs-key");
         assert_eq!(models[1]["id"], "mock");
         assert_eq!(models[1]["availability"], "available");
-        assert_eq!(v["models"]["defaultModelId"], "deepseek-chat");
+        assert_eq!(v["models"]["defaultModelId"], "openai-compat");
         // 有 key 态:available;响应面不含密钥本体(R-5)。
         std::env::set_var("FORGE_LLM_API_KEY", "sk-test-availability-f7");
         let r = app
@@ -2038,8 +2135,7 @@ mod tests {
 
     #[tokio::test]
     async fn f7w2_ask_execute_mock_build_route_and_validation() {
-        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let ks_dir = mock_provider_env();
         let (app, dir) = f7_app("ask");
         // 404 SESSION_NOT_FOUND。
@@ -2362,6 +2458,26 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(json_body(resp).await["error"]["code"], "TOOL_NOT_FOUND");
+    }
+
+    /// REST 面作用域:请求可带 workspaceId(缺省 None);未知工具仍 404(作用域解析在其后)。
+    #[tokio::test]
+    async fn mcp_call_request_accepts_workspace_id() {
+        let parsed: McpCallRequest = serde_json::from_str(
+            r#"{"tool":"mcp__engine-scene__scene_summary","arguments":{},"workspaceId":"ws_1"}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.workspace_id.as_deref(), Some("ws_1"));
+        let legacy: McpCallRequest =
+            serde_json::from_str(r#"{"tool":"mcp__engine-scene__scene_summary"}"#).unwrap();
+        assert!(legacy.workspace_id.is_none(), "旧客户端不带 workspaceId 仍可解析");
+        let app = build_app();
+        let req = post_json(
+            "/api/forge/mcp/call",
+            r#"{"tool":"mcp__engine-scene__no_such_tool","workspaceId":"ws_unknown"}"#,
+        );
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     // ---------- F2 wave.5:Proposal 确认单 + destructive 强制门 ----------
@@ -2699,20 +2815,66 @@ mod tests {
         let v = json_body(resp).await;
         assert_eq!(v["errors"].as_array().unwrap().len(), 0, "profile 解析错误: {v}");
         let list = v["subagents"].as_array().unwrap();
-        // 04 §6 内建五 profile + F10 asset-describer(素材语义化)= 6。
-        assert_eq!(list.len(), 6, "内建六 profile(04 §6 + F10): {list:?}");
-        for name in ["asset-describer", "asset-wrangler", "logic-programmer", "material-smith", "qa-tester", "scene-builder"] {
+        // 04 §6 内建五 profile + F10 asset-describer = 6;F-GAME-4 wave.3:+planner/reviewer = 8;
+        // D-035:+explore(plan 模式并行调研)= 9。
+        assert_eq!(list.len(), 9, "内建九 profile(04 §6 + F10 + F-GAME-4 + D-035): {list:?}");
+        for name in [
+            "asset-describer",
+            "asset-wrangler",
+            "explore",
+            "logic-programmer",
+            "material-smith",
+            "planner",
+            "qa-tester",
+            "reviewer",
+            "scene-builder",
+        ] {
             let p = list.iter().find(|p| p["name"] == name).unwrap_or_else(|| panic!("缺 profile {name}"));
             assert!(p["description"].as_str().unwrap().len() > 4);
             assert!(p["tools"].as_array().unwrap().len() >= 2);
             assert!(p["maxSteps"].as_u64().unwrap() >= 16);
             assert!(p["prompt"].as_str().unwrap().contains("必须遵守"));
         }
-        // 逐字白名单抽查(04 §6):logic-programmer 含 component.* 族;qa-tester 16 步。
+        // F-GAME-4 wave.3:planner 只读(无写工具);reviewer 强制 VERDICT 裁决格式。
+        let planner = list.iter().find(|p| p["name"] == "planner").unwrap();
+        assert_eq!(planner["maxSteps"], 24);
+        for t in planner["tools"].as_array().unwrap() {
+            let t = t.as_str().unwrap();
+            assert!(
+                !t.contains("write") && !t.contains("apply_patch") && !t.contains("edit"),
+                "planner 白名单混入写工具: {t}"
+            );
+        }
+        // D-035:explore 只读(plan 模式的并行调研工种;混入写工具就破了只读纪律)。
+        let explore = list.iter().find(|p| p["name"] == "explore").unwrap();
+        assert_eq!(explore["maxSteps"], 20);
+        for t in explore["tools"].as_array().unwrap() {
+            let t = t.as_str().unwrap();
+            assert!(
+                !t.contains("write") && !t.contains("apply_patch") && !t.contains("edit"),
+                "explore 白名单混入写工具: {t}"
+            );
+        }
+        let et = explore["tools"].as_array().unwrap();
+        assert!(et.iter().any(|t| t == "grep"));
+        assert!(et.iter().any(|t| t == "mcp__code-forge__code_references"));
+        let reviewer = list.iter().find(|p| p["name"] == "reviewer").unwrap();
+        assert_eq!(reviewer["maxSteps"], 32);
+        assert!(reviewer["prompt"].as_str().unwrap().contains("VERDICT: APPROVE"));
+        assert!(reviewer["prompt"].as_str().unwrap().contains("VERDICT: REJECT"));
+        let rt = reviewer["tools"].as_array().unwrap();
+        assert!(rt.iter().any(|t| t == "mcp__engine-scene__play_*"));
+        assert!(rt.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
+        // 逐字白名单抽查(04 §6):logic-programmer 含 component.* 族;qa-tester 有 play 控制面
+        // (team 模式自动化试玩:play_* + 输入注入 + viewport_frame 截图断言)。
         let lp = list.iter().find(|p| p["name"] == "logic-programmer").unwrap();
         assert!(lp["tools"].as_array().unwrap().iter().any(|t| t == "mcp__engine-scene__component.*"));
         let qa = list.iter().find(|p| p["name"] == "qa-tester").unwrap();
-        assert_eq!(qa["maxSteps"], 16);
+        assert_eq!(qa["maxSteps"], 48);
+        let qa_tools = qa["tools"].as_array().unwrap();
+        assert!(qa_tools.iter().any(|t| t == "mcp__engine-scene__play_*"));
+        assert!(qa_tools.iter().any(|t| t == "mcp__engine-scene__logic_inject_input"));
+        assert!(qa_tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
     }
 
     #[tokio::test]
@@ -3063,8 +3225,9 @@ mod tests {
 
     // ---------- F5 wave.3:gen 配置 REST 面 ----------
 
-    /// FORGE_GEN_DATA_DIR / FORGE_GEN_API_KEY 进程级,gen REST 测试串行。
-    static GEN_REST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // 曾有独立 GEN_REST_LOCK,与 llm::TEST_ENV_LOCK 分立导致跨组 env 互踩
+    // (FORGE_GEN_DATA_DIR 进程级;机器配置了真实 openai-compat 渠道后,串扰会让
+    // 「期望 mock」的测试解析到真渠道而触网卡死)——统一为 llm::TEST_ENV_LOCK 一把锁。
 
     fn gen_temp_dir(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("agentd-gen-{tag}-{}", std::process::id()));
@@ -3074,7 +3237,7 @@ mod tests {
 
     #[tokio::test]
     async fn gen_backends_list_unconfigured_default() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("list");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3130,7 +3293,7 @@ mod tests {
 
     #[tokio::test]
     async fn gen_video_unconfigured_honest_501() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("video-nc");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3162,7 +3325,7 @@ mod tests {
 
     #[tokio::test]
     async fn gen_audio_mode_gate_and_unconfigured() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("audio-nc");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3202,7 +3365,7 @@ mod tests {
 
     #[tokio::test]
     async fn gen_mesh_params_gate_and_unconfigured() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("mesh-nc");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3245,7 +3408,7 @@ mod tests {
     /// 后端「必须填 endpoint」的判定不同,须锁住免得日后被统一逻辑抹平。
     #[tokio::test]
     async fn gen_configure_meshy_without_endpoint() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("meshy-cfg");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3283,7 +3446,7 @@ mod tests {
 
     #[tokio::test]
     async fn gen_configure_media_backend_entry() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("media-cfg");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3329,7 +3492,7 @@ mod tests {
     /// 会把用户停用的后端悄悄改回启用(upsert_entry 的 enabled 是无条件覆盖)。
     #[tokio::test]
     async fn gen_backends_list_reports_disabled_entry() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("disabled");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3366,7 +3529,7 @@ mod tests {
 
     #[tokio::test]
     async fn gen_configure_writes_config_and_keystore_redline() {
-        let _g = GEN_REST_LOCK.lock().unwrap();
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("cfg");
         std::env::set_var("FORGE_GEN_DATA_DIR", &data);
         std::env::remove_var("FORGE_GEN_API_KEY");
@@ -3617,8 +3780,7 @@ mod tests {
     #[tokio::test]
     async fn f7w5_llm_key_write_flips_availability_redline() {
         // 三锁同源纪律(gen REST + llm env + F7 data dir 互不串扰)。
-        let _g1 = GEN_REST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _g2 = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("FORGE_LLM_API_KEY");
         std::env::remove_var("FORGE_GEN_API_KEY");
         let data = gen_temp_dir("llmkey");

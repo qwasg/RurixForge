@@ -1,0 +1,10 @@
+guid: 4361c036-bdb0-50ac-952b-073125acd5f1
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_bobsled

@@ -1,0 +1,13 @@
+guid: 373032a0-fb60-4187-9052-c57b7c2287ec
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:52:49Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct garden defense plant icons: 1:hungry pale grave-eating plant; 2:spiral-eyed rainbow hypno mushroom; 3:tall timid purple mushroom; 4:frosty cyan mushroom; 5:dark explosive mushroom with red eyes; 6:green water lily pad with face; 7:angry green squash vegetable; 8:three-headed pea shooter plant. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 200902
+    sourceRefs: []
+build_state: current

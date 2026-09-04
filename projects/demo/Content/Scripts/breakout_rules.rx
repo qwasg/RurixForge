@@ -1,0 +1,150 @@
+// breakout_rules.rx — Breakout 的纯标量规则层。
+// 图只在真实 contact_begin 且 otherEntity 仍带 brick Tag 时结算砖命中；
+// 本模块提供边界、输入、阵列 bounds 与胜负标量判定，不伪造 physics/destroy。
+fn main() {}
+
+#[export(c)]
+pub fn input_has_value(value: f32) -> bool { value > 0.001 || value < -0.001 }
+
+#[export(c)]
+pub fn input_is_right(value: f32) -> bool { value > 0.0 }
+
+#[export(c)]
+pub fn can_move_left(x: f32) -> bool { x > -7.5 }
+
+#[export(c)]
+pub fn can_move_right(x: f32) -> bool { x < 7.5 }
+
+#[export(c)]
+pub fn step_x(x: f32, vx: f32, dt: f32) -> f32 { x + vx * dt }
+
+#[export(c)]
+pub fn step_y(y: f32, vy: f32, dt: f32) -> f32 { y + vy * dt }
+
+#[export(c)]
+pub fn hit_left(x: f32) -> bool { x <= -9.0 }
+
+#[export(c)]
+pub fn hit_right(x: f32) -> bool { x >= 9.0 }
+
+#[export(c)]
+pub fn hit_top(y: f32) -> bool { y >= 10.0 }
+
+#[export(c)]
+pub fn hit_bottom(y: f32) -> bool { y <= -9.5 }
+
+#[export(c)]
+pub fn paddle_hit(y: f32, paddle_x: f32, ball_x: f32) -> bool {
+    y <= -7.55 && y >= -8.55 && ball_x >= paddle_x - 2.4 && ball_x <= paddle_x + 2.4
+}
+
+#[export(c)]
+pub fn reflect_x(vx: f32) -> f32 { 0.0 - vx }
+
+#[export(c)]
+pub fn reflect_y(vy: f32) -> f32 { 0.0 - vy }
+
+// 10 列 × 6 行砖阵列 bounds；只返回球实际落入的格子，越界返回 -1。
+// 场景中心为 x=-8.1+1.8*col、y=8.5-0.5*row，整体保守 bounds 为
+// x=[-9,9]、y=[5.5,8.8]。图当前以真实 contact 的 brick Tag 作为更强条件。
+#[export(c)]
+pub fn brick_index(ball_x: f32, ball_y: f32) -> i32 {
+    if ball_x < -9.0 || ball_x > 9.0 || ball_y < 5.5 || ball_y > 8.8 { -1 }
+    else {
+        let col: i32 = ((ball_x + 9.0) / 1.8) as i32;
+        let row: i32 = ((8.8 - ball_y) / 0.5) as i32;
+        if col < 0 || col > 9 || row < 0 || row > 5 { -1 } else { row * 10 + col }
+    }
+}
+
+#[export(c)]
+pub fn valid_new_hit(index: i32, last_index: i32) -> bool {
+    index >= 0 && index < 60 && index != last_index
+}
+
+#[export(c)]
+pub fn decrement_bricks(count: i32) -> i32 { if count > 0 { count - 1 } else { 0 } }
+
+#[export(c)]
+pub fn is_win(count: i32) -> bool { count == 0 }
+
+#[export(c)]
+pub fn is_lose(y: f32) -> bool { y <= -9.5 }
+
+#[export(c)]
+pub fn status_active(count: i32, y: f32) -> bool { count > 0 && y > -9.5 }
+
+#[export(c)]
+pub fn paddle_step(x: f32, input: f32, dt: f32) -> f32 {
+    let next: f32 = x + input * 10.0 * dt;
+    if next < -7.5 { -7.5 } else if next > 7.5 { 7.5 } else { next }
+}
+
+#[export(c)]
+pub fn brick_entity_id(index: f32) -> i32 {
+    let i: i32 = index as i32;
+    if i < 0 || i >= 60 { -1 } else { i + 7 }
+}
+
+#[export(c)]
+pub fn count_active(count: f32) -> bool { count > 0.0 }
+
+#[export(c)]
+pub fn is_win_f32(count: f32) -> bool { count == 0.0 }
+
+// 图运行时只允许 call_function 接一个动态参数，因此速度幅值烘焙在单参函数中。
+// transform.move_tween 当前只接受 Vec3 常量，图按速度符号选择四个固定小步；
+// 下列标量函数保留 dt 积分规则作为可独立校验的规则单一事实源。
+#[export(c)]
+pub fn ball_dx_right(dt: f32) -> f32 { 4.0 * dt }
+
+#[export(c)]
+pub fn ball_dx_left(dt: f32) -> f32 { 0.0 - 4.0 * dt }
+
+#[export(c)]
+pub fn ball_dy_up(dt: f32) -> f32 { 5.5 * dt }
+
+#[export(c)]
+pub fn ball_dy_down(dt: f32) -> f32 { 0.0 - 5.5 * dt }
+
+#[export(c)]
+pub fn positive(value: f32) -> bool { value > 0.0 }
+
+#[export(c)]
+pub fn negative(value: f32) -> bool { value < 0.0 }
+
+#[export(c)]
+pub fn negate(value: f32) -> f32 { 0.0 - value }
+
+// 离散步进后的球心判定带完整球半径余量。图仅在 yUp=false 时调用，
+// 因而不会把已反弹的上行球再次翻转；命中后图会向上推出一个 60 Hz 纵向步长。
+// 下界覆盖单帧高速穿越挡板顶面，且仍高于 LOSE 线，保证下行→上行可观测闭环。
+#[export(c)]
+pub fn paddle_y_zone(y: f32) -> bool { y >= -9.40 && y <= -7.45 }
+
+#[export(c)]
+pub fn paddle_x_range(delta_x: f32) -> bool { delta_x >= -2.85 && delta_x <= 2.85 }
+
+// 分拆二维砖索引以符合单动态参数约束；row_base 返回 0,10,..50 或 -100。
+#[export(c)]
+pub fn brick_col(x: f32) -> f32 {
+    if x < -8.88 || x > 8.88 { -100.0 }
+    else { ((x + 8.88) / 1.8) as i32 as f32 }
+}
+
+#[export(c)]
+pub fn brick_row_base(y: f32) -> f32 {
+    if y < 5.57 || y > 8.93 { -100.0 }
+    else { (((8.93 - y) / 0.5) as i32 * 10) as f32 }
+}
+
+#[export(c)]
+pub fn valid_brick_index(index: f32) -> bool { index >= 0.0 && index < 60.0 }
+
+#[export(c)]
+pub fn same_hit_zero(delta: f32) -> bool { delta == 0.0 }
+
+#[export(c)]
+pub fn brick_id_f32(index: f32) -> i32 {
+    if index < 0.0 || index >= 60.0 { -1 } else { index as i32 + 7 }
+}

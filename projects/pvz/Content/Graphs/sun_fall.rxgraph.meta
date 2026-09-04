@@ -1,0 +1,10 @@
+guid: e9e2938d-eb79-55fb-bee4-562ee460a3d2
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 sun_fall

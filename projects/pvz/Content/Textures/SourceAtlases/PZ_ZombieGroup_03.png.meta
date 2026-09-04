@@ -1,0 +1,13 @@
+guid: 2c81cdde-1472-4f27-877a-f0474010d5df
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-09-01T01:56:59Z
+    negativePrompt: text, labels, borders, grid lines, photorealism, cropped body, duplicate character, transparent checkerboard
+    prompt: 'Plants-vs-Zombies-inspired original cartoon game sprites, 4x2 equal grid, row-major distinct invading zombie full-body icons: 1:miner zombie with pickaxe and helmet; 2:zombie bouncing on pogo stick; 3:white furry yeti zombie; 4:zombie descending on bungee cord; 5:zombie carrying wooden ladder; 6:zombie driving basketball catapult; 7:huge muscular gargantuar zombie with club; 8:tiny imp zombie. Bold dark outlines, cel shading, side view facing right, same scale, each centered inside its own cell, full body visible, solid #FF00FF magenta background in every cell, generous empty gaps, no text, no borders, no grid lines.'
+    seed: 201903
+    sourceRefs: []
+build_state: current

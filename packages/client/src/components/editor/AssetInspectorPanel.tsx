@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Save } from 'lucide-react';
+import { Film, Save } from 'lucide-react';
 import { useAssetStore, type AssetSemantic } from '@/lib/assetStore';
+import { callAssetTool } from '@/lib/forgeApi';
+import { useSpriteStore, type SpriteDoc } from '@/lib/spriteStore';
 import { useToastStore } from '@/lib/toastStore';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
 import Thumb from './assetThumb';
 
 /**
@@ -16,6 +19,82 @@ const SOURCE_LABEL: Record<string, string> = {
   'agent-vision': 'Agent(看图)',
   'agent-facts': 'Agent(凭事实)',
 };
+
+/** F-GAME-4:sprite 资产摘要(sprite_get 拉取;帧数/clip 名/贴图 GUID/animator 有无)。 */
+interface SpriteSummary {
+  frameCount: number;
+  clipNames: string[];
+  texture: string;
+  hasAnimator: boolean;
+}
+
+function SpriteSection({ assetPath }: { assetPath: string }) {
+  const [summary, setSummary] = useState<SpriteSummary | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSummary(null);
+    setErr(null);
+    let alive = true;
+    callAssetTool<{ doc?: SpriteDoc; error?: string; message?: string }>('sprite_get', { assetPath })
+      .then((r) => {
+        if (!alive) return;
+        if (r.error || !r.doc) {
+          setErr(r.message ?? r.error ?? 'sprite_get 空响应');
+          return;
+        }
+        setSummary({
+          frameCount: Object.keys(r.doc.frames ?? {}).length,
+          clipNames: Object.keys(r.doc.clips ?? {}),
+          texture: r.doc.texture,
+          hasAnimator: r.doc.animator != null,
+        });
+      })
+      .catch((e: Error) => {
+        if (alive) setErr(e.message);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [assetPath]);
+
+  return (
+    <div className="border-t border-edge px-2.5 py-2" data-testid="asset-sprite-summary">
+      <p className="pb-1 text-2xs font-medium text-fg-2">精灵图集</p>
+      {err ? (
+        <p className="text-2xs text-warn" title={err}>
+          读取失败:{err}
+        </p>
+      ) : !summary ? (
+        <p className="text-2xs text-fg-4">读取中…</p>
+      ) : (
+        <div className="space-y-0.5 text-2xs text-fg-3">
+          <p>帧数:{summary.frameCount}</p>
+          <p>
+            clip:
+            {summary.clipNames.length === 0 ? '(无)' : summary.clipNames.join('、')}
+          </p>
+          <p className="truncate font-mono" title={summary.texture}>
+            贴图 GUID:{summary.texture}
+          </p>
+          <p>animator:{summary.hasAnimator ? '有' : '无'}</p>
+        </div>
+      )}
+      <button
+        type="button"
+        data-testid="asset-sprite-open"
+        onClick={() => {
+          void useSpriteStore.getState().openSprite(assetPath);
+          useWorkbenchStore.getState().openTab('sprite-editor');
+        }}
+        className="mt-1.5 flex items-center gap-1 rounded-md bg-acc px-2 py-1 text-2xs text-white"
+      >
+        <Film size={11} />
+        打开编辑器
+      </button>
+    </div>
+  );
+}
 
 export default function AssetInspectorPanel() {
   const items = useAssetStore((s) => s.items);
@@ -64,10 +143,18 @@ export default function AssetInspectorPanel() {
     const tags = tagsDraft.split(/[,，、\s]+/).filter(Boolean);
     setSaving(true);
     try {
-      await setDescription(item.path, desc, tags);
+      const idx = await setDescription(item.path, desc, tags);
       const sem = await fetchSemantic(item.path);
       setSemantic(sem);
-      useToastStore.getState().push('success', '简介已保存(source=human)');
+      // F10-RAG:写后索引状态如实进 toast(已进检索 tier / 未建索引 / 嵌入失败词法兜底)。
+      let msg = '简介已保存(source=human)';
+      if (idx?.indexed === true) msg += ` · 已进检索(${idx.tier ?? 'lexical'})`;
+      else if (idx?.indexed === false)
+        msg += idx.indexError
+          ? ` · 索引同步失败:${idx.indexError}`
+          : ' · 索引未建,暂未进检索(可让 agent 建索引)';
+      if (idx?.embedError) msg += ' · 向量嵌入失败,词法仍可检索';
+      useToastStore.getState().push('success', msg);
     } catch (err) {
       useToastStore.getState().push('error', `保存失败:${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -114,6 +201,9 @@ export default function AssetInspectorPanel() {
           </div>
         </div>
 
+        {/* F-GAME-4:sprite 摘要 + 编辑器入口 */}
+        {item.type === 'sprite' && <SpriteSection assetPath={item.path} />}
+
         {/* 简介编辑 */}
         <div className="border-t border-edge px-2.5 py-2">
           <p className="pb-1 text-2xs font-medium text-fg-2">文字简介</p>
@@ -124,7 +214,7 @@ export default function AssetInspectorPanel() {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void save();
               if (e.key === 'Escape') setDescDraft(item.description ?? '');
             }}
-            placeholder="一两句说清:是什么/什么风格/适合什么场合(进 RAG 检索与上下文注入)"
+            placeholder="一两句说清:是什么/什么风格/适合什么场合(保存即进 RAG 检索;agent 生图时自动绑入提示词)"
             rows={4}
             data-testid="asset-desc-input"
             className="w-full resize-y rounded-md border border-edge bg-shell-input px-2 py-1 text-xs text-fg outline-none focus:border-fg-4"

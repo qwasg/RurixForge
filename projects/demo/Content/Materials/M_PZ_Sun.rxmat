@@ -1,0 +1,12 @@
+{
+  "params": {
+    "emissive": 1,
+    "metallic": 0,
+    "roughness": 0.6
+  },
+  "shader": "pbr-default",
+  "textures": {
+    "albedo": "e6ee1fe5-294a-4f0f-be27-022e6e10ae08"
+  },
+  "version": 1
+}

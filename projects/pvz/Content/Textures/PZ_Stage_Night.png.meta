@@ -1,0 +1,10 @@
+guid: c6ca2df5-1bce-50f0-a775-dd72fa27eb95
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    sourceAsset: Textures/SourceAtlases/PZ_StageBackgrounds.png
+    pipeline: ai-background-grid-crop
+build_state: current

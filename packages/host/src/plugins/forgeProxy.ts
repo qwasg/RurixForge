@@ -10,6 +10,7 @@ import type { Logger } from './logger.js';
  * /api/forge/chat-folders、/api/forge/design-snapshot 加入代理前缀;host 自有 F0 stub
  * (sessions.ts/eventlog.ts 的 /api/forge/sessions 路由)在运行时被遮蔽(F0 已 closed,契约留痕)。
  * SSE 长连接(/events/stream)豁免 15s 上游超时(setTimeout(0)),保持 pipe 流式;普通请求维持 15s。
+ * mcp/call 按体内 tool 名豁免长时生成工具(gen_image 等,真实远程分钟级;agentd 360s 兜底)。
  * 方法与 body 透传;上游不可达 → 502 {error:{code:"UPSTREAM_UNREACHABLE"}}。
  * host 自有 /api/forge/health 不走代理(前缀不重叠)。
  */
@@ -50,6 +51,31 @@ const PROXY_PREFIXES = [
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
+/**
+ * MCP 长生命周期工具(/api/forge/mcp/call 体内 tool 字段判定)。
+ * 素材创作/Assets 生成链的 gen_image 走 mcp/call,不在 isLongLivedPath 的 pathname 面内;
+ * 真实远程后端单次分钟级(D-026 适配器 300s 预算),15s 代理超时必在生成途中断连。
+ * agentd 侧 GEN_IMAGE_TIMEOUT 360s 兜底(mcp.rs),代理豁免不自增挂死风险。
+ */
+const LONG_LIVED_MCP_TOOLS = new Set([
+  'mcp__gen-image__gen_image',
+  'mcp__gen-image__gen_texture_set',
+  'mcp__gen-image__gen_variations',
+]);
+
+/** mcp/call 请求体的 tool 名(非 JSON/缺字段 → null,按普通请求 15s;导出供单测)。 */
+export function mcpCallTool(body: Buffer): string | null {
+  try {
+    const v: unknown = JSON.parse(body.toString('utf8'));
+    if (v && typeof v === 'object' && typeof (v as { tool?: unknown }).tool === 'string') {
+      return (v as { tool: string }).tool;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** 代理前缀命中判定(导出供单测)。 */
 export function proxyMatches(pathname: string): boolean {
   return PROXY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -75,9 +101,13 @@ export function isLongLivedPath(pathname: string): boolean {
   );
 }
 
-/** 上游超时毫秒:长生命周期端点 0(不限时),其余 15s(导出供单测)。 */
-export function upstreamTimeoutMs(pathname: string): number {
-  return isLongLivedPath(pathname) ? 0 : UPSTREAM_TIMEOUT_MS;
+/** 上游超时毫秒:长生命周期端点与 MCP 长时工具 0(不限时),其余 15s(导出供单测)。 */
+export function upstreamTimeoutMs(pathname: string, mcpTool?: string | null): number {
+  if (isLongLivedPath(pathname)) return 0;
+  if (pathname === '/api/forge/mcp/call' && mcpTool != null && LONG_LIVED_MCP_TOOLS.has(mcpTool)) {
+    return 0;
+  }
+  return UPSTREAM_TIMEOUT_MS;
 }
 
 function readBody(req: http.IncomingMessage): Promise<Buffer> {
@@ -151,8 +181,10 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
           resolve();
         });
         // F7 wave.1/2:长生命周期端点(SSE 流 / ask:execute turn)豁免 15s 不活动超时;
-        // 普通请求维持原超时防挂死。
-        const timeoutMs = upstreamTimeoutMs(pathname);
+        // 普通请求维持原超时防挂死。F10-RAG 修复:mcp/call 按体内 tool 名豁免
+        // 长时生成工具(gen_image 真实远程分钟级,15s 必断;agentd 360s 预算兜底)。
+        const mcpTool = pathname === '/api/forge/mcp/call' ? mcpCallTool(body) : null;
+        const timeoutMs = upstreamTimeoutMs(pathname, mcpTool);
         if (timeoutMs > 0) {
           out.setTimeout(timeoutMs, () => {
             out.destroy(new Error(`upstream timeout ${timeoutMs}ms`));

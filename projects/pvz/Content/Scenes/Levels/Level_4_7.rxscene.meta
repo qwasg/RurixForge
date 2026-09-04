@@ -1,0 +1,10 @@
+guid: 5adc48c7-3f4e-594f-b422-5047c8971ecb
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 4-7(fog,20 波,奖励 pumpkin);在 IDE Assets 面板双击即可装进视口试玩

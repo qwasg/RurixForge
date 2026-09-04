@@ -1,0 +1,9 @@
+guid: b7b035cf-44c9-4097-b91d-b29bb791dc41
+type: texture
+importer: png
+provenance:
+  origin: user-import
+  detail:
+    derivedFrom: PZ_MVP_Zombie.png
+    tool: gen_zombie_walk.py(F-GAME-4 demo 2 帧步行摆动合成)
+build_state: current

@@ -1,0 +1,10 @@
+guid: b4052c4e-7f77-5864-98e4-2400a8677e13
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 1-4(day,10 波,奖励 shovel);在 IDE Assets 面板双击即可装进视口试玩

@@ -1,0 +1,10 @@
+guid: 53b9196f-a976-527e-bf0d-ca6a78a4c00e
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 plant_13

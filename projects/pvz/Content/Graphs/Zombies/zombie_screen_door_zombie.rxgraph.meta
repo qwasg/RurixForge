@@ -1,0 +1,10 @@
+guid: 205da00a-5562-539f-99f3-2b9c251e582c
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 zombie_screen_door_zombie

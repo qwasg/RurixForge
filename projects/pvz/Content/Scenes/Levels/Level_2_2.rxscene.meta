@@ -1,0 +1,10 @@
+guid: 35d7f4c7-24da-5caf-a91b-edc2a6fdc5d1
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-2(night,20 波,奖励 fume_shroom);在 IDE Assets 面板双击即可装进视口试玩

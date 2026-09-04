@@ -1,0 +1,12 @@
+guid: b5aebc28-0464-45aa-a305-39e90e3ddc6e
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T19:04:57Z
+    prompt: cute cartoon sunflower character with a smiling face in the flower center, bright yellow petals, green stem with two leaves, front view, isolated on plain solid magenta background, 2D game asset sprite, crisp edges, no text
+    seed: 10271778034561856218
+    sourceRefs: []
+build_state: current

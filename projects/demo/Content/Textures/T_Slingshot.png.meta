@@ -1,0 +1,12 @@
+guid: 2ce41adf-e299-4a96-8b22-2c462723fa6d
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:43:09Z
+    prompt: wooden slingshot Y-shaped with brown elastic band and leather pouch, cartoon 2D game asset, Angry Birds style, side view, isolated on plain solid magenta background, crisp edges, no text
+    seed: 15839498258371436917
+    sourceRefs: []
+build_state: current

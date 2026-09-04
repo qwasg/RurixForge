@@ -1,0 +1,17 @@
+{
+  "params": {
+    "baseColor": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "metallic": 0,
+    "roughness": 0.78
+  },
+  "shader": "pbr-default",
+  "textures": {
+    "baseColor": "293176ee-5962-43c2-96db-f3771b6e57f9"
+  },
+  "version": 1
+}

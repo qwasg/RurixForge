@@ -1,0 +1,28 @@
+{
+  "edges": [
+    {
+      "from": ["start", "exec"],
+      "to": ["walk", "exec"]
+    }
+  ],
+  "id": "g_anim_demo",
+  "name": "AnimDemo",
+  "nodes": [
+    {
+      "id": "start",
+      "pos": [0, 0],
+      "type": "event.on_start"
+    },
+    {
+      "id": "walk",
+      "inputs": {
+        "entity": { "const": "$self" },
+        "param": { "const": "isMoving" },
+        "value": { "const": true }
+      },
+      "pos": [1, 0],
+      "type": "animator.set_bool"
+    }
+  ],
+  "version": 1
+}

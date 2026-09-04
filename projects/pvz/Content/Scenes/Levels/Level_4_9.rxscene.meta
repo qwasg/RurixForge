@@ -1,0 +1,10 @@
+guid: 41035291-9eb6-5a38-a1f2-e75cb22632d8
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 4-9(fog,20 波,奖励 note);在 IDE Assets 面板双击即可装进视口试玩

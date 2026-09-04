@@ -1,0 +1,10 @@
+guid: 4b1a283c-c1b9-51be-8fe2-8128a98d29fa
+type: script
+importer: rxgraph
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 行为图 special_whack

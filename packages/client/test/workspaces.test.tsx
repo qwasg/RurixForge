@@ -26,6 +26,7 @@ describe('Sidebar workspaces', () => {
   it('creates workspace and filters sessions by active workspace', async () => {
     const workspaces: Array<{ id: string; name: string; root: string; createdAt: string; updatedAt: string }> =
       [];
+    const initCalls: Array<{ root: string; name: string; mode: string }> = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
@@ -87,6 +88,18 @@ describe('Sidebar workspaces', () => {
         if (u === '/api/forge/chat-folders') {
           return { ok: true, status: 200, json: async () => ({ folders: [] }) } as Response;
         }
+        // F-GAME-3:项目选型脚手架(默认 2D;记录调用供断言)
+        if (u === '/api/forge/project/init' && method === 'POST') {
+          const body = JSON.parse(init?.body ?? '{}') as { root: string; name: string; mode: string };
+          initCalls.push(body);
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              project: { root: body.root, name: body.name, mode: body.mode, entryScene: 'Content/Scenes/Main.rxscene' },
+            }),
+          } as Response;
+        }
         throw new Error(`未 mock: ${method} ${u}`);
       }),
     );
@@ -110,6 +123,8 @@ describe('Sidebar workspaces', () => {
       expect(screen.getAllByTestId('workspace-row-ws_test1')).toHaveLength(1);
     });
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBe('ws_test1');
+    // F-GAME-3:默认 2D 选型 → 先 project/init 落定模式,再登记工作区
+    expect(initCalls).toEqual([{ root: 'D:/proj-a', name: '项目A', mode: '2d' }]);
 
     // 选中即收起面板,会话列按 workspaceId 过滤
     fireEvent.click(screen.getByTestId('workspace-row-ws_test1'));
@@ -124,6 +139,63 @@ describe('Sidebar workspaces', () => {
     await waitFor(() => {
       expect(screen.getByTestId('session-row-sess_b')).toBeInTheDocument();
     });
+  });
+
+  // F-GAME-3:游戏选型控件——3D 走 project/init mode=3d;仅目录不初始化项目
+  it('game type selection: 3d inits project, none skips init', async () => {
+    const initCalls: Array<{ root: string; name: string; mode: string }> = [];
+    let wsCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
+        const u = String(url);
+        const method = init?.method ?? 'GET';
+        if (u === '/api/forge/workspaces' && method === 'GET') {
+          return { ok: true, status: 200, json: async () => ({ workspaces: [] }) } as Response;
+        }
+        if (u === '/api/forge/workspaces' && method === 'POST') {
+          const body = JSON.parse(init?.body ?? '{}') as { name: string; root: string };
+          wsCount += 1;
+          const ws = {
+            id: `ws_${wsCount}`,
+            name: body.name,
+            root: body.root,
+            createdAt: '2026-08-31T00:00:00Z',
+            updatedAt: '2026-08-31T00:00:00Z',
+          };
+          return { ok: true, status: 200, json: async () => ({ workspace: ws }) } as Response;
+        }
+        if (u === '/api/forge/project/init' && method === 'POST') {
+          initCalls.push(JSON.parse(init?.body ?? '{}') as { root: string; name: string; mode: string });
+          return { ok: true, status: 200, json: async () => ({ project: {} }) } as Response;
+        }
+        if (u === '/api/forge/sessions') {
+          return { ok: true, status: 200, json: async () => ({ sessions: [] }) } as Response;
+        }
+        if (u === '/api/forge/chat-folders') {
+          return { ok: true, status: 200, json: async () => ({ folders: [] }) } as Response;
+        }
+        throw new Error(`未 mock: ${method} ${u}`);
+      }),
+    );
+
+    render(<Sidebar />);
+    // 选 3D:init 收 mode=3d
+    fireEvent.click(screen.getByTestId('sidebar-new-workspace'));
+    fireEvent.change(screen.getByTestId('sidebar-workspace-name'), { target: { value: 'P3' } });
+    fireEvent.change(screen.getByTestId('sidebar-workspace-root'), { target: { value: 'D:/p3' } });
+    fireEvent.click(screen.getByTestId('workspace-gametype-3d'));
+    fireEvent.click(screen.getByTestId('sidebar-workspace-create'));
+    await waitFor(() => expect(initCalls).toEqual([{ root: 'D:/p3', name: 'P3', mode: '3d' }]));
+
+    // 选「仅目录」:不调 init,直接登记
+    fireEvent.click(screen.getByTestId('sidebar-new-workspace'));
+    fireEvent.change(screen.getByTestId('sidebar-workspace-name'), { target: { value: 'Plain' } });
+    fireEvent.change(screen.getByTestId('sidebar-workspace-root'), { target: { value: 'D:/plain' } });
+    fireEvent.click(screen.getByTestId('workspace-gametype-none'));
+    fireEvent.click(screen.getByTestId('sidebar-workspace-create'));
+    await waitFor(() => expect(wsCount).toBe(2));
+    expect(initCalls).toHaveLength(1);
   });
 
   it('picker 收起态只留触发条,展开后出搜索/最近/打开三段', async () => {

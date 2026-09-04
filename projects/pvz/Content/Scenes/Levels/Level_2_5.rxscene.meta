@@ -1,0 +1,10 @@
+guid: 91a3db04-f495-55ba-9022-b1bf97d98c83
+type: scene
+importer: scene
+provenance:
+  origin: tool
+  detail:
+    tool: tools/build_all_levels.py
+build_state: current
+semantic:
+  description: PvZ 冒险 2-5(night,10 波,奖励 hypno_shroom);在 IDE Assets 面板双击即可装进视口试玩

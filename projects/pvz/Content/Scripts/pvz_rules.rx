@@ -1,0 +1,279 @@
+// pvz_rules.rx — PvZ 规则原语。全部导出函数自包含(无跨函数调用:同模块内部符号不链接,
+// RD-F6-001)、同构标量参数 ≤4、标量返回。host 上下文无 floor/min/max/abs,用 as 截断手写。
+// 网格常量:格 1.6 米;9 列 x0=-7.2;行 y 按 5 行/6 行两变体。
+
+fn main() {}
+
+// ---------- 通用标量 ----------
+#[export(c)]
+pub fn neg(value: f32) -> f32 { return 0.0 - value; }
+
+#[export(c)]
+pub fn nonpositive(value: f32) -> bool { if value <= 0.0 { return true; } return false; }
+
+#[export(c)]
+pub fn nonnegative(value: f32) -> bool { if value >= 0.0 { return true; } return false; }
+
+#[export(c)]
+pub fn gt_zero(value: f32) -> bool { if value > 0.0 { return true; } return false; }
+
+#[export(c)]
+pub fn is_zero(value: f32) -> bool { if value == 0.0 { return true; } return false; }
+
+#[export(c)]
+pub fn rules_probe() -> f32 { return 42.0; }
+
+// ---------- 战斗 ----------
+#[export(c)]
+pub fn hp_dead(hp: f32) -> bool { if hp <= 0.0 { return true; } return false; }
+
+#[export(c)]
+pub fn pea_expired(fly_t: f32) -> bool { if fly_t > 3.5 { return true; } return false; }
+
+#[export(c)]
+pub fn sun_fall_done(t: f32) -> bool { if t >= 0.8 { return true; } return false; }
+
+#[export(c)]
+pub fn sun_expired(live_t: f32) -> bool { if live_t > 14.0 { return true; } return false; }
+
+// ---------- 网格(原点写死;列 x / 行 y 单参) ----------
+#[export(c)]
+pub fn cell_x(col: f32) -> f32 {
+    let ci = col as i32;
+    if col < 1.0 || col > 9.0 || ci as f32 != col { return -999.0; }
+    return -7.2 + (col - 0.5) * 1.6;
+}
+
+#[export(c)]
+pub fn cell_y5(row: f32) -> f32 {
+    let ri = row as i32;
+    if row < 1.0 || row > 5.0 || ri as f32 != row { return -999.0; }
+    return (5.0 - row + 0.5) * 1.6 - 4.0;
+}
+
+#[export(c)]
+pub fn cell_y6(row: f32) -> f32 {
+    let ri = row as i32;
+    if row < 1.0 || row > 6.0 || ri as f32 != row { return -999.0; }
+    return (6.0 - row + 0.5) * 1.6 - 4.8;
+}
+
+// ---------- 编码:row*100+col / plantId*10000+cellcode ----------
+#[export(c)]
+pub fn unpack_row(code: f32) -> f32 {
+    let ci = code as i32;
+    if ci as f32 != code { return -1.0; }
+    let row = (code / 100.0) as i32;
+    let col = code - row as f32 * 100.0;
+    if row < 1 || row > 6 || col < 1.0 || col > 9.0 { return -1.0; }
+    return row as f32;
+}
+
+#[export(c)]
+pub fn unpack_col(code: f32) -> f32 {
+    let ci = code as i32;
+    if ci as f32 != code { return -1.0; }
+    let row = (code / 100.0) as i32;
+    let col = code - row as f32 * 100.0;
+    if row < 1 || row > 6 || col < 1.0 || col > 9.0 { return -1.0; }
+    return col;
+}
+
+#[export(c)]
+pub fn unpack_cellcode(value: f32) -> f32 {
+    let vi = value as i32;
+    let cc = vi - (vi / 10000) * 10000;
+    return cc as f32;
+}
+
+#[export(c)]
+pub fn unpack_plant(value: f32) -> f32 {
+    let vi = value as i32;
+    return (vi / 10000) as f32;
+}
+
+// ---------- 取模(轮换) ----------
+#[export(c)]
+pub fn mod8(x: f32) -> f32 { let xi = x as i32; return (xi - (xi / 8) * 8) as f32; }
+
+#[export(c)]
+pub fn mod5(x: f32) -> f32 { let xi = x as i32; return (xi - (xi / 5) * 5) as f32; }
+
+#[export(c)]
+pub fn mod6(x: f32) -> f32 { let xi = x as i32; return (xi - (xi / 6) * 6) as f32; }
+
+// ---------- 关卡/波次 ----------
+#[export(c)]
+pub fn level_stage(level_code: f32) -> f32 { return (level_code / 100.0) as i32 as f32; }
+
+#[export(c)]
+pub fn wave_size(wave_index: f32) -> f32 {
+    let wi = wave_index as i32;
+    return (1 + wi / 3) as f32;
+}
+
+// packed = wave_index*100 + total_waves → 间隔随进程收紧(22s → 8s)
+#[export(c)]
+pub fn wave_interval(packed: f32) -> f32 {
+    let pi = packed as i32;
+    let wi = pi / 100;
+    let iv = 22 - wi;
+    if iv < 8 { return 8.0; }
+    return iv as f32;
+}
+
+// packed = wave_index*10000 + i*100 + kinds → 确定性伪多样出怪种类序号(1..kinds)
+#[export(c)]
+pub fn pick_kind(packed: f32) -> f32 {
+    let pi = packed as i32;
+    let kinds = pi - (pi / 100) * 100;
+    if kinds <= 0 { return 0.0; }
+    let i = (pi / 100) - (pi / 10000) * 100;
+    let w = pi / 10000;
+    let k = (w + i * 3) - ((w + i * 3) / kinds) * kinds;
+    return (k + 1) as f32;
+}
+
+// ---------- 经济 ----------
+// pack = sun - cost(图侧 var 累加构造);>=0 即可负担
+#[export(c)]
+pub fn afford_packed(pack: f32) -> bool { if pack >= 0.0 { return true; } return false; }
+
+// ---------- 输入编码:value = action*1000000 + payload ----------
+#[export(c)]
+pub fn unpack_action(value: f32) -> f32 {
+    let vi = value as i32;
+    return (vi / 1000000) as f32;
+}
+
+#[export(c)]
+pub fn unpack_payload(value: f32) -> f32 {
+    let vi = value as i32;
+    let a = vi / 1000000;
+    return (vi - a * 1000000) as f32;
+}
+
+// ---------- 消息协议 ----------
+// kind 1=HUD 阳光,2=判负线,3=胜利奖励,4=失败;0=内部数值事件(如 +25 阳光)。
+#[export(c)]
+pub fn msg_kind(value: f32) -> f32 {
+    let vi = value as i32;
+    if vi < 0 { return 0.0; }
+    return (vi / 100000) as f32;
+}
+
+#[export(c)]
+pub fn msg_value(value: f32) -> f32 {
+    let vi = value as i32;
+    if vi < 0 { return value; }
+    let k = vi / 100000;
+    return (vi - k * 100000) as f32;
+}
+
+#[export(c)]
+pub fn msg_hud_sun(sun: f32) -> f32 { return 100000.0 + sun; }
+
+#[export(c)]
+pub fn msg_loseline(row: f32) -> f32 { return 200000.0 + row; }
+
+#[export(c)]
+pub fn msg_level_win(reward: f32) -> f32 { return 300000.0 + reward; }
+
+#[export(c)]
+pub fn msg_game_over(row: f32) -> f32 { return 400000.0 + row; }
+
+#[export(c)]
+pub fn sun_bucket(sun: f32) -> f32 {
+    let b = (sun / 50.0) as i32;
+    if b < 0 { return 0.0; }
+    if b > 10 { return 10.0; }
+    return b as f32;
+}
+
+// kind 5 = 退款(种到已占格被弹回;value = 费用)。
+#[export(c)]
+pub fn msg_refund(cost: f32) -> f32 { return 500000.0 + cost; }
+
+// ---------- 指针点击 → 网格 / 卡栏(世界坐标,引擎按游戏相机反投影后派发 click_x/click_y) ----------
+// 列:x0=-7.2,格宽 1.6 → 1..9;越界 -1。正区间内 as i32 截断即向下取整。
+#[export(c)]
+pub fn click_col(x: f32) -> f32 {
+    let f = (x + 7.2) / 1.6;
+    if f < 0.0 || f >= 9.0 { return -1.0; }
+    return (f as i32 + 1) as f32;
+}
+
+// 行(5 行草坪,行 1 顶边 y=4.0):row = floor((4.0 - y) / 1.6) + 1。
+#[export(c)]
+pub fn click_row5(y: f32) -> f32 {
+    let f = (4.0 - y) / 1.6;
+    if f < 0.0 || f >= 5.0 { return -1.0; }
+    return (f as i32 + 1) as f32;
+}
+
+// 行(6 行泳池/雾夜,行 1 顶边 y=4.8)。
+#[export(c)]
+pub fn click_row6(y: f32) -> f32 {
+    let f = (4.8 - y) / 1.6;
+    if f < 0.0 || f >= 6.0 { return -1.0; }
+    return (f as i32 + 1) as f32;
+}
+
+// 种子卡栏:卡中心 x = -6.2 + slot*1.3(卡宽 1.3),最多 8 张;y 带见 in_card_bar。
+#[export(c)]
+pub fn card_slot(x: f32) -> f32 {
+    let f = (x + 6.85) / 1.3;
+    if f < 0.0 || f >= 8.0 { return -1.0; }
+    return (f as i32) as f32;
+}
+
+#[export(c)]
+pub fn in_card_bar(y: f32) -> bool { if y >= 4.5 && y <= 6.2 { return true; } return false; }
+
+// ---------- HUD 数字(帧 0..9 = 数字,10 = 空白;前导零消隐) ----------
+#[export(c)]
+pub fn digit_thousands(v: f32) -> f32 {
+    let vi = v as i32;
+    if vi < 1000 { return 10.0; }
+    return ((vi / 1000) - (vi / 10000) * 10) as f32;
+}
+
+#[export(c)]
+pub fn digit_hundreds(v: f32) -> f32 {
+    let vi = v as i32;
+    if vi < 100 { return 10.0; }
+    return ((vi / 100) - (vi / 1000) * 10) as f32;
+}
+
+#[export(c)]
+pub fn digit_tens(v: f32) -> f32 {
+    let vi = v as i32;
+    if vi < 10 { return 10.0; }
+    return ((vi / 10) - (vi / 100) * 10) as f32;
+}
+
+#[export(c)]
+pub fn digit_ones(v: f32) -> f32 {
+    let vi = v as i32;
+    if vi < 0 { return 0.0; }
+    return (vi - (vi / 10) * 10) as f32;
+}
+
+// ---------- 植物被啃 / 阳光下落 ----------
+// 普通僵尸 100 dps;每帧扣血量(负值,直接 var.add 到 hp)。
+#[export(c)]
+pub fn bite_damage(dt: f32) -> f32 { return 0.0 - dt * 100.0; }
+
+// 天降阳光:按池序号决定落到第几行(1..5 轮换),从 y=6.6 以 1.6 单位/秒下落到该行中心。
+#[export(c)]
+pub fn sun_fall_secs(pool_id: f32) -> f32 {
+    let pi = pool_id as i32;
+    let row = (pi - 1) - ((pi - 1) / 5) * 5 + 1;
+    let target_y = (5.0 - row as f32 + 0.5) * 1.6 - 4.0;
+    return (6.6 - target_y) / 1.6;
+}
+
+// t 已达该阳光的下落时长(packed = 剩余秒数 = fall_secs - fallT;≤0 即落地)。
+#[export(c)]
+pub fn sun_landed(remain: f32) -> bool { if remain <= 0.0 { return true; } return false; }
+

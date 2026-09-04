@@ -1,0 +1,90 @@
+{
+  "tutorial_1lane": {
+    "adapter": "tutorial",
+    "inputs": [
+      "plant_at"
+    ],
+    "notes": "仅中间一行可用"
+  },
+  "tutorial_3lane": {
+    "adapter": "tutorial",
+    "inputs": [
+      "plant_at"
+    ],
+    "notes": "仅中间三行可用"
+  },
+  "bowling": {
+    "adapter": "bowling",
+    "inputs": [
+      "roll_nut"
+    ],
+    "notes": "坚果池沿车道微 tween 滚动并触发清除"
+  },
+  "whack": {
+    "adapter": "whack",
+    "inputs": [
+      "whack_cell"
+    ],
+    "notes": "输入命中墓碑/僵尸，关卡配置控制墓碑列"
+  },
+  "conveyor": {
+    "adapter": "conveyor",
+    "inputs": [
+      "conveyor_take",
+      "plant_at"
+    ],
+    "notes": "卡牌队列由 manifest 给出"
+  },
+  "big_trouble": {
+    "adapter": "big_trouble",
+    "inputs": [
+      "plant_at"
+    ],
+    "notes": "小型僵尸缩放配置"
+  },
+  "vasebreaker": {
+    "adapter": "vasebreaker",
+    "inputs": [
+      "break_vase"
+    ],
+    "notes": "罐子内容由 deterministic seed 预生成"
+  },
+  "storm": {
+    "adapter": "storm",
+    "inputs": [
+      "plant_at"
+    ],
+    "notes": "全屏遮罩周期切换"
+  },
+  "bobsled": {
+    "adapter": "bobsled",
+    "inputs": [
+      "plant_at"
+    ],
+    "notes": "冰道行与雪橇小队配置"
+  },
+  "boss": {
+    "adapter": "boss",
+    "inputs": [
+      "plant_at",
+      "boss_target"
+    ],
+    "notes": "僵王血条/召唤/冰火球阶段表"
+  },
+  "minigame_unlock": {
+    "adapter": "unlock",
+    "notes": "解锁迷你游戏标记"
+  },
+  "shop_unlock": {
+    "adapter": "unlock",
+    "notes": "解锁商店标记"
+  },
+  "puzzle_unlock": {
+    "adapter": "unlock",
+    "notes": "解锁解谜标记"
+  },
+  "zen_garden_unlock": {
+    "adapter": "unlock",
+    "notes": "解锁禅境花园标记"
+  }
+}

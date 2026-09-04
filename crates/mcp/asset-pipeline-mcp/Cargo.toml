@@ -6,5 +6,13 @@ edition.workspace = true
 
 [dependencies]
 assetd = { path = "../../assetd" }
+# F10-RAG:asset_set_description 写后即增量进语义索引(词法+向量)。
+forge-index = { path = "../../forge-index" }
+# embedding 渠道解析(与 context-mcp 同一来源;不触密钥值,R-5)。
+gend = { path = "../../gend" }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+# 集成测试合成贴图(与 assetd 同版本,不引第二编解码栈)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

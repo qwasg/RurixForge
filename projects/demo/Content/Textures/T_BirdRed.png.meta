@@ -1,0 +1,12 @@
+guid: 2c83aee7-091c-4306-9bc0-8a25c861393f
+type: texture
+importer: png
+provenance:
+  origin: gen-image
+  detail:
+    backendId: remote-openai-compatible
+    generatedAt: 2026-08-29T12:38:56Z
+    prompt: Angry Birds style red round bird character, front-side view, cute cartoon game sprite, red feathers, yellow beak, angry eyebrows, white belly, isolated on plain solid magenta background, 2D game asset, crisp edges, no text
+    seed: 4089104112623895479
+    sourceRefs: []
+build_state: current

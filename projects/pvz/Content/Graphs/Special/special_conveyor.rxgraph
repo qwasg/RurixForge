@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "id": "special_conveyor",
+  "name": "special_conveyor",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "s",
+      "type": "event.on_start",
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "ls",
+      "type": "debug.log",
+      "pos": [
+        1,
+        0
+      ],
+      "inputs": {
+        "message": {
+          "const": "SPECIAL_CONVEYOR_READY"
+        }
+      }
+    },
+    {
+      "id": "i",
+      "type": "event.on_input",
+      "pos": [
+        0,
+        2
+      ]
+    },
+    {
+      "id": "li",
+      "type": "debug.log",
+      "pos": [
+        1,
+        2
+      ],
+      "inputs": {
+        "message": {
+          "const": "SPECIAL_CONVEYOR_INPUT"
+        }
+      }
+    },
+    {
+      "id": "ts",
+      "type": "flow.timer_start",
+      "pos": [
+        2,
+        0
+      ],
+      "inputs": {
+        "timerId": {
+          "const": "conveyor_tick"
+        },
+        "duration": {
+          "const": 1.0
+        }
+      }
+    },
+    {
+      "id": "te",
+      "type": "event.on_timer",
+      "pos": [
+        0,
+        4
+      ]
+    },
+    {
+      "id": "lt",
+      "type": "debug.log",
+      "pos": [
+        1,
+        4
+      ],
+      "inputs": {
+        "message": {
+          "const": "SPECIAL_CONVEYOR_TICK"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "s",
+        "exec"
+      ],
+      "to": [
+        "ts",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "i",
+        "exec"
+      ],
+      "to": [
+        "li",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "ts",
+        "exec"
+      ],
+      "to": [
+        "ls",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "te",
+        "exec"
+      ],
+      "to": [
+        "lt",
+        "exec"
+      ]
+    }
+  ]
+}
