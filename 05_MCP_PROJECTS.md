@@ -183,8 +183,9 @@
 | `gen_backends_list` | `{}` | `{ backends: [{ id, kind: local\|remote, configured, capabilities[] }] }` |
 | `gen_image` | `{ prompt, negativePrompt?, size?, styleRefAssetPath?, seed?, n=1..4, backend? }` | `{ candidates: [{ imageFileRef, seed, backendId }] }` |
 | `gen_texture_set` | `{ prompt, materialKind: pbr\|unlit, maps: [albedo,normal,roughness,ao?], size?, seamless=true }` | `{ textureAssets: [{ map, assetPath }] }`(自动入管线) |
-| `gen_accept` | `{ imageFileRef, destFolder, name }` | `{ assetPath, guid }`(导入 + provenance 写入) |
+| `gen_accept` | `{ imageFileRef, destFolder, name, origin?=gen-image\|gen-video }` | `{ assetPath, guid }`(导入 + provenance 写入) |
 | `gen_variations` | `{ sourceImageRef, prompt?, strength, n }` | `{ candidates[] }` |
+| `gen_video_frames` | `{ videoFileRef, fps?=8, maxFrames?=32, chromaKey?=auto\|magenta\|none, crop?=union\|tight\|none, padding?=2, trimStartSec?, trimEndSec? }` | `{ atlasFileRef, width, height, frameCount, fps, boxes: [[x,y,w,h]], frames }`(frames 可直接喂 `sprite_create`) |
 
 ## 8. gen-model(预留,server 名:`gen-model`)
 
@@ -214,3 +215,16 @@
 | `sprite_autoslice` | `{ assetPath(贴图), minArea?=16, alphaThreshold?=5 }` | `{ width, height, boxes: [[x,y,w,h]] }`(只读不落盘;行带分组序) | `WRONG_TYPE`(非贴图)/ `SPRITE_SLICE`(连通域超上限,建议调高 minArea)/ `NO_META` |
 
   幂等性:`sprite_create` 同名重建复用既有 `.meta` GUID(reimport 语义);`sprite_set` 同文档重写字节稳定(确定性键序)。校验规则见 08 E-08-002;agentd 白名单同步(WRITE_TOOLS + KNOWN_TOOLS)。
+
+- **E-05-003(2026-09-04,角色动画波 / D-039)——gen-image 工具面加一件 `gen_video_frames`(五 → 六),并补媒体生成 REST 面清单**。
+
+  MCP 侧新工具见 §7 表格。截帧依赖外部 `ffmpeg` 可执行文件(发现顺序:env `FORGE_FFMPEG` > `<workspace>/data/tools/ffmpeg[.exe]` > PATH),找不到 → 新错误码 `GEN_TOOL_MISSING`(与 `GEN_BACKEND_NOT_CONFIGURED` 同档:环境缺件,消息带三条配置指引,**不伪造帧**)。外层 MCP 超时同 `GEN_IMAGE_TIMEOUT`(360s)。
+
+  媒体生成走 REST 而非 MCP 的部分(适配器预算远超 MCP 10s 上限,D-024 体例;host `forgeProxy.isLongLivedPath` 同步豁免):
+
+  | 端点 | 请求 | 响应 |
+  |---|---|---|
+  | `POST /api/forge/gen/video` | `{ prompt, imageRef? \| imageDataUrl?, aspect?, resolution?, durationSec?, backend? }` | `{ backendId, artifacts: [{ fileRef, mime, ext }] }`;给了参考图即图生视频 |
+  | `POST /api/forge/gen/video/frames` | `{ videoFileRef, fps?, maxFrames?, chromaKey?, crop?, padding?, trimStartSec?, trimEndSec? }` | `{ atlas: { fileRef, mime, dataUrl, width, height }, boxes, fps, frameCount }`;无 ffmpeg → 501 `GEN_TOOL_MISSING` |
+  | `GET /api/forge/tools/ffmpeg` | — | `{ found, path?, version? }`(可用性探测,前端据此显示配置指引而非等撞 501) |
+  | `POST /api/forge/gen/audio` / `POST /api/forge/gen/mesh` | 见 D-024 | 同上形态 |

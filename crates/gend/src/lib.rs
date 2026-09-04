@@ -20,6 +20,7 @@ pub mod remote;
 // (gen-image-mcp / gen-model-mcp 经此引用,不改其源码)。
 pub use forge_util::timeutil;
 pub mod tmpstore;
+pub mod video_frames;
 
 use std::fmt;
 
@@ -36,6 +37,9 @@ pub const GEN_RATE_LIMITED: &str = "GEN_RATE_LIMITED";
 pub const GEN_BACKEND_ERROR: &str = "GEN_BACKEND_ERROR";
 pub const GEN_FILE_NOT_FOUND: &str = "GEN_FILE_NOT_FOUND";
 pub const GEN_BAD_PARAMS: &str = "GEN_BAD_PARAMS";
+/// 外部可执行依赖缺失(当前仅 ffmpeg,视频截帧用)。与「后端未配置」同档:
+/// 环境缺件是用户可补的配置问题,不是生成失败,更不能伪造帧糊过去(I-5)。
+pub const GEN_TOOL_MISSING: &str = "GEN_TOOL_MISSING";
 
 impl GenError {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {

@@ -103,6 +103,8 @@ pub const WRITE_TOOLS: &[&str] = &[
     "mcp__gen-image__gen_texture_set",
     "mcp__gen-image__gen_accept",
     "mcp__gen-image__gen_variations",
+    // 截帧图集与生成候选同性质:落 .forge/tmp/gen/,判写。
+    "mcp__gen-image__gen_video_frames",
     "mcp__gen-model__gen_mesh",
     "mcp__gen-model__gen_mesh_refine",
     "mcp__gen-model__gen_accept",
@@ -582,6 +584,8 @@ pub enum TurnOrigin {
     User,
     /// 后台子代理回执送达、会话空闲 → 系统自动唤醒主 agent 的一轮。
     ReceiptWake,
+    /// 目标未达成、预算未耗尽 → 自动接着推进的一轮(见 [goals](crate::goals))。
+    GoalContinue,
 }
 
 impl TurnOrigin {
@@ -589,6 +593,7 @@ impl TurnOrigin {
         match self {
             TurnOrigin::User => "composer_chat",
             TurnOrigin::ReceiptWake => "receipt_wake",
+            TurnOrigin::GoalContinue => "goal_continue",
         }
     }
 }
@@ -915,7 +920,8 @@ pub async fn execute_turn(
     // 唤醒轮正文按**实际取到**的回执生成(UI 卡片与模型看到的是同一段话);
     // 取到零条 = 别的 turn 抢先送达了,本轮无事可做,静默收场不发事件。
     let user_text: String = match input.origin {
-        TurnOrigin::User => input.user_input.to_string(),
+        // 目标续跑轮的正文由 goals::decide 生成后经 user_input 递进来,与用户轮同路。
+        TurnOrigin::User | TurnOrigin::GoalContinue => input.user_input.to_string(),
         TurnOrigin::ReceiptWake => match &receipts {
             Some(r) if !r.ids.is_empty() => wake_user_text(r),
             _ => {
@@ -949,6 +955,10 @@ pub async fn execute_turn(
         if let Some(r) = &receipts {
             user_payload["receiptIds"] = json!(r.ids);
         }
+    }
+    if input.origin == TurnOrigin::GoalContinue {
+        // 同理:目标续跑轮的「用户卡」不是用户说的话,前端画成系统续跑、不可编辑重发。
+        user_payload["source"] = json!("goal");
     }
     state.events.emit(
         EventDraft::new(sid, "composer.user.message", "composer").payload(user_payload),
@@ -985,7 +995,12 @@ pub async fn execute_turn(
     let turn_slot: Arc<Mutex<Turn>> = Arc::new(Mutex::new(Turn::new(sid, &run_id)));
     let parent_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let last_call_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    // 目标记账用:本轮累计 token。目标的预算闸门要靠它,而 agent.usage 是逐次发出的,
+    // 收尾时没有现成的总数可读。
+    let turn_tokens = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let started_at = std::time::Instant::now();
     let sink = {
+        let turn_tokens = turn_tokens.clone();
         let events = events.clone();
         let sid_owned = sid_owned.clone();
         let rid = rid.clone();
@@ -1082,6 +1097,7 @@ pub async fn execute_turn(
                     );
                 }
                 LoopEvent::Usage(u) => {
+                    turn_tokens.fetch_add(u.total_tokens, Ordering::Relaxed);
                     events.emit(
                         EventDraft::new(&sid_owned, "agent.usage", "agent").payload(json!({
                             "runId": rid, "provider": provider_label, "model": model_label,
@@ -1229,6 +1245,11 @@ pub async fn execute_turn(
         provider_label: input.provider_label.to_string(),
         model_label: input.model_label.to_string(),
     };
+    // 目标续跑轮同样是「系统自起、没有 HTTP 请求带参数」的一轮,所以有目标在推进时
+    // 就得先把执行上下文抓拍下来——收尾时再抓已经来不及(那时 input 已被消费)。
+    if state.goals.get(sid).map(|g| g.is_active()).unwrap_or(false) {
+        state.wakes.set(sid, wake_ctx.clone());
+    }
     // F-GAME-4 wave.3:team 编排派发环境(与 execute 闭包同源的克隆;编排器绕过
     // task 工具直接派 run_nested_task,合成 toolCallId = "team-<todoId>")。
     struct TeamEnv {
@@ -1277,6 +1298,13 @@ pub async fn execute_turn(
                 let (ok, text) = crate::plan_doc::handle_create_plan(
                     &ws_root, &events_x, &sessions_x, &sid_x, &rid_x, &args,
                 );
+                return (ok, text.into());
+            }
+            // 目标状态更新:只动 GoalStore 里本会话那条记录,不碰任何用户内容,
+            // 故与 create_plan 同列在权限门之前——不然 permission=plan 的会话里
+            // 模型没法宣告「目标已完成」,自动续跑就永远停不下来。
+            if name == crate::goals::GOAL_UPDATE_TOOL {
+                let (ok, text) = crate::goals::dispatch_goal_update(&state_x, &sid_x, &args);
                 return (ok, text.into());
             }
             if name == "task" {
@@ -1401,6 +1429,16 @@ pub async fn execute_turn(
             });
             tools.extend(engine::runtime_tool_specs(&session.agent_kind, input.mode));
             tools.extend(crate::resources::tool_specs());
+            // 目标面工具只在真有目标在推进时给:没目标却给了它,模型会拿它当
+            // 「宣告任务完成」的通用出口用,把每一轮普通对话都标成目标完成。
+            if state
+                .goals
+                .get(sid)
+                .map(|g| g.is_active())
+                .unwrap_or(false)
+            {
+                tools.push(crate::goals::goal_update_spec());
+            }
         }
         let forbid = |n: &str| is_write_tool(n);
         let cancel_pred = {
@@ -1696,10 +1734,23 @@ pub async fn execute_turn(
     }
     state.runs.finish(&run_id, &outcome.0);
     state.sessions.release_active_run(sid, &run_id);
+    // 目标续跑:先记账(token/时长/轮数),再据此决定是否起下一轮。
+    // 必须在 release_active_run 之后——续跑轮要自己认领 activeRunId。
+    let goal_scheduled = settle_goal(
+        state,
+        sid,
+        &outcome.0,
+        &outcome.1,
+        turn_tokens.load(Ordering::Relaxed),
+        started_at.elapsed().as_secs(),
+        input.mode,
+    );
     // D-038 收尾清点:循环最后一步之后送达的回执没赶上中途收件,现在会话已空闲,
     // 立刻起唤醒轮送达(唤醒轮自己收尾时也走这里,直到收件箱清空为止——每轮至少消费
     // 一条,必然收敛)。
-    if !state.receipts.unconsumed(sid).is_empty() {
+    // 目标续跑轮已经排上了就不再起唤醒轮:两条都会去认领 activeRunId,输的那条白跑一趟;
+    // 续跑轮自己收尾时会再走这里,回执不会丢。
+    if !goal_scheduled && !state.receipts.unconsumed(sid).is_empty() {
         schedule_wake(state.clone(), sid.to_string());
     }
     TurnOutput {
@@ -1708,6 +1759,114 @@ pub async fn execute_turn(
         text: outcome.1,
         error: outcome.2,
     }
+}
+
+/// 目标记账 + 续跑决策。返回 true = 已排上续跑轮。
+///
+/// 记账在决策之前:预算闸门要算上刚跑完这一轮的开销,否则「最后一轮超支」永远发现不了。
+fn settle_goal(
+    state: &Arc<AppState>,
+    session_id: &str,
+    turn_status: &str,
+    last_text: &str,
+    tokens: u64,
+    seconds: u64,
+    mode: &str,
+) -> bool {
+    if state.goals.get(session_id).is_none() {
+        return false;
+    }
+    let goal = state.goals.record_turn(session_id, tokens, seconds);
+    let Some(goal) = goal else {
+        return false;
+    };
+    let engine = crate::codex::config::ENGINE_LOCAL;
+    match crate::goals::decide(Some(&goal), turn_status, last_text) {
+        crate::goals::Continuation::Idle => {
+            crate::goals::emit_updated(state, &goal, engine);
+            false
+        }
+        crate::goals::Continuation::Stop { status, note } => {
+            match state.goals.set_status(session_id, status, Some(&note)) {
+                Ok(g) => crate::goals::emit_updated(state, &g, engine),
+                Err(e) => eprintln!("[goal] 收尾改状态失败: {e}"),
+            }
+            false
+        }
+        crate::goals::Continuation::Continue(text) => {
+            crate::goals::emit_updated(state, &goal, engine);
+            schedule_goal_continue(state.clone(), session_id.to_string(), mode.to_string(), text);
+            true
+        }
+    }
+}
+
+/// 后台起一条目标续跑轮(spawn;调用方不等)。
+///
+/// 上下文取自 WakeRegistry 里本轮抓拍的模型/模式/工具面 —— 与回执唤醒轮同一套机制,
+/// 因为要解决的是同一个问题:系统自起的一轮没有 HTTP 请求可以带参数。
+fn schedule_goal_continue(
+    state: Arc<AppState>,
+    session_id: String,
+    mode: String,
+    user_text: String,
+) {
+    tokio::spawn(async move {
+        let Some(session) = state.sessions.get(&session_id) else {
+            return;
+        };
+        if session.active_run_id.is_some() {
+            return;
+        }
+        // 目标可能在这几毫秒里被用户暂停/清除了;以最新状态为准。
+        match state.goals.get(&session_id) {
+            Some(g) if g.is_active() => {}
+            _ => return,
+        }
+        let Some(ctx) = state.wakes.get(&session_id) else {
+            eprintln!(
+                "[goal] 会话 {session_id} 无执行上下文(进程重启?),目标暂停等用户发言"
+            );
+            let _ = state.goals.set_status(
+                &session_id,
+                crate::goals::STATUS_PAUSED,
+                Some("agentd 重启,目标已暂停;发一条消息即可继续"),
+            );
+            return;
+        };
+        let step: Box<StepFn> = match &ctx.sub.llm {
+            Some((provider, spec)) => llm::step_for_provider(provider, spec),
+            None => llm::mock_step(),
+        };
+        let execute: Arc<ExecFn> = Arc::from(llm::mcp_executor_in(ctx.sub.project_root.clone()));
+        let out = execute_turn(
+            &state,
+            &session,
+            TurnInput {
+                user_input: &user_text,
+                mode: &mode,
+                provider_label: &ctx.provider_label,
+                model_label: &ctx.model_label,
+                tools: ctx.sub.mcp_tools.clone(),
+                step: step.as_ref(),
+                execute,
+                vision: ctx.sub.vision,
+                preamble: None,
+                skills: None,
+                receipts: None,
+                plan: None,
+                scope: Some(ctx.sub.scope.clone()),
+                sub_llm: ctx.sub.llm.clone(),
+                origin: TurnOrigin::GoalContinue,
+            },
+        )
+        .await;
+        if let Some(e) = &out.error {
+            if !e.starts_with("SESSION_BUSY") {
+                eprintln!("[goal] 续跑轮失败(会话 {session_id}): {e}");
+            }
+        }
+    });
 }
 
 /// D-038:唤醒轮的 user 正文——UI 卡片与模型看到同一段话。回执正文本身走 preamble 段
@@ -2726,6 +2885,71 @@ pub async fn ask_execute(
         );
     }
 
+    // 引擎分派:Codex 会话整轮交给 codex app-server,不走下面的 provider/工具面装配
+    // (那些都是本地工具循环的入参)。
+    if session.is_codex() {
+        if !crate::codex::turn::mode_supported(&mode) {
+            return bad_request(
+                "INVALID_INPUT",
+                &format!(
+                    "Codex 引擎不支持 mode={mode}(支持 {:?});\
+                     team/multitask 的编排器跑在 Forge 侧,请切回本地引擎",
+                    crate::codex::turn::CODEX_MODES
+                ),
+            );
+        }
+        let scope = crate::scope::resolve(
+            &state,
+            session.workspace_id.as_deref(),
+            &req.readonly_workspace_ids,
+            req.include_library,
+        );
+        // Build 下发的计划:读不出来就如实 400,不静默降级成一次没有计划的普通轮。
+        let plan_body = match req.plan_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+            Some(p) => match crate::plan_doc::load(&scope.current.workspace_root, p) {
+                Ok(doc) => Some(doc.body),
+                Err(e) => return bad_request("PLAN_NOT_READABLE", &e),
+            },
+            None => None,
+        };
+        let out = crate::codex::turn::execute_codex_turn(
+            &state,
+            &session,
+            crate::codex::turn::CodexTurnInput {
+                user_input: &user_input,
+                mode: &mode,
+                skills: &req.skills,
+                plan_body,
+                scope,
+            },
+        )
+        .await;
+        if out
+            .error
+            .as_deref()
+            .map(|e| e.starts_with("SESSION_BUSY"))
+            .unwrap_or(false)
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": { "code": "SESSION_BUSY", "message": out.error.unwrap_or_default() }
+                })),
+            )
+                .into_response();
+        }
+        let mut body = json!({
+            "message": { "text": out.text },
+            "run": { "id": out.run_id, "status": out.status },
+            "mode": mode,
+            "engine": "codex",
+        });
+        if let Some(e) = out.error {
+            body["error"] = json!(e);
+        }
+        return Json(body).into_response();
+    }
+
     // F7 wave.4:会话显式选 "mock" 模型 → 强制 Mock provider(有 key 也如实走 mock);
     // F8 wave.2:选 "openai-compat" → 配置面解析(未配齐 = 显式 NOT_CONFIGURED 步进);
     // 其余(未选/未知 id)走 resolve_provider 默认决议(配齐的 openai-compat 优先)。
@@ -3061,6 +3285,10 @@ mod tests {
                 dir.join("agent-sessions").join("receipts.json"),
             )),
             wakes: Arc::new(WakeRegistry::default()),
+            codex: Arc::new(crate::codex::service::CodexService::default()),
+            goals: Arc::new(crate::goals::GoalStore::load(
+                dir.join("agent-sessions").join("goals.json"),
+            )),
             permissions: Arc::new(crate::permission::PermissionService::load(
                 dir.join("agent-sessions").join("permissions.json"),
             )),

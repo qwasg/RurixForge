@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cn } from '@/lib/cn';
 import {
+  apiFfmpegStatus,
   apiGet,
   apiPost,
   ForgeApiError,
@@ -8,6 +10,7 @@ import {
   postEmbeddingConfig,
   postOpenAiCompatConfig,
   type EmbeddingStatus,
+  type FfmpegStatus,
   type OpenAiCompatStatus,
 } from '@/lib/forgeApi';
 import { useToastStore } from '@/lib/toastStore';
@@ -60,6 +63,7 @@ const KIND_LABELS: Record<string, string> = {
   'texture-set': '贴图组',
   variations: '变体',
   text2video: '文生视频',
+  image2video: '图生视频',
   tts: '语音合成',
   music: '音乐生成',
   text2mesh: '文生3D',
@@ -573,6 +577,63 @@ function GenBackendCard({ backend, onSaved }: { backend: GenBackend; onSaved: ()
   );
 }
 
+// ---------- 外部工具:ffmpeg(角色动画截帧) ----------
+
+/**
+ * ffmpeg 可用性卡。仓里没有 mp4 解码器,角色动画的「视频 → 精灵图集」这一步全靠它;
+ * 找不到就明说找不到并给出三条配置路径,而不是让用户点了生成才撞上 501。
+ */
+function FfmpegCard() {
+  const [status, setStatus] = useState<FfmpegStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await apiFfmpegStatus());
+      setError(null);
+    } catch (err) {
+      setStatus(null);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const desc =
+    error !== null
+      ? `探测失败:${error}`
+      : status === null
+        ? '探测中…'
+        : status.found
+          ? `${status.version ?? 'ffmpeg'} · ${status.path ?? ''}`
+          : '未找到。装好后置于 PATH,或放到 <workspace>/data/tools/,或用环境变量 FORGE_FFMPEG 指向可执行文件。未装时视频仍能生成,只是切不出精灵图集。';
+
+  return (
+    <SetCard testId="tools-ffmpeg">
+      <SetRow
+        title="ffmpeg(角色动画截帧)"
+        desc={desc}
+        last
+        control={
+          <span className="flex items-center gap-2">
+            <span
+              className={cn(
+                'flex h-[18px] items-center rounded-full px-1.5 text-[10px]',
+                status?.found === true ? 'bg-sage-bg text-sage' : 'bg-shell-sunk text-fg-4',
+              )}
+            >
+              {status?.found === true ? 'available' : 'not found'}
+            </span>
+            <SmBtn label="重新探测" testId="tools-ffmpeg-recheck" onClick={() => void refresh()} />
+          </span>
+        }
+      />
+    </SetCard>
+  );
+}
+
 export default function ModelsPage() {
   const [backends, setBackends] = useState<GenBackend[]>([]);
   const [loading, setLoading] = useState(true);
@@ -654,6 +715,10 @@ export default function ModelsPage() {
         {backends.map((b) => (
           <GenBackendCard key={b.id} backend={b} onSaved={() => void loadBackends()} />
         ))}
+      </div>
+      <SetSectionLabel>外部工具</SetSectionLabel>
+      <div className="flex flex-col gap-3">
+        <FfmpegCard />
       </div>
     </div>
   );

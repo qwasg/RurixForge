@@ -31,8 +31,15 @@ fn default_mode() -> String {
     DEFAULT_MODE.to_string()
 }
 
-struct Pending {
-    tx: oneshot::Sender<bool>,
+/// 待答审批。
+///
+/// 两种形态并存的原因:本地引擎只需要「放行 / 拒绝」一个布尔;Codex 的审批是**有档次的**
+/// —— accept(这一次)/ acceptForSession(本会话都行)/ decline,`item/tool/requestUserInput`
+/// 还要带回一份答卷。把 Codex 那套硬塞进 bool 会把「本会话都行」降级成「就这一次」,
+/// 于是保留两种 sender,由回答端(REST)按实际待答形态决定送什么。
+enum Pending {
+    Bool(oneshot::Sender<bool>),
+    Decision(oneshot::Sender<Value>),
 }
 
 pub struct PermissionService {
@@ -124,7 +131,7 @@ impl PermissionService {
         self.pending
             .lock()
             .unwrap()
-            .insert(req_id.clone(), Pending { tx });
+            .insert(req_id.clone(), Pending::Bool(tx));
         let mut payload = json!({
             "id": req_id,
             "runId": run_id,
@@ -158,12 +165,82 @@ impl PermissionService {
         Ok(ok)
     }
 
-    pub fn resolve(&self, id: &str, allow: bool) -> bool {
-        if let Some(p) = self.pending.lock().unwrap().remove(id) {
-            let _ = p.tx.send(allow);
-            return true;
+    /// Codex 侧审批:发 `permission.requested` 后等前端回话,返回决定原文。
+    ///
+    /// 与 [`Self::authorize_with`] 的关键差别是**不设超时**:那边 60s 到点自动判失败是
+    /// 因为本地工具循环还有后续步骤要跑;Codex 这边一个待批命令就是整轮的堵点,
+    /// 到点自动拒绝只会让用户看到一轮莫名失败的 turn。turn 挂着等人是对的,
+    /// 用户不想批就点停止(走 `turn/interrupt`)。
+    pub async fn request_decision(
+        &self,
+        bus: &crate::events::EventBus,
+        session_id: &str,
+        run_id: &str,
+        kind: &str,
+        extra: Value,
+    ) -> Result<Value, String> {
+        let req_id = new_id("perm");
+        let (tx, rx) = oneshot::channel();
+        self.pending
+            .lock()
+            .unwrap()
+            .insert(req_id.clone(), Pending::Decision(tx));
+        let mut payload = json!({
+            "id": req_id,
+            "runId": run_id,
+            "kind": kind,
+            "engine": "codex",
+        });
+        if let (Some(obj), Some(p)) = (extra.as_object(), payload.as_object_mut()) {
+            for (k, v) in obj {
+                p.insert(k.clone(), v.clone());
+            }
         }
-        false
+        bus.emit(EventDraft::new(session_id, "permission.requested", "agent").payload(payload));
+        let decision = rx
+            .await
+            .map_err(|_| "PERMISSION_ABANDONED: 审批通道已关闭".to_string())?;
+        bus.emit(
+            EventDraft::new(session_id, "permission.resolved", "agent").payload(json!({
+                "id": req_id,
+                "runId": run_id,
+                "kind": kind,
+                "decision": decision.get("decision").cloned().unwrap_or(Value::Null),
+                "allowed": is_allow(&decision),
+            })),
+        );
+        Ok(decision)
+    }
+
+    pub fn resolve(&self, id: &str, allow: bool) -> bool {
+        self.resolve_with(
+            id,
+            json!({ "decision": if allow { "accept" } else { "decline" } }),
+        )
+    }
+
+    /// 带决定原文的回话(Codex 的 acceptForSession / 答卷经此路)。
+    pub fn resolve_with(&self, id: &str, decision: Value) -> bool {
+        match self.pending.lock().unwrap().remove(id) {
+            Some(Pending::Decision(tx)) => {
+                let _ = tx.send(decision);
+                true
+            }
+            // 本地引擎那条腿只认布尔:任何非 decline 的决定都当放行。
+            Some(Pending::Bool(tx)) => {
+                let _ = tx.send(is_allow(&decision));
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// 决定是否为放行。缺省(没写 decision)按放行——这条路径只由「点了允许」的按钮走到。
+fn is_allow(decision: &Value) -> bool {
+    match decision.get("decision").and_then(Value::as_str) {
+        Some("decline") | Some("deny") | Some("reject") => false,
+        _ => true,
     }
 }
 
@@ -321,12 +398,34 @@ pub async fn set_permission(
     }
 }
 
+/// 审批回话体(全可选;不带 = 就这一次的普通允许/拒绝,与旧前端完全兼容)。
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApproveRequest {
+    /// `accept` | `acceptForSession` | `decline`(Codex 档次;本地引擎只看是否 decline)。
+    #[serde(default)]
+    pub decision: Option<String>,
+    /// `item/tool/requestUserInput` 的答卷。
+    #[serde(default)]
+    pub answers: Option<Value>,
+}
+
 pub async fn approve_permission(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<String>,
+    body: Option<axum::Json<ApproveRequest>>,
 ) -> axum::Json<Value> {
-    let ok = state.permissions.resolve(&id, true);
-    axum::Json(json!({ "ok": ok, "id": id, "allowed": true }))
+    let req = body.map(|axum::Json(b)| b).unwrap_or_default();
+    let decision = req
+        .decision
+        .filter(|d| d == "accept" || d == "acceptForSession")
+        .unwrap_or_else(|| "accept".to_string());
+    let mut payload = json!({ "decision": decision });
+    if let Some(a) = req.answers {
+        payload["answers"] = a;
+    }
+    let ok = state.permissions.resolve_with(&id, payload);
+    axum::Json(json!({ "ok": ok, "id": id, "allowed": true, "decision": decision }))
 }
 
 pub async fn deny_permission(
@@ -334,5 +433,5 @@ pub async fn deny_permission(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> axum::Json<Value> {
     let ok = state.permissions.resolve(&id, false);
-    axum::Json(json!({ "ok": ok, "id": id, "allowed": false }))
+    axum::Json(json!({ "ok": ok, "id": id, "allowed": false, "decision": "decline" }))
 }

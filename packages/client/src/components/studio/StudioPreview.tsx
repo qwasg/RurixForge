@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { AudioLines, Boxes, Clapperboard, FileText, Image as ImageIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AudioLines, Boxes, Clapperboard, FileText, Image as ImageIcon, PersonStanding } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { AssetItem } from '@/lib/assetStore';
+import type { FrameAtlas } from '@/lib/forgeApi';
 import type { StudioKind, StudioVersion } from '@/lib/studioStore';
 import Thumb from '../editor/assetThumb';
 
@@ -11,6 +12,8 @@ import Thumb from '../editor/assetThumb';
  * - video/audio:dataUrl 直接 <video>/<audio> 控件;仅 fileRef 如实占位;
  * - model:glb 无浏览器内联渲染面;供应商回了缩略图(如 meshy thumbnail_url)就显示它——
  *   那是产物本身的渲染而非臆造;无缩略图则图标 + 文件名如实占位(入库后可在 Assets 面板查看);
+ * - sprite(角色动画):截好的图集按 boxes 在 canvas 上逐帧循环播——这就是入库后
+ *   引擎里的实际观感;还没截帧时退回 <video> 看源片;
  * - text:正文摘要;空态给类型图标。不伪造任何缩略。
  */
 
@@ -20,6 +23,7 @@ export const KIND_ICON: Record<StudioKind, typeof FileText> = {
   model: Boxes,
   video: Clapperboard,
   audio: AudioLines,
+  sprite: PersonStanding,
 };
 
 function fileBase(ref: string): string {
@@ -89,6 +93,93 @@ function MeshViews({
   );
 }
 
+/**
+ * 图集帧循环播放。画布尺寸取所有帧的最大盒,逐帧按「底边居中」摆放
+ * ——.rxsprite 的缺省 pivot 是 [0.5, 1](脚底锚),预览用同一对齐方式,
+ * 这里看到的抖动就是引擎里会看到的抖动。
+ */
+function SpriteFramePlayer({
+  atlas,
+  boxes,
+  fps,
+  className,
+  compact,
+}: {
+  atlas: FrameAtlas;
+  boxes: Array<[number, number, number, number]>;
+  fps: number;
+  className?: string;
+  compact: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const im = new Image();
+    let live = true;
+    im.onload = () => {
+      if (live) setImg(im);
+    };
+    im.src = atlas.dataUrl;
+    return () => {
+      live = false;
+    };
+  }, [atlas.dataUrl]);
+
+  const cellW = Math.max(1, ...boxes.map((b) => b[2]));
+  const cellH = Math.max(1, ...boxes.map((b) => b[3]));
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    // jsdom 无 2d 上下文:静默跳过绘制(占位由外层图标承担),不抛错。
+    if (img === null || !canvas || !ctx) return;
+    const frameDur = 1000 / Math.max(fps, 0.0001);
+    let raf = 0;
+    let last = performance.now();
+    let acc = 0;
+    let idx = 0;
+    const draw = (): void => {
+      const b = boxes[idx];
+      if (b === undefined) return;
+      ctx.clearRect(0, 0, cellW, cellH);
+      ctx.drawImage(img, b[0], b[1], b[2], b[3], Math.round((cellW - b[2]) / 2), cellH - b[3], b[2], b[3]);
+    };
+    draw();
+    const tick = (now: number): void => {
+      acc += now - last;
+      last = now;
+      if (acc >= frameDur) {
+        acc %= frameDur;
+        idx = (idx + 1) % boxes.length;
+        draw();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [img, boxes, fps, cellW, cellH]);
+
+  return (
+    <div className={cn('relative flex items-center justify-center overflow-hidden', className)}>
+      <canvas
+        ref={canvasRef}
+        data-testid="studio-sprite-player"
+        width={cellW}
+        height={cellH}
+        aria-label={`角色动画预览(${boxes.length} 帧 / ${fps}fps)`}
+        className="h-full w-full object-contain"
+        style={{ imageRendering: 'pixelated' }}
+      />
+      {!compact && (
+        <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-shell-float/90 px-1 font-mono text-[9px] text-fg-4">
+          {boxes.length} 帧 · {fps}fps
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function StudioPreview({
   kind,
   version,
@@ -148,6 +239,30 @@ export default function StudioPreview({
         )}
       </div>
     );
+  }
+
+  if (kind === 'sprite') {
+    const { atlas, boxes } = version;
+    if (atlas?.dataUrl !== undefined && boxes !== undefined && boxes.length > 0) {
+      return (
+        <SpriteFramePlayer
+          atlas={atlas}
+          boxes={boxes}
+          fps={version.fps ?? 8}
+          className={className}
+          compact={compact}
+        />
+      );
+    }
+    // 还没截帧(或重开会话丢了图集字节):退回源片,让人至少看得见生成了什么。
+    if (version.dataUrl !== undefined && !compact) {
+      return (
+        <div className={cn('overflow-hidden bg-black/60', className)}>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <video src={version.dataUrl} controls className="h-full w-full object-contain" />
+        </div>
+      );
+    }
   }
 
   if (kind === 'video' && version.dataUrl !== undefined && !compact) {

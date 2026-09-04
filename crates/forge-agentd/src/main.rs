@@ -6,9 +6,13 @@
 //! sse.rs(会话事件流 replay+gap+live+keep-alive)、snapshot.rs(design-snapshot 聚合)。
 
 mod agent;
+/// Codex 引擎接入(`codex app-server` JSON-RPC/stdio;会话级「本地 / Codex」切换)。
+mod codex;
 mod embedcfg;
 mod engine;
 mod events;
+/// 目标面:一个目标 + 自动续跑(Codex 走 thread/goal/*,本地引擎自带 GoalStore)。
+mod goals;
 mod llm;
 mod mcp;
 mod modelspec;
@@ -70,6 +74,10 @@ pub(crate) struct AppState {
     pub(crate) wakes: Arc<agent::WakeRegistry>,
     /// 会话工具权限(bypass/plan/auto)。
     pub(crate) permissions: Arc<permission::PermissionService>,
+    /// Codex 引擎门面(app-server 客户端、账户/额度缓存、托管安装任务)。
+    pub(crate) codex: Arc<codex::service::CodexService>,
+    /// 目标存贮(data/agent-sessions/goals.json;本地引擎自动续跑的事实源)。
+    pub(crate) goals: Arc<goals::GoalStore>,
 }
 
 #[tokio::main]
@@ -87,7 +95,7 @@ async fn main() {
 }
 
 /// agent 数据根:env FORGE_AGENTD_DATA_DIR 优先(测试隔离),否则 <workspace>/data(D-F7-E)。
-fn agent_data_root() -> std::path::PathBuf {
+pub(crate) fn agent_data_root() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("FORGE_AGENTD_DATA_DIR") {
         if !p.is_empty() {
             return std::path::PathBuf::from(p);
@@ -154,6 +162,10 @@ fn build_app() -> Router {
         permissions: Arc::new(permission::PermissionService::load(
             data_root.join("agent-sessions").join("permissions.json"),
         )),
+        codex: Arc::new(codex::service::CodexService::new()),
+        goals: Arc::new(goals::GoalStore::load(
+            data_root.join("agent-sessions").join("goals.json"),
+        )),
     });
     Router::new()
         .route("/health", get(health))
@@ -203,6 +215,31 @@ fn build_app() -> Router {
         .route(
             "/api/forge/permissions/{id}/deny",
             post(permission::deny_permission),
+        )
+        // Codex 引擎面:安装/配置/登录/账户/额度/模型/MCP 注入状态。
+        .route("/api/forge/codex/status", get(codex::rest::status))
+        .route("/api/forge/codex/install", post(codex::rest::install))
+        .route("/api/forge/codex/config", post(codex::rest::set_config))
+        .route("/api/forge/codex/login", post(codex::rest::login))
+        .route(
+            "/api/forge/codex/login/cancel",
+            post(codex::rest::login_cancel),
+        )
+        .route("/api/forge/codex/logout", post(codex::rest::logout))
+        .route("/api/forge/codex/account", get(codex::rest::account))
+        .route("/api/forge/codex/models", get(codex::rest::models))
+        .route("/api/forge/codex/rate-limits", get(codex::rest::rate_limits))
+        .route("/api/forge/codex/mcp/status", get(codex::rest::mcp_status))
+        // 目标面(两种引擎共用同一套 REST;Codex 侧内部透传 thread/goal/*)。
+        .route(
+            "/api/forge/sessions/{id}/goal",
+            get(goals::get_goal)
+                .put(goals::put_goal)
+                .delete(goals::delete_goal),
+        )
+        .route(
+            "/api/forge/sessions/{id}/goal/{action}",
+            post(goals::set_goal_status),
         )
         .route(
             "/api/forge/chat-folders",
@@ -313,8 +350,12 @@ fn build_app() -> Router {
         // 媒体生成 REST 面(视频/音频/3D;未配置显式 NOT_CONFIGURED)。
         // gen/mesh 不能只靠 MCP:3D 供应商异步任务动辄数分钟,MCP 调用 10s 就断。
         .route("/api/forge/gen/video", post(gen_video))
+        // 视频截帧同走 REST 而非 MCP:ffmpeg 解一段 720p 常在十秒量级,且与 gen/video
+        // 是同一条流水线的前后段,拆两个传输面只会让前端多接一套错误码。
+        .route("/api/forge/gen/video/frames", post(gen_video_frames))
         .route("/api/forge/gen/audio", post(gen_audio))
         .route("/api/forge/gen/mesh", post(gen_mesh))
+        .route("/api/forge/tools/ffmpeg", get(tools_ffmpeg))
         .route("/api/forge/swarm/state", get(swarm_state))
         .route("/api/forge/swarm/seed-demo", post(swarm_seed_demo))
         .route("/api/forge/swarm/execute", post(swarm_execute))
@@ -1113,7 +1154,8 @@ async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Respons
 fn gen_error_response(e: gend::GenError) -> Response {
     let status = match e.code {
         gend::GEN_BAD_PARAMS => StatusCode::BAD_REQUEST,
-        gend::GEN_BACKEND_NOT_CONFIGURED => StatusCode::NOT_IMPLEMENTED,
+        // 环境缺 ffmpeg 与后端未配置同档:都是「本机还没备齐」而非生成失败。
+        gend::GEN_BACKEND_NOT_CONFIGURED | gend::GEN_TOOL_MISSING => StatusCode::NOT_IMPLEMENTED,
         gend::GEN_RATE_LIMITED => StatusCode::TOO_MANY_REQUESTS,
         _ => StatusCode::BAD_GATEWAY,
     };
@@ -1162,9 +1204,7 @@ async fn run_media_generation(
         let b = gend::media::resolve_backend(kind, backend.as_deref(), &cfg, &keys)?;
         let req = gend::media::MediaRequest { kind, prompt: prompt.clone(), params };
         let artifacts = b.generate(&req, &cfg, &keys)?;
-        let root = mcp::asset_project_root();
-        let project = assetd::project::ForgeProject::load(&root)
-            .unwrap_or_else(|_| assetd::project::ForgeProject::with_defaults(root.clone()));
+        let project = asset_project();
         let seed = gend::fnv1a64(prompt.as_bytes());
         let mut out = Vec::new();
         for (i, a) in artifacts.iter().enumerate() {
@@ -1224,7 +1264,16 @@ async fn run_media_generation(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenVideoRequest {
+    /// 文生视频描述;给了参考图时可空(转作动作引导)。
+    #[serde(default)]
     prompt: String,
+    /// 参考图:公网 URL 或 base64 data URI(给了即走图生视频)。
+    #[serde(default)]
+    image_data_url: Option<String>,
+    /// 参考图的项目相对路径(.forge/tmp/gen/ 候选或 Content/ 资产),服务端转 data URI
+    /// ——前端手里只有路径/fileRef,不必先把几 MB 图片 base64 上来一趟。
+    #[serde(default)]
+    image_ref: Option<String>,
     #[serde(default)]
     aspect: Option<String>,
     #[serde(default)]
@@ -1235,10 +1284,18 @@ struct GenVideoRequest {
     backend: Option<String>,
 }
 
-/// POST /api/forge/gen/video:文生视频(remote-video-compatible 骨架;
+/// POST /api/forge/gen/video:文生 / 图生视频(remote-video-compatible 骨架;
 /// 未配置 → 501 GEN_BACKEND_NOT_CONFIGURED,诚实占位不伪造产物)。
 async fn gen_video(Json(req): Json<GenVideoRequest>) -> Response {
     let mut params = json!({});
+    if let Some(v) = req.image_data_url.filter(|s| !s.trim().is_empty()) {
+        params["imageDataUrl"] = json!(v);
+    } else if let Some(rel) = req.image_ref.filter(|s| !s.trim().is_empty()) {
+        match gend::tmpstore::image_data_uri(&asset_project(), &rel) {
+            Ok(uri) => params["imageDataUrl"] = json!(uri),
+            Err(e) => return gen_error_response(e),
+        }
+    }
     if let Some(a) = req.aspect.filter(|s| !s.trim().is_empty()) {
         params["aspect"] = json!(a);
     }
@@ -1249,6 +1306,119 @@ async fn gen_video(Json(req): Json<GenVideoRequest>) -> Response {
         params["durationSec"] = json!(d);
     }
     run_media_generation(gend::media::MediaKind::Video, req.prompt, params, req.backend).await
+}
+
+/// 资产项目句柄(与 run_media_generation 内同一根,产物 fileRef 才对得上)。
+fn asset_project() -> assetd::project::ForgeProject {
+    let root = mcp::asset_project_root();
+    assetd::project::ForgeProject::load(&root)
+        .unwrap_or_else(|_| assetd::project::ForgeProject::with_defaults(root))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenVideoFramesRequest {
+    /// gen/video 产物 fileRef(.forge/tmp/gen/*.mp4)。
+    video_file_ref: String,
+    #[serde(default)]
+    fps: Option<f32>,
+    #[serde(default)]
+    max_frames: Option<usize>,
+    /// auto | magenta | none。
+    #[serde(default)]
+    chroma_key: Option<String>,
+    /// union | tight | none。
+    #[serde(default)]
+    crop: Option<String>,
+    #[serde(default)]
+    padding: Option<u32>,
+    #[serde(default)]
+    trim_start_sec: Option<f32>,
+    #[serde(default)]
+    trim_end_sec: Option<f32>,
+}
+
+/// REST 参数 → FrameOptions(未知枚举值 → GEN_BAD_PARAMS,不静默回落缺省)。
+fn frame_options_from(req: &GenVideoFramesRequest) -> gend::Result<gend::video_frames::FrameOptions> {
+    use gend::video_frames::{ChromaKey, CropMode, FrameOptions};
+    let mut opts = FrameOptions::default();
+    if let Some(f) = req.fps {
+        opts.fps = f;
+    }
+    if let Some(n) = req.max_frames {
+        opts.max_frames = n;
+    }
+    if let Some(p) = req.padding {
+        opts.padding = p;
+    }
+    opts.trim_start_sec = req.trim_start_sec;
+    opts.trim_end_sec = req.trim_end_sec;
+    if let Some(k) = req.chroma_key.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        opts.chroma_key = ChromaKey::parse(k).ok_or_else(|| {
+            gend::GenError::new(
+                gend::GEN_BAD_PARAMS,
+                format!("chromaKey 须为 auto|magenta|none,实: {k}"),
+            )
+        })?;
+    }
+    if let Some(c) = req.crop.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        opts.crop = CropMode::parse(c).ok_or_else(|| {
+            gend::GenError::new(gend::GEN_BAD_PARAMS, format!("crop 须为 union|tight|none,实: {c}"))
+        })?;
+    }
+    Ok(opts)
+}
+
+/// POST /api/forge/gen/video/frames:mp4 → 精灵图集(ffmpeg 截帧 + 抠底 + 拼图)。
+/// 本机无 ffmpeg → 501 GEN_TOOL_MISSING(消息带安装/配置指引,不伪造帧)。
+///
+/// 只回图集本身 + 逐帧 bbox:逐帧再各附一份 dataUrl 就是把同一批像素传两遍,
+/// 前端拿图集加 boxes 就能在 canvas 上逐帧画/循环播。
+async fn gen_video_frames(Json(req): Json<GenVideoFramesRequest>) -> Response {
+    use base64::Engine as _;
+    if req.video_file_ref.trim().is_empty() {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "videoFileRef 不可空",
+        ));
+    }
+    let opts = match frame_options_from(&req) {
+        Ok(o) => o,
+        Err(e) => return gen_error_response(e),
+    };
+    let joined = tokio::task::spawn_blocking(move || {
+        gend::video_frames::video_to_atlas(&asset_project(), &req.video_file_ref, &opts)
+    })
+    .await;
+    match joined {
+        Ok(Ok(out)) => {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&out.atlas_png);
+            Json(json!({
+                "atlas": {
+                    "fileRef": out.atlas_ref,
+                    "mime": "image/png",
+                    "dataUrl": format!("data:image/png;base64,{b64}"),
+                    "width": out.width,
+                    "height": out.height,
+                },
+                "boxes": out.boxes,
+                "fps": out.fps,
+                "frameCount": out.frame_count,
+            }))
+            .into_response()
+        }
+        Ok(Err(e)) => gen_error_response(e),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": { "code": "INTERNAL", "message": format!("截帧任务失败: {e}") } })),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/forge/tools/ffmpeg:截帧外部依赖可用性(设置页/素材创作面据此显示指引)。
+async fn tools_ffmpeg() -> Json<Value> {
+    Json(serde_json::to_value(gend::video_frames::ffmpeg_status()).unwrap_or(Value::Null))
 }
 
 #[derive(Deserialize)]
@@ -1434,7 +1604,8 @@ mod tests {
         // 视口直连推流:+viewport_stream_info = 97。F-GAME-3:+sprite_create = 98。
         // F-GAME-4 wave.2:+asset-pipeline sprite_create/get/set/autoslice 四工具 = 102。
         // 补账(D-036 波发现):logic_inject_pointer 落 KNOWN_TOOLS 时漏改本计数 = 103。
-        assert_eq!(tools.len(), 103);
+        // 角色动画:+gen-image gen_video_frames = 104。
+        assert_eq!(tools.len(), 104);
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_stream_info"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__logic_inject_pointer"));
         assert!(tools.iter().any(|t| t == "mcp__engine-scene__sprite_create"));
@@ -3278,7 +3449,7 @@ mod tests {
                 .unwrap()["capabilities"]["kinds"]
                 .clone()
         };
-        assert_eq!(kinds_of("remote-video-compatible"), json!(["text2video"]));
+        assert_eq!(kinds_of("remote-video-compatible"), json!(["text2video", "image2video"]));
         assert_eq!(kinds_of("remote-audio-compatible"), json!(["tts", "music"]));
         assert_eq!(kinds_of("remote-mesh-compatible"), json!(["text2mesh"]));
         assert_eq!(kinds_of("meshy"), json!(["text2mesh", "image2mesh"]));
@@ -3319,6 +3490,75 @@ mod tests {
             v["error"]["message"].as_str().unwrap().contains("remote-video-compatible"),
             "错误应引导可配置条目: {v}"
         );
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_video_frames_param_gate_and_missing_ffmpeg_501() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let app = build_app();
+        // videoFileRef 空 → 400(参数校验先于一切外部依赖)。
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/video/frames", r#"{"videoFileRef":"  "}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+        // 枚举值未知 → 400,不静默回落缺省。
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/video/frames",
+                r#"{"videoFileRef":".forge/tmp/gen/x.mp4","chromaKey":"greenscreen"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let v = json_body(r).await;
+        assert_eq!(v["error"]["code"], "GEN_BAD_PARAMS");
+        assert!(v["error"]["message"].as_str().unwrap().contains("chromaKey"), "{v}");
+        // 本机无 ffmpeg → 501 GEN_TOOL_MISSING + 配置指引(不伪造帧)。
+        let prev = std::env::var("FORGE_FFMPEG").ok();
+        std::env::set_var("FORGE_FFMPEG", "/definitely/not/here/ffmpeg-nope");
+        let r = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/video/frames",
+                r#"{"videoFileRef":".forge/tmp/gen/no-such.mp4"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
+        let v = json_body(r).await;
+        assert_eq!(v["error"]["code"], "GEN_TOOL_MISSING");
+        assert!(v["error"]["message"].as_str().unwrap().contains("FORGE_FFMPEG"), "{v}");
+        // 可用性探测面与之一致。
+        let r = build_app().oneshot(get("/api/forge/tools/ffmpeg")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(json_body(r).await["found"], false);
+        match prev {
+            Some(p) => std::env::set_var("FORGE_FFMPEG", p),
+            None => std::env::remove_var("FORGE_FFMPEG"),
+        }
+    }
+
+    #[tokio::test]
+    async fn gen_video_image_ref_missing_file_is_honest_404_code() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data = gen_temp_dir("video-ref");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        // 参考图路径解析不到 → 502 GEN_FILE_NOT_FOUND,而不是无声当成文生视频。
+        let r = build_app()
+            .oneshot(post_json(
+                "/api/forge/gen/video",
+                r#"{"prompt":"walk","imageRef":"Content/Concepts/no-such.png"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_FILE_NOT_FOUND");
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();
     }

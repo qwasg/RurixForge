@@ -115,16 +115,32 @@ pub async fn design_snapshot(
             "root": sp.project_root.to_string_lossy(),
         })
     };
+    let mut models = models_json();
+    if let Some(arr) = models.get_mut("models").and_then(Value::as_array_mut) {
+        arr.extend(state.codex.model_cards());
+    }
+    let goal = active
+        .as_ref()
+        .and_then(|s| state.goals.get(&s.id))
+        .map(|g| {
+            crate::goals::goal_json(
+                &g,
+                active.as_ref().map(|s| s.agent_engine.as_str()).unwrap_or("local"),
+            )
+        })
+        .unwrap_or(Value::Null);
     Json(json!({
         "sessions": sessions,
         "activeSession": active,
         "events": events,
         "todos": todos,
         "run": run,
-        "models": models_json(),
+        "models": models,
         "latestSeq": latest_seq,
         "chatFolders": state.folders.list(),
         "project": project,
+        "agents": state.codex.agents_json(),
+        "goal": goal,
     }))
 }
 

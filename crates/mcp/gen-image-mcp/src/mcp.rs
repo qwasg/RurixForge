@@ -1,18 +1,24 @@
 //! MCP stdio 服务:initialize / tools/list / tools/call(复刻 asset-pipeline-mcp 骨架)。
-//! 五工具(05 §7 逐字参数):gen_backends_list / gen_image / gen_texture_set /
-//! gen_accept / gen_variations。工具错误 = isError:true + {error: <GEN_* code>, message}。
+//! 六工具(05 §7 逐字参数):gen_backends_list / gen_image / gen_texture_set /
+//! gen_accept / gen_variations / gen_video_frames。
+//! 工具错误 = isError:true + {error: <GEN_* code>, message}。
+//!
+//! 视频本身的生成走 REST(/api/forge/gen/video,适配器 300s 预算,MCP 接不住);
+//! 落到 MCP 这一侧的是「已有 mp4 → 图集」这段,它是 agent 做角色动画的必经工序:
+//! gen_video_frames → gen_accept(origin=gen-video)→ sprite_create/sprite_set。
 
 use std::io::{BufRead, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use assetd::project::ForgeProject;
-use gend::accept::gen_accept;
+use gend::accept::{accept_asset, gen_accept};
 use gend::backends::{self, GenBackend, GenRequest, DEFAULT_SIZE, MAX_BATCH};
 use gend::config::GenConfig;
 use gend::keystore::Keystore;
 use gend::mock;
 use gend::timeutil::utc_now_iso8601;
 use gend::tmpstore;
+use gend::video_frames;
 use gend::{fnv1a64, GenError, GEN_BACKEND_ERROR, GEN_BACKEND_NOT_CONFIGURED, GEN_BAD_PARAMS};
 use serde_json::{json, Value};
 
@@ -60,15 +66,34 @@ fn tool_list() -> Value {
             },
             {
                 "name": "gen_accept",
-                "description": "候选正式入管线:.forge/tmp/gen/ 产物 → Content/<destFolder>/<name>.png + .meta provenance(origin=gen-image,结构化 detail)",
+                "description": "候选正式入管线:.forge/tmp/gen/ 产物 → Content/<destFolder>/<name>.png + .meta provenance(origin 缺省 gen-image;视频截帧出的图集传 origin=\"gen-video\")",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "imageFileRef": { "type": "string", "description": "项目相对路径(.forge/tmp/gen/ 内)" },
                         "destFolder": { "type": "string", "description": "相对 Content/,如 \"Textures\"" },
-                        "name": { "type": "string", "description": "文件名片段(不含扩展名)" }
+                        "name": { "type": "string", "description": "文件名片段(不含扩展名)" },
+                        "origin": { "type": "string", "enum": ["gen-image", "gen-video"], "description": "provenance 来源标注,缺省 gen-image" }
                     },
                     "required": ["imageFileRef", "destFolder", "name"]
+                }
+            },
+            {
+                "name": "gen_video_frames",
+                "description": "视频截帧成精灵图集:mp4(.forge/tmp/gen/)→ ffmpeg 均匀抽帧 + 抠背景 + 拼单张图集,回 atlasFileRef 与逐帧 bbox(直接喂 sprite_create 的 frames)。本机无 ffmpeg → GEN_TOOL_MISSING(带安装指引,不伪造帧)。视频本身由 REST /api/forge/gen/video 生成",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "videoFileRef": { "type": "string", "description": "项目相对路径(.forge/tmp/gen/ 内的 .mp4)" },
+                        "fps": { "type": "number", "description": "截帧率,缺省 8(1..=30)" },
+                        "maxFrames": { "type": "integer", "description": "帧数上限,缺省 32(2..=256)" },
+                        "chromaKey": { "type": "string", "enum": ["auto", "magenta", "none"], "description": "背景抠除:auto 四角采样(缺省)/ magenta 同视口色键 / none 不抠" },
+                        "crop": { "type": "string", "enum": ["union", "tight", "none"], "description": "union 全帧包围盒并集(缺省,帧等大脚底不抖)/ tight 逐帧紧致 / none 不裁" },
+                        "padding": { "type": "integer", "description": "格间透明留白像素,缺省 2" },
+                        "trimStartSec": { "type": "number" },
+                        "trimEndSec": { "type": "number" }
+                    },
+                    "required": ["videoFileRef"]
                 }
             },
             {
@@ -136,6 +161,48 @@ fn arg_n(args: &Value, default: u32) -> Result<u32, GenError> {
         return Err(GenError::new(GEN_BAD_PARAMS, format!("n 须 1..={MAX_BATCH},实: {n}")));
     }
     Ok(n)
+}
+
+/// gen_video_frames 参数 → FrameOptions。枚举值未知即报错,不静默回落缺省
+/// ——agent 拼错 chromaKey 时,得到一张没抠底的图集比得到一条错误更难排查。
+fn frame_options(args: &Value) -> Result<video_frames::FrameOptions, GenError> {
+    let mut opts = video_frames::FrameOptions::default();
+    if let Some(v) = args.get("fps") {
+        opts.fps = v
+            .as_f64()
+            .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, "fps 须为数字"))? as f32;
+    }
+    if let Some(v) = args.get("maxFrames") {
+        opts.max_frames = v
+            .as_u64()
+            .and_then(|u| usize::try_from(u).ok())
+            .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, "maxFrames 须为整数"))?;
+    }
+    if let Some(v) = args.get("padding") {
+        opts.padding = v
+            .as_u64()
+            .and_then(|u| u32::try_from(u).ok())
+            .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, "padding 须为整数"))?;
+    }
+    opts.trim_start_sec = args.get("trimStartSec").and_then(Value::as_f64).map(|v| v as f32);
+    opts.trim_end_sec = args.get("trimEndSec").and_then(Value::as_f64).map(|v| v as f32);
+    if let Some(k) = args.get("chromaKey").and_then(Value::as_str) {
+        opts.chroma_key = video_frames::ChromaKey::parse(k).ok_or_else(|| {
+            GenError::new(GEN_BAD_PARAMS, format!("chromaKey 须为 auto|magenta|none,实: {k}"))
+        })?;
+    }
+    if let Some(c) = args.get("crop").and_then(Value::as_str) {
+        opts.crop = video_frames::CropMode::parse(c).ok_or_else(|| {
+            GenError::new(GEN_BAD_PARAMS, format!("crop 须为 union|tight|none,实: {c}"))
+        })?;
+    }
+    Ok(opts)
+}
+
+/// bbox 列表 → sprite_create 的 frames 映射。命名规则借 assetd 自动切帧那一份
+/// (frame_<i>),免得同一个精灵里两种来源的帧各叫一套名字。
+fn video_frames_map(boxes: &[[u32; 4]]) -> Value {
+    Value::Object(assetd::sprite::frames_from_boxes("frame", boxes))
 }
 
 /// 能力面 kinds 是否含该 kind。
@@ -438,13 +505,39 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             let image_ref = arg_str(&args, "imageFileRef")?;
             let dest = arg_str(&args, "destFolder")?;
             let name = arg_str(&args, "name")?;
+            let origin = match args.get("origin").and_then(Value::as_str) {
+                None | Some("gen-image") => "gen-image",
+                Some("gen-video") => "gen-video",
+                Some(other) => {
+                    return Err(GenError::new(
+                        GEN_BAD_PARAMS,
+                        format!("origin 须为 gen-image|gen-video,实: {other}"),
+                    ))
+                }
+            };
             let p = lock(proj);
             // provenance detail 来自候选 sidecar;无 sidecar(人工预放 fixture)如实标注。
             let detail = tmpstore::load_sidecar(&p, image_ref).unwrap_or_else(|| {
                 json!({ "sourceRefs": [], "note": "无生成 sidecar(人工预放置产物)" })
             });
-            let acc = gen_accept(&p, image_ref, dest, name, detail)?;
+            let acc = accept_asset(&p, image_ref, dest, name, origin, detail, None)?;
             Ok(json!({ "assetPath": acc.asset_path, "guid": acc.guid }))
+        }
+        "gen_video_frames" => {
+            let video_ref = arg_str(&args, "videoFileRef")?;
+            let opts = frame_options(&args)?;
+            let p = lock(proj);
+            let out = video_frames::video_to_atlas(&p, video_ref, &opts)?;
+            Ok(json!({
+                "atlasFileRef": out.atlas_ref,
+                "width": out.width,
+                "height": out.height,
+                "frameCount": out.frame_count,
+                "fps": out.fps,
+                "boxes": out.boxes,
+                // frames 可直接原样传给 sprite_create,省掉调用方自己拼一遍 bbox 映射。
+                "frames": video_frames_map(&out.boxes),
+            }))
         }
         "gen_variations" => {
             let source_ref = arg_str(&args, "sourceImageRef")?;
@@ -567,13 +660,71 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_five() {
+    fn tools_list_six() {
         let tl = tool_list();
         let tools = tl["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 5);
-        for t in ["gen_backends_list", "gen_image", "gen_texture_set", "gen_accept", "gen_variations"] {
+        assert_eq!(tools.len(), 6);
+        for t in [
+            "gen_backends_list",
+            "gen_image",
+            "gen_texture_set",
+            "gen_accept",
+            "gen_variations",
+            "gen_video_frames",
+        ] {
             assert!(tools.iter().any(|x| x["name"] == t), "缺工具 {t}");
         }
+    }
+
+    #[test]
+    fn gen_video_frames_param_gate_and_missing_ffmpeg() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let proj = temp_project("vframes");
+        // 枚举值未知 → GEN_BAD_PARAMS(先于外部依赖)。
+        let e = call(
+            &proj,
+            "gen_video_frames",
+            json!({ "videoFileRef": ".forge/tmp/gen/a.mp4", "crop": "square" }),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        let e = call(
+            &proj,
+            "gen_video_frames",
+            json!({ "videoFileRef": ".forge/tmp/gen/a.mp4", "fps": "fast" }),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        let e = call(&proj, "gen_video_frames", json!({})).unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        // 本机无 ffmpeg → GEN_TOOL_MISSING(不伪造帧)。
+        let prev = std::env::var("FORGE_FFMPEG").ok();
+        std::env::set_var("FORGE_FFMPEG", "/definitely/not/here/ffmpeg-nope");
+        let e = call(
+            &proj,
+            "gen_video_frames",
+            json!({ "videoFileRef": ".forge/tmp/gen/a.mp4" }),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, gend::GEN_TOOL_MISSING);
+        match prev {
+            Some(v) => std::env::set_var("FORGE_FFMPEG", v),
+            None => std::env::remove_var("FORGE_FFMPEG"),
+        }
+    }
+
+    #[test]
+    fn gen_accept_origin_whitelist() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let proj = temp_project("origin");
+        let e = call(
+            &proj,
+            "gen_accept",
+            json!({ "imageFileRef": ".forge/tmp/gen/x.png", "destFolder": "Sprites", "name": "a", "origin": "hand-drawn" }),
+        )
+        .unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        assert!(e.message.contains("gen-video"), "{}", e.message);
     }
 
     #[test]

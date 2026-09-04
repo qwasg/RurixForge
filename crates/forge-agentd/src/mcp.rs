@@ -113,6 +113,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__gen-image__gen_texture_set",
     "mcp__gen-image__gen_accept",
     "mcp__gen-image__gen_variations",
+    // 角色动画:视频截帧成图集(视频生成本身走 REST gen/video,MCP 10s 接不住)
+    "mcp__gen-image__gen_video_frames",
     // F5 wave.2:gen-model 三工具(05 §8;text2mesh/refine 无后端显式 NOT_CONFIGURED,
     // gen_accept 走 asset_import 同一构建链)
     "mcp__gen-model__gen_mesh",
@@ -150,6 +152,7 @@ const GEN_IMAGE_PREFIX: &str = "mcp__gen-image__";
 const GEN_MODEL_PREFIX: &str = "mcp__gen-model__";
 const CONTEXT_PREFIX: &str = "mcp__context__";
 const STORE_PREFIX: &str = "mcp__store__";
+const COMPUTER_USE_PREFIX: &str = "mcp__computer-use__";
 /// MCP 调用缺省超时(交互级工具:场景编辑/资产查询/代码检索)。
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// 3D 生成:供应商异步任务制,meshy 两阶段各 900s 预算(gend::media 的 MESHY_STAGE_BUDGET_SECS)
@@ -171,7 +174,9 @@ fn call_timeout(tool: &str) -> Duration {
         "mcp__gen-model__gen_mesh" => GEN_MESH_TIMEOUT,
         "mcp__gen-image__gen_image"
         | "mcp__gen-image__gen_texture_set"
-        | "mcp__gen-image__gen_variations" => GEN_IMAGE_TIMEOUT,
+        | "mcp__gen-image__gen_variations"
+        // 截帧 = ffmpeg 解一整段视频 + 逐帧抠底 + 拼图,同属分钟量级。
+        | "mcp__gen-image__gen_video_frames" => GEN_IMAGE_TIMEOUT,
         "mcp__code-forge__rx_check"
         | "mcp__code-forge__rx_build"
         | "mcp__code-forge__rx_run"
@@ -185,7 +190,7 @@ fn call_timeout(tool: &str) -> Duration {
 }
 
 /// MCP 服务标识(七工:engine-scene + asset-pipeline + code-forge + gen-image + gen-model
-/// + context + store)。
+/// + context + store;外加可选第八工 computer-use)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ServerKind {
     EngineScene,
@@ -195,11 +200,17 @@ pub enum ServerKind {
     GenModel,
     Context,
     Store,
+    /// 桌面级 Computer Use(open-computer-use,npm 托管安装)。
+    ///
+    /// 与前七工的三点不同:1) 不是本仓构建产物,而是托管安装的第三方 node 包;
+    /// 2) 工具面不进 `KNOWN_TOOLS` 白名单(上游版本会加减工具,写死清单必然过期),
+    ///    只信实时 `tools/list`;3) 受 `codex-config.computerUse` 开关控制,默认关。
+    ComputerUse,
 }
 
 impl ServerKind {
-    /// 七工全量(tools/list 遍历用)
-    const ALL: [ServerKind; 7] = [
+    /// 本仓自建的七工(始终参与 tools/list 遍历)。
+    const BUILTIN: [ServerKind; 7] = [
         ServerKind::EngineScene,
         ServerKind::AssetPipeline,
         ServerKind::CodeForge,
@@ -208,6 +219,15 @@ impl ServerKind {
         ServerKind::Context,
         ServerKind::Store,
     ];
+
+    /// 当前生效的服务清单(七工 + 开关打开且已安装的 computer-use)。
+    pub(crate) fn active() -> Vec<ServerKind> {
+        let mut out = Self::BUILTIN.to_vec();
+        if computer_use_enabled() {
+            out.push(ServerKind::ComputerUse);
+        }
+        out
+    }
 
     fn from_tool(tool: &str) -> Option<Self> {
         if tool.starts_with(SCENE_PREFIX) {
@@ -224,12 +244,14 @@ impl ServerKind {
             Some(ServerKind::Context)
         } else if tool.starts_with(STORE_PREFIX) {
             Some(ServerKind::Store)
+        } else if tool.starts_with(COMPUTER_USE_PREFIX) {
+            Some(ServerKind::ComputerUse)
         } else {
             None
         }
     }
 
-    fn prefix(self) -> &'static str {
+    pub(crate) fn prefix(self) -> &'static str {
         match self {
             ServerKind::EngineScene => SCENE_PREFIX,
             ServerKind::AssetPipeline => ASSET_PREFIX,
@@ -238,8 +260,28 @@ impl ServerKind {
             ServerKind::GenModel => GEN_MODEL_PREFIX,
             ServerKind::Context => CONTEXT_PREFIX,
             ServerKind::Store => STORE_PREFIX,
+            ServerKind::ComputerUse => COMPUTER_USE_PREFIX,
         }
     }
+
+    /// 注入 Codex `config.mcp_servers` 时的服务名(前缀去掉 `mcp__` 与尾部 `__`)。
+    pub(crate) fn server_name(self) -> &'static str {
+        match self {
+            ServerKind::EngineScene => "engine-scene",
+            ServerKind::AssetPipeline => "asset-pipeline",
+            ServerKind::CodeForge => "code-forge",
+            ServerKind::GenImage => "gen-image",
+            ServerKind::GenModel => "gen-model",
+            ServerKind::Context => "context",
+            ServerKind::Store => "store",
+            ServerKind::ComputerUse => "computer-use",
+        }
+    }
+}
+
+/// Computer Use 是否启用(开关打开 + 托管安装到位;缺一不装,免得每轮都 spawn 失败刷错误)。
+pub(crate) fn computer_use_enabled() -> bool {
+    crate::codex::config::load().computer_use && crate::codex::bin::resolve_computer_use().is_some()
 }
 
 /// MCP 调用失败(spawn / 传输 / 超时 / 协议错误)
@@ -501,7 +543,7 @@ async fn ensure_connected<'a>(
         }
     }
     let (bin, args) = spawn_spec(kind, project_root);
-    if !bin.exists() {
+    if program_missing(&bin) {
         return Err(McpError(format!(
             "{:?} 二进制不存在: {}",
             kind,
@@ -512,8 +554,16 @@ async fn ensure_connected<'a>(
     Ok(())
 }
 
-/// 各 server spawn 规格(二进制 + 启动参数;连接池与 FreshSession 共用)。
-fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec<String>) {
+/// 启动程序是否确定不存在。裸命令名(如 `node`)由 OS 按 PATH 解析,这里不能按
+/// 「文件不存在」判死——computer-use 走 `node <script>` 形态,此前会被误报成缺二进制。
+fn program_missing(bin: &Path) -> bool {
+    let is_bare = bin.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true);
+    !is_bare && !bin.exists()
+}
+
+/// 各 server spawn 规格(二进制 + 启动参数;连接池、FreshSession 与 Codex 线程的
+/// `config.mcp_servers` 注入共用同一份真相——注入面若另写一份,两条腿必然漂移)。
+pub(crate) fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec<String>) {
     let project = project_root.to_string_lossy().into_owned();
     match kind {
         // engine-scene 与 code-forge 经 env 认项目根(二者无 --project 参数面):
@@ -548,6 +598,22 @@ fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec<String>) {
                 workspace_root().to_string_lossy().into_owned(),
             ],
         ),
+        // 第三方 node 包:启动命令由 codex::bin 决议(托管 shim / node + 脚本 / PATH)。
+        // 决议不出来时给一个必然「二进制不存在」的占位路径,让上层报如实原因而不是 panic。
+        ServerKind::ComputerUse => match crate::codex::bin::resolve_computer_use() {
+            Some(l) => {
+                let mut args = l.prefix_args.clone();
+                args.push("--stdio".to_string());
+                (l.program, args)
+            }
+            None => (
+                crate::codex::bin::managed_root()
+                    .join("node_modules")
+                    .join(".bin")
+                    .join(crate::codex::bin::COMPUTER_USE_BIN_NAME),
+                vec![],
+            ),
+        },
     }
 }
 
@@ -557,7 +623,7 @@ fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec<String>) {
 /// - 私有源令牌:store-mcp 从 `FORGE_STORE_TOKEN_<ID>` 取(见 store-mcp mcp.rs 注释),
 ///   由本进程从 keystore 取出后逐 spawn 注入;此前没人注入,UI 里配的私有源令牌
 ///   对 agent 这条腿一直是失效的。令牌只进子进程环境,不进事件/日志/模型上下文(R-5)。
-fn spawn_env(kind: ServerKind, project_root: &Path) -> Vec<(String, String)> {
+pub(crate) fn spawn_env(kind: ServerKind, project_root: &Path) -> Vec<(String, String)> {
     let project = project_root.to_string_lossy().into_owned();
     match kind {
         ServerKind::EngineScene => vec![("FORGE_PROJECT_ROOT".to_string(), project)],
@@ -596,7 +662,7 @@ impl FreshSession {
     pub async fn spawn(kind: ServerKind) -> Result<Self, McpError> {
         let root = default_project_root();
         let (bin, args) = spawn_spec(kind, &root);
-        if !bin.exists() {
+        if program_missing(&bin) {
             return Err(McpError(format!(
                 "{:?} 二进制不存在: {}",
                 kind,
@@ -737,7 +803,7 @@ pub async fn list_tools_in(project_root: &Path) -> Vec<ServerTools> {
         }
     }
     let mut out: Vec<ServerTools> = Vec::new();
-    for kind in ServerKind::ALL {
+    for kind in ServerKind::active() {
         out.push(list_one(kind, project_root).await);
     }
     // 全失败不进缓存:多半是这一刻二进制还没构建出来,下次调用该重试。
@@ -799,6 +865,14 @@ async fn list_one(kind: ServerKind, project_root: &Path) -> ServerTools {
 type ToolsCacheEntry = Vec<(ServerKind, Vec<Value>, Option<String>)>;
 static TOOLS_CACHE: OnceLock<Mutex<HashMap<PathBuf, ToolsCacheEntry>>> = OnceLock::new();
 
+/// 清工具面缓存。「server schema 运行期不变」的前提在 computer-use 开关面前不成立:
+/// 开关一改,生效的服务清单就变了,缓存不清的话本轮仍按旧清单给模型工具面。
+pub async fn invalidate_tools_cache() {
+    if let Some(cache) = TOOLS_CACHE.get() {
+        cache.lock().await.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -837,6 +911,7 @@ mod tests {
             "mcp__gen-image__gen_image",
             "mcp__gen-image__gen_texture_set",
             "mcp__gen-image__gen_variations",
+            "mcp__gen-image__gen_video_frames",
             "mcp__code-forge__rx_check",
             "mcp__code-forge__rx_build",
             "mcp__code-forge__rx_run",

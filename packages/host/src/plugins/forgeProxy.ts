@@ -48,6 +48,8 @@ const PROXY_PREFIXES = [
   '/api/forge/store',
   // 素材创作隐藏会话
   '/api/forge/studio',
+  // 角色动画:外部可执行依赖可用性探测(当前仅 ffmpeg,视频截帧用)
+  '/api/forge/tools',
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
@@ -61,6 +63,8 @@ const LONG_LIVED_MCP_TOOLS = new Set([
   'mcp__gen-image__gen_image',
   'mcp__gen-image__gen_texture_set',
   'mcp__gen-image__gen_variations',
+  // 截帧 = ffmpeg 解整段视频 + 逐帧抠底 + 拼图集,同属分钟量级。
+  'mcp__gen-image__gen_video_frames',
 ]);
 
 /** mcp/call 请求体的 tool 名(非 JSON/缺字段 → null,按普通请求 15s;导出供单测)。 */
@@ -85,7 +89,8 @@ export function proxyMatches(pathname: string): boolean {
  * 长生命周期端点判定(导出供单测;pathname 不含 query)。
  * F7 wave.1 原名 isStreamPath(仅 SSE);wave.2 改名 isLongLivedPath 留痕——
  * ask:execute turn 可能远超 15s(16 迭代 × 60s 上限),与 events/stream 并列豁免。
- * 素材创作波:gen/video(适配器超时 300s)与 gen/audio(120s)远超 15s,并列豁免。
+ * 素材创作波:gen/video(适配器超时 300s)与 gen/audio(120s)远超 15s,并列豁免;
+ * gen/video/frames 走 ffmpeg 解码整段视频 + 拼图集,同属分钟量级。
  * F11(D-F11-C):store/install 与 uninstall 含逐文件下载 + 校验 + 走 assetd 构建链,
  * 大包远超 15s——这也是安装不走 MCP 的同一理由(mcp.rs CALL_TIMEOUT 10s 接不住)。
  */
@@ -94,6 +99,7 @@ export function isLongLivedPath(pathname: string): boolean {
     pathname.endsWith('/events/stream') ||
     pathname.endsWith('/ask:execute') ||
     pathname === '/api/forge/gen/video' ||
+    pathname === '/api/forge/gen/video/frames' ||
     pathname === '/api/forge/gen/audio' ||
     pathname === '/api/forge/store/install' ||
     pathname === '/api/forge/store/uninstall' ||

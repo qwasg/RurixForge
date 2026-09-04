@@ -180,15 +180,71 @@ export interface MediaGenResponse {
   artifacts: MediaArtifact[];
 }
 
-/** POST /api/forge/gen/video(未配置后端 → 501 GEN_BACKEND_NOT_CONFIGURED,如实抛出)。 */
+/**
+ * POST /api/forge/gen/video(未配置后端 → 501 GEN_BACKEND_NOT_CONFIGURED,如实抛出)。
+ * imageRef / imageDataUrl 给了即走图生视频,此时 prompt 转作动作引导可空。
+ * imageRef 是项目相对路径(.forge/tmp/gen/ 候选或 Content/ 资产),服务端转 data URI
+ * ——前端手里只有路径,不必先把几 MB 参考图 base64 上来一趟。
+ */
 export async function apiGenVideo(payload: {
   prompt: string;
+  imageRef?: string;
+  imageDataUrl?: string;
   aspect?: string;
   resolution?: string;
   durationSec?: number;
   backend?: string;
 }): Promise<MediaGenResponse> {
   return apiPost<MediaGenResponse>('/api/forge/gen/video', payload);
+}
+
+/** 截帧图集(fileRef 落 .forge/tmp/gen/,待 gen_accept 入 Content/)。 */
+export interface FrameAtlas {
+  fileRef: string;
+  mime: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * 截帧响应。只有图集本体 + 逐帧 bbox:逐帧再各附一份 dataUrl 是把同一批像素传两遍,
+ * 前端拿图集加 boxes 就能在 canvas 上逐帧画。
+ */
+export interface VideoFramesResponse {
+  atlas: FrameAtlas;
+  boxes: Array<[number, number, number, number]>;
+  fps: number;
+  frameCount: number;
+}
+
+/**
+ * POST /api/forge/gen/video/frames:mp4 → 精灵图集(ffmpeg 截帧 + 抠底 + 拼图)。
+ * 本机无 ffmpeg → 501 GEN_TOOL_MISSING(消息带安装指引),如实抛出不伪造帧。
+ */
+export async function apiGenVideoFrames(payload: {
+  videoFileRef: string;
+  fps?: number;
+  maxFrames?: number;
+  chromaKey?: 'auto' | 'magenta' | 'none';
+  crop?: 'union' | 'tight' | 'none';
+  padding?: number;
+  trimStartSec?: number;
+  trimEndSec?: number;
+}): Promise<VideoFramesResponse> {
+  return apiPost<VideoFramesResponse>('/api/forge/gen/video/frames', payload);
+}
+
+/** ffmpeg 可用性(截帧的外部依赖;found=false 时前端显示配置指引而非静默失败)。 */
+export interface FfmpegStatus {
+  found: boolean;
+  path?: string;
+  version?: string;
+}
+
+/** GET /api/forge/tools/ffmpeg。 */
+export async function apiFfmpegStatus(): Promise<FfmpegStatus> {
+  return apiGet<FfmpegStatus>('/api/forge/tools/ffmpeg');
 }
 
 /** POST /api/forge/gen/audio(mode: tts | music;未配置后端 → 501,如实抛出)。 */
@@ -424,6 +480,142 @@ export async function postEmbeddingConfig(payload: {
   key?: string;
 }): Promise<EmbeddingStatus & { ok: boolean }> {
   return apiPost<EmbeddingStatus & { ok: boolean }>('/api/forge/llm/embedding/config', payload);
+}
+
+/** Codex 引擎状态面(GET status / POST config 响应同源;绝无密钥,R-5)。 */
+export interface CodexAccount {
+  authMode?: string | null;
+  planType?: string | null;
+  email?: string | null;
+  rateLimits?: unknown;
+  lastError?: string | null;
+}
+
+export interface CodexConfigFace {
+  codexBin: string;
+  codexHome: string;
+  defaultEngine: string;
+  defaultModel: string;
+  autoRegisterMcp: boolean;
+  computerUse: boolean;
+}
+
+export interface CodexMcpServer {
+  name: string;
+  command?: string;
+  present?: boolean;
+  enabled?: boolean;
+}
+
+export interface CodexStatus {
+  ok?: boolean;
+  installed: boolean;
+  managedInstalled: boolean;
+  computerUseInstalled: boolean;
+  command?: string | null;
+  npmAvailable: boolean;
+  running: boolean;
+  transport?: string | null;
+  config: CodexConfigFace;
+  account: CodexAccount;
+  models?: unknown[];
+  install: {
+    running: boolean;
+    log: string;
+    error?: string | null;
+    finishedAt?: string | null;
+  };
+  mcp?: { autoRegister?: boolean; servers?: CodexMcpServer[] };
+}
+
+export async function getCodexStatus(sessionId?: string | null): Promise<CodexStatus> {
+  const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+  return apiGet<CodexStatus>(`/api/forge/codex/status${q}`);
+}
+
+export async function postCodexInstall(): Promise<{ ok: boolean; started?: boolean; running?: boolean }> {
+  return apiPost('/api/forge/codex/install', {});
+}
+
+export async function postCodexConfig(payload: {
+  codexBin?: string;
+  codexHome?: string;
+  defaultEngine?: string;
+  defaultModel?: string;
+  autoRegisterMcp?: boolean;
+  computerUse?: boolean;
+}): Promise<CodexStatus> {
+  return apiPost<CodexStatus>('/api/forge/codex/config', payload);
+}
+
+export async function postCodexLogin(payload: {
+  kind?: 'chatgpt' | 'deviceCode' | 'apiKey';
+  apiKey?: string;
+}): Promise<Record<string, unknown> & { ok?: boolean; authUrl?: string; loginId?: string }> {
+  return apiPost('/api/forge/codex/login', payload);
+}
+
+export async function postCodexLoginCancel(loginId?: string): Promise<{ ok: boolean }> {
+  return apiPost('/api/forge/codex/login/cancel', loginId ? { loginId } : {});
+}
+
+export async function postCodexLogout(): Promise<{ ok: boolean }> {
+  return apiPost('/api/forge/codex/logout', {});
+}
+
+export async function getCodexModels(refresh = false): Promise<{ ok: boolean; models: unknown[] }> {
+  const q = refresh ? '?refresh=true' : '';
+  return apiGet(`/api/forge/codex/models${q}`);
+}
+
+export async function getCodexRateLimits(): Promise<{ ok: boolean; rateLimits: unknown }> {
+  return apiGet('/api/forge/codex/rate-limits');
+}
+
+export async function getCodexMcpStatus(sessionId?: string | null): Promise<{
+  autoRegister?: boolean;
+  servers?: CodexMcpServer[];
+}> {
+  const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+  return apiGet(`/api/forge/codex/mcp/status${q}`);
+}
+
+export interface GoalFace {
+  sessionId?: string;
+  objective: string;
+  status: string;
+  tokenBudget?: number;
+  tokensUsed?: number;
+  timeUsedSeconds?: number;
+  turns?: number;
+  note?: string | null;
+  engine?: string;
+  budgetExhausted?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export async function getGoal(sessionId: string): Promise<{ goal: GoalFace | null; engine?: string }> {
+  return apiGet(`/api/forge/sessions/${encodeURIComponent(sessionId)}/goal`);
+}
+
+export async function putGoal(
+  sessionId: string,
+  payload: { objective: string; tokenBudget?: number },
+): Promise<{ goal: GoalFace }> {
+  return apiPut(`/api/forge/sessions/${encodeURIComponent(sessionId)}/goal`, payload);
+}
+
+export async function deleteGoal(sessionId: string): Promise<{ ok: boolean }> {
+  return apiDelete(`/api/forge/sessions/${encodeURIComponent(sessionId)}/goal`);
+}
+
+export async function postGoalPause(sessionId: string): Promise<{ goal: GoalFace }> {
+  return apiPost(`/api/forge/sessions/${encodeURIComponent(sessionId)}/goal/pause`, {});
+}
+
+export async function postGoalResume(sessionId: string): Promise<{ goal: GoalFace }> {
+  return apiPost(`/api/forge/sessions/${encodeURIComponent(sessionId)}/goal/resume`, {});
 }
 
 /** 删除 skill 的两种结局:真删掉,或被治理门拦下并给出待批提案号。 */

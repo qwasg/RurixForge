@@ -37,6 +37,27 @@ XY 平面、正交相机、Sprite 精灵、sortingOrder 叠放、场景级重力
 - 单帧连续动作救急:只有 1 帧动作图时,与 idle 帧组成 2 帧交替 clip(振荡即动感),
   绝不静止持帧。
 
+### A2. 图生视频截帧(备选工序;已有单帧原画要扩动作时用)
+适用:角色只有一张定妆图/单帧原画,要给它补一套走路、待机之类的循环动作。相比 A,
+它保角色形象的能力更强(参考图直接进模型),代价是要一段视频生成额度 + 本机装 ffmpeg。
+1. **前置探测**:`GET /api/forge/tools/ffmpeg`。`found=false` 就别往下走——截帧这步做不了,
+   直接回 A 走 gen_image 出表,不要生成完视频才发现切不出帧。
+2. **生成视频**:`POST /api/forge/gen/video { imageRef: "Content/Concepts/<角色>.png",
+   prompt: "<动作描述>", aspect: "1:1", durationSec: 5 }`。提示词纪律与 A 同源但更严:
+   **镜头完全固定**(不平移不推拉不旋转)、**单一纯色背景**(不要地面与投影)、
+   **角色居中且全程不出画**、**不切镜不转场**。视频模型天生爱推镜头爱加场景,
+   这三条不写死,截出来的帧没法当动画用。
+3. **截帧成图集**:`gen_video_frames { videoFileRef, fps: 8, maxFrames: 32,
+   chromaKey: "auto", crop: "union" }`。`crop=union` 让所有帧共用一个包围盒 = 帧等大、
+   脚底锚不抖(逐帧紧致裁切正是「AI 帧尺寸不一导致漂浮」的成因);背景不是纯色底时
+   auto 抠不干净,换 `magenta` 或回 2 重生成,别硬着头皮往下切。
+4. **帧数校验**:返回的 `frameCount` 与 `boxes` 长度须一致且 ≥ 2;整帧被抠空会直接报错
+   (`chromaKey=none` 可先看原帧排查)。校验通过再进 B。
+5. **入库**:`gen_accept { imageFileRef: <atlasFileRef>, destFolder: "Textures",
+   name, origin: "gen-video" }` 拿到图集 GUID,然后跳到 B 的第 3 步——但**用返回的
+   `frames` 显式建帧**而不是 `autoslice: true`(bbox 已经是精确的,再连通域检测一遍
+   反而可能把角色断开的部件切成两帧)。
+
 ### B. 切帧入库(asset-pipeline 工具)
 1. `gen_accept` 入库贴图 → 记 GUID;
 2. `sprite_autoslice { assetPath }` 预览连通域 bbox(噪点多时调高 minArea);

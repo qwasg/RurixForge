@@ -85,6 +85,19 @@ pub struct DebugSession {
     /// 后续 plan 轮据此原地迭代同一份计划。旧 sessions.json 无此字段 → None。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_plan_path: Option<String>,
+    /// 执行引擎:`local` = 本仓自研工具循环;`codex` = 交给 codex app-server。
+    /// 会话级而非全局:同一个项目里「这条会话用 Codex 跑,那条用本地模型跑」是常态。
+    /// 旧 sessions.json 无此字段 → 缺省 `local`(既有会话行为不变)。
+    #[serde(default = "default_agent_engine")]
+    pub agent_engine: String,
+    /// Codex 线程 id(首轮 `thread/start` 后写回,后续轮 `thread/resume` 续同一线程)。
+    /// fork 出的会话不拷贝它:两条会话共用一个 Codex 线程会互相污染上下文。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_thread_id: Option<String>,
+}
+
+fn default_agent_engine() -> String {
+    crate::codex::config::ENGINE_LOCAL.to_string()
 }
 
 impl DebugSession {
@@ -119,7 +132,15 @@ impl DebugSession {
             purpose: default_purpose(),
             studio_node_id: None,
             active_plan_path: None,
+            // 新会话默认引擎取设置页里配的那个(设置页改了默认,下一条新会话就该跟上)。
+            agent_engine: crate::codex::config::load().default_engine,
+            codex_thread_id: None,
         }
+    }
+
+    /// 本会话是否跑在 Codex 引擎上。
+    pub(crate) fn is_codex(&self) -> bool {
+        self.agent_engine == crate::codex::config::ENGINE_CODEX
     }
 
     pub(crate) fn is_studio(&self) -> bool {
@@ -194,6 +215,9 @@ pub struct PatchSessionRequest {
     pub(crate) context_option_id: Option<Option<String>>,
     #[serde(default)]
     pub(crate) workspace_id: Option<Option<String>>,
+    /// 执行引擎切换(`local` | `codex`);未知值 → 400,不静默落库。
+    #[serde(default)]
+    pub(crate) agent_engine: Option<String>,
 }
 
 /// 会话存贮:内存 HashMap + sessions.json 整文件读-改-写(Mutex 串行化并发写)。
@@ -335,6 +359,14 @@ impl SessionStore {
                 return Err(PatchError::InvalidModelSpec(format!("未知 context 档: {c}")));
             }
         }
+        if let Some(e) = &req.agent_engine {
+            let e = e.trim();
+            if !e.is_empty() && !crate::codex::config::is_known_engine(e) {
+                return Err(PatchError::InvalidModelSpec(format!(
+                    "未知引擎: {e}(支持 local|codex)"
+                )));
+            }
+        }
         let mut inner = self.inner.lock().unwrap();
         let Some(session) = inner.get_mut(id) else {
             return Err(PatchError::NotFound);
@@ -389,6 +421,14 @@ impl SessionStore {
                 .as_ref()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
+        }
+        if let Some(engine) = req.agent_engine.as_deref().map(str::trim) {
+            if !engine.is_empty() && engine != session.agent_engine {
+                session.agent_engine = engine.to_string();
+                // 切回本地再切回来时不该复用旧线程:那条线程的上下文里没有本地引擎
+                // 期间发生的任何事,续上去只会让 Codex 基于过期认知继续干活。
+                session.codex_thread_id = None;
+            }
         }
         session.touch();
         let out = session.clone();
@@ -634,6 +674,10 @@ pub struct CreateSessionRequest {
     web_search_enabled: Option<bool>,
     #[serde(default)]
     workspace_id: Option<String>,
+    /// 执行引擎(`local` | `codex`)。主页无会话时先切引擎再发送,创建时一并带上,
+    /// 免得「先建成 local 再 PATCH 成 codex」中间那一瞬用错引擎发出首轮。
+    #[serde(default)]
+    agent_engine: Option<String>,
 }
 
 /// POST /api/forge/sessions → {session};发持久事件 session.created。
@@ -666,6 +710,7 @@ pub async fn create_session(
     if req.thinking_enabled.is_some()
         || req.reasoning_effort.is_some()
         || req.context_option_id.is_some()
+        || req.agent_engine.is_some()
     {
         match state.sessions.patch(
             &session.id,
@@ -673,6 +718,7 @@ pub async fn create_session(
                 thinking_enabled: req.thinking_enabled,
                 reasoning_effort: req.reasoning_effort.map(Some),
                 context_option_id: req.context_option_id.map(Some),
+                agent_engine: req.agent_engine,
                 ..Default::default()
             },
         ) {
@@ -709,6 +755,16 @@ fn validate_create_spec(req: &CreateSessionRequest) -> Result<(), String> {
     {
         if !crate::modelspec::is_known_context(c) {
             return Err(format!("未知 context 档: {c}"));
+        }
+    }
+    if let Some(e) = req
+        .agent_engine
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if !crate::codex::config::is_known_engine(e) {
+            return Err(format!("未知引擎: {e}(支持 local|codex)"));
         }
     }
     Ok(())
@@ -818,6 +874,11 @@ pub async fn fork_session(State(state): State<Arc<AppState>>, Path(id): Path<Str
     // D-035:计划文件是工作区文件、两个会话共用同一份;分支会话继承指针,
     // Plan 页签在分支里照常可见可 Build(后续 create_plan 也会原地迭代同一文件)。
     forked.active_plan_path = src.active_plan_path.clone();
+    // 引擎跟着分支走(在 Codex 会话上分叉,分支自然还是 Codex),但 Codex 线程**不拷**:
+    // 一条 Codex 线程被两个会话同时续,两边的消息会互相串进对方的上下文。
+    // 分支的首轮会新开一条线程,起点是分叉时的对话历史。
+    forked.agent_engine = src.agent_engine.clone();
+    forked.codex_thread_id = None;
     forked.touch();
     state.sessions.save(&forked);
     // 事件流克隆(磁盘全文,sessionId 换新,seq/id/ts 保持 → 单调)。

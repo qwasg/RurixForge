@@ -27,7 +27,7 @@ pub const DEFAULT_BUFFER_CAP: usize = 4096;
 /// 每会话实时广播通道容量(慢消费者 Lagged → SSE 侧合成 stream.gap,不阻塞发布方)。
 const BROADCAST_CAP: usize = 1024;
 
-/// type 前缀 → channel(session/agent/tool/todo/plan 同名,其余 logs)。
+/// type 前缀 → channel(session/agent/tool/todo/plan/goal/codex 同名,其余 logs)。
 pub fn channel_for(event_type: &str) -> &'static str {
     let prefix = event_type.split('.').next().unwrap_or("");
     match prefix {
@@ -36,6 +36,10 @@ pub fn channel_for(event_type: &str) -> &'static str {
         "tool" => "tool",
         "todo" => "todo",
         "plan" => "plan",
+        // 目标面独立成频道:GoalBar/GoalTab 只订它,不必在整条 agent 流里过滤。
+        "goal" => "goal",
+        // Codex 引擎面(账户/额度推送);与 agent 事件分开,状态栏订它就够。
+        "codex" => "codex",
         _ => "logs",
     }
 }

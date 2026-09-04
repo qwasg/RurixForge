@@ -125,6 +125,11 @@ pub fn resolve_mesh_ref(project: &ForgeProject, mesh_file_ref: &str) -> Result<P
     resolve_gen_ref(project, mesh_file_ref, "meshFileRef")
 }
 
+/// videoFileRef → 绝对路径(同 imageFileRef;视频截帧管线的输入端)。
+pub fn resolve_video_ref(project: &ForgeProject, video_file_ref: &str) -> Result<PathBuf> {
+    resolve_gen_ref(project, video_file_ref, "videoFileRef")
+}
+
 /// accept_asset 内部用(中性 fileRef 标注;工具层先行校验可带各自参数名)。
 pub(crate) fn resolve_any_ref(project: &ForgeProject, file_ref: &str) -> Result<PathBuf> {
     resolve_gen_ref(project, file_ref, "fileRef")

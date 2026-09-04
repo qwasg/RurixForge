@@ -31,6 +31,18 @@ impl ScopeProject {
     pub fn id(&self) -> &str {
         self.workspace_id.as_deref().unwrap_or("default")
     }
+
+    /// 单测构造(不碰磁盘:路径按给定值原样用,不 canonicalize、不读 forge.toml)。
+    #[cfg(test)]
+    pub fn for_test(project_root: &str, workspace_root: &str) -> Self {
+        ScopeProject {
+            workspace_id: None,
+            name: "测试工作区".to_string(),
+            project_root: PathBuf::from(project_root),
+            workspace_root: PathBuf::from(workspace_root),
+            game_mode: assetd::project::GameMode::TwoD,
+        }
+    }
 }
 
 /// 一次 turn 的资源作用域。
@@ -150,6 +162,14 @@ pub fn resolve(
     }
 }
 
+/// 会话对应的工作区根(原生文件工具与计划文件的沙箱根)。
+pub fn workspace_root_for(state: &AppState, workspace_id: Option<&str>) -> PathBuf {
+    canonical(&resolve_workspace_root(
+        state,
+        workspace_id.map(str::trim).filter(|s| !s.is_empty()),
+    ))
+}
+
 /// 作用域摘要(事件留痕/工具反馈用;只给 id 与名字,不给磁盘路径)。
 /// F-GAME-3:附带当前项目游戏模式(2d/3d),客户端徽标与提示词注入共用此事实源。
 pub fn summary_json(scope: &ScopeContext) -> serde_json::Value {
@@ -239,6 +259,8 @@ mod isolation_tests {
             receipts: Arc::new(crate::receipts::ReceiptStore::load(dir.join("receipts.json"))),
             wakes: Arc::new(crate::agent::WakeRegistry::default()),
             permissions: Arc::new(crate::permission::PermissionService::load(dir.join("perm.json"))),
+            codex: Arc::new(crate::codex::service::CodexService::default()),
+            goals: Arc::new(crate::goals::GoalStore::load(dir.join("goals.json"))),
         };
         let scope = resolve(
             &state,

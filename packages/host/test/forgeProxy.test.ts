@@ -184,6 +184,7 @@ describe('forgeProxy', () => {
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_image')).toBe(0);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_texture_set')).toBe(0);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_variations')).toBe(0);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_video_frames')).toBe(0);
     // 普通 MCP 工具维持 15s;无 tool 名(非 mcp/call 路径/坏 body)维持 15s
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__engine-scene__host_ping')).toBe(15_000);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__asset-pipeline__asset_list')).toBe(15_000);
@@ -284,6 +285,17 @@ describe('forgeProxy', () => {
     expect(proxyMatches('/api/forge/studiox')).toBe(false);
     expect(isLongLivedPath('/api/forge/studio/sessions')).toBe(false);
     expect(isLongLivedPath('/api/forge/sessions/sess_1/ask:execute')).toBe(true);
+  });
+
+  it('角色动画:gen/video 与 gen/video/frames 同为长任务豁免;ffmpeg 探测走普通超时', () => {
+    expect(isLongLivedPath('/api/forge/gen/video')).toBe(true);
+    expect(isLongLivedPath('/api/forge/gen/video/frames')).toBe(true);
+    expect(isLongLivedPath('/api/forge/gen/audio')).toBe(true);
+    expect(upstreamTimeoutMs('/api/forge/gen/video/frames')).toBe(0);
+    // 可用性探测是一次 `ffmpeg -version`:走代理但不需要豁免。
+    expect(proxyMatches('/api/forge/tools/ffmpeg')).toBe(true);
+    expect(isLongLivedPath('/api/forge/tools/ffmpeg')).toBe(false);
+    expect(upstreamTimeoutMs('/api/forge/tools/ffmpeg')).toBe(15_000);
   });
 
   it('上游不可达 → 502 UPSTREAM_UNREACHABLE', async () => {

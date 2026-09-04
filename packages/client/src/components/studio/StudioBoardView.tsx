@@ -15,6 +15,8 @@ import {
   Link2,
   Maximize2,
   Pencil,
+  PersonStanding,
+  Scissors,
   Sparkles,
   Trash2,
 } from 'lucide-react';
@@ -23,6 +25,7 @@ import { copyText } from '@/lib/clipboard';
 import { isTyping } from '@/lib/keyScope';
 import {
   canAccept,
+  canReslice,
   currentVersion,
   presetOf,
   STUDIO_PRESETS,
@@ -125,6 +128,8 @@ export default function StudioBoardView() {
   const editEdgeLabel = useStudioStore((s) => s.editEdgeLabel);
   const generate = useStudioStore((s) => s.generate);
   const acceptVersion = useStudioStore((s) => s.acceptVersion);
+  const resliceVersion = useStudioStore((s) => s.resliceVersion);
+  const openInSpriteEditor = useStudioStore((s) => s.openInSpriteEditor);
   const clearBoard = useStudioStore((s) => s.clearBoard);
   const bindWorkspace = useStudioStore((s) => s.bindWorkspace);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
@@ -449,16 +454,44 @@ export default function StudioBoardView() {
       },
       {
         key: 'accept',
-        label: '入库当前版本',
+        label: preset?.kind === 'sprite' ? '入库为精灵' : '入库当前版本',
         icon: Download,
         disabled: !canAccept(preset, cur),
         hint: canAccept(preset, cur)
-          ? `入库到 Content/${preset?.destFolder ?? 'Textures'}/(gen_accept,写 provenance)`
-          : '只有还没入库的图像 / 3D 模型产物可入库',
+          ? preset?.kind === 'sprite'
+            ? `图集入 Content/${preset.destFolder ?? 'Textures'}/,并建 Sprites/*.rxsprite`
+            : `入库到 Content/${preset?.destFolder ?? 'Textures'}/(gen_accept,写 provenance)`
+          : preset?.kind === 'sprite'
+            ? '先截出图集才能入库(只有 mp4 不算引擎资产)'
+            : '只有还没入库的图像 / 3D 模型产物可入库',
         onSelect: () => {
           if (cur) void acceptVersion(n.id, cur.id);
         },
       },
+      ...(preset?.kind === 'sprite'
+        ? [
+            {
+              key: 'reslice',
+              label: '重新截帧',
+              icon: Scissors,
+              disabled: !canReslice(preset, cur),
+              hint: '按当前截帧参数重切(不重新生成视频)',
+              onSelect: () => {
+                if (cur) void resliceVersion(n.id, cur.id);
+              },
+            },
+            {
+              key: 'open-sprite',
+              label: '打开精灵编辑器',
+              icon: PersonStanding,
+              disabled: cur?.spritePath === undefined,
+              hint: cur?.spritePath ?? '入库后可在精灵编辑器里调帧、编 clip',
+              onSelect: () => {
+                if (cur) openInSpriteEditor(n.id, cur.id);
+              },
+            },
+          ]
+        : []),
       {
         key: 'copy',
         label: `复制${copyable.what}`,

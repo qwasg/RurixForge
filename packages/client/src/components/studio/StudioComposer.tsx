@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, ChevronDown, Cpu, FolderTree, Loader2, Settings2, Square } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Cpu, FolderTree, Image as ImageIcon, Loader2, Settings2, Square } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { useAssetStore } from '@/lib/assetStore';
+import { apiFfmpegStatus, type FfmpegStatus } from '@/lib/forgeApi';
 import { configuredBackends, useGenStore, type GenBackendInfo } from '@/lib/genStore';
 import { useOverlayStore } from '@/lib/overlayStore';
 import { useSettingsStore } from '@/lib/settingsStore';
@@ -46,6 +48,9 @@ function genKindOf(node: StudioNode): string | null {
       return 'text2mesh';
     case 'video':
       return 'text2video';
+    case 'sprite':
+      // 角色动画必带参考图,能力面要的是图生视频而非文生视频。
+      return 'image2video';
     case 'audio':
       return node.params.mode === 'music' ? 'music' : 'tts';
     default:
@@ -161,12 +166,34 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
   const backendsError = useGenStore((s) => s.backendsError);
   const loadBackends = useGenStore((s) => s.loadBackends);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const assets = useAssetStore((s) => s.items);
+  const loadAssets = useAssetStore((s) => s.load);
+  const [ffmpeg, setFfmpeg] = useState<FfmpegStatus | null>(null);
+  const isSprite = presetOf(node.preset)?.kind === 'sprite';
+  /** 上游连过来的原画节点(有则参考图自动取它的当前版本,无需手选) */
+  const upstreamRef = useStudioStore((s) => {
+    if (!isSprite) return null;
+    for (const e of s.edges.filter((e) => e.to === node.id)) {
+      const up = s.nodes.find((n) => n.id === e.from);
+      if (up === undefined || presetOf(up.preset)?.kind !== 'image') continue;
+      const cur = up.versions.find((v) => v.id === up.currentVersionId);
+      if (cur?.assetPath !== undefined || cur?.fileRef !== undefined) return up.name;
+    }
+    return null;
+  });
 
   // 进入详情画布即刷新后端清单(设置页配置后切回来,configured 状态不吃陈旧缓存)
   useEffect(() => {
     void loadBackends();
     void loadWorkspaces();
   }, [node.id, loadBackends, loadWorkspaces]);
+
+  // 角色动画额外要两样:能选的贴图资产,以及 ffmpeg 到底在不在(截帧全靠它)。
+  useEffect(() => {
+    if (!isSprite) return;
+    void loadAssets();
+    apiFfmpegStatus().then(setFfmpeg, () => setFfmpeg({ found: false }));
+  }, [isSprite, node.id, loadAssets]);
 
   const preset = presetOf(node.preset);
   if (!preset) return null;
@@ -436,6 +463,73 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
           </div>
         )}
 
+        {/* 角色动画:参考图来源 + clip 名(截帧参数在底条) */}
+        {kind === 'sprite' && (
+          <div
+            data-testid="studio-charanim-ref"
+            className="flex flex-wrap items-center gap-1.5 border-t border-edge px-2.5 py-1.5"
+          >
+            <span className="flex items-center gap-1 text-[10px] text-fg-4">
+              <ImageIcon size={10} strokeWidth={1.8} />
+              参考图
+            </span>
+            {upstreamRef !== null ? (
+              <span
+                data-testid="studio-charanim-upstream"
+                className={cn(chipBtn, chipActive, 'cursor-default')}
+                title="来自上游连线的原画节点当前版本;想改用别的图就断开连线"
+              >
+                上游「{upstreamRef}」
+              </span>
+            ) : (
+              <select
+                data-testid="studio-charanim-refpick"
+                value={typeof node.params.refAssetPath === 'string' ? node.params.refAssetPath : ''}
+                onChange={(e) => setParam(node.id, 'refAssetPath', e.target.value)}
+                className="max-w-[220px] rounded border border-edge-strong bg-shell-sunk px-1 py-px font-mono text-[10px] text-fg outline-none focus:border-fg-4"
+              >
+                <option value="">(未选:请连上游原画节点或在此选一张贴图)</option>
+                {assets
+                  .filter((a) => a.type === 'texture')
+                  .map((a) => (
+                    <option key={a.guid} value={a.path}>
+                      {a.path}
+                    </option>
+                  ))}
+              </select>
+            )}
+            <span className="h-3.5 w-px bg-edge-strong" />
+            <label className="flex items-center gap-1 text-[10px] text-fg-4">
+              动作名
+              <input
+                data-testid="studio-charanim-clip"
+                value={typeof node.params.clipName === 'string' ? node.params.clipName : ''}
+                onChange={(e) => setParam(node.id, 'clipName', e.target.value)}
+                placeholder="walk"
+                className="w-[80px] rounded border border-edge-strong bg-shell-sunk px-1 py-px font-mono text-[10px] text-fg outline-none placeholder:text-fg-4 focus:border-fg-4"
+              />
+            </label>
+            {ffmpeg !== null && (
+              <span
+                data-testid="studio-ffmpeg-badge"
+                title={
+                  ffmpeg.found
+                    ? `${ffmpeg.version ?? 'ffmpeg'}\n${ffmpeg.path ?? ''}`
+                    : '截帧需要 ffmpeg:装好后置于 PATH,或放到 <workspace>/data/tools/,或用环境变量 FORGE_FFMPEG 指向可执行文件。未装也能生成视频,只是切不出图集。'
+                }
+                className={cn(
+                  'ml-auto rounded border px-1.5 py-px text-[10px]',
+                  ffmpeg.found
+                    ? 'border-sage/50 text-sage'
+                    : 'border-warn/50 text-warn',
+                )}
+              >
+                {ffmpeg.found ? 'ffmpeg 就绪' : 'ffmpeg 未找到 · 只出视频'}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* 底条:模型选择 + 参数 chips + 发送 */}
         <div className="relative flex flex-wrap items-center gap-1.5 border-t border-edge px-2 py-1.5">
           <div className="relative">
@@ -523,6 +617,69 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
                   className={cn(chipBtn, node.params.durationSec === d && chipActive)}
                 >
                   {d}s
+                </button>
+              ))}
+            </>
+          )}
+
+          {kind === 'sprite' && (
+            <>
+              {[5, 10].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  data-testid={`studio-dur-${d}`}
+                  title={`视频时长 ${d} 秒`}
+                  onClick={() => setParam(node.id, 'durationSec', d)}
+                  className={cn(chipBtn, node.params.durationSec === d && chipActive)}
+                >
+                  {d}s
+                </button>
+              ))}
+              <span className="h-3.5 w-px bg-edge-strong" />
+              {[6, 8, 10, 12].map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  data-testid={`studio-fps-${f}`}
+                  title={`每秒截 ${f} 帧(帧多更顺,图集也更大)`}
+                  onClick={() => setParam(node.id, 'fps', f)}
+                  className={cn(chipBtn, node.params.fps === f && chipActive)}
+                >
+                  {f}fps
+                </button>
+              ))}
+              <span className="h-3.5 w-px bg-edge-strong" />
+              {[
+                { id: 'auto', label: '自动抠底', tip: '采样四角求底色后抠掉(适合纯色背景的生成片)' },
+                { id: 'magenta', label: '品红', tip: '与视口色键同规则,适合刻意用品红做底的片子' },
+                { id: 'none', label: '不抠', tip: '原样保留背景' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  data-testid={`studio-chroma-${c.id}`}
+                  title={c.tip}
+                  onClick={() => setParam(node.id, 'chromaKey', c.id)}
+                  className={cn(chipBtn, node.params.chromaKey === c.id && chipActive)}
+                >
+                  {c.label}
+                </button>
+              ))}
+              <span className="h-3.5 w-px bg-edge-strong" />
+              {[
+                { id: 'union', label: '等大', tip: '所有帧共用一个包围盒:帧尺寸一致,脚底锚不抖' },
+                { id: 'tight', label: '紧致', tip: '逐帧贴边裁切:图集更省,但帧尺寸不一' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  data-testid={`studio-crop-${c.id}`}
+                  title={c.tip}
+                  onClick={() => setParam(node.id, 'crop', c.id)}
+                  className={cn(chipBtn, node.params.crop === c.id && chipActive)}
+                >
+                  {c.label}
                 </button>
               ))}
             </>

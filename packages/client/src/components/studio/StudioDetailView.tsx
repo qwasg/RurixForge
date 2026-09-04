@@ -12,6 +12,8 @@ import {
   Maximize2,
   Pencil,
   PencilLine,
+  PersonStanding,
+  Scissors,
   Sparkles,
   Trash2,
   X,
@@ -21,6 +23,7 @@ import { copyText } from '@/lib/clipboard';
 import { isTyping } from '@/lib/keyScope';
 import {
   canAccept,
+  canReslice,
   currentVersion,
   presetOf,
   useStudioStore,
@@ -111,10 +114,13 @@ function VersionCard({
   const setCurrentVersion = useStudioStore((s) => s.setCurrentVersion);
   const removeVersion = useStudioStore((s) => s.removeVersion);
   const acceptVersion = useStudioStore((s) => s.acceptVersion);
+  const resliceVersion = useStudioStore((s) => s.resliceVersion);
+  const openInSpriteEditor = useStudioStore((s) => s.openInSpriteEditor);
   const [acceptBusy, setAcceptBusy] = useState(false);
   const preset = presetOf(node.preset);
   if (!preset) return null;
   const acceptable = canAccept(preset, version);
+  const resliceable = canReslice(preset, version);
 
   const accept = async () => {
     setAcceptBusy(true);
@@ -159,8 +165,42 @@ function VersionCard({
               s{version.seed}
             </span>
           )}
+          {version.boxes !== undefined && (
+            <span className="shrink-0 text-[10px] text-fg-4" title={`图集 ${version.atlas?.width}×${version.atlas?.height}`}>
+              {version.boxes.length}帧
+            </span>
+          )}
           <span className="flex-1" />
-          {version.assetPath !== undefined ? (
+          {resliceable && (
+            <button
+              type="button"
+              data-testid={`studio-reslice-${version.id}`}
+              title="按当前截帧参数重新切帧(不重新生成视频)"
+              onClick={(e) => {
+                e.stopPropagation();
+                void resliceVersion(node.id, version.id);
+              }}
+              className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-edge-strong px-1 py-px text-[10px] text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2"
+            >
+              <Scissors size={9} strokeWidth={2} />
+              重切
+            </button>
+          )}
+          {version.spritePath !== undefined ? (
+            <button
+              type="button"
+              data-testid={`studio-open-sprite-${version.id}`}
+              title={`在精灵编辑器打开 ${version.spritePath}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                openInSpriteEditor(node.id, version.id);
+              }}
+              className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-edge-strong px-1 py-px text-[10px] text-sage transition-colors hover:bg-shell-hover"
+            >
+              <PersonStanding size={9} strokeWidth={2} />
+              精灵编辑器
+            </button>
+          ) : version.assetPath !== undefined ? (
             <span
               className="max-w-[96px] shrink-0 truncate font-mono text-[10px] text-sage"
               title={version.assetPath}
@@ -273,6 +313,8 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
   const removeEdge = useStudioStore((s) => s.removeEdge);
   const generate = useStudioStore((s) => s.generate);
   const acceptVersion = useStudioStore((s) => s.acceptVersion);
+  const resliceVersion = useStudioStore((s) => s.resliceVersion);
+  const openInSpriteEditor = useStudioStore((s) => s.openInSpriteEditor);
   const busy = useStudioStore((s) => s.busyIds.includes(nodeId));
 
   const vp = useCanvasViewport({
@@ -464,16 +506,44 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
     generateItem(),
     {
       key: 'accept',
-      label: '入库当前版本',
+      label: preset.kind === 'sprite' ? '入库为精灵' : '入库当前版本',
       icon: Download,
       disabled: !canAccept(preset, cur),
       hint: canAccept(preset, cur)
-        ? `入库到 Content/${preset.destFolder ?? 'Textures'}/(gen_accept,写 provenance)`
-        : '只有还没入库的图像 / 3D 模型产物可入库',
+        ? preset.kind === 'sprite'
+          ? `图集入 Content/${preset.destFolder ?? 'Textures'}/,并建 Sprites/*.rxsprite`
+          : `入库到 Content/${preset.destFolder ?? 'Textures'}/(gen_accept,写 provenance)`
+        : preset.kind === 'sprite'
+          ? '先截出图集才能入库(只有 mp4 不算引擎资产)'
+          : '只有还没入库的图像 / 3D 模型产物可入库',
       onSelect: () => {
         if (cur) void acceptVersion(node.id, cur.id);
       },
     },
+    ...(preset.kind === 'sprite'
+      ? [
+          {
+            key: 'reslice',
+            label: '重新截帧',
+            icon: Scissors,
+            disabled: !canReslice(preset, cur),
+            hint: '按当前截帧参数重切(不重新生成视频)',
+            onSelect: () => {
+              if (cur) void resliceVersion(node.id, cur.id);
+            },
+          },
+          {
+            key: 'open-sprite',
+            label: '打开精灵编辑器',
+            icon: PersonStanding,
+            disabled: cur?.spritePath === undefined,
+            hint: cur?.spritePath ?? '入库后可在精灵编辑器里调帧、编 clip',
+            onSelect: () => {
+              if (cur) openInSpriteEditor(node.id, cur.id);
+            },
+          },
+        ]
+      : []),
     { sep: true, key: 'sep-copy' },
     ...copyItems(cur, 'center'),
     { sep: true, key: 'sep-life' },
@@ -501,7 +571,7 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
     },
     {
       key: 'accept',
-      label: v.assetPath !== undefined ? '已入库' : '入库该版本',
+      label: v.assetPath !== undefined ? '已入库' : preset.kind === 'sprite' ? '入库为精灵' : '入库该版本',
       icon: Download,
       disabled: !canAccept(preset, v),
       hint:
@@ -510,6 +580,26 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
           : `入库到 Content/${preset.destFolder ?? 'Textures'}/(gen_accept,写 provenance)`,
       onSelect: () => void acceptVersion(node.id, v.id),
     },
+    ...(preset.kind === 'sprite'
+      ? [
+          {
+            key: 'reslice',
+            label: '重新截帧',
+            icon: Scissors,
+            disabled: !canReslice(preset, v),
+            hint: '按当前截帧参数重切(不重新生成视频)',
+            onSelect: () => void resliceVersion(node.id, v.id),
+          },
+          {
+            key: 'open-sprite',
+            label: '打开精灵编辑器',
+            icon: PersonStanding,
+            disabled: v.spritePath === undefined,
+            hint: v.spritePath ?? '入库后可在精灵编辑器里调帧、编 clip',
+            onSelect: () => openInSpriteEditor(node.id, v.id),
+          },
+        ]
+      : []),
     { sep: true, key: 'sep-copy' },
     ...copyItems(v, 'version'),
     { sep: true, key: 'sep-life' },

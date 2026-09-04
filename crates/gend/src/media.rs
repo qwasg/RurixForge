@@ -4,7 +4,8 @@
 //! 一条真实供应商实现 + 三条 OpenAI 兼容风格远程骨架:
 //! - meshy(3D 默认供应商,真实 API):POST {endpoint}/openapi/v2/text-to-3d(preview→refine
 //!   两阶段)/ POST {endpoint}/openapi/v1/image-to-3d,建任务 → 轮询 status → 下载 model_urls.glb
-//! - remote-video-compatible: POST {endpoint}/v1/videos/generations → data[] b64_json/url(mp4)
+//! - remote-video-compatible: POST {endpoint}/v1/videos/generations → data[] b64_json/url(mp4);
+//!   params.imageDataUrl 非空 = 图生视频(body 增 image 字段,照 meshy image-to-3d 的参考图处置)
 //! - remote-audio-compatible: tts POST {endpoint}/v1/audio/speech(OpenAI 真实格式,原始音频字节);
 //!   music POST {endpoint}/v1/music/generations → data[](mp3)
 //! - remote-mesh-compatible: POST {endpoint}/v1/meshes/generations → data[](glb),自建/兼容端点兜底
@@ -43,9 +44,11 @@ impl MediaKind {
     }
 
     /// REST 参数字符串 → kind(未知 → None,调用方回 GEN_BAD_PARAMS)。
+    /// image2video 与 text2video 同为 Video 通道:有无参考图由 params.imageDataUrl 决定,
+    /// 不因此分裂出第二个 kind(否则 capabilities/路由/白名单三处都要各记一份同义词)。
     pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "text2video" | "video" => Some(MediaKind::Video),
+            "text2video" | "image2video" | "video" => Some(MediaKind::Video),
             "tts" => Some(MediaKind::Tts),
             "music" => Some(MediaKind::Music),
             "text2mesh" | "mesh" => Some(MediaKind::Mesh),
@@ -310,7 +313,10 @@ fn redact_key(text: &str, key: &str) -> String {
 
 // ---------- remote-video-compatible ----------
 
-/// 视频生成远程骨架:POST {endpoint}/v1/videos/generations。
+/// 视频生成远程骨架(预留 API 接口面):
+/// `POST {endpoint}/v1/videos/generations {model?, prompt, image?, aspect, resolution,
+/// durationSec, n}` → `{data:[{b64_json|url}]}`(mp4)。
+/// image = 参考图(公网 URL 或 base64 data URI);给了即图生视频,prompt 转作动作引导。
 pub struct RemoteVideo;
 
 /// 视频比例白名单。
@@ -337,7 +343,7 @@ impl MediaBackend for RemoteVideo {
 
     fn capabilities(&self) -> Value {
         json!({
-            "kinds": ["text2video"],
+            "kinds": ["text2video", "image2video"],
             "aspects": VIDEO_ASPECTS,
             "resolutions": VIDEO_RESOLUTIONS,
             "maxDurationSec": VIDEO_MAX_DURATION_SEC,
@@ -353,7 +359,15 @@ impl MediaBackend for RemoteVideo {
         keys: &Keystore,
     ) -> Result<Vec<MediaArtifact>> {
         if req.kind != MediaKind::Video {
-            return Err(GenError::new(GEN_BAD_PARAMS, "remote-video-compatible 仅支持 text2video"));
+            return Err(GenError::new(
+                GEN_BAD_PARAMS,
+                "remote-video-compatible 仅支持 text2video / image2video",
+            ));
+        }
+        let image = str_param(&req.params, "imageDataUrl")
+            .or_else(|| str_param(&req.params, "imageUrl"));
+        if req.prompt.trim().is_empty() && image.is_none() {
+            return Err(GenError::new(GEN_BAD_PARAMS, "prompt 与 imageDataUrl 至少其一非空"));
         }
         let aspect = str_param(&req.params, "aspect").unwrap_or("16:9");
         if !VIDEO_ASPECTS.contains(&aspect) {
@@ -385,9 +399,13 @@ impl MediaBackend for RemoteVideo {
             "durationSec": duration,
             "n": 1,
         });
+        if let Some(img) = image {
+            body["image"] = json!(img);
+        }
         if let Some(m) = model {
             body["model"] = json!(m);
         }
+        let mode = if image.is_some() { "image2video" } else { "text2video" };
         let resp = post_json(&url, &key, &body, VIDEO_TIMEOUT_SECS)?;
         let arts = parse_data_artifacts(&resp, "mp4", VIDEO_TIMEOUT_SECS)?;
         Ok(arts
@@ -396,7 +414,12 @@ impl MediaBackend for RemoteVideo {
                 MediaArtifact::plain(
                     bytes,
                     "mp4",
-                    json!({ "aspect": aspect, "resolution": resolution, "durationSec": duration }),
+                    json!({
+                        "mode": mode,
+                        "aspect": aspect,
+                        "resolution": resolution,
+                        "durationSec": duration,
+                    }),
                 )
             })
             .collect())
@@ -1337,8 +1360,15 @@ mod tests {
             vec![MESHY_ID.to_string(), REMOTE_MESH_ID.to_string()]
         );
         assert_eq!(MediaKind::parse("text2video"), Some(MediaKind::Video));
+        assert_eq!(MediaKind::parse("image2video"), Some(MediaKind::Video));
         assert_eq!(MediaKind::parse("tts"), Some(MediaKind::Tts));
         assert_eq!(MediaKind::parse("nope"), None);
+        // 图生视频与文生视频同后端(参考图只是 params 分支,不另设适配器)。
+        assert!(RemoteVideo
+            .capabilities()
+            .get("kinds")
+            .and_then(Value::as_array)
+            .is_some_and(|a| a.iter().any(|k| k.as_str() == Some("image2video"))));
     }
 
     // ---------- meshy(3D 默认供应商) ----------
@@ -1683,6 +1713,50 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].bytes, fake_mp4);
         assert_eq!(out[0].ext, "mp4");
+        assert_eq!(out[0].meta["mode"], "text2video");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+    }
+
+    #[test]
+    fn video_image2video_sends_image_field() {
+        let _g = env_lock();
+        std::env::set_var("FORGE_GEN_API_KEY", "sk-test-dummy");
+        let fake_mp4 = b"\x00\x00\x00\x18ftypmp42ref-driven";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(fake_mp4);
+        let bodies: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let bodies_h = Arc::clone(&bodies);
+        let ep = http_stub_server(move |_base, method, path, body| {
+            assert_eq!((method, path), ("POST", "/v1/videos/generations"));
+            bodies_h.lock().unwrap().push(serde_json::from_slice(body).unwrap_or(Value::Null));
+            (200, format!(r#"{{"data":[{{"b64_json":"{b64}"}}]}}"#).into_bytes())
+        });
+        let cfg = cfg_for(REMOTE_VIDEO_ID, &ep);
+        let ks = empty_ks();
+        let req = MediaRequest {
+            kind: MediaKind::Video,
+            prompt: "walk cycle to the right".into(),
+            params: json!({ "imageDataUrl": "data:image/png;base64,aGVsbG8=", "aspect": "1:1" }),
+        };
+        let out = RemoteVideo.generate(&req, &cfg, &ks).unwrap();
+        assert_eq!(out[0].bytes, fake_mp4);
+        assert_eq!(out[0].meta["mode"], "image2video");
+        let sent = bodies.lock().unwrap();
+        let b = sent.first().expect("须发出一次建任务请求");
+        assert_eq!(b["image"], "data:image/png;base64,aGVsbG8=");
+        assert_eq!(b["prompt"], "walk cycle to the right");
+        assert_eq!(b["aspect"], "1:1");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+    }
+
+    #[test]
+    fn video_needs_prompt_or_image() {
+        let _g = env_lock();
+        std::env::set_var("FORGE_GEN_API_KEY", "sk-test-dummy");
+        // endpoint 不可达:双空若真前置拦下,就不该走到连接失败。
+        let cfg = cfg_for(REMOTE_VIDEO_ID, "http://127.0.0.1:1");
+        let ks = empty_ks();
+        let req = MediaRequest { kind: MediaKind::Video, prompt: "  ".into(), params: json!({}) };
+        assert_eq!(RemoteVideo.generate(&req, &cfg, &ks).unwrap_err().code, GEN_BAD_PARAMS);
         std::env::remove_var("FORGE_GEN_API_KEY");
     }
 

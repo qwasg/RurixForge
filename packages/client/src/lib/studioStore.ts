@@ -4,13 +4,18 @@ import {
   apiGenAudio,
   apiGenMesh,
   apiGenVideo,
+  apiGenVideoFrames,
   apiPost,
+  callAssetTool,
   callGenTool,
   callModelGenTool,
   ForgeApiError,
+  type FrameAtlas,
   type MediaArtifact,
 } from './forgeApi';
 import { parseFrame, splitFrames } from './sseClient';
+import { useSpriteStore } from './spriteStore';
+import { useWorkbenchStore } from './workbenchStore';
 import { useWorkspaceStore } from './workspaceStore';
 
 /**
@@ -19,14 +24,16 @@ import { useWorkspaceStore } from './workspaceStore';
  * (上游产物在生成时拼进上下文);双击卡片下钻进该节点的详情画布(openNodeId,
  * 会话态)——中央产物节点 + 版本历史 + 底部生成输入条(StudioComposer)。
  * selectedNodeId = 主画布右键 / 快捷键的作用对象(会话态,与 openNodeId 同不持久化)。
- * 五通道:text → 隐藏 studio 会话 + /ask:execute(完整工具循环);
- * image → mcp gen_image/gen_accept;model → REST gen/mesh;video/audio → gen/video|audio。
+ * 六通道:text → 隐藏 studio 会话 + /ask:execute(完整工具循环);
+ * image → mcp gen_image/gen_accept;model → REST gen/mesh;video/audio → gen/video|audio;
+ * sprite(角色动画)→ 参考图 + gen/video 图生视频 → gen/video/frames 截帧成图集 →
+ * gen_accept + sprite_create 落 .rxsprite。
  * 持久化按 workspace 分区(forge:studioBoard:<id>),旧 key forge:studioBoard 首次读时迁入。
  */
 
 // ---------- 类型 ----------
 
-export type StudioKind = 'text' | 'image' | 'model' | 'video' | 'audio';
+export type StudioKind = 'text' | 'image' | 'model' | 'video' | 'audio' | 'sprite';
 
 export type StudioPresetId =
   | 'outline'
@@ -36,7 +43,8 @@ export type StudioPresetId =
   | 'ui'
   | 'mesh'
   | 'video'
-  | 'audio';
+  | 'audio'
+  | 'charanim';
 
 export interface StudioPresetDef {
   id: StudioPresetId;
@@ -58,7 +66,24 @@ export const STUDIO_PRESETS: StudioPresetDef[] = [
   { id: 'mesh', kind: 'model', label: '3D模型', tone: 'sage', hint: '描述要生成的三维模型…', destFolder: 'Meshes' },
   { id: 'video', kind: 'video', label: '视频', tone: 'danger', hint: '描述要生成的视频片段(过场 / 演出参考)…' },
   { id: 'audio', kind: 'audio', label: '音频', tone: 'acc', hint: '输入要朗读的文字,或切到音乐生成描述曲风…' },
+  {
+    id: 'charanim',
+    kind: 'sprite',
+    label: '角色动画',
+    tone: 'warn',
+    hint: '描述角色动作(如 向右行走循环 / 待机呼吸 / 挥剑攻击)…',
+    // 落盘的是图集贴图;.rxsprite 由 sprite_create 另落 Sprites/。
+    destFolder: 'Textures',
+  },
 ];
+
+/**
+ * 角色动画的提示词纪律。视频模型天生爱推镜头、爱加背景、爱切镜,而截帧要的恰是反面:
+ * 机位死钉、底色干净、角色不出画。这三条不写进提示词,截出来的帧就没法当动画用。
+ */
+const CHARANIM_PROMPT_RULES =
+  '\n\n【角色动画约束】严格保持参考图里角色的外观、比例与配色;镜头完全固定,不平移不推拉不旋转;' +
+  '角色居中且全程完整在画面内;背景为单一纯色,不要场景元素、地面与投影;不切镜、不转场、不加字幕。';
 
 export function presetOf(id: string): StudioPresetDef | undefined {
   return STUDIO_PRESETS.find((p) => p.id === id);
@@ -120,9 +145,19 @@ export interface StudioVersion {
   thumbnailUrl?: string;
   /** 已落盘的多视角预览(图生 3D 四向,文生 3D 仅正面;dataUrl 会话态) */
   previews?: { label: string; dataUrl: string }[];
+  /** 角色动画:源视频产物(截帧的输入;换参数重切帧不必重新生成视频) */
+  videoFileRef?: string;
+  /** 角色动画:截帧拼出的图集(dataUrl 会话态,重开后凭 fileRef 如实占位) */
+  atlas?: FrameAtlas;
+  /** 角色动画:图集内逐帧 bbox([x,y,w,h]),与 .rxsprite frames 同形 */
+  boxes?: Array<[number, number, number, number]>;
+  /** 角色动画:实际截帧率(clip 时长据此换算) */
+  fps?: number;
   /** 入库后(gen_accept) */
   assetPath?: string;
   guid?: string;
+  /** 角色动画入库后:.rxsprite 资产路径(精灵编辑器据此打开) */
+  spritePath?: string;
   /** 文本 Agent turn 审计 */
   runId?: string;
   toolCalls?: StudioToolRecord[];
@@ -244,13 +279,19 @@ function isEdge(v: unknown): v is StudioEdge {
   );
 }
 
-/** dataUrl 是会话态,落盘前剥离(防 localStorage 撑爆)。 */
+/**
+ * dataUrl 是会话态,落盘前剥离(防 localStorage 撑爆)。
+ * 图集的 dataUrl 藏在 atlas 里,一张几千像素的角色动画图集 base64 后就是数 MB
+ * ——不单独剥这一层,localStorage 会被一个节点吃满。
+ */
 function stripSessionFields(nodes: StudioNode[]): StudioNode[] {
   return nodes.map((n) => ({
     ...n,
     versions: n.versions.map((v) => {
-      const { dataUrl: _drop, ...rest } = v;
-      return rest;
+      const { dataUrl: _drop, atlas, ...rest } = v;
+      if (atlas === undefined) return rest;
+      const { dataUrl: _dropAtlas, ...atlasRest } = atlas;
+      return { ...rest, atlas: atlasRest as FrameAtlas };
     }),
   }));
 }
@@ -355,7 +396,76 @@ export function defaultParams(preset: StudioPresetDef): Record<string, unknown> 
       return { aspect: '16:9', resolution: '720p', durationSec: 5 };
     case 'audio':
       return { mode: 'tts', voice: 'alloy', format: 'mp3', instrumental: false };
+    case 'sprite':
+      // 1:1 + union 裁切 = 帧等大、脚底锚不抖(D-031);8fps × 5s 上限 32 帧,
+      // 够一条走路/待机循环,又不至于把图集撑到几千像素。
+      return {
+        aspect: '1:1',
+        resolution: '720p',
+        durationSec: 5,
+        fps: 8,
+        maxFrames: 32,
+        chromaKey: 'auto',
+        crop: 'union',
+        clipName: 'walk',
+        refAssetPath: '',
+      };
   }
+}
+
+/** 截帧参数白名单(字符串枚举越界即当未给,交由后端缺省;非法值不冒充合法值)。 */
+const CHROMA_KEYS = ['auto', 'magenta', 'none'] as const;
+const CROP_MODES = ['union', 'tight', 'none'] as const;
+export type ChromaKeyParam = (typeof CHROMA_KEYS)[number];
+export type CropParam = (typeof CROP_MODES)[number];
+
+/** 节点参数 → 截帧请求参数(生成链与「重新截帧」共用一份读法)。 */
+function frameParams(params: Record<string, unknown>): {
+  fps?: number;
+  maxFrames?: number;
+  chromaKey?: ChromaKeyParam;
+  crop?: CropParam;
+} {
+  const chroma = params.chromaKey;
+  const crop = params.crop;
+  return {
+    fps: typeof params.fps === 'number' ? params.fps : undefined,
+    maxFrames: typeof params.maxFrames === 'number' ? params.maxFrames : undefined,
+    chromaKey: CHROMA_KEYS.find((k) => k === chroma),
+    crop: CROP_MODES.find((c) => c === crop),
+  };
+}
+
+/**
+ * 图像产物 → 可交给后端解析的项目相对路径。
+ * 已入库资产的 assetPath 是 Content/ 相对(如 "Concepts/hero.png"),
+ * 未入库候选的 fileRef 是项目根相对(".forge/tmp/gen/…"),两者不能混着传。
+ */
+function projectRelImage(ref: string): string {
+  const r = ref.replace(/\\/g, '/');
+  return r.startsWith('.forge/') || r.startsWith('Content/') ? r : `Content/${r}`;
+}
+
+/**
+ * 角色动画的参考图解析:上游连过来的图像节点当前版本优先(已入库的用 assetPath,
+ * 否则用尚在 tmp 的候选),其次是参数条里手选的贴图资产。都没有 → undefined,
+ * 由调用方如实报错——图生视频没有参考图就只是文生视频,不能悄悄降级。
+ */
+function spriteRefImage(
+  nodeId: string,
+  nodes: StudioNode[],
+  edges: StudioEdge[],
+  params: Record<string, unknown>,
+): string | undefined {
+  for (const e of edges.filter((e) => e.to === nodeId)) {
+    const up = nodes.find((n) => n.id === e.from);
+    if (up === undefined || presetOf(up.preset)?.kind !== 'image') continue;
+    const cur = up.versions.find((v) => v.id === up.currentVersionId);
+    const ref = cur?.assetPath ?? cur?.fileRef;
+    if (ref !== undefined && ref !== '') return projectRelImage(ref);
+  }
+  const manual = typeof params.refAssetPath === 'string' ? params.refAssetPath.trim() : '';
+  return manual !== '' ? projectRelImage(manual) : undefined;
 }
 
 /** 上游上下文(引用连线 from 端产物;text 截 1500 字,媒体给 prompt/入库路径摘要)。 */
@@ -464,15 +574,22 @@ interface StudioState {
   setCurrentVersion: (nodeId: string, versionId: string) => void;
   removeVersion: (nodeId: string, versionId: string) => void;
 
-  /** 按 preset.kind 分派五通道生成;错误如实进 lastError(码保留)。 */
+  /** 按 preset.kind 分派六通道生成;错误如实进 lastError(码保留)。 */
   generate: (id: string) => Promise<void>;
   cancelGenerate: (id: string) => Promise<void>;
   resolvePermission: (allow: boolean) => Promise<void>;
   bindWorkspace: (workspaceId: string | null) => void;
   setReadonlyWorkspaceIds: (ids: string[]) => void;
   setIncludeLibrary: (on: boolean) => void;
-  /** 图像/模型版本入库(gen_accept → Content/<destFolder>);成功回写 assetPath/guid。 */
+  /** 图像/模型/角色动画版本入库(gen_accept → Content/<destFolder>);成功回写 assetPath/guid。 */
   acceptVersion: (nodeId: string, versionId: string) => Promise<void>;
+  /**
+   * 角色动画:按当前截帧参数重切帧(不重新生成视频)。
+   * 抠底/裁切/帧率是要反复试的旋钮,每试一次都重出一段视频既慢又不同源。
+   */
+  resliceVersion: (nodeId: string, versionId: string) => Promise<void>;
+  /** 角色动画:已入库版本 → 打开精灵编辑器继续调帧/编 clip。 */
+  openInSpriteEditor: (nodeId: string, versionId: string) => void;
 }
 
 const studioAborts = new Map<string, AbortController>();
@@ -769,6 +886,9 @@ export const useStudioStore = create<StudioState>((set, get) => {
           return `v${seq + consumed - 1}`;
         };
         const versions: StudioVersion[] = [];
+        // 截帧失败不该连坐视频:mp4 已经出片了(花了钱和几分钟),错误留到版本入库后再报,
+        // 用户可以换参数点「重新截帧」而不必重新生成。
+        let deferredError: StudioError | null = null;
 
         if (preset.kind === 'text') {
           const templateId = typeof node.params.template === 'string' ? node.params.template : 'free';
@@ -945,6 +1065,43 @@ export const useStudioStore = create<StudioState>((set, get) => {
           for (const a of r.artifacts) {
             versions.push(mediaVersion(nextId(), r.backendId, prompt, a));
           }
+        } else if (preset.kind === 'sprite') {
+          const ref = spriteRefImage(id, get().nodes, get().edges, node.params);
+          if (ref === undefined) {
+            throw new ForgeApiError(
+              'NO_REFERENCE_IMAGE',
+              '角色动画需要一张参考图:把上游「原画」节点连过来,或在参数条里选一张贴图资产',
+            );
+          }
+          const r = await apiGenVideo({
+            prompt: `${withContext(prompt)}${CHARANIM_PROMPT_RULES}`,
+            imageRef: ref,
+            aspect: typeof node.params.aspect === 'string' ? node.params.aspect : undefined,
+            resolution: typeof node.params.resolution === 'string' ? node.params.resolution : undefined,
+            durationSec: typeof node.params.durationSec === 'number' ? node.params.durationSec : undefined,
+            backend: typeof node.params.backend === 'string' && node.params.backend !== '' ? node.params.backend : undefined,
+          });
+          for (const a of r.artifacts) {
+            versions.push({ ...mediaVersion(nextId(), r.backendId, prompt, a), videoFileRef: a.fileRef });
+          }
+          const first = versions[0];
+          if (first?.videoFileRef !== undefined) {
+            try {
+              const f = await apiGenVideoFrames({
+                videoFileRef: first.videoFileRef,
+                ...frameParams(node.params),
+              });
+              first.atlas = f.atlas;
+              first.boxes = f.boxes;
+              first.fps = f.fps;
+            } catch (err) {
+              deferredError = {
+                nodeId: id,
+                code: err instanceof ForgeApiError ? err.code : 'ERROR',
+                message: `视频已生成,但截帧失败:${(err as Error).message}`,
+              };
+            }
+          }
         } else {
           const mode = node.params.mode === 'music' ? 'music' : 'tts';
           const r = await apiGenAudio({
@@ -963,6 +1120,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
 
         commit({ seq: get().seq + consumed });
         pushVersions(id, versions);
+        if (deferredError !== null) set({ lastError: deferredError });
       } catch (err) {
         if ((err as Error).name === 'AbortError') {
           set((s) => ({
@@ -1057,12 +1215,62 @@ export const useStudioStore = create<StudioState>((set, get) => {
       if (!node) return;
       const preset = presetOf(node.preset);
       const version = node.versions.find((v) => v.id === versionId);
-      if (!preset || !version || version.fileRef === undefined) return;
-      if (preset.kind !== 'image' && preset.kind !== 'model') return;
+      if (!preset || !version) return;
+      if (!canAccept(preset, version)) return;
       const dest = preset.destFolder ?? 'Textures';
       const name = slugName(version.prompt !== '' ? version.prompt : node.name, version.seed ?? 0);
       set({ lastError: null });
       try {
+        if (preset.kind === 'sprite') {
+          const atlas = version.atlas;
+          const boxes = version.boxes;
+          if (atlas === undefined || boxes === undefined || boxes.length === 0) return;
+          // 图集先以贴图身份入库(拿到 GUID),.rxsprite 才有东西可引用。
+          const tex = await callGenTool<{ assetPath: string; guid: string }>('gen_accept', {
+            imageFileRef: atlas.fileRef,
+            destFolder: dest,
+            name,
+            origin: 'gen-video',
+          });
+          const clipName =
+            (typeof node.params.clipName === 'string' ? node.params.clipName.trim() : '') || 'clip';
+          const frameNames = boxes.map((_, i) =>
+            boxes.length > 10 ? `frame_${String(i).padStart(2, '0')}` : `frame_${i}`,
+          );
+          const sprite = await callAssetTool<{ assetPath?: string; error?: string; message?: string }>(
+            'sprite_create',
+            {
+              name,
+              texture: tex.guid,
+              frames: Object.fromEntries(frameNames.map((fn, i) => [fn, { bbox: boxes[i] }])),
+              clips: {
+                [clipName]: {
+                  frames: frameNames,
+                  fps: version.fps ?? 8,
+                  loop: true,
+                  onFinish: 'hold',
+                },
+              },
+            },
+          );
+          if (sprite.error !== undefined || sprite.assetPath === undefined) {
+            // 贴图已经入库了,如实说清「精灵没建成」,别把已发生的事一起报成失败。
+            throw new ForgeApiError(
+              sprite.error ?? 'SPRITE_CREATE_FAILED',
+              `图集已入库 ${tex.assetPath},但 .rxsprite 创建失败:${sprite.message ?? sprite.error ?? '空响应'}`,
+            );
+          }
+          patchNode(nodeId, (n) => ({
+            ...n,
+            versions: n.versions.map((v) =>
+              v.id === versionId
+                ? { ...v, assetPath: tex.assetPath, guid: tex.guid, spritePath: sprite.assetPath }
+                : v,
+            ),
+          }));
+          return;
+        }
+        if (version.fileRef === undefined) return;
         const r =
           preset.kind === 'image'
             ? await callGenTool<{ assetPath: string; guid: string }>('gen_accept', {
@@ -1085,6 +1293,42 @@ export const useStudioStore = create<StudioState>((set, get) => {
         const code = err instanceof ForgeApiError ? err.code : 'ERROR';
         set({ lastError: { nodeId, code, message: (err as Error).message } });
       }
+    },
+
+    resliceVersion: async (nodeId, versionId) => {
+      const node = get().nodes.find((n) => n.id === nodeId);
+      const version = node?.versions.find((v) => v.id === versionId);
+      if (!node || !version || version.videoFileRef === undefined) return;
+      if (get().busyIds.includes(nodeId)) return;
+      setBusy(nodeId, true);
+      set({ lastError: null });
+      try {
+        const f = await apiGenVideoFrames({
+          videoFileRef: version.videoFileRef,
+          ...frameParams(node.params),
+        });
+        patchNode(nodeId, (n) => ({
+          ...n,
+          versions: n.versions.map((v) =>
+            v.id === versionId ? { ...v, atlas: f.atlas, boxes: f.boxes, fps: f.fps } : v,
+          ),
+        }));
+      } catch (err) {
+        const code = err instanceof ForgeApiError ? err.code : 'ERROR';
+        set({ lastError: { nodeId, code, message: (err as Error).message } });
+      } finally {
+        setBusy(nodeId, false);
+      }
+    },
+
+    openInSpriteEditor: (nodeId, versionId) => {
+      const version = get()
+        .nodes.find((n) => n.id === nodeId)
+        ?.versions.find((v) => v.id === versionId);
+      const path = version?.spritePath;
+      if (path === undefined) return;
+      void useSpriteStore.getState().openSprite(path);
+      useWorkbenchStore.getState().openTab('sprite-editor');
     },
   };
 });
@@ -1119,7 +1363,8 @@ export function currentVersion(node: StudioNode): StudioVersion | undefined {
 }
 
 /**
- * 该版本能否入库(gen_accept):只有图像/模型有落盘产物,且尚未入库过。
+ * 该版本能否入库(gen_accept):图像/模型看落盘产物,角色动画看截好的图集
+ * (光有 mp4 不算——视频不是引擎资产,能入库的是那张图集),且都尚未入库过。
  * 版本卡上的「入库」按钮与右键菜单项共用这一份判定,免得两处规则各走一套。
  */
 export function canAccept(
@@ -1127,8 +1372,20 @@ export function canAccept(
   version: StudioVersion | undefined,
 ): boolean {
   if (preset === undefined || version === undefined) return false;
+  if (version.guid !== undefined) return false;
+  if (preset.kind === 'sprite') {
+    return version.atlas !== undefined && (version.boxes?.length ?? 0) > 0;
+  }
   if (preset.kind !== 'image' && preset.kind !== 'model') return false;
-  return version.fileRef !== undefined && version.guid === undefined;
+  return version.fileRef !== undefined;
+}
+
+/** 该版本能否重新截帧:有源视频即可(图集是否已切好、已入库都不妨碍换参数重切)。 */
+export function canReslice(
+  preset: StudioPresetDef | undefined,
+  version: StudioVersion | undefined,
+): boolean {
+  return preset?.kind === 'sprite' && version?.videoFileRef !== undefined;
 }
 
 /** 节点状态点(主画布创作卡):empty 草稿 / busy 生成中 / done 有产物 / accepted 已入库。 */
