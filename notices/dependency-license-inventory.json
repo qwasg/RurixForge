@@ -1,0 +1,2333 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-public-inventory-pending-release-review",
+  "resolvedGraphPackageCount": 161,
+  "packages": [
+    {
+      "name": "adler2",
+      "version": "2.0.1",
+      "declaredLicense": "0BSD OR MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/adler2-2.0.1/LICENSE-0BSD",
+          "sha256": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17"
+        },
+        {
+          "path": "licenses/dependencies/adler2-2.0.1/LICENSE-APACHE",
+          "sha256": "8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb"
+        },
+        {
+          "path": "licenses/dependencies/adler2-2.0.1/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "arrayvec",
+      "version": "0.7.8",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/arrayvec-0.7.8/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/arrayvec-0.7.8/LICENSE-MIT",
+          "sha256": "4da95ec4ecb65b738d470b7d762894ad9c97da93e6cbfb18b570fc2c96f4b871"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "assetd",
+      "version": "0.1.0",
+      "declaredLicense": null,
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "autocfg",
+      "version": "1.5.1",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/autocfg-1.5.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/autocfg-1.5.1/LICENSE-MIT",
+          "sha256": "27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "base64",
+      "version": "0.22.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/base64-0.22.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/base64-0.22.1/LICENSE-MIT",
+          "sha256": "0dd882e53de11566d50f8e8e2d5a651bcf3fabee4987d70f306233cf39094ba7"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "bit-set",
+      "version": "0.8.0",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/bit-set-0.8.0/LICENSE-APACHE",
+          "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+        },
+        {
+          "path": "licenses/dependencies/bit-set-0.8.0/LICENSE-MIT",
+          "sha256": "f51ac2c59a222f7476ce507ca879960e2b64ea64bb2786eefdbeb7b0b538d1b7"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "bit-vec",
+      "version": "0.8.0",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/bit-vec-0.8.0/LICENSE-APACHE",
+          "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+        },
+        {
+          "path": "licenses/dependencies/bit-vec-0.8.0/LICENSE-MIT",
+          "sha256": "f51ac2c59a222f7476ce507ca879960e2b64ea64bb2786eefdbeb7b0b538d1b7"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "bitflags",
+      "version": "2.13.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/bitflags-2.13.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/bitflags-2.13.1/LICENSE-MIT",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.10.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/block-buffer-0.10.4/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "licenses/dependencies/block-buffer-0.10.4/LICENSE-MIT",
+          "sha256": "d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "bumpalo",
+      "version": "3.20.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/bumpalo-3.20.3/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/bumpalo-3.20.3/LICENSE-MIT",
+          "sha256": "65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "declaredLicense": "Zlib OR Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/bytemuck-1.25.2/LICENSE-APACHE",
+          "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb"
+        },
+        {
+          "path": "licenses/dependencies/bytemuck-1.25.2/LICENSE-MIT",
+          "sha256": "9df9ba60a11af705f2e451b53762686e615d86f76b169cf075c3237730dbd7e2"
+        },
+        {
+          "path": "licenses/dependencies/bytemuck-1.25.2/LICENSE-ZLIB",
+          "sha256": "84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "byteorder",
+      "version": "1.5.0",
+      "declaredLicense": "Unlicense OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/byteorder-1.5.0/COPYING",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "path": "licenses/dependencies/byteorder-1.5.0/LICENSE-MIT",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "byteorder-lite",
+      "version": "0.1.0",
+      "declaredLicense": "Unlicense OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/byteorder-lite-0.1.0/LICENSE-MIT",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "bytes",
+      "version": "1.12.1",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/bytes-1.12.1/LICENSE",
+          "sha256": "45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "cc",
+      "version": "1.4.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/cc-1.4.3/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/cc-1.4.3/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/cfg-if-1.0.4/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/cfg-if-1.0.4/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "cfg_aliases",
+      "version": "0.2.2",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/cfg_aliases-0.2.2/LICENSE",
+          "sha256": "31b94860253d8ec7b4529f51901044d3b459d6292d996504a36b1bae3a36a812"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "cmake",
+      "version": "0.1.58",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/cmake-0.1.58/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/cmake-0.1.58/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "codespan-reporting",
+      "version": "0.12.0",
+      "declaredLicense": "Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/codespan-reporting-0.12.0/LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "countme",
+      "version": "3.0.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/countme-3.0.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/countme-3.0.1/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.2.17",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/cpufeatures-0.2.17/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "licenses/dependencies/cpufeatures-0.2.17/LICENSE-MIT",
+          "sha256": "ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "crc32fast",
+      "version": "1.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/crc32fast-1.5.0/LICENSE-APACHE",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        },
+        {
+          "path": "licenses/dependencies/crc32fast-1.5.0/LICENSE-MIT",
+          "sha256": "61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "crunchy",
+      "version": "0.2.4",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/crunchy-0.2.4/LICENSE",
+          "sha256": "3eab77734a181b2a2e8418af9004f960f715f04aac4d76a26cf774f63a7b13d1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.1.7",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/crypto-common-0.1.7/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "licenses/dependencies/crypto-common-0.1.7/LICENSE-MIT",
+          "sha256": "3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "data-encoding",
+      "version": "2.11.1",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/data-encoding-2.11.1/LICENSE",
+          "sha256": "b68ad1a3367b825447089e1f8d6829b97f47a89eb78d2f4ebaef4672f5606186"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "digest",
+      "version": "0.10.7",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/digest-0.10.7/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "licenses/dependencies/digest-0.10.7/LICENSE-MIT",
+          "sha256": "9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "engine-host",
+      "version": "0.1.0",
+      "declaredLicense": null,
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "equivalent",
+      "version": "1.0.2",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/equivalent-1.0.2/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/equivalent-1.0.2/LICENSE-MIT",
+          "sha256": "7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "fdeflate",
+      "version": "0.3.7",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/fdeflate-0.3.7/LICENSE-APACHE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "path": "licenses/dependencies/fdeflate-0.3.7/LICENSE-MIT",
+          "sha256": "c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "find-msvc-tools",
+      "version": "0.1.11",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/find-msvc-tools-0.1.11/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/find-msvc-tools-0.1.11/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "flate2",
+      "version": "1.1.9",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/flate2-1.1.9/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/flate2-1.1.9/LICENSE-MIT",
+          "sha256": "025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "foldhash",
+      "version": "0.1.5",
+      "declaredLicense": "Zlib",
+      "notices": [
+        {
+          "path": "licenses/dependencies/foldhash-0.1.5/LICENSE",
+          "sha256": "b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "forge-logic",
+      "version": "0.1.0",
+      "declaredLicense": null,
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "forge-scene",
+      "version": "0.1.0",
+      "declaredLicense": null,
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "forge-util",
+      "version": "0.1.0",
+      "declaredLicense": null,
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "fs2",
+      "version": "0.4.3",
+      "declaredLicense": "MIT/Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/fs2-0.4.3/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/fs2-0.4.3/LICENSE-MIT",
+          "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/futures-core-0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "path": "licenses/dependencies/futures-core-0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/futures-task-0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "path": "licenses/dependencies/futures-task-0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/futures-util-0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "path": "licenses/dependencies/futures-util-0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "generic-array",
+      "version": "0.14.7",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/generic-array-0.14.7/LICENSE",
+          "sha256": "c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "getrandom",
+      "version": "0.2.17",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/getrandom-0.2.17/LICENSE-APACHE",
+          "sha256": "aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf"
+        },
+        {
+          "path": "licenses/dependencies/getrandom-0.2.17/LICENSE-MIT",
+          "sha256": "42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/getrandom-0.4.3/LICENSE-APACHE",
+          "sha256": "aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf"
+        },
+        {
+          "path": "licenses/dependencies/getrandom-0.4.3/LICENSE-MIT",
+          "sha256": "523a42c25d245dde9c015f882cec7f4555aad883382a6cf19b4b7d9b2cd5419b"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "gltf",
+      "version": "1.4.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/gltf-1.4.1/LICENSE-APACHE",
+          "sha256": "3708458dee7f359ac6c9c5558023ed481be87e5372c43ebd7f2ca7ad23c12026"
+        },
+        {
+          "path": "licenses/dependencies/gltf-1.4.1/LICENSE-MIT",
+          "sha256": "0e6c282dfcb08a031c37b8f851fe5813fad63612e88a29dbe5121d727d67bbf2"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "gltf-derive",
+      "version": "1.4.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/gltf-derive-1.4.1/LICENSE-APACHE",
+          "sha256": "3708458dee7f359ac6c9c5558023ed481be87e5372c43ebd7f2ca7ad23c12026"
+        },
+        {
+          "path": "licenses/dependencies/gltf-derive-1.4.1/LICENSE-MIT",
+          "sha256": "f71fd5946d6674af304514dc7b3b4272aa9117052dd347fb3a9dc9679f33d95f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "gltf-json",
+      "version": "1.4.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/gltf-json-1.4.1/LICENSE-APACHE",
+          "sha256": "3708458dee7f359ac6c9c5558023ed481be87e5372c43ebd7f2ca7ad23c12026"
+        },
+        {
+          "path": "licenses/dependencies/gltf-json-1.4.1/LICENSE-MIT",
+          "sha256": "0e6c282dfcb08a031c37b8f851fe5813fad63612e88a29dbe5121d727d67bbf2"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "half",
+      "version": "2.7.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/half-2.7.1/LICENSE-APACHE",
+          "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+        },
+        {
+          "path": "licenses/dependencies/half-2.7.1/LICENSE-MIT",
+          "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.14.5",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/hashbrown-0.14.5/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/hashbrown-0.14.5/LICENSE-MIT",
+          "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.15.5",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/hashbrown-0.15.5/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/hashbrown-0.15.5/LICENSE-MIT",
+          "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/hashbrown-0.17.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/hashbrown-0.17.1/LICENSE-MIT",
+          "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "heck",
+      "version": "0.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/heck-0.5.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/heck-0.5.0/LICENSE-MIT",
+          "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "hexf-parse",
+      "version": "0.2.1",
+      "declaredLicense": "CC0-1.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "http",
+      "version": "1.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/http-1.5.0/LICENSE-APACHE",
+          "sha256": "8bb1b50b0e5c9399ae33bd35fab2769010fa6c14e8860c729a52295d84896b7a"
+        },
+        {
+          "path": "licenses/dependencies/http-1.5.0/LICENSE-MIT",
+          "sha256": "dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "httparse",
+      "version": "1.10.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/httparse-1.10.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/httparse-1.10.1/LICENSE-MIT",
+          "sha256": "391a5396cec6230bfabd4ef4eb2350eb895bc5efce377a2218f5702ed020d3e3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "image",
+      "version": "0.25.10",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/image-0.25.10/LICENSE-APACHE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "path": "licenses/dependencies/image-0.25.10/LICENSE-MIT",
+          "sha256": "c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "image-io",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "indexmap",
+      "version": "2.14.0",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/indexmap-2.14.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/indexmap-2.14.0/LICENSE-MIT",
+          "sha256": "ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "inflections",
+      "version": "1.1.1",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/inflections-1.1.1/LICENSE",
+          "sha256": "fe5c9498374de7953275f83f35565b289f377ceab4a28d04c7da87723e02a372"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/itoa-1.0.18/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/itoa-1.0.18/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "jobserver",
+      "version": "0.1.35",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/jobserver-0.1.35/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/jobserver-0.1.35/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "js-sys",
+      "version": "0.3.104",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/js-sys-0.3.104/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/js-sys-0.3.104/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "lazy_static",
+      "version": "1.5.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/lazy_static-1.5.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/lazy_static-1.5.0/LICENSE-MIT",
+          "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "libc",
+      "version": "0.2.189",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/libc-0.2.189/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/libc-0.2.189/LICENSE-MIT",
+          "sha256": "123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "libloading",
+      "version": "0.8.9",
+      "declaredLicense": "ISC",
+      "notices": [
+        {
+          "path": "licenses/dependencies/libloading-0.8.9/LICENSE",
+          "sha256": "b29f8b01452350c20dd1af16ef83b598fea3053578ccc1c7a0ef40e57be2620f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "libm",
+      "version": "0.2.16",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/libm-0.2.16/LICENSE.txt",
+          "sha256": "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "log",
+      "version": "0.4.33",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/log-0.4.33/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/log-0.4.33/LICENSE-MIT",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3",
+      "declaredLicense": "Unlicense OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/memchr-2.8.3/COPYING",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "path": "licenses/dependencies/memchr-2.8.3/LICENSE-MIT",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "memoffset",
+      "version": "0.9.1",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/memoffset-0.9.1/LICENSE",
+          "sha256": "3234ac55816264ee7b6c7ee27efd61cf0a1fe775806870e3d9b4c41ea73c5cb1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "miniz_oxide",
+      "version": "0.8.9",
+      "declaredLicense": "MIT OR Zlib OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/miniz_oxide-0.8.9/LICENSE",
+          "sha256": "4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b"
+        },
+        {
+          "path": "licenses/dependencies/miniz_oxide-0.8.9/LICENSE-APACHE.md",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "path": "licenses/dependencies/miniz_oxide-0.8.9/LICENSE-MIT.md",
+          "sha256": "799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d"
+        },
+        {
+          "path": "licenses/dependencies/miniz_oxide-0.8.9/LICENSE-ZLIB.md",
+          "sha256": "0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "moxcms",
+      "version": "0.8.1",
+      "declaredLicense": "BSD-3-Clause OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/moxcms-0.8.1/LICENSE-APACHE.md",
+          "sha256": "90bf2d659c43045111b65c733ab2a6d4cbcb422a098368c8c58a9ba3db4ed0c5"
+        },
+        {
+          "path": "licenses/dependencies/moxcms-0.8.1/LICENSE.md",
+          "sha256": "2aa92cada6431e75615e3fe6cb1a9082c98f777d48ae1c087c0da0e37f7b8bff"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "naga",
+      "version": "25.0.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "nasm-rs",
+      "version": "0.3.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/nasm-rs-0.3.2/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/nasm-rs-0.3.2/LICENSE-MIT",
+          "sha256": "c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/num-traits-0.2.19/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/num-traits-0.2.19/LICENSE-MIT",
+          "sha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/once_cell-1.21.4/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/once_cell-1.21.4/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "openh264",
+      "version": "0.6.6",
+      "declaredLicense": "BSD-2-Clause",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "openh264-sys2",
+      "version": "0.6.6",
+      "declaredLicense": "BSD-2-Clause",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/pin-project-lite-0.2.17/LICENSE-APACHE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        },
+        {
+          "path": "licenses/dependencies/pin-project-lite-0.2.17/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "png",
+      "version": "0.18.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/png-0.18.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/png-0.18.1/LICENSE-MIT",
+          "sha256": "eaf40297c75da471f7cda1f3458e8d91b4b2ec866e609527a13acfa93b638652"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "ppv-lite86",
+      "version": "0.2.21",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/ppv-lite86-0.2.21/LICENSE-APACHE",
+          "sha256": "0218327e7a480793ffdd4eb792379a9709e5c135c7ba267f709d6f6d4d70af0a"
+        },
+        {
+          "path": "licenses/dependencies/ppv-lite86-0.2.21/LICENSE-MIT",
+          "sha256": "4cada0bd02ea3692eee6f16400d86c6508bbd3bafb2b65fed0419f36d4f83e8f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/proc-macro2-1.0.107/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/proc-macro2-1.0.107/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "pxfm",
+      "version": "0.1.30",
+      "declaredLicense": "BSD-3-Clause OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/pxfm-0.1.30/LICENSE-APACHE.md",
+          "sha256": "90bf2d659c43045111b65c733ab2a6d4cbcb422a098368c8c58a9ba3db4ed0c5"
+        },
+        {
+          "path": "licenses/dependencies/pxfm-0.1.30/LICENSE.md",
+          "sha256": "2aa92cada6431e75615e3fe6cb1a9082c98f777d48ae1c087c0da0e37f7b8bff"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/quote-1.0.47/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/quote-1.0.47/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "r-efi",
+      "version": "6.0.0",
+      "declaredLicense": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rand",
+      "version": "0.8.8",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rand-0.8.8/LICENSE-APACHE",
+          "sha256": "35242e7a83f69875e6edeff02291e688c97caafe2f8902e4e19b49d3e78b4cab"
+        },
+        {
+          "path": "licenses/dependencies/rand-0.8.8/LICENSE-MIT",
+          "sha256": "209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rand_chacha",
+      "version": "0.3.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rand_chacha-0.3.1/LICENSE-APACHE",
+          "sha256": "aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf"
+        },
+        {
+          "path": "licenses/dependencies/rand_chacha-0.3.1/LICENSE-MIT",
+          "sha256": "209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rand_core",
+      "version": "0.6.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rand_core-0.6.4/LICENSE-APACHE",
+          "sha256": "6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51"
+        },
+        {
+          "path": "licenses/dependencies/rand_core-0.6.4/LICENSE-MIT",
+          "sha256": "209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rowan",
+      "version": "0.15.19",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rowan-0.15.19/LICENSE-APACHE",
+          "sha256": "7cfd738c53d61c79f07e348f622bf7707c9084237054d37fbe07788a75f5881c"
+        },
+        {
+          "path": "licenses/dependencies/rowan-0.15.19/LICENSE-MIT",
+          "sha256": "36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-asset",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-basis-sys",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rurix-basis-sys-1.0.0/NOTICE",
+          "sha256": "90c04ff1a46f14a310387bbf6dbd0f0b5e542029ca954cb5468a9c8617e7c6c7"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-geom-build",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-geom-pages",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-physics",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-physics-sys",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-pkg",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-render",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurix-rt",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rurixc",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rustc-hash",
+      "version": "1.1.0",
+      "declaredLicense": "Apache-2.0/MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rustc-hash-1.1.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/rustc-hash-1.1.0/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.23",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/rustversion-1.0.23/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/rustversion-1.0.23/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "ryu",
+      "version": "1.0.23",
+      "declaredLicense": "Apache-2.0 OR BSL-1.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/ryu-1.0.23/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/ryu-1.0.23/LICENSE-BOOST",
+          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "safe_arch",
+      "version": "0.7.4",
+      "declaredLicense": "Zlib OR Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/safe_arch-0.7.4/LICENSE-APACHE.md",
+          "sha256": "e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb"
+        },
+        {
+          "path": "licenses/dependencies/safe_arch-0.7.4/LICENSE-MIT.md",
+          "sha256": "e57011537d230b14e790f6666dc00816f7b371ebbd7da8a12491e51086fec278"
+        },
+        {
+          "path": "licenses/dependencies/safe_arch-0.7.4/LICENSE-ZLIB.md",
+          "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "same-file",
+      "version": "1.0.6",
+      "declaredLicense": "Unlicense/MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/same-file-1.0.6/COPYING",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "path": "licenses/dependencies/same-file-1.0.6/LICENSE-MIT",
+          "sha256": "cb3c929a05e6cbc9de9ab06a4c57eeb60ca8c724bef6c138c87d3a577e27aa14"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "sentinels-v6",
+      "version": "0.1.0",
+      "declaredLicense": null,
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/serde-1.0.229/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/serde-1.0.229/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/serde_core-1.0.229/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/serde_core-1.0.229/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/serde_derive-1.0.229/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/serde_derive-1.0.229/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.151",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/serde_json-1.0.151/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/serde_json-1.0.151/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "serde_yaml",
+      "version": "0.9.34+deprecated",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/serde_yaml-0.9.34+deprecated/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/serde_yaml-0.9.34+deprecated/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "sha1",
+      "version": "0.10.7",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/sha1-0.10.7/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "licenses/dependencies/sha1-0.10.7/LICENSE-MIT",
+          "sha256": "b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "sha2",
+      "version": "0.10.9",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/sha2-0.10.9/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "licenses/dependencies/sha2-0.10.9/LICENSE-MIT",
+          "sha256": "b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "shlex",
+      "version": "2.0.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/shlex-2.0.1/LICENSE-APACHE",
+          "sha256": "553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583"
+        },
+        {
+          "path": "licenses/dependencies/shlex-2.0.1/LICENSE-MIT",
+          "sha256": "4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "simd-adler32",
+      "version": "0.3.10",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/simd-adler32-0.3.10/LICENSE.md",
+          "sha256": "42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/slab-0.4.12/LICENSE",
+          "sha256": "8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "soft-raster",
+      "version": "1.0.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "spirv",
+      "version": "0.3.0+sdk-1.3.268.0",
+      "declaredLicense": "Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "strum",
+      "version": "0.26.3",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/strum-0.26.3/LICENSE",
+          "sha256": "8bce3b45e49ecd1461f223b46de133d8f62cd39f745cfdaf81bee554b908bd42"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "strum_macros",
+      "version": "0.26.4",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/strum_macros-0.26.4/LICENSE",
+          "sha256": "8bce3b45e49ecd1461f223b46de133d8f62cd39f745cfdaf81bee554b908bd42"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/syn-2.0.119/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/syn-2.0.119/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "syn",
+      "version": "3.0.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/syn-3.0.3/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/syn-3.0.3/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "termcolor",
+      "version": "1.4.1",
+      "declaredLicense": "Unlicense OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/termcolor-1.4.1/COPYING",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "path": "licenses/dependencies/termcolor-1.4.1/LICENSE-MIT",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "text-size",
+      "version": "1.1.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/text-size-1.1.1/LICENSE-APACHE",
+          "sha256": "7cfd738c53d61c79f07e348f622bf7707c9084237054d37fbe07788a75f5881c"
+        },
+        {
+          "path": "licenses/dependencies/text-size-1.1.1/LICENSE-MIT",
+          "sha256": "36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "thiserror",
+      "version": "1.0.69",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/thiserror-1.0.69/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/thiserror-1.0.69/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.20",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/thiserror-2.0.20/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/thiserror-2.0.20/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "1.0.69",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/thiserror-impl-1.0.69/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/thiserror-impl-1.0.69/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.20",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/thiserror-impl-2.0.20/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/thiserror-impl-2.0.20/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "tungstenite",
+      "version": "0.24.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/tungstenite-0.24.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/tungstenite-0.24.0/LICENSE-MIT",
+          "sha256": "7fea0ee51a4ca5d5cea7464135fd55e8b09caf3a61da3d451ac8a22af95c033f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/typenum-1.20.1/LICENSE",
+          "sha256": "db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a"
+        },
+        {
+          "path": "licenses/dependencies/typenum-1.20.1/LICENSE-APACHE",
+          "sha256": "516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406"
+        },
+        {
+          "path": "licenses/dependencies/typenum-1.20.1/LICENSE-MIT",
+          "sha256": "a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.24",
+      "declaredLicense": "(MIT OR Apache-2.0) AND Unicode-3.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/unicode-ident-1.0.24/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/unicode-ident-1.0.24/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        },
+        {
+          "path": "licenses/dependencies/unicode-ident-1.0.24/LICENSE-UNICODE",
+          "sha256": "f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "unicode-width",
+      "version": "0.2.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/unicode-width-0.2.2/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/unicode-width-0.2.2/LICENSE-MIT",
+          "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "unsafe-libyaml",
+      "version": "0.2.11",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/unsafe-libyaml-0.2.11/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "utf-8",
+      "version": "0.7.6",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/utf-8-0.7.6/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "licenses/dependencies/utf-8-0.7.6/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "uuid",
+      "version": "1.24.1",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/uuid-1.24.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/uuid-1.24.1/LICENSE-MIT",
+          "sha256": "436bc5a105d8e57dcd8778730f3754f7bf39c14d2f530e4cde4bd2d17a83ec3d"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "version_check",
+      "version": "0.9.5",
+      "declaredLicense": "MIT/Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/version_check-0.9.5/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/version_check-0.9.5/LICENSE-MIT",
+          "sha256": "b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "walkdir",
+      "version": "2.5.0",
+      "declaredLicense": "Unlicense/MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/walkdir-2.5.0/COPYING",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "path": "licenses/dependencies/walkdir-2.5.0/LICENSE-MIT",
+          "sha256": "0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "wasi",
+      "version": "0.11.1+wasi-snapshot-preview1",
+      "declaredLicense": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-Apache-2.0_WITH_LLVM-exception",
+          "sha256": "268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5"
+        },
+        {
+          "path": "licenses/dependencies/wasi-0.11.1+wasi-snapshot-preview1/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.127",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/wasm-bindgen-0.2.127/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/wasm-bindgen-0.2.127/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.127",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/wasm-bindgen-macro-0.2.127/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/wasm-bindgen-macro-0.2.127/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.127",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/wasm-bindgen-macro-support-0.2.127/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/wasm-bindgen-macro-support-0.2.127/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.127",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/wasm-bindgen-shared-0.2.127/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "licenses/dependencies/wasm-bindgen-shared-0.2.127/LICENSE-MIT",
+          "sha256": "378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "wide",
+      "version": "0.7.33",
+      "declaredLicense": "Zlib OR Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/wide-0.7.33/LICENSE-ZLIB.md",
+          "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "winapi",
+      "version": "0.3.9",
+      "declaredLicense": "MIT/Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/winapi-0.3.9/LICENSE-APACHE",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        },
+        {
+          "path": "licenses/dependencies/winapi-0.3.9/LICENSE-MIT",
+          "sha256": "ce7bc3499fee93d5022ef430d5e4201e79a6d9154f3974e42f41349f0569e09b"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "winapi-i686-pc-windows-gnu",
+      "version": "0.4.0",
+      "declaredLicense": "MIT/Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "winapi-util",
+      "version": "0.1.11",
+      "declaredLicense": "Unlicense OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/winapi-util-0.1.11/COPYING",
+          "sha256": "01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f"
+        },
+        {
+          "path": "licenses/dependencies/winapi-util-0.1.11/LICENSE-MIT",
+          "sha256": "cb3c929a05e6cbc9de9ab06a4c57eeb60ca8c724bef6c138c87d3a577e27aa14"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "winapi-x86_64-pc-windows-gnu",
+      "version": "0.4.0",
+      "declaredLicense": "MIT/Apache-2.0",
+      "notices": [],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows",
+      "version": "0.61.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-0.61.3/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-0.61.3/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-collections",
+      "version": "0.2.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-collections-0.2.0/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-collections-0.2.0/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-core",
+      "version": "0.61.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-core-0.61.2/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-core-0.61.2/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-future",
+      "version": "0.2.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-future-0.2.1/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-future-0.2.1/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-implement",
+      "version": "0.60.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-implement-0.60.2/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-implement-0.60.2/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-interface",
+      "version": "0.59.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-interface-0.59.3/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-interface-0.59.3/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-link",
+      "version": "0.1.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-link-0.1.3/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-link-0.1.3/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-link-0.2.1/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-link-0.2.1/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-numerics",
+      "version": "0.2.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-numerics-0.2.0/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-numerics-0.2.0/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-result",
+      "version": "0.3.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-result-0.3.4/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-result-0.3.4/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.4.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-strings-0.4.2/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-strings-0.4.2/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-sys-0.61.2/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-sys-0.61.2/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "windows-threading",
+      "version": "0.1.0",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "notices": [
+        {
+          "path": "licenses/dependencies/windows-threading-0.1.0/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "path": "licenses/dependencies/windows-threading-0.1.0/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "zerocopy",
+      "version": "0.8.56",
+      "declaredLicense": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/zerocopy-0.8.56/LICENSE-APACHE",
+          "sha256": "9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3"
+        },
+        {
+          "path": "licenses/dependencies/zerocopy-0.8.56/LICENSE-BSD",
+          "sha256": "83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32"
+        },
+        {
+          "path": "licenses/dependencies/zerocopy-0.8.56/LICENSE-MIT",
+          "sha256": "1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "zerocopy-derive",
+      "version": "0.8.56",
+      "declaredLicense": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/zerocopy-derive-0.8.56/LICENSE-APACHE",
+          "sha256": "9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3"
+        },
+        {
+          "path": "licenses/dependencies/zerocopy-derive-0.8.56/LICENSE-BSD",
+          "sha256": "83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32"
+        },
+        {
+          "path": "licenses/dependencies/zerocopy-derive-0.8.56/LICENSE-MIT",
+          "sha256": "1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "declaredLicense": "MIT",
+      "notices": [
+        {
+          "path": "licenses/dependencies/zmij-1.0.23/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "zune-core",
+      "version": "0.5.3",
+      "declaredLicense": "MIT OR Apache-2.0 OR Zlib",
+      "notices": [
+        {
+          "path": "licenses/dependencies/zune-core-0.5.3/LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        },
+        {
+          "path": "licenses/dependencies/zune-core-0.5.3/LICENSE-MIT",
+          "sha256": "d30047bca3b516639339a3c279bb84c3483124fb5a9dafe3c75056a85090e745"
+        },
+        {
+          "path": "licenses/dependencies/zune-core-0.5.3/LICENSE-ZLIB",
+          "sha256": "d201d14804d3bcd3b944147173175e4abfbd838b7c8069b6bd3452496bf13e6c"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    },
+    {
+      "name": "zune-jpeg",
+      "version": "0.5.15",
+      "declaredLicense": "MIT OR Apache-2.0 OR Zlib",
+      "notices": [
+        {
+          "path": "licenses/dependencies/zune-jpeg-0.5.15/LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        },
+        {
+          "path": "licenses/dependencies/zune-jpeg-0.5.15/LICENSE-MIT",
+          "sha256": "d30047bca3b516639339a3c279bb84c3483124fb5a9dafe3c75056a85090e745"
+        },
+        {
+          "path": "licenses/dependencies/zune-jpeg-0.5.15/LICENSE-ZLIB",
+          "sha256": "d201d14804d3bcd3b944147173175e4abfbd838b7c8069b6bd3452496bf13e6c"
+        }
+      ],
+      "scope": "Resolved dependency graph only; not a claim that this package is linked or redistributed in every artifact."
+    }
+  ],
+  "noticePathsRelativeTo": "notices/",
+  "remainingReview": [
+    "Exact linked/distributed subset and nested native-library notices",
+    "Local Cargo license declarations against the root license",
+    "Program eligibility of all selected components, including the declared CC0-1.0 dependency"
+  ],
+  "completeLicenseClearanceClaimed": false
+}

@@ -1,0 +1,9 @@
+[package]
+name = "forge-scene"
+description = "Forge 场景模型(F1 前占位结构):Entity/Scene + serde JSON + .rxscene 存取"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

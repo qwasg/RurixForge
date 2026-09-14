@@ -1,0 +1,38 @@
+[package]
+name = "forge-agentd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# D-035:计划文件 front matter(与 assetd 的 .meta sidecar 同一 YAML 实现,锁文件已有)。
+serde_yaml = "0.9"
+# F5 wave.3:gen 配置 REST 面(gen-backends.json / keystore.json 读写,R-5 密钥不出)。
+gend = { path = "../gend" }
+# F9 D6:pack 闭包 guid 引用解析——复用 assetd MetaDoc::load 读 .meta guid 索引。
+assetd = { path = "../assetd" }
+forge-util = { path = "../forge-util" }
+fs2 = "0.4"
+toml = "0.8"
+# F-GAME-3:项目脚手架起始场景(Scene/Component 模型 + 规范序列化)与项目模式解析。
+forge-scene = { path = "../forge-scene" }
+# F11(D-025):资产商店 REST 面内嵌 registry 内核(源/搜索/安装长任务/个人库/发布)。
+forge-store = { path = "../forge-store" }
+# io-util:stdin/stdout 异步读写(MCP stdio 客户端与测试所需)
+tokio = { workspace = true, features = ["io-util"] }
+# RD-F1-002:DeepSeek 官方 API HTTPS 调用(rustls 纯 Rust TLS,与 gend 同 feature 面;body 自序列化)。
+ureq = { version = "2", default-features = false, features = ["tls"] }
+# F6 wave.1:playtest SSIM 断言——golden PNG 解码 + viewport_frame pixelsB64 解码(与 assetd/gend 同版本面)。
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+# F7 wave.1:SSE 流(stream::iter/unfold + StreamExt::chain;锁文件已有 0.3.34,不引宏特性)。
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# util:ServiceExt::oneshot 路由级测试
+tower = { workspace = true, features = ["util"] }
+# F7 wave.1:SSE 测试逐帧读响应体(BodyExt::frame;锁文件已有 0.1.5)。
+http-body-util = "0.1"

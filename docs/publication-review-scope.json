@@ -1,0 +1,53 @@
+{
+  "status": "local-unpublished-source-review",
+  "compiledSourceCount": 657,
+  "compiledSourceManifestSha256": "9dbc7852506fcc1221cf29928c228d0e1712ff4dafdd08490a75b6a6ef2aacc2",
+  "compiledRuntimeSha256": "509cd0f038597f8fcfb44c1c2415a071eb3fb67bff2e62f5f071b883073630d6",
+  "compiledRuntimeIncludedInSourceArchive": false,
+  "sourceSupplements": [
+    {
+      "path": "vendor/rurix/src/rurix-rt/compile-fail/async_buffer_alloc_incomplete.rs",
+      "bytes": 794,
+      "sha256": "54131d010f49fb0192b2503f5b8f7ae0a0b189fb8cdfd01c8e59026ca4628f1a",
+      "status": "original-negative-test-source-not-in-657-build-snapshot-not-executed"
+    },
+    {
+      "path": "vendor/rurix/src/rurix-rt/compile-fail/async_buffer_cross_stream_unsync.rs",
+      "bytes": 820,
+      "sha256": "5802c56aea0ca17f4925e93e86252e74bbc98639a79b1465d41fc9f673a1e52e",
+      "status": "original-negative-test-source-not-in-657-build-snapshot-not-executed"
+    },
+    {
+      "path": "vendor/rurix/src/rurix-rt/compile-fail/async_buffer_use_after_free.rs",
+      "bytes": 807,
+      "sha256": "6272024b0715f8ca6cc4c10f883fec3f8c1037026f97017ce82196052a1ca8ea",
+      "status": "original-negative-test-source-not-in-657-build-snapshot-not-executed"
+    },
+    {
+      "path": "vendor/rurix/src/rurix-rt/compile-fail/cross_context.rs",
+      "bytes": 676,
+      "sha256": "e8e40317416fbe6d92077d66408a642ea96bb65fe6691f1dbb5dbc34a9994a0c",
+      "status": "original-negative-test-source-not-in-657-build-snapshot-not-executed"
+    },
+    {
+      "path": "vendor/rurix/src/rurix-rt/compile-fail/handle_lifetime.rs",
+      "bytes": 542,
+      "sha256": "9905e08a147a93ce33806d538162df4213e733cc2730887a7a81a0fa1c3199fa",
+      "status": "original-negative-test-source-not-in-657-build-snapshot-not-executed"
+    },
+    {
+      "path": "vendor/rurix/src/rurix-rt/compile-fail/signal_timing.rs",
+      "bytes": 647,
+      "sha256": "037819d1a1dbcb29c20218a378fdd9b01ba47aa61afd379b9f21a1a17cec16cb",
+      "status": "original-negative-test-source-not-in-657-build-snapshot-not-executed"
+    }
+  ],
+  "supplementTestsExecuted": false,
+  "additionalFiles": "Reviewed notices, policy drafts, disabled CI scripts and review documentation. These additions are not claimed to have been part of the completed 657-file compile snapshot.",
+  "workflowEnabled": false,
+  "hostedBuildExecuted": false,
+  "published": false,
+  "signed": false,
+  "applicationSubmitted": false,
+  "completePlayableGame": false
+}

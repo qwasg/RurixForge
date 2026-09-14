@@ -1,0 +1,181 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,26 +1,26 @@
+ [package]
+ name = "rurix-rt"
+ description = "Rurix 运行时(M4.3:CUDA Driver API 薄层 — Context/Stream/Buffer/Module/launch + 装载协商 + poisoned 状态机,08 §1/§2,D-230~D-234)"
+-edition.workspace = true
+-version.workspace = true
+-publish.workspace = true
+-license.workspace = true
++edition = "2024"
++version = "1.0.0"
++publish = false
++license = "MIT OR Apache-2.0"
+ 
+ [dependencies]
+ # 零外部运行时依赖:nvcuda.dll 运行时动态加载(LoadLibraryA/GetProcAddress),
+ # 不依赖 CUDA Toolkit 的 nvcuda.lib 导入库(08 §9 / 14 §2 PTX-only,无再分发物)。
+ # G1.1 CUDA–D3D12 互操作(feature d3d12-interop)的 D3D12/DXGI 薄 C/C++ shim 边界:
+ # 可选依赖,默认关闭(RFC-0001 §4.2;D3D12 侧不进语言,D-130)。
+-rurix-d3d12 = { path = "../rurix-d3d12", optional = true }
++rurix-d3d12 = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca", optional = true }
+ # G8.2 M30 PSO cache(RXS-0314):pso_key 的 SHA-256 复用 rurix-pkg 手写实现(RXS-0306
+ # 同源;workspace path 依赖,零外部 crate)。optional + 随 feature vulkan 启用——
+ # default(CUDA-only)构建依赖面 0-byte 不动。
+-rurix-pkg = { path = "../rurix-pkg", optional = true }
++rurix-pkg = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca", optional = true }
+ 
+ [dev-dependencies]
+ # G9.3 M94(RXS-0351):rt_clas 烘焙输入 32B 记录与 logical_v2 CLAS_RECORD_SIZE 的
+ # 跨 crate ABI 一致性锚(仅测试依赖,运行时依赖面 0-byte 不动)。
+-rurix-geom-pages = { path = "../rurix-geom-pages" }
++rurix-geom-pages = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+ 
+ [features]
+ default = []
+@@ -63,7 +63,7 @@
+ # 只影响 build-script 那份 rurixc 副本(build-deps 与运行时依赖独立解析),不改 rurixc
+ # 默认特性、不进运行时产物。
+ [build-dependencies]
+-rurixc = { path = "../rurixc", features = ["vulkan-backend"] }
++rurixc = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca", features = ["vulkan-backend"] }
+ 
+ # mb1 Vulkan compute 真跑 demo(RXS-0207):须 feature vulkan(vk 模块)。
+ [[bin]]
+@@ -235,3 +235,7 @@
+ 
+ [lints.clippy]
+ undocumented_unsafe_blocks = "deny"
++
++[workspace]
++resolver = "2"
++
+--- a/src/render_exec.rs
++++ b/src/render_exec.rs
+@@ -508,9 +508,22 @@
+     pub blas_refit: Option<BlasRefitUpdate>,
+ }
+ 
++/// Fixed-function framebuffer composition. Inputs use straight (unpremultiplied) alpha.
++#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
++pub enum BlendMode {
++    #[default]
++    Opaque,
++    /// RGB = src.rgb * src.a + dst.rgb * (1 - src.a).
++    Alpha,
++    /// RGB = src.rgb * src.a + dst.rgb; preserve destination alpha.
++    Additive,
++}
++
+ /// raster pass(vertex+fragment 着色对;`OpEntryPoint` 名恒 `"main"`,沿 vk.rs 先例)。
+ #[derive(Debug, Clone)]
+ pub struct RasterPass<'a> {
++    /// Color blending is part of the graphics pipeline key; blended passes do not write depth.
++    pub blend: BlendMode,
+     /// pass 诊断名(错误消息定位)。
+     pub name: &'a str,
+     /// vertex SPIR-V 字节(4 字节对齐,magic `0x07230203`)。
+@@ -1961,6 +1974,7 @@
+ /// render pass 兼容性只取决于格式/采样数,与 loadOp 无关,故 clear 变体不入键)。
+ #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+ pub(crate) struct RasterPipelineKey {
++    blend: BlendMode,
+     vs_hash: u64,
+     fs_hash: u64,
+     color_formats: Vec<u32>,
+@@ -8066,6 +8080,7 @@
+                             VertexData::Pull => (0, Vec::new(), false),
+                         };
+                     let pipe_key = RasterPipelineKey {
++                        blend: rp.blend,
+                         vs_hash: fnv1a_u64(rp.vs_spirv),
+                         fs_hash: fnv1a_u64(rp.fs_spirv),
+                         color_formats: rp_key.color_formats.clone(),
+@@ -8206,16 +8221,23 @@
+                             alpha_to_coverage_enable: 0,
+                             alpha_to_one_enable: 0,
+                         };
++                        // Vulkan VkBlendFactor values: ZERO=0, ONE=1,
++                        // SRC_ALPHA=6, ONE_MINUS_SRC_ALPHA=7; op ADD=0.
++                        let (blend_enable, src_color, dst_color, src_alpha, dst_alpha) = match rp.blend {
++                            BlendMode::Opaque => (0, 1, 0, 1, 0),
++                            BlendMode::Alpha => (1, 6, 7, 1, 7),
++                            BlendMode::Additive => (1, 6, 1, 0, 1),
++                        };
+                         let blend_atts: Vec<PipelineColorBlendAttachmentState> = rp
+                             .colors
+                             .iter()
+                             .map(|_| PipelineColorBlendAttachmentState {
+-                                blend_enable: 0,
+-                                src_color_blend_factor: 0,
+-                                dst_color_blend_factor: 0,
++                                blend_enable,
++                                src_color_blend_factor: src_color,
++                                dst_color_blend_factor: dst_color,
+                                 color_blend_op: 0,
+-                                src_alpha_blend_factor: 0,
+-                                dst_alpha_blend_factor: 0,
++                                src_alpha_blend_factor: src_alpha,
++                                dst_alpha_blend_factor: dst_alpha,
+                                 alpha_blend_op: 0,
+                                 color_write_mask: COLOR_COMPONENT_RGBA,
+                             })
+@@ -8239,7 +8261,7 @@
+                             p_next: std::ptr::null(),
+                             flags: 0,
+                             depth_test_enable: u32::from(rp.depth.is_some()),
+-                            depth_write_enable: u32::from(rp.depth.is_some()),
++                            depth_write_enable: u32::from(rp.depth.is_some() && rp.blend == BlendMode::Opaque),
+                             depth_compare_op: COMPARE_OP_LESS_OR_EQUAL,
+                             depth_bounds_test_enable: 0,
+                             stencil_test_enable: 0,
+@@ -11004,6 +11026,7 @@
+     #[test]
+     fn pipeline_cache_keys_equality() {
+         let k1 = RasterPipelineKey {
++            blend: BlendMode::Opaque,
+             vs_hash: 1,
+             fs_hash: 2,
+             color_formats: vec![37],
+@@ -11015,6 +11038,11 @@
+         };
+         let mut k2 = k1.clone();
+         assert_eq!(k1, k2);
++        for blend in [BlendMode::Alpha, BlendMode::Additive] {
++            let mut blended = k1.clone();
++            blended.blend = blend;
++            assert_ne!(k1, blended, "blend state must not reuse an opaque pipeline");
++        }
+         k2.fs_hash = 3;
+         assert_ne!(k1, k2);
+         let mut k3 = k1.clone();
+@@ -11053,6 +11081,7 @@
+     fn conservative_raster_gate_is_fail_closed() {
+         let raster = |conservative: Option<ConservativeRasterDesc>| {
+             Pass::Raster(RasterPass {
++                blend: BlendMode::Opaque,
+                 name: "hw",
+                 vs_spirv: &[],
+                 fs_spirv: &[],
+@@ -12035,6 +12064,7 @@
+             data: None,
+         })];
+         let passes = vec![Pass::Raster(RasterPass {
++                blend: BlendMode::Opaque,
+             name: "tri",
+             vs_spirv: vs,
+             fs_spirv: fs,
+@@ -12493,6 +12523,7 @@
+         ];
+         let passes = vec![
+             Pass::Raster(RasterPass {
++                blend: BlendMode::Opaque,
+                 name: "tri",
+                 vs_spirv: vs,
+                 fs_spirv: fs,
+@@ -13177,3 +13208,4 @@
+ //    入口/行为 0-byte——vk_g37_async_lanes body-include 先例同律,语义头注见
+ //    该文件;RFC-0030 §4.3 L2 修订行草案的实现底稿)──
+ include!("render_exec_g37_fif_dyn.rs");
++

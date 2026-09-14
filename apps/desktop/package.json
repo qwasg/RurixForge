@@ -1,0 +1,16 @@
+{
+  "name": "@forge/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "smoke": "node scripts/smoke.mjs",
+    "typecheck": "node --check src/main.cjs && node --check src/preload.cjs",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "electron": "^41.10.3"
+  }
+}

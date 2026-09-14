@@ -1,0 +1,12 @@
+[package]
+name = "store-mcp"
+description = "F11 资产商店 MCP 服务器:stdio NDJSON JSON-RPC,内嵌 forge-store 库;十二工具(源清单/搜索/详情/已装/更新检查/安装/卸载/任务状态/个人库四件)。安装与卸载为异步提交制(返 taskId + store_task_status 轮询)——包下载+校验+assetd 构建链远超 agentd 的 MCP 10s 上限(D-F11-C)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+assetd = { path = "../../assetd" }
+forge-store = { path = "../../forge-store" }
+forge-util = { path = "../../forge-util" }
+serde.workspace = true
+serde_json.workspace = true

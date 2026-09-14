@@ -1,0 +1,10 @@
+[package]
+name = "forge-util"
+description = "Forge 共享小工具:UTC ISO8601 时间戳 timeutil(原 engine-host / gend / engine-scene-mcp 三份逐字重复合并)+ SHA-256 hex/流式 hashutil(收编 assetd/forge-index/gend 的重复调用样板);无第三方依赖,仅一条仓内 path 依赖 rurix-pkg(哈希算法根)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# hashutil 算法根:rurix-pkg 手写 SHA-256(FIPS 180-4,自身零第三方依赖)。
+# 引入后本 crate 不再是「零依赖」,取舍如实记于 src/hashutil.rs 文件头。
+rurix-pkg.workspace = true

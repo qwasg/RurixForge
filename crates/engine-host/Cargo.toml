@@ -1,0 +1,33 @@
+[package]
+name = "engine-host"
+description = "Forge 引擎宿主:JSON-RPC 2.0 over TCP 控制通道 + rurix-physics 固定步后台线程 + soft-raster CPU 渲染"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+forge-util = { path = "../forge-util" }
+forge-scene = { path = "../forge-scene" }
+# F4 wave.3:图解释执行运行时(play 态逻辑帧调度 + 热重载)。
+forge-logic = { path = "../forge-logic" }
+rurix-physics.workspace = true
+soft-raster.workspace = true
+# wave.2 Viewport:rurix-rt vulkan 档 render_exec(场景实渲染 + Readback);loader 运行时
+# 动态装载 vulkan-1.dll,编译期零原生依赖,无设备环境可编译、运行期诚实 DEV_ENV_DEGRADE。
+rurix-rt = { workspace = true, features = ["vulkan"] }
+# 2026-08-28 资产→视口断链接线:RXGB .rxmesh 反序列化(read_dag)+ assetd 项目面
+# (ForgeProject/.meta/cache_key——与构建链同一缓存键事实源)。
+rurix-geom-build.workspace = true
+assetd = { path = "../assetd" }
+# WGSL→SPIR-V 纯 Rust 编译(naga 缓存钉版;仅着色器翻译,不含 GPU 调用)。
+naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"] }
+# H.264 编码(F1 wave.4 流腿;Cisco OpenH264 纯 Rust/BSD,CPU 编码无原生依赖)。
+openh264 = "0.6"
+base64 = "0.22"
+serde.workspace = true
+serde_json.workspace = true
+tungstenite = "0.24"
+sentinels-v6 = { path = "../../projects/code-sentinels/native-v6" }
+sha2 = "0.10"
+# D3D12 共享纹理生产者(wave.2 G-F1-9;仅 Windows 目标参与编译)。
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true

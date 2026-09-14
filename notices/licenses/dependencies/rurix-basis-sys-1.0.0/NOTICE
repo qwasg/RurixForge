@@ -1,0 +1,20 @@
+rurix-basis-sys NOTICE
+======================
+
+This crate bundles a vendored snapshot of basis_universal by Binomial LLC,
+licensed under the Apache License, Version 2.0.
+
+  basis_universal — Copyright (c) 2019-2024 Binomial LLC
+  https://github.com/BinomialLLC/basis_universal
+  SPDX-License-Identifier: Apache-2.0
+  Vendored tag: 1.16.4 (commit 900e40fb5d2502927360fe2f31762bdbb624455f)
+  See vendor/basis_universal/LICENSE and vendor/basis_universal/LICENSES/
+  for the full license texts.
+
+The Rurix wrapper code in ffi/rurix_basis_wrap.cpp and src/ is copyright
+Rurix contributors, licensed under MIT OR Apache-2.0 (matching the root
+repository dual-license; see the top-level LICENSE files).
+
+The transitional shim in vendor/rurix_basis_shim/ is retained for reference
+only and is NOT compiled or linked in the current build.
+

@@ -1,0 +1,15 @@
+[package]
+name = "forge-logic"
+description = "Forge 交互逻辑(F4 wave.2):.rxgraph 图文档 serde + 节点注册表(10 §4.2 首发冻结子集)+ 全图校验器(10 §5 保存即校验)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# F4 wave.3:interp 图解释器消费场景模型(Entity/Component/Transform),不依赖 engine-host。
+forge-scene = { path = "../forge-scene" }
+serde.workspace = true
+serde_json.workspace = true
+# RD-F4-004:call_function dll 运行时(rurixc --emit=dll 产物加载 + 标量编组)。
+libloading = "0.8"
+# 缓存键 SHA-256(rurix-pkg 零依赖手写实现,照 assetd 先例)。
+rurix-pkg.workspace = true

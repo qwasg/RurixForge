@@ -1,0 +1,79 @@
+[workspace]
+members = [
+  "crates/forge-scene",
+  "crates/forge-logic",
+  "crates/forge-util",
+  "crates/forge-index",
+  "crates/forge-store",
+  "crates/engine-host",
+  "crates/forge-agentd",
+  "crates/assetd",
+  "crates/gend",
+  "crates/mcp/engine-scene-mcp",
+  "crates/mcp/asset-pipeline-mcp",
+  "crates/mcp/context-mcp",
+  "crates/mcp/code-forge-mcp",
+  "crates/mcp/gen-image-mcp",
+  "crates/mcp/gen-model-mcp",
+  "crates/mcp/store-mcp",
+  "crates/mcp/blender-bridge-mcp",
+  "crates/viewport-presenter",
+]
+resolver = "2"
+exclude = ["projects/code-sentinels/native-v6"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# ── 上游 rurix 内核依赖(开源 git 锚定)─────────────────────────────
+# 锚定 rev = Rurix main @1478859a(2026-09-01 双仓同步开源时点,对账见 RURIX_PIN.json)。
+# 本地双仓开发:取消注释文件尾 [patch."https://github.com/qwasg/Rurix"] 节,以本地
+# H:/rurix 工作树覆盖(D-016/D-029 path 依赖常态的 git 化等价物);提交前须重新注释。
+rurix-asset = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-geom-build = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-pkg = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-physics = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-rt = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+soft-raster = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+tokio = { version = "1.44", features = ["rt-multi-thread", "net", "macros", "time", "process", "sync"] }
+axum = "0.8"
+tower = "0.5"
+# wave.2 D3D12 共享纹理(engine-host 生产者 / viewport-presenter 消费者;Windows only)。
+windows = { version = "=0.61.3", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Threading",
+  "Win32_System_LibraryLoader",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D12",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_HiDpi",
+] }
+
+# ── 本地双仓开发(可选,勿在提交状态启用)──────────────────────────
+# 指向本地 rurix 工作树开发时,取消注释以下 [patch] 节;发布/提交前恢复注释,
+# 否则其他克隆者因缺少本地路径无法构建。对账纪律同 RURIX_PIN.json(D-016/D-029)。
+# [patch."https://github.com/qwasg/Rurix"]
+# rurix-asset = { path = "H:/rurix/src/rurix-asset" }
+# rurix-geom-build = { path = "H:/rurix/src/rurix-geom-build" }
+# rurix-pkg = { path = "H:/rurix/src/rurix-pkg" }
+# rurix-physics = { path = "H:/rurix/src/rurix-physics" }
+# rurix-rt = { path = "H:/rurix/src/rurix-rt" }
+# soft-raster = { path = "H:/rurix/src/soft-raster" }
+
+# Reproducible alpha/additive RasterPass patch, based on the pinned upstream
+# revision above. See vendor/rurix/FORGE_BLEND_PATCH.md; no machine-local path.
+[patch."https://github.com/qwasg/Rurix"]
+rurix-rt = { path = "vendor/rurix/src/rurix-rt" }
+
+# The V6 fixed-step simulation is a path dependency of the desktop renderer.
+[profile.dev.package.sentinels-v6]
+opt-level = 3

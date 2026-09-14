@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "project": "Code Sentinels V6",
+  "expectedRepository": "qwasg/RurixForge",
+  "sourceReleaseApproved": false,
+  "rustToolchain": "1.93.1",
+  "targetTriple": "x86_64-pc-windows-msvc",
+  "cargoPackage": "engine-host",
+  "cargoBinary": "engine-host",
+  "cargoProfile": "release; normal cargo build --locked --release, with no opt-level override",
+  "expectedRurixRevision": "1478859a8f2ea3a8e17abb06aa0211a6e0871cca",
+  "productName": "Code Sentinels V6",
+  "fileDescription": "Code Sentinels V6 native engine",
+  "originalFilename": "engine-host.exe",
+  "companyNameSource": "V6_RELEASE_COMPANY_NAME environment variable, supplied by the confirmed project maintainer",
+  "sourceRoots": [
+    "crates",
+    "vendor/rurix",
+    "projects/code-sentinels/native-v6",
+    "scripts/signpath",
+    ".signpath",
+    ".github/workflows"
+  ],
+  "requiredFiles": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates/engine-host/Cargo.toml",
+    "crates/engine-host/src/main.rs",
+    "crates/engine-host/build.rs",
+    "crates/engine-host/windows-version.rc.in",
+    "projects/code-sentinels/native-v6/Cargo.toml",
+    "projects/code-sentinels/native-v6/Cargo.lock",
+    "projects/code-sentinels/native-v6/build.rs",
+    "projects/code-sentinels/native-v6/src/lib.rs",
+    "vendor/rurix/src/rurix-rt/Cargo.toml",
+    "vendor/rurix/src/rurix-rt/build.rs",
+    "vendor/rurix/FORGE_BLEND_PATCH.json",
+    "vendor/rurix/FORGE_BLEND_PATCH.md",
+    "scripts/signpath/build-native-from-source.py",
+    "scripts/signpath/verify-pe-metadata.ps1",
+    "scripts/signpath/pe_signing_content.py",
+    "scripts/signpath/verify-signed-output.ps1",
+    ".signpath/v6-native-inputs.json"
+  ],
+  "requiredTrackedInputDirectories": [
+    "vendor/rurix/conformance/vulkan/accept",
+    "vendor/rurix/conformance/dxil/graphics/accept",
+    "vendor/rurix/src/rurix-rt/kernels"
+  ],
+  "artifactLayout": [
+    "bin/engine-host.exe",
+    "source-manifest.json",
+    "build-provenance.json"
+  ],
+  "excludedArtifacts": [
+    "local prebuilt executables",
+    "library test executables",
+    "balance runners",
+    "node.exe",
+    "VC runtime DLLs",
+    "V5 package",
+    "Web",
+    "Content",
+    "unapproved artwork"
+  ],
+  "signPathApproval": "not-granted",
+  "signPathOrganizationId": null,
+  "signPathProjectSlug": null,
+  "signPathPolicySlug": null,
+  "signPathArtifactConfigurationSlug": null,
+  "note": "Disabled source-build preparation. Root must approve and publish the reviewed source closure and merge the separately reviewed PE metadata patch before enabling this recipe. This is not a complete playable-package recipe.",
+  "nativePrerequisites": [
+    "cmake",
+    "cl.exe",
+    "link.exe",
+    "rc.exe"
+  ],
+  "targetDirectoryPolicy": "A new short RUNNER_TEMP/spv6/t path; no inherited deep QA/local target or compiled binary input."
+}

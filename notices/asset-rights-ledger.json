@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "status": "proposed-public-summary-of-unresolved-excluded-media",
+  "accountableMaintainer": {
+    "githubHandle": "qwasg",
+    "roleStatus": "proposed-pending-review"
+  },
+  "groups": [
+    {
+      "id": "reference-claude",
+      "category": "third-party original reference and source identity",
+      "reviewedRightsStatus": "unknown-explicit-open-license",
+      "publicReferences": [
+        "https://github.com/larcgpt/ai-model-musume/blob/main/Claude_Sonnet/Claude_Sonnet_Main_1.png",
+        "https://github.com/larcgpt/ai-model-musume"
+      ],
+      "reviewedSourceRevision": "8899faddadb58f639722eb1db2e1e6458893246b",
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Written clarification of rights in original and game adaptations, permitted distribution/modification/open licensing and attribution; or independently licensed replacement.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "reference-glm",
+      "category": "third-party original reference and source identity",
+      "reviewedRightsStatus": "unknown-explicit-open-license",
+      "publicReferences": [
+        "https://github.com/larcgpt/ai-model-musume/blob/main/GLM/GLM_Main_1.png",
+        "https://github.com/larcgpt/ai-model-musume"
+      ],
+      "reviewedSourceRevision": "8899faddadb58f639722eb1db2e1e6458893246b",
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Written clarification of rights in original and game adaptations, permitted distribution/modification/open licensing and attribution; or independently licensed replacement.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "reference-minimax",
+      "category": "third-party original reference and source identity",
+      "reviewedRightsStatus": "unknown-explicit-open-license",
+      "publicReferences": [
+        "https://github.com/larcgpt/ai-model-musume/blob/main/Minimax/Minimax_Main_1.png",
+        "https://github.com/larcgpt/ai-model-musume"
+      ],
+      "reviewedSourceRevision": "8899faddadb58f639722eb1db2e1e6458893246b",
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Written clarification of rights in original and game adaptations, permitted distribution/modification/open licensing and attribution; or independently licensed replacement.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "reference-kimi",
+      "category": "third-party original reference and source identity",
+      "reviewedRightsStatus": "unknown-explicit-open-license",
+      "publicReferences": [
+        "https://github.com/larcgpt/ai-model-musume/blob/main/Kimi/Kimi_Main_1.png",
+        "https://github.com/larcgpt/ai-model-musume"
+      ],
+      "reviewedSourceRevision": "8899faddadb58f639722eb1db2e1e6458893246b",
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Written clarification of rights in original and game adaptations, permitted distribution/modification/open licensing and attribution; or independently licensed replacement.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "reference-gemini",
+      "category": "third-party original reference and source identity",
+      "reviewedRightsStatus": "unknown-explicit-open-license",
+      "publicReferences": [
+        "https://github.com/larcgpt/ai-model-musume/blob/main/Gemini/Gemini_Main_1.png",
+        "https://github.com/larcgpt/ai-model-musume"
+      ],
+      "reviewedSourceRevision": "8899faddadb58f639722eb1db2e1e6458893246b",
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Written clarification of rights in original and game adaptations, permitted distribution/modification/open licensing and attribution; or independently licensed replacement.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "gpt-dragon",
+      "category": "restricted source/adaptation chain",
+      "reviewedRightsStatus": "explicit-source-reuse-exclusion; adaptation-clearance-unresolved",
+      "publicReferences": [
+        "https://github.com/JPEthan/token-monitor/blob/main/ASSET_LICENSE.md"
+      ],
+      "reviewedSourceRevision": null,
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Ask the actual rights holder to clarify authority and grant suitable rights for exact input/adaptations, or replace. Do not treat codeMIT or AI generation as blanket clearance.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "deepseek-whalechan",
+      "category": "noncommercial source framework and original-art attribution",
+      "reviewedRightsStatus": "source-noncommercial-restrictions; original-art-permissions-unresolved",
+      "publicReferences": [
+        "https://github.com/Neko3000/deepseek-whalechan"
+      ],
+      "reviewedSourceRevision": null,
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Trace authority through source maintainer and credited creators; determine exact grant for originals/adaptations or replace.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "gpu-product-photographs",
+      "category": "third-party photographs",
+      "reviewedRightsStatus": "distribution-open-license-unconfirmed; PNY-public-use-restrictions-published",
+      "publicReferences": [],
+      "reviewedSourceRevision": null,
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Obtain image/open-redistribution permission from rights holders or use independently licensed generic hardware art. Downloadability and attribution alone are insufficient.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "software-brand-icons",
+      "category": "trademark/brand artwork",
+      "reviewedRightsStatus": "brand-usage-conditions; game-art-adaptation-approval-unconfirmed",
+      "publicReferences": [],
+      "reviewedSourceRevision": null,
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Check precise game portrayal and modified/baked usage against official permission, request clarification, or replace branding artwork.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    },
+    {
+      "id": "generated-images-models-and-video",
+      "category": "project-generated outputs with input-rights dependencies",
+      "reviewedRightsStatus": "generation-provenance-present; output-license-and-input-clearance-incomplete",
+      "publicReferences": [],
+      "reviewedSourceRevision": null,
+      "dispositionInSourceOnlyCandidate": "excluded",
+      "remainingDecision": "Record creator/provider terms applicable at generation, every input-clearance basis and chosen owner-authorized output license; regenerate/replace only after explicit user direction.",
+      "publicReferenceCompleteness": "Pending item-level public provenance if no direct source URL is listed.",
+      "permissionGrantedByThisLedger": false
+    }
+  ],
+  "groupCount": 10,
+  "allListedMediaExcludedFromSourceOnlyCandidate": true,
+  "privateContactsOrCorrespondenceIncluded": false,
+  "localApplicationPathsIncluded": false,
+  "newPermissionClaimed": false,
+  "assetLicenseGapResolved": false,
+  "scope": "Provenance/decision ledger, not a license grant, infringement verdict, or approval of a complete game."
+}

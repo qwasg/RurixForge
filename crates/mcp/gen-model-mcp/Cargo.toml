@@ -1,0 +1,11 @@
+[package]
+name = "gen-model-mcp"
+description = "Forge 生成网格 MCP 服务器(F5 wave.2,05 §8):gen_mesh/gen_mesh_refine/gen_accept;stdio NDJSON JSON-RPC,内嵌 gend 库"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gend = { path = "../../gend" }
+assetd = { path = "../../assetd" }
+serde.workspace = true
+serde_json.workspace = true

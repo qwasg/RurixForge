@@ -1,0 +1,18 @@
+{
+  "schema": "forge.rurix_pin.v1",
+  "recorded_at": "2026-08-28",
+  "upstream": "H:/rurix",
+  "head": "bece24e7cafe1c91cce6e66005b3990819fbaad7",
+  "head_date": "2026-08-28",
+  "head_subject": "feat(g36): W4-W5 互斥项修复收口——粒子×OIT×geo 组合 + 门体系全量 + 十 facts 真跑 PASS",
+  "tags_version": ["v1.0.0", "v1.0.1-dist.1", "v1.0.1-dist.2"],
+  "consumed_crates": [
+    "rurix-rt(vulkan)",
+    "rurix-physics",
+    "soft-raster",
+    "rurix-asset",
+    "rurix-geom-build",
+    "rurix-pkg"
+  ],
+  "note": "D-016/D-029:path 依赖为开发期常态,本件为双仓对账时点的上游事实记录,非锚定切换;正式 tag 锚定(D-003)留发行形态裁决。校验:scripts/rurix-pin-check.ps1"
+}

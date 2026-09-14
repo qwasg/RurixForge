@@ -1,0 +1,27 @@
+1 VERSIONINFO
+FILEVERSION @FIXED_VERSION@
+PRODUCTVERSION @FIXED_VERSION@
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "@COMPANY_NAME@\0"
+            VALUE "FileDescription", "Code Sentinels V6 native engine\0"
+            VALUE "FileVersion", "@FILE_VERSION@\0"
+            VALUE "InternalName", "engine-host\0"
+            VALUE "OriginalFilename", "engine-host.exe\0"
+            VALUE "ProductName", "Code Sentinels V6\0"
+            VALUE "ProductVersion", "@PRODUCT_VERSION@\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

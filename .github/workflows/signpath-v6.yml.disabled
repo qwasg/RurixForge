@@ -1,0 +1,169 @@
+{
+  "name": "Code Sentinels V6 source build and manually approved signing (DISABLED TEMPLATE)",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "request_signing": {
+          "description": "Request signing only after Foundation approval and protected-environment manual review",
+          "type": "boolean",
+          "required": true,
+          "default": false
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "signpath-v6-${{ github.ref }}",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "build": {
+      "if": "${{ vars.V6_SOURCE_RELEASE_READY == 'true' }}",
+      "runs-on": "windows-2022",
+      "timeout-minutes": 60,
+      "env": {
+        "V6_RUNNER_ENVIRONMENT": "${{ runner.environment }}",
+        "V6_SOURCE_RELEASE_READY": "${{ vars.V6_SOURCE_RELEASE_READY }}",
+        "V6_RELEASE_COMPANY_NAME": "${{ vars.V6_RELEASE_COMPANY_NAME }}"
+      },
+      "outputs": {
+        "artifact_id": "${{ steps.upload.outputs.artifact-id }}",
+        "unsigned_sha256": "${{ steps.native.outputs.unsigned_sha256 }}",
+        "provenance_sha256": "${{ steps.native.outputs.provenance_sha256 }}",
+        "product_version": "${{ steps.native.outputs.product_version }}",
+        "file_version": "${{ steps.native.outputs.file_version }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false,
+            "fetch-depth": 1
+          }
+        },
+        {
+          "name": "Pinned Python tooling",
+          "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "with": {
+            "python-version": "3.12"
+          }
+        },
+        {
+          "name": "Normal Windows MSVC and SDK tools",
+          "uses": "ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756",
+          "with": {
+            "arch": "x64"
+          }
+        },
+        {
+          "name": "Check normal CMake and Windows compiler prerequisites",
+          "shell": "pwsh",
+          "run": "$ErrorActionPreference = 'Stop'\nforeach ($tool in @('cmake','cl.exe','link.exe','rc.exe')) {\n  if (-not (Get-Command $tool -CommandType Application -ErrorAction SilentlyContinue)) { throw \"Required normal source-build tool is missing from PATH: $tool\" }\n}\n& cmake --version\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+        },
+        {
+          "name": "Install the exact documented Rust toolchain",
+          "shell": "pwsh",
+          "run": "rustup toolchain install 1.93.1 --profile minimal --target x86_64-pc-windows-msvc\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+        },
+        {
+          "name": "Build engine-host from tracked source and Cargo.lock",
+          "id": "native",
+          "shell": "pwsh",
+          "run": "python -B scripts/signpath/build-native-from-source.py --repo-root \"$env:GITHUB_WORKSPACE\" --output \"$env:RUNNER_TEMP/spv6\"\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+        },
+        {
+          "name": "Upload only the fresh unsigned project artifact",
+          "id": "upload",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "v6-native-unsigned-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "${{ runner.temp }}/spv6/unsigned/",
+            "if-no-files-found": "error",
+            "retention-days": 7
+          }
+        }
+      ]
+    },
+    "sign": {
+      "needs": "build",
+      "if": "${{ needs.build.result == 'success' && inputs.request_signing && vars.SIGNPATH_FOUNDATION_APPROVED == 'true' && startsWith(github.ref, 'refs/tags/code-sentinels-v6-') }}",
+      "runs-on": "windows-2022",
+      "timeout-minutes": 90,
+      "environment": {
+        "name": "signpath-release"
+      },
+      "permissions": {
+        "contents": "read",
+        "actions": "read"
+      },
+      "env": {
+        "SIGNPATH_ORGANIZATION_ID": "${{ vars.SIGNPATH_ORGANIZATION_ID }}",
+        "SIGNPATH_PROJECT_SLUG": "${{ vars.SIGNPATH_PROJECT_SLUG }}",
+        "SIGNPATH_POLICY_SLUG": "${{ vars.SIGNPATH_POLICY_SLUG }}",
+        "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG": "${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}",
+        "SIGNPATH_EXPECTED_SIGNER_SUBJECT": "${{ vars.SIGNPATH_EXPECTED_SIGNER_SUBJECT }}",
+        "V6_RELEASE_COMPANY_NAME": "${{ vars.V6_RELEASE_COMPANY_NAME }}",
+        "SIGNPATH_TOKEN_PRESENT": "${{ secrets.SIGNPATH_API_TOKEN != '' }}",
+        "EXPECTED_PRODUCT_VERSION": "${{ needs.build.outputs.product_version }}",
+        "EXPECTED_FILE_VERSION": "${{ needs.build.outputs.file_version }}",
+        "EXPECTED_UNSIGNED_SHA": "${{ needs.build.outputs.unsigned_sha256 }}",
+        "EXPECTED_PROVENANCE_SHA": "${{ needs.build.outputs.provenance_sha256 }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false,
+            "fetch-depth": 1
+          }
+        },
+        {
+          "name": "Pinned Python for signed-content verification",
+          "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+          "with": {
+            "python-version": "3.12"
+          }
+        },
+        {
+          "name": "Validate actual Foundation configuration after manual environment approval",
+          "shell": "pwsh",
+          "run": "$ErrorActionPreference = 'Stop'\nforeach ($name in @('SIGNPATH_ORGANIZATION_ID','SIGNPATH_PROJECT_SLUG','SIGNPATH_POLICY_SLUG','SIGNPATH_ARTIFACT_CONFIGURATION_SLUG','SIGNPATH_EXPECTED_SIGNER_SUBJECT','V6_RELEASE_COMPANY_NAME')) {\n  $value = [Environment]::GetEnvironmentVariable($name)\n  if ([string]::IsNullOrWhiteSpace($value) -or $value -match '(?i)(TO_BE_FILLED|CHANGEME|REQUIRED_|PENDING|TODO|TBD|<|>)') { throw \"Missing actual approved configuration: $name\" }\n}\n$organizationId = [Guid]::Empty\nif (-not [Guid]::TryParse($env:SIGNPATH_ORGANIZATION_ID, [ref]$organizationId) -or $organizationId -eq [Guid]::Empty) { throw 'Actual SignPath organization ID must be configured.' }\nif ($env:SIGNPATH_TOKEN_PRESENT -ne 'true') { throw 'Actual environment-scoped SignPath submitter credential is missing.' }\nif ($env:GITHUB_REF_NAME -cne ('code-sentinels-v6-' + $env:EXPECTED_PRODUCT_VERSION)) { throw 'Signing is restricted to the reviewed product-version tag.' }\n"
+        },
+        {
+          "name": "Request signing of this GitHub workflow artifact",
+          "uses": "signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627",
+          "with": {
+            "api-token": "${{ secrets.SIGNPATH_API_TOKEN }}",
+            "organization-id": "${{ vars.SIGNPATH_ORGANIZATION_ID }}",
+            "project-slug": "${{ vars.SIGNPATH_PROJECT_SLUG }}",
+            "signing-policy-slug": "${{ vars.SIGNPATH_POLICY_SLUG }}",
+            "artifact-configuration-slug": "${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}",
+            "github-artifact-id": "${{ needs.build.outputs.artifact_id }}",
+            "github-token": "${{ secrets.GITHUB_TOKEN }}",
+            "wait-for-completion": true,
+            "wait-for-completion-timeout-in-seconds": "3600",
+            "output-artifact-directory": "${{ runner.temp }}/signpath-signed"
+          }
+        },
+        {
+          "name": "Verify signed publisher and unchanged product/source metadata",
+          "shell": "pwsh",
+          "run": "& scripts/signpath/verify-signed-output.ps1 -Directory \"$env:RUNNER_TEMP/signpath-signed\" -ExpectedUnsignedSha256 $env:EXPECTED_UNSIGNED_SHA -ExpectedProvenanceSha256 $env:EXPECTED_PROVENANCE_SHA -ExpectedSignerSubject $env:SIGNPATH_EXPECTED_SIGNER_SUBJECT -ProductVersion $env:EXPECTED_PRODUCT_VERSION -FileVersion $env:EXPECTED_FILE_VERSION -CompanyName $env:V6_RELEASE_COMPANY_NAME"
+        },
+        {
+          "name": "Retain signed output for separate release review",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "v6-native-signed-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "${{ runner.temp }}/signpath-signed/",
+            "if-no-files-found": "error",
+            "retention-days": 7
+          }
+        }
+      ]
+    }
+  }
+}

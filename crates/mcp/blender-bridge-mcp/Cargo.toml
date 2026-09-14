@@ -1,0 +1,9 @@
+[package]
+name = "blender-bridge-mcp"
+description = "Project-scoped MCP client for the running Forge Blender coordinator"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+ureq = { version = "2", default-features = false, features = ["json"] }

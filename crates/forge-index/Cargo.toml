@@ -1,0 +1,17 @@
+[package]
+name = "forge-index"
+description = "F10 语义索引库:素材/场景实体/节点图/rx 符号/文档统一抽取 → IndexDoc;零依赖中文 BM25 词法检索 + 可选向量档(Embedder trait 注入,cosine+RRF 融合);持久化 .forge/cache/index/(docs.jsonl/lexical.json/vectors.jsonl/manifest.json)。被 context-mcp 内嵌,不暴露网络端口"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+assetd = { path = "../assetd" }
+forge-scene = { path = "../forge-scene" }
+forge-logic = { path = "../forge-logic" }
+forge-util = { path = "../forge-util" }
+# 缓存键同源 SHA-256(手写纯 Rust,与 assetd 一致)。
+rurix-pkg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# 向量落盘 f32 LE → base64(与 thumb/keystore 同版本)。
+base64 = "0.22"
