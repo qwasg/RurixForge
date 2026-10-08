@@ -1,0 +1,9 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [{"role": "user", "content": "Look up two things."}],
+    "tools": [{"type": "function", "function": {"name": "lookup", "description": "Lookup", "parameters": {"type": "object", "properties": {"q": {"type": "string"}}}}}],
+    "parallel_tool_calls": false
+  }
+}

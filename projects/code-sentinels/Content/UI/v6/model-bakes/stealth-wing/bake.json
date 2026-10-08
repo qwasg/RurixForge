@@ -1,0 +1,28 @@
+{
+  "id": "stealth-wing",
+  "category": "air",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "frameSize": [
+    384,
+    384
+  ],
+  "pivot": [
+    0.5,
+    0.7
+  ],
+  "sourceModel": "Content/Models/v6/stealth-wing.blend",
+  "glb": "Content/Models/v6/stealth-wing.glb",
+  "method": "Blender Cycles CPU render from authored 3D geometry",
+  "samples": 12,
+  "camera": "orthographic 30-degree isometric",
+  "status": "rendered-needs-review"
+}

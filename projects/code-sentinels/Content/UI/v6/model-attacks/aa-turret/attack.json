@@ -1,0 +1,32 @@
+{
+  "id": "aa-turret",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 12,
+  "fps": 18,
+  "loop": false,
+  "sourceModel": "Content/Models/v6/aa-turret-attack.blend",
+  "method": "Actual Blender barrel recoil / launcher and emitter mechanism motion / energized physical material, CPU render",
+  "recoilingMeshes": [],
+  "actuatedMeshes": [
+    "missile cassette",
+    "missile nose",
+    "missile cassette.001",
+    "missile nose.001",
+    "missile cassette.002",
+    "missile nose.002",
+    "missile cassette.003",
+    "missile nose.003"
+  ],
+  "emissiveMaterials": 3,
+  "wholeImageRotation": false,
+  "projectileAndImpact": "External separately verified true-video VFX and actual native ballistic entities"
+}

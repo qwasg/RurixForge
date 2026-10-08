@@ -1,0 +1,528 @@
+{
+  "id": "power-arc",
+  "image": "power-arc.png",
+  "width": 2066,
+  "height": 1034,
+  "frames": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "boxes": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "frameCount": 32,
+  "fps": 24,
+  "loop": false,
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frameSize": [
+    256,
+    256
+  ],
+  "crop": "none",
+  "chromaKey": "black",
+  "alphaMode": "straight",
+  "effectUnionFit": {
+    "method": "one fixed union crop across real source frames",
+    "cropAt256": [
+      83,
+      79,
+      171,
+      170
+    ],
+    "fittedSize": [
+      162,
+      168
+    ],
+    "offset": [
+      47,
+      44
+    ]
+  },
+  "emissionGain": 3.0,
+  "fadeOutFrames": 4,
+  "chromaProcessing": "per-frame flat-corner estimate, exterior-connected color key, foreground structure protected",
+  "variableBackgroundPalette": false,
+  "edgeFeather": {
+    "widthPixels": 6,
+    "frameSize": 256,
+    "innerPixelsUnchanged": 244,
+    "algorithm": "alpha-only smoothstep"
+  },
+  "sourceDerivedGarbageMatte": {
+    "enabled": false,
+    "purpose": null
+  },
+  "sourceDerivedInnerMatte": {
+    "enabled": false,
+    "purpose": "preserve fixed machine panels when provider background hue overlaps original paint"
+  },
+  "sourceFrameCount": 124,
+  "sourceFps": 24.0,
+  "sourceDurationSec": 5.17,
+  "selectedSourceFrames": [
+    0,
+    2,
+    5,
+    7,
+    10,
+    12,
+    15,
+    17,
+    19,
+    22,
+    24,
+    27,
+    29,
+    31,
+    34,
+    36,
+    39,
+    41,
+    44,
+    46,
+    48,
+    51,
+    53,
+    56,
+    58,
+    60,
+    63,
+    65,
+    68,
+    70,
+    73,
+    75
+  ],
+  "uniqueFrames": 32,
+  "sourceSize": [
+    384,
+    384
+  ],
+  "sourceCropBox": [
+    0,
+    0,
+    384,
+    384
+  ],
+  "sourceActionWindowSec": [
+    0,
+    3.125
+  ],
+  "minimumSourceMarginsLTRB": [
+    135,
+    130,
+    137,
+    140
+  ],
+  "clippedSourceFrames": 0,
+  "referenceGeometry": {
+    "canvas": [
+      1024,
+      1024
+    ],
+    "maxEffectSpan": 0.66,
+    "safeMargin": 0.16
+  },
+  "provenance": {
+    "method": "image-to-video-extracted-frames",
+    "model": "MiniMax-H3-Base FL2VA INT8 + Turbo8",
+    "taskId": "4eb9adca-b405-5b3a-8c79-bdb823f0abb1",
+    "video": "SourceMedia/effects-v5/power-arc.mp4",
+    "videoSha256": "533f65ca2ffe221caee3859fbf9cd0474abe526d60642be7bd0002b253e4f35b",
+    "sourceImage": "Content/UI/v5/vfx-references/power-arc.png",
+    "request": "pipeline/v5/jobs/power-arc/request.json"
+  },
+  "clips": {
+    "oneshot": {
+      "start": 0,
+      "endExclusive": 32,
+      "fps": 24,
+      "loop": false
+    }
+  },
+  "recommendedBlend": "additive"
+}

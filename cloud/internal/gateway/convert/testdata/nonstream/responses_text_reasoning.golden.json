@@ -1,0 +1,28 @@
+{
+  "id": "chatcmpl-resp_ns1",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "gpt-5",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello there.",
+        "reasoning_content": "**Plan** A.\n\n**Check** B."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 100,
+    "completion_tokens": 50,
+    "total_tokens": 150,
+    "prompt_tokens_details": {
+      "cached_tokens": 40
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 30
+    }
+  }
+}

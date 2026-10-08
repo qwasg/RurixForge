@@ -1,0 +1,66 @@
+{
+  "glm-ne-death-centered-v1": {
+    "segments": {"death": [0, 48, 24, false]},
+    "notes": "Viewed all 24 evenly spaced original video frames. The strict rear-right girl lowers the knees and torso into a complete side/prone rest within the first second, preserving hair, white/navy costume, and the reference size. No edge crossing, brown floor, camera motion, extra graphics or standing back up. The first two seconds retain the actual full fall and settlement."
+  },
+  "gemini-e-death-centered-v1": {
+    "segments": {"death": [0, 64, 24, false]},
+    "notes": "Viewed the complete 24-frame original contact. Exact right-profile girl bends her knees, lowers forward and settles onto her side/prone pose by1.8 seconds; hair and boots remain fully inside the larger capture. Camera and scale remain fixed, background flat green, no new objects. The first2.67 seconds preserve the entire physical fall and final rest."
+  },
+  "gemini-w-death-centered-v1": {
+    "segments": {"death": [0, 88, 24, false]},
+    "notes": "Viewed entire original contact: clean left-profile body bends the knees, pauses kneeling, then settles fully prone by3.3 seconds. Hair, boots and complete extended body stay in bounds. No brown floor remains. Preserve the full first3.67 seconds including final rest."
+  },
+  "gpt-e-death-centered-v1": {
+    "segments": {"death": [0, 64, 24, false]},
+    "notes": "Viewed entire original contact: exact right-profile white/lavender character lowers to knees and a complete side-lying rest by1.8 seconds; original horns/hair/clothing/boots remain visible and uncut. No new graphics or background."
+  },
+  "gpt-nw-death-centered-v1": {
+    "segments": {"death": [0, 48, 24, false]},
+    "notes": "Viewed all24 original samples: correct rear-left body tips onto hands/knees then lies prone, facing away, with complete legs/boots visible. Settles by1 second and remains down. Capture margins are clean; no colored particles remain."
+  },
+  "gpt-s-death-centered-v1": {
+    "segments": {"death": [0, 64, 24, false]},
+    "notes": "Viewed full original contact. Front-facing character closes eyes, drops to her knees, tips forward and lies prone by2.2 seconds. Complete white/lavender hair and costume spread remains inside the512 capture. No prior orbit particles, frame growth or scene contamination."
+  },
+  "gpt-sw-death-centered-v1": {
+    "segments": {"death": [0, 80, 24, false]},
+    "notes": "Viewed all24 original samples. Front-left character lowers onto hands/knees, then lies fully down by2.5 seconds and settles. Entire original body/hair silhouette remains visible with wide clean green margins, without the old source lower-edge truncation."
+  },
+  "gpt-w-death-centered-v1": {
+    "segments": {"death": [0, 64, 24, false]},
+    "notes": "Viewed entire original contact. Strict left-profile body lowers onto knees then lies on its side, settling by1.8 seconds. Original hair and boots remain inside the capture; no background, extra graphics, camera turn or standing back up."
+  },
+  "glm-nw-death-centered-v2": {
+    "segments": {"death": [0, 76, 24, false]},
+    "notes": "The replacement after confirmed sampler read failure produced a complete genuine video. Viewed all24 raw contact frames: correct rear-left girl kneels and lowers onto her side/prone rest by2 seconds, hair settles while she stays down. Full body and original costume remain inside clean green margins; no face turn or new graphics."
+  },
+  "glm-w-death-centered-v1": {
+    "segments": {"death": [4,64,24,false]},
+    "notes": "Independent auditor viewed complete RGB source and dense original frames, verified512x512/124frames/24fps and SHA. Left profile lowers knees aroundf10-20, falls left byf28, and rests byf40 throughf123. Entire source foreground union[72,14,348,306] stays inside capture. No camera turn, new objects or scene contamination."
+  },
+  "glm-e-death-centered-v1": {
+    "segments": {"death": [12,68,24,false]},
+    "notes": "Independent auditor viewed full RGB contact and dense original frames, verified dimensions/SHA. Right profile kneels aroundf18-26, falls right byf34 and settles afterf52 without standing back up. All-frame foreground union[150,14,386,277] remains in bounds, with stable original size and clean green background."
+  },
+  "glm-se-death-centered-v1": {
+    "segments": {"death": [4,88,24,false]},
+    "notes": "Independent auditor viewed full RGB contact and dense frames and verified dimensions/SHA. Front-right girl kneels onto hands atf8-16, holds that supported pose toaboutf48, then falls sideways toward lower-left atf50-64 and settles byf72. Complete body remains within union[120,13,400,341]; no standing back up, extra props, shadow floor or source-edge loss. Longer window retains the entire genuine fall."
+  },
+  "claude-sw-death-centered-v1": {
+    "segments": {"death": [8,48,24,false]},
+    "notes": "Independent reviewer viewed entire raw RGB and key dense frames. f12-24 lowers and falls, f32 onward rests throughf123. Original front-left head, long hair, clothing and small accessories are now fully inside the capture, repairing the confirmed old cut."
+  },
+  "claude-w-death-centered-v1": {
+    "segments": {"death": [16,64,24,false]},
+    "notes": "Independent full raw/dense-frame visual check: later onset nearf24, f28-36 lowers into a complete fall, f44 onward stable. Left profile and previously missing lower cloth tip are fully preserved with clean margins."
+  },
+  "claude-nw-death-centered-v1": {
+    "segments": {"death": [8,64,24,false]},
+    "notes": "Independent full raw/dense-frame check: f12-24 kneels, f28-40 falls, f48 onward rests. Rear-left orientation is continuous and long hair ends, dress and feet are complete, not merely padded around the old cut."
+  },
+  "deepseek-sw-death-centered-v1": {
+    "segments": {"death": [4,48,24,false]},
+    "notes": "Independent raw RGB contact/dense frames: f10-16 lowers, f18-28 hair and whale tail settle. Complete blue hair tips and full whale tail stay visible through the end; no repeated standing or scene change."
+  }
+}

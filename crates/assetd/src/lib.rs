@@ -8,10 +8,14 @@
 
 pub mod build;
 pub mod cleanup;
+pub mod font;
+pub mod godot_runtime;
 pub mod import;
 pub mod inspect;
 pub mod material;
+pub mod shader;
 pub mod meta;
+pub mod model;
 pub mod ops;
 pub mod project;
 pub mod refs;
@@ -56,40 +60,50 @@ pub type Result<T> = std::result::Result<T, AssetError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssetType {
     Mesh,
+    Model,
     Texture,
     Material,
+    ShaderGraph,
     Prefab,
     Scene,
     Script,
     Audio,
     /// 精灵图集定义 .rxsprite(F-GAME-4:帧 bbox + pivot + 动画 clip + animator)。
     Sprite,
+    /// 字体 .ttf/.otf/.ttc(D-045:Text 组件按 GUID 引用)。
+    Font,
 }
 
 impl AssetType {
     pub fn as_str(self) -> &'static str {
         match self {
             AssetType::Mesh => "mesh",
+            AssetType::Model => "model",
             AssetType::Texture => "texture",
             AssetType::Material => "material",
+            AssetType::ShaderGraph => "shadergraph",
             AssetType::Prefab => "prefab",
             AssetType::Scene => "scene",
             AssetType::Script => "script",
             AssetType::Audio => "audio",
             AssetType::Sprite => "sprite",
+            AssetType::Font => "font",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "mesh" => AssetType::Mesh,
+            "model" => AssetType::Model,
             "texture" => AssetType::Texture,
             "material" => AssetType::Material,
+            "shadergraph" => AssetType::ShaderGraph,
             "prefab" => AssetType::Prefab,
             "scene" => AssetType::Scene,
             "script" => AssetType::Script,
             "audio" => AssetType::Audio,
             "sprite" => AssetType::Sprite,
+            "font" => AssetType::Font,
             _ => return None,
         })
     }
@@ -98,13 +112,17 @@ impl AssetType {
     pub fn from_extension(ext: &str) -> Option<(Self, &'static str)> {
         Some(match ext.to_ascii_lowercase().as_str() {
             "gltf" | "glb" => (AssetType::Mesh, "gltf"),
+            "rxmodel" => (AssetType::Model, "model"),
+            "rxprefab" => (AssetType::Prefab, "prefab"),
             "png" => (AssetType::Texture, "png"),
             "jpg" | "jpeg" => (AssetType::Texture, "jpg"),
             "rxscene" => (AssetType::Scene, "scene"),
             "rxmat" => (AssetType::Material, "material"),
+            "rxshadergraph" => (AssetType::ShaderGraph, "shadergraph"),
             "rx" => (AssetType::Script, "rx"),
             "rxgraph" => (AssetType::Script, "rxgraph"),
             "rxsprite" => (AssetType::Sprite, "sprite"),
+            "ttf" | "otf" | "ttc" => (AssetType::Font, "font"),
             _ => return None,
         })
     }

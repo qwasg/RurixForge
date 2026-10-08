@@ -1,0 +1,10 @@
+{
+  "id": "resp_ns2",
+  "status": "completed",
+  "model": "gpt-5",
+  "output": [
+    {"id": "fc_1", "type": "function_call", "call_id": "call_1", "name": "get_weather", "arguments": "{\"city\":\"Paris\"}", "status": "completed"},
+    {"id": "fc_2", "type": "function_call", "call_id": "call_2", "name": "get_time", "arguments": "", "status": "completed"}
+  ],
+  "usage": {"input_tokens": 60, "output_tokens": 20, "total_tokens": 80}
+}

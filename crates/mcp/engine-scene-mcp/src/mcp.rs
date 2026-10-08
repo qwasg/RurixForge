@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::supervisor::Supervisor;
 
-/// 工具清单(tools/list 返回):F0 既有 5 个 + F1 场景编辑 27 个。
+/// 工具清单(tools/list 返回):场景编辑工具、视口工具与渲染后端只读元数据。
 fn tool_list() -> Value {
     let id_prop = json!({ "id": { "type": "integer", "description": "实体 id" } });
     let trs_props = json!({
@@ -20,6 +20,18 @@ fn tool_list() -> Value {
     trs_with_id.insert("id".to_string(), id_prop["id"].clone());
     json!({
         "tools": [
+            {"name":"editor_resolve","description":"Resolve stable sceneGuid/entityGuid references against the active scene. Returns hostEpoch/contentRevision/targetMode for guarded writes; optional component and JSON pointer expose only requested detail. Numeric references with a hostEpoch cannot cross host lifetimes.","inputSchema":{"type":"object","properties":{"changeSetId":{"type":"string"},"sceneGuid":{"type":"string"},"entityGuid":{"type":"string"},"hostEpoch":{"type":"string"},"id":{"type":"integer"},"component":{"type":"string"},"pointer":{"type":"string"},"targetMode":{"type":"string","enum":["edit","runtime"]}}}},
+            {"name":"editor_apply","description":"Apply one atomic, undoable editor change to the exact scene/version previously resolved. Use entityGuid for existing entities and clientId/targetClientId for newly created ones. Requires edit mode; reports conflicts without changing the scene.","inputSchema":{"type":"object","required":["expected"],"properties":{"expected":{"type":"object","required":["sceneGuid","hostEpoch","contentRevision","targetMode"],"properties":{"sceneGuid":{"type":"string"},"hostEpoch":{"type":"string"},"contentRevision":{"type":"integer"},"targetMode":{"type":"string","enum":["edit","runtime"]}}},"ops":{"type":"array","items":{"type":"object","properties":{"op":{"type":"string","enum":["create","duplicate","destroy","rename","transform_set","component_add","component_remove","component_set"]},"entityGuid":{"type":"string"},"clientId":{"type":"string"},"targetClientId":{"type":"string"}},"additionalProperties":true}},"changeSetId":{"type":"string"},"action":{"type":"string","enum":["undo","redo"]},"commandId":{"type":"string"}}}},
+            {"name":"observation_capture","description":"Capture real viewport pixels and immutable scene/camera/picking data together. Returns observationId, rgba8 pixelsB64, width/height, geometry candidates and stable reference baseline; expires after five minutes.","inputSchema":{"type":"object","properties":{"width":{"type":"integer"},"height":{"type":"integer"},"camera":{"type":"string","enum":["editor","scene"]}}}},
+            {"name":"observation_resolve","description":"Resolve a normalized point or region against a captured observation, never the current frame. Region candidates may be occluded; staleForEditing requires a fresh editor_resolve before editing.","inputSchema":{"type":"object","required":["observationId"],"properties":{"observationId":{"type":"string"},"point":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]},"region":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number"},"height":{"type":"number"}},"required":["x","y","width","height"]}}}},
+            {"name":"shader_publish","description":"Publish a validated shader material to the running renderer without restarting physics.","inputSchema":{"type":"object","required":["reference"],"properties":{"reference":{"type":"string"}}}},
+            {"name":"shader_status","description":"Read the current shader material publication status.","inputSchema":{"type":"object","properties":{}}},
+            {"name":"shader_preview","description":"Render a shader on an isolated preview scene without changing the active scene or undo history.","inputSchema":{"type":"object","properties":{"reference":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"},"time":{"type":"number"},"shape":{"type":"string","enum":["sphere","plane"]}},"additionalProperties":true}},
+            {"name":"prefab_instantiate","description":"实例化地图/角色模板，保留层级、材质和来源；整次可撤销", "inputSchema":{"type":"object","required":["prefabRef"],"properties":{"prefabRef":{"type":"string"},"translation":{"type":"array","items":{"type":"number"}},"rotation":{"type":"array","items":{"type":"number"}},"scale":{"type":"array","items":{"type":"number"}}}}},
+            {"name":"prefab_revert","description":"恢复模板实例的本地覆盖，保留实例位置", "inputSchema":{"type":"object","required":["id"],"properties":{"id":{"type":"integer"}}}},
+            {"name":"asset_reload","description":"导入发布成功后刷新模型/纹理版本，并合并模板更新；本地覆盖保留，结构冲突明确返回", "inputSchema":{"type":"object","properties":{"guids":{"type":"array","items":{"type":"string"}},"revision":{"type":"integer"}}}},
+            {"name":"animation_control","description":"控制真实3D骨骼动画（播放、暂停、停止、时间采样）", "inputSchema":{"type":"object","required":["id","action"],"properties":{"id":{"type":"integer"},"action":{"type":"string","enum":["play","pause","stop","seek"]},"clip":{"type":"string"},"time":{"type":"number"},"loop":{"type":"boolean"}}}},
+            {"name":"template_preview","description":"按包围盒渲染模板真实GPU预览，返回rgba8像素；yaw为弧度", "inputSchema":{"type":"object","required":["prefabRef"],"properties":{"prefabRef":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"},"clip":{"type":"string"},"time":{"type":"number"},"yaw":{"type":"number"}}}},
             // ---- F0 既有 ----
             {
                 "name": "host_ping",
@@ -41,6 +53,16 @@ fn tool_list() -> Value {
             {
                 "name": "scene_summary",
                 "description": "场景 + 物理 + 渲染 + 事件 ring 摘要(含 playState)",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "render_backend_info",
+                "description": "读取当前运行中的真实渲染后端、实际渲染方式/驱动、就绪状态与版本；不修改配置",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "render_capabilities",
+                "description": "读取当前渲染后端的渲染腿、共享/回读出口、统计支持与尺寸/绘制限制；不修改配置",
                 "inputSchema": { "type": "object", "properties": {} }
             },
             {
@@ -205,7 +227,7 @@ fn tool_list() -> Value {
             },
             {
                 "name": "scene_save",
-                "description": "保存编辑态场景(缺省 <cwd>/data/scene.rxscene;规范字节,确定性)",
+                "description": "保存编辑态场景(省略path保存当前文件，首次保存默认data/scene.rxscene)。显式另存不同路径写独立GUID副本，返回savedCopy/copySceneGuid且保持活动源引用。",
                 "inputSchema": {
                     "type": "object",
                     "properties": { "path": { "type": "string", "description": "目标路径(可选)" } }
@@ -318,7 +340,9 @@ fn tool_list() -> Value {
                         "width": { "type": "integer", "description": "帧宽(16..=1920,缺省 960)" },
                         "height": { "type": "integer", "description": "帧高(16..=1080,缺省 540)" },
                         "selectedId": { "type": "integer", "description": "选中实体 id(高亮,可选)" },
-                        "format": { "type": "string", "enum": ["rgba8", "h264"], "description": "帧格式(F1 wave.4):rgba8(默认) | h264(Annex B 流腿)" }
+                        "format": { "type": "string", "enum": ["rgba8", "h264"], "description": "帧格式(F1 wave.4):rgba8(默认) | h264(Annex B 流腿)" },
+                        "camera": { "type": "string", "enum": ["editor", "scene"], "description": "D-045:scene = 编辑态也用场景 Camera 渲染(看游戏画面);缺省 editor(play 态恒用场景相机)" },
+                        "exact": { "type": "boolean", "description": "D-045:true = 严格按请求尺寸离屏出帧(IDE 推流在线也不让位,可能触发一次 1-5s 会话重建;验收截帧专用)" }
                     }
                 }
             },
@@ -379,6 +403,35 @@ fn tool_list() -> Value {
                         "flipY": { "type": "boolean", "description": "垂直镜像" }
                     },
                     "required": ["name", "texture"]
+                }
+            },
+            {
+                "name": "text_create",
+                "description": "D-045:2D 文字一步到位:创建实体 + Text 组件 + TRS。font 为字体资产 GUID(font_list / font_import 取得;缺字体不画并发宿主事件 TEXT_FONT_MISSING);size 等尺寸单位是像素,世界尺寸 = 像素/pixelsPerUnit;锚点 = 文字框中心",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "text": { "type": "string" },
+                        "font": { "type": "string", "description": "字体 GUID" },
+                        "size": { "type": "number", "description": "字号像素(缺省 32)" },
+                        "color": { "type": "array", "items": { "type": "number" }, "description": "[r,g,b,a] 0..1" },
+                        "align": { "type": "string", "enum": ["left", "center", "right"] },
+                        "verticalAlign": { "type": "string", "enum": ["top", "middle", "bottom"] },
+                        "boxSize": { "type": "array", "items": { "type": "number" }, "description": "[w,h] 文字框像素(0 = 按内容)" },
+                        "wrap": { "type": "boolean" },
+                        "lineHeight": { "type": "number" },
+                        "letterSpacing": { "type": "number" },
+                        "outlineColor": { "type": "array", "items": { "type": "number" } },
+                        "outlineWidth": { "type": "number" },
+                        "shadowColor": { "type": "array", "items": { "type": "number" } },
+                        "shadowOffset": { "type": "array", "items": { "type": "number" } },
+                        "pixelsPerUnit": { "type": "number" },
+                        "sortingOrder": { "type": "number" },
+                        "position": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z](2D 约定 z=0)" },
+                        "scale": { "type": "array", "items": { "type": "number" } }
+                    },
+                    "required": ["name", "text", "font"]
                 }
             },
             {
@@ -534,6 +587,18 @@ fn host_tool(sup: &Arc<Mutex<Supervisor>>, method: &str, params: Value) -> Value
 /// F1 新增工具 → host 方法透传映射(snake_case → 点分)。
 fn passthrough_method(name: &str) -> Option<&'static str> {
     Some(match name {
+        "editor_resolve"=>"editor.resolve",
+        "editor_apply"=>"editor.apply",
+        "observation_capture"=>"observation.capture",
+        "observation_resolve"=>"observation.resolve",
+        "shader_publish"=>"shader.publish",
+        "shader_status"=>"shader.status",
+        "shader_preview"=>"shader.preview",
+        "prefab_instantiate"=>"prefab.instantiate",
+        "prefab_revert"=>"prefab.revert",
+        "asset_reload"=>"asset.reload",
+        "animation_control"=>"animation.control",
+        "template_preview"=>"template.preview",
         "entity_create" => "entity.create",
         "entity_destroy" => "entity.destroy",
         "entity_rename" => "entity.rename",
@@ -572,6 +637,8 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "viewport_stream_info" => "viewport.streamInfo",
         "viewport_share_open" => "viewport.shareOpen",
         "viewport_share_close" => "viewport.shareClose",
+        "render_backend_info" => "render.backendInfo",
+        "render_capabilities" => "render.capabilities",
         _ => return None,
     })
 }
@@ -590,6 +657,7 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
         "host_ping" => Ok(host_tool(sup, "host.ping", json!({}))),
         "scene_new" => {
             let mut rpc_params = json!({});
+            if let Some(expected)=args.get("expected"){rpc_params["expected"]=expected.clone();}
             if let Some(n) = args.get("name") {
                 match n.as_str() {
                     Some(s) => rpc_params["name"] = json!(s),
@@ -633,6 +701,37 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
                 "name": name,
                 "components": [ { "type": "Sprite", "props": props } ],
             });
+            if let Some(expected)=args.get("expected"){create["expected"]=expected.clone();}
+            if let Some(p) = args.get("position") {
+                create["translation"] = p.clone();
+            }
+            if let Some(s) = args.get("scale") {
+                create["scale"] = s.clone();
+            }
+            Ok(host_tool(sup, "entity.create", create))
+        }
+        "text_create" => {
+            let name = match args.get("name").and_then(Value::as_str) {
+                Some(s) if !s.is_empty() => s,
+                _ => return Err(err(Value::Null, -32602, "invalid params: 缺 name")),
+            };
+            let (Some(text), Some(font)) = (
+                args.get("text").and_then(Value::as_str),
+                args.get("font").and_then(Value::as_str).filter(|s| !s.is_empty()),
+            ) else {
+                return Err(err(Value::Null, -32602, "invalid params: 缺 text 或 font(字体 GUID)"));
+            };
+            let mut props = json!({ "text": text, "font": font });
+            for k in TEXT_PROPS {
+                if let Some(v) = args.get(*k) {
+                    props[*k] = v.clone();
+                }
+            }
+            let mut create = json!({
+                "name": name,
+                "components": [ { "type": "Text", "props": props } ],
+            });
+            if let Some(expected)=args.get("expected"){create["expected"]=expected.clone();}
             if let Some(p) = args.get("position") {
                 create["translation"] = p.clone();
             }
@@ -672,6 +771,12 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
         },
     }
 }
+
+/// text_create 透传给 Text 组件的可选属性(其余字段由注册表缺省补齐)。
+const TEXT_PROPS: &[&str] = &[
+    "size", "color", "align", "verticalAlign", "boxSize", "wrap", "lineHeight", "letterSpacing",
+    "outlineColor", "outlineWidth", "shadowColor", "shadowOffset", "pixelsPerUnit", "sortingOrder",
+];
 
 /// stdio 主循环:逐行 NDJSON;notification(无 id)不回包。
 pub fn serve_stdio(sup: Arc<Mutex<Supervisor>>) {
@@ -748,6 +853,20 @@ mod tests {
         std::fs::create_dir_all(dir.join("Content/Graphs")).unwrap();
         std::fs::create_dir_all(dir.join("Content/Scripts")).unwrap();
         dir
+    }
+
+    #[test]
+    fn render_metadata_tools_are_read_only_rpc_passthroughs() {
+        let tools = tool_list()["tools"].as_array().unwrap().clone();
+        for (name, method) in [
+            ("render_backend_info", "render.backendInfo"),
+            ("render_capabilities", "render.capabilities"),
+        ] {
+            let tool = tools.iter().find(|v| v["name"] == name).expect("tool listed");
+            assert_eq!(tool["inputSchema"]["type"], "object");
+            assert!(tool["inputSchema"]["properties"].as_object().unwrap().is_empty());
+            assert_eq!(passthrough_method(name), Some(method));
+        }
     }
 
     #[test]

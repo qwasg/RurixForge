@@ -1,0 +1,22 @@
+{
+  "id": "cargo-aircraft",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 16,
+  "fps": 16,
+  "loop": true,
+  "sourceModel": "Content/Models/v6/cargo-aircraft-work.blend",
+  "method": "Actual four independently assembled propeller mesh rotors, CPU Blender render; airframe fixed",
+  "mechanismAnimated": true,
+  "emissionAnimated": false,
+  "closureRender": "separate actual render at full360-degree phase, excluded from atlas",
+  "duplicateFramePadding": false
+}

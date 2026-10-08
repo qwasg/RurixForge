@@ -1,0 +1,6 @@
+{
+  "id": "resp_ns4",
+  "status": "failed",
+  "error": {"code": "server_error", "message": "boom"},
+  "output": []
+}

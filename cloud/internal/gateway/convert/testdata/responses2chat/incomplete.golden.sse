@@ -1,0 +1,10 @@
+data: {"id":"chatcmpl-resp_inc1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_inc1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"content":"This answer is cut"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_inc1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: {"id":"chatcmpl-resp_inc1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":16,"total_tokens":26,"prompt_tokens_details":{"cached_tokens":0}}}
+
+data: [DONE]
+

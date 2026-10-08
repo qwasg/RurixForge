@@ -1,0 +1,20 @@
+{
+  "model": "gpt-5",
+  "instructions": "You are a helpful assistant.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Hello <b>world</b> & friends"
+        }
+      ]
+    }
+  ],
+  "stream": true,
+  "max_output_tokens": 256,
+  "temperature": 0.7,
+  "user": "user-42"
+}

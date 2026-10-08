@@ -1,0 +1,37 @@
+{
+  "model": "gpt-5",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Give me a person."
+        }
+      ]
+    }
+  ],
+  "stream": false,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "name": "person",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true,
+      "description": "A person record"
+    },
+    "verbosity": "low"
+  }
+}

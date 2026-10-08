@@ -357,6 +357,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
         <span className="text-2xs text-fg-4">
           {node.assets.length} 素材 · {related.length} 交互
         </span>
+        <AnnotationHandle reference={editorReference('blueprint', { resourceId: 'main', selection: { nodeIds: [node.id] } })} label={node.name} />
         <span className="flex-1" />
         <button
           type="button"
@@ -592,3 +593,5 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
     </div>
   );
 }
+import AnnotationHandle from './AnnotationHandle';
+import { editorReference } from '@/lib/editorReferences';

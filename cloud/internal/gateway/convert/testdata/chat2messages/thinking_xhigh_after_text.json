@@ -1,0 +1,15 @@
+{
+  "options": {"model": "claude-opus-4-1", "defaultMaxTokens": 64000},
+  "request": {
+    "model": "forge-opus",
+    "messages": [
+      {"role": "user", "content": "Q1"},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "toolu_9", "type": "function", "function": {"name": "calc", "arguments": "{}"}}]},
+      {"role": "tool", "tool_call_id": "toolu_9", "content": "ok"},
+      {"role": "assistant", "content": "Done with Q1."},
+      {"role": "user", "content": "Q2"}
+    ],
+    "reasoning_effort": "xhigh",
+    "tools": [{"type": "function", "function": {"name": "calc"}}]
+  }
+}

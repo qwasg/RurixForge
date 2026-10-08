@@ -95,8 +95,7 @@ impl ProposalStore {
         inner.iter().any(|p| {
             p.kind == kind
                 && p.status == "approved"
-                && p
-                    .impact
+                && p.impact
                     .get("assets")
                     .and_then(Value::as_array)
                     .map(|assets| {

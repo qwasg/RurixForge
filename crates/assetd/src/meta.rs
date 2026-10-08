@@ -126,7 +126,9 @@ impl MetaDoc {
         h.update(source_bytes);
         h.update(self.importer.as_bytes());
         h.update(b"|");
-        let settings_json = serde_json::to_string(&self.import_settings).unwrap_or_default();
+        // HashMap insertion/random iteration order must never change the cache identity.
+        let ordered: std::collections::BTreeMap<_, _> = self.import_settings.iter().collect();
+        let settings_json = serde_json::to_string(&ordered).unwrap_or_default();
         h.update(settings_json.as_bytes());
         h.update(b"|");
         // 构建器版本占位(08 §4.3:rurix-geom-build 输出确定性,同输入 → 同产物)。

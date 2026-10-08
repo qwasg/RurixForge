@@ -19,7 +19,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn host_events_path() -> PathBuf {
-    workspace_root().join("data").join("host-events.jsonl")
+    std::env::temp_dir().join(format!("esm-watchdog-events-{}.jsonl", std::process::id()))
 }
 
 struct McpProc {
@@ -47,13 +47,22 @@ impl Drop for McpProc {
 impl McpProc {
     fn spawn() -> Self {
         let exe = env!("CARGO_BIN_EXE_engine-scene-mcp");
-        let host_bin = workspace_root().join("target").join("debug").join("engine-host.exe");
+        let host_bin = workspace_root()
+            .join("target")
+            .join("debug")
+            .join("engine-host.exe");
         assert!(
             host_bin.exists(),
             "engine-host.exe 不存在({});请先 cargo build --workspace",
             host_bin.display()
         );
         let mut child = Command::new(exe)
+            .env("FORGE_HOST_EVENTS_LOG", host_events_path())
+            .env("FORGE_PROJECT_ROOT", workspace_root().join("projects/demo"))
+            .env("FORGE_RENDER_BACKEND", "rurix")
+            .env_remove("FORGE_RENDER_METHOD")
+            .env_remove("FORGE_RENDER_DRIVER")
+            .env_remove("FORGE_GAME_SCENE")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -80,7 +89,10 @@ impl McpProc {
         self.stdout.read_line(&mut line).expect("读 MCP 响应失败");
         let resp: Value = serde_json::from_str(line.trim()).expect("MCP 响应须为 JSON");
         assert_eq!(resp["id"], id, "响应 id 须回显");
-        assert!(resp.get("error").is_none(), "{method} 协议层不应报错:{resp}");
+        assert!(
+            resp.get("error").is_none(),
+            "{method} 协议层不应报错:{resp}"
+        );
         resp["result"].clone()
     }
 
@@ -91,7 +103,9 @@ impl McpProc {
             result.get("isError").is_none(),
             "工具 {name} 不应 isError:{result}"
         );
-        let text = result["content"][0]["text"].as_str().expect("缺 content text");
+        let text = result["content"][0]["text"]
+            .as_str()
+            .expect("缺 content text");
         serde_json::from_str(text).expect("工具结果 text 须为 JSON")
     }
 
@@ -155,19 +169,57 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names.len(), 45, "tools/list 须为 45 个工具:{names:?}");
+    // Godot 元数据查询新增 render_backend_info / render_capabilities 两项。
+    assert_eq!(names.len(), 52, "tools/list 须为 52 个工具:{names:?}");
     for want in [
-        "host_ping", "scene_new", "scene_summary", "render_once", "host_events",
-        "entity_create", "entity_destroy", "entity_rename", "entity_get", "entity_list",
-        "entity_batch_apply", "component_add", "component_remove", "component_set",
-        "component_get", "component_list_types", "transform_set", "transform_get",
-        "transform_batch_set", "scene_save", "scene_load", "scene_diff",
-        "scene_checkpoint", "scene_rollback", "edit_undo", "edit_redo",
-        "play_enter", "play_pause", "play_resume", "play_step", "play_exit", "play_state",
-        "viewport_frame", "viewport_pick", "viewport_set_camera", "viewport_get_camera",
-        "viewport_share_open", "viewport_share_close",
+        "prefab_instantiate",
+        "prefab_revert",
+        "asset_reload",
+        "animation_control",
+        "template_preview",
+        "host_ping",
+        "scene_new",
+        "scene_summary",
+        "render_backend_info",
+        "render_capabilities",
+        "render_once",
+        "host_events",
+        "entity_create",
+        "entity_destroy",
+        "entity_rename",
+        "entity_get",
+        "entity_list",
+        "entity_batch_apply",
+        "component_add",
+        "component_remove",
+        "component_set",
+        "component_get",
+        "component_list_types",
+        "transform_set",
+        "transform_get",
+        "transform_batch_set",
+        "scene_save",
+        "scene_load",
+        "scene_diff",
+        "scene_checkpoint",
+        "scene_rollback",
+        "edit_undo",
+        "edit_redo",
+        "play_enter",
+        "play_pause",
+        "play_resume",
+        "play_step",
+        "play_exit",
+        "play_state",
+        "viewport_frame",
+        "viewport_pick",
+        "viewport_set_camera",
+        "viewport_get_camera",
+        "viewport_share_open",
+        "viewport_share_close",
         // F3 wave.3:debug 三件套——场景图全量转储 + 内存事件环排空
-        "scene_graph_dump", "host_events_drain",
+        "scene_graph_dump",
+        "host_events_drain",
         // F4 wave.3:逻辑输入注入
         "logic_inject_input",
         // scene.index 透传:场景分类索引(role/map/interaction)
@@ -183,7 +235,13 @@ fn watchdog_restarts_host_after_kill() {
     // F4 wave.3(D-F4-F):注册表 + Script + Tag + Trigger → 7 类型;
     // Category(场景分类 role/map/interaction)→ 8 类型;
     // F-GAME-3:Sprite(2D 精灵)→ 9 类型。
-    assert_eq!(types.as_array().unwrap().len(), 9, "注册表须 9 类型");
+    // Blender runtime adds model rendering/nodes/parents/prefab/animation/collider/controller;
+    // Stage 5 registry additions bring the verified total to 24 (see forge-scene::REGISTRY).
+    assert_eq!(
+        types.as_array().unwrap().len(),
+        24,
+        "组件注册表须为当前 24 项"
+    );
     let created = mcp.call_tool(
         "entity_create",
         json!({
@@ -199,13 +257,22 @@ fn watchdog_restarts_host_after_kill() {
     assert_eq!(mcp.call_tool("play_state", json!({}))["state"], "edit");
     // 撤销:create → undo → list 为空。
     mcp.call_tool("edit_undo", json!({}));
-    assert_eq!(mcp.call_tool("entity_list", json!({}))["entities"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        mcp.call_tool("entity_list", json!({}))["entities"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
     let _ = eid;
 
     // autoStart 后 scene_summary 可用
     let sum = mcp.call_tool("scene_summary", json!({}));
     let backend = sum["physics"]["backend"].as_str().unwrap().to_string();
-    assert!(["jolt", "rapier"].contains(&backend.as_str()), "backend 非法:{backend}");
+    assert!(
+        ["jolt", "rapier"].contains(&backend.as_str()),
+        "backend 非法:{backend}"
+    );
 
     // 取 host pid 并强杀
     let ping = mcp.call_tool("host_ping", json!({}));
@@ -235,7 +302,10 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .find(|e| e["event"] == "host.crashed")
         .expect("host_events 应含 host.crashed");
-    assert!(crashed["reason"].as_str().is_some(), "host.crashed 须含 reason");
+    assert!(
+        crashed["reason"].as_str().is_some(),
+        "host.crashed 须含 reason"
+    );
     assert!(crashed["ts"].as_str().unwrap().ends_with('Z'));
 
     // 重启后 scene_summary 恢复可用(看门狗已 scene.new 恢复,名为 restored)

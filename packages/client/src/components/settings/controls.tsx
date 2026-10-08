@@ -103,12 +103,16 @@ export function SetSelect({
   onPick,
   testId,
   minWidth = 170,
+  disabled = false,
+  ariaLabel,
 }: {
   value: string;
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; disabled?: boolean }>;
   onPick: (v: string) => void;
   testId?: string;
   minWidth?: number;
+  disabled?: boolean;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -126,16 +130,20 @@ export function SetSelect({
       <button
         type="button"
         data-testid={testId ? `${testId}-trigger` : undefined}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1 rounded-md border bg-shell-panel py-[5px] pl-2.5 pr-1.5 text-[12px] text-fg',
+          'flex items-center gap-1 rounded-md border bg-shell-panel py-[5px] pl-2.5 pr-1.5 text-[12px] text-fg disabled:cursor-not-allowed disabled:opacity-50',
           open ? 'border-edge-strong' : 'border-edge hover:border-edge-strong',
         )}
       >
         {label}
         <ChevronsUpDown size={11} className="text-fg-3" />
       </button>
-      {open && (
+      {open && !disabled && (
         <div
           role="menu"
           className="absolute right-0 z-50 mt-1 flex flex-col rounded-lg border border-edge-strong bg-shell-float p-1 shadow-float"
@@ -148,13 +156,14 @@ export function SetSelect({
                 key={o.value}
                 type="button"
                 role="menuitem"
+                disabled={o.disabled}
                 data-testid={testId ? `${testId}-item-${o.value}` : undefined}
                 onClick={() => {
                   setOpen(false);
                   onPick(o.value);
                 }}
                 className={cn(
-                  'flex h-[26px] items-center rounded-[5px] px-2 text-left text-[12px] hover:bg-shell-hover',
+                  'flex h-[26px] items-center rounded-[5px] px-2 text-left text-[12px] hover:bg-shell-hover disabled:cursor-not-allowed disabled:opacity-50',
                   active ? 'bg-acc-bg text-acc' : 'text-fg-2',
                 )}
               >

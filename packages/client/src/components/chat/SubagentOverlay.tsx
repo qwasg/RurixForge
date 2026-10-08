@@ -14,7 +14,12 @@ import {
 } from '@/lib/timeline';
 import ActivitySegment, { SummaryLine, ToolLine } from './ActivitySegment';
 import MarkdownFlat from './MarkdownFlat';
+import StreamEnter, { useFreshKeys } from './StreamEnter';
 import SubagentParticles from './SubagentParticles';
+import { useCollaborationStore } from '@/lib/collaborationStore';
+import AgentMailbox from './AgentMailbox';
+import ApprovalCard from './ApprovalCard';
+import SubagentRow from './SubagentRow';
 
 type SubagentBlock = Extract<ChatBlock, { kind: 'subagent' }>;
 
@@ -30,10 +35,18 @@ const STATUS_BADGE: Record<BlockStatus, { text: string; cls: string }> = {
 };
 
 function findSubagent(messages: ChatMsg[], id: string): SubagentBlock | null {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    for (const b of messages[i].blocks) {
-      if (b.kind === 'subagent' && b.id === id) return b;
+  const walk = (blocks: ChatBlock[]): SubagentBlock | null => {
+    for (const block of blocks) {
+      if (block.kind !== 'subagent') continue;
+      if (block.id === id || block.agentId === id) return block;
+      const nested = walk(block.work);
+      if (nested) return nested;
     }
+    return null;
+  };
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const found = walk(messages[i].blocks);
+    if (found) return found;
   }
   return null;
 }
@@ -49,6 +62,7 @@ export default function SubagentOverlay({ variant = 'column' }: { variant?: Chat
   const overlayId = useChatStore((st) => st.subagentOverlayId);
   const messages = useChatStore((st) => st.messages);
   const openSubagent = useChatStore((st) => st.openSubagent);
+  const agents = useCollaborationStore((state) => state.agents);
 
   useEffect(() => {
     if (!overlayId) return;
@@ -60,7 +74,12 @@ export default function SubagentOverlay({ variant = 'column' }: { variant?: Chat
   }, [overlayId, openSubagent]);
 
   if (!overlayId) return null;
-  const found = findSubagent(messages, overlayId);
+  const block = findSubagent(messages, overlayId);
+  const agent = agents.find((participant) => participant.id === (block?.agentId ?? overlayId));
+  const found: SubagentBlock | null = block ?? (agent ? {
+    kind: 'subagent', id: agent.id, agentId: agent.id, label: agent.name,
+    status: agent.status === 'running' ? 'running' : agent.status === 'recoveryRequired' ? 'error' : 'done', work: [],
+  } : null);
   if (!found) return null;
 
   const badge = STATUS_BADGE[found.status];
@@ -69,11 +88,12 @@ export default function SubagentOverlay({ variant = 'column' }: { variant?: Chat
   const prompt = (found.prompt ?? '').trim();
   const summary = (found.summary ?? '').trim();
   const work = found.work;
+  const turns = agent ? messages.filter((message) => message.role === 'assistant' && message.agentId === agent.id) : [];
   const home = variant === 'home';
 
   return (
     <div
-      key={found.id}
+      key={agent?.id ?? found.id}
       role="dialog"
       aria-label={`子代理:${title}`}
       data-testid="subagent-overlay"
@@ -105,7 +125,7 @@ export default function SubagentOverlay({ variant = 'column' }: { variant?: Chat
           {running && (
             <span className="h-[5px] w-[5px] shrink-0 animate-pulse rounded-full bg-current" />
           )}
-          {badge.text}
+          {agent?.status === 'idle' ? '空闲' : agent?.status === 'recoveryRequired' ? '需要恢复' : agent?.status === 'stopped' ? '已停止' : badge.text}
         </span>
         <button
           type="button"
@@ -136,9 +156,13 @@ export default function SubagentOverlay({ variant = 'column' }: { variant?: Chat
 
         {work.length > 0 && (
           <Section label="WORK" testId="subagent-work">
-            <WorkTimeline work={work} />
+            <WorkTimeline work={work} streaming={running} />
           </Section>
         )}
+        {turns.map((turn) => <Section key={turn.id} label={`${turn.time} · ${turn.status === 'streaming' ? '运行中' : '执行记录'}`}>
+          <WorkTimeline work={turn.blocks} streaming={turn.status === 'streaming'} />
+        </Section>)}
+        {agent && <Section label="MESSAGES" testId="subagent-messages"><AgentMailbox key={agent.id} agent={agent} /></Section>}
       </div>
     </div>
   );
@@ -236,26 +260,37 @@ function PromptSection({ text }: { text: string }) {
  * WORK 时间线:末尾黑色 text 块(子代理汇报输出)出现时,其上方的灰色过程行
  * (tool/reasoning)自动折叠为一行统计(如「Explored 6 files, 5 searches」),点击展开回看;
  * 无汇报输出(运行中)或汇报前无过程时原样逐行渲染。
+ * D-047:streaming(子代理 / 该轮仍在跑)时运行中的行扫光;浮层打开之后才到的项自上而下入场
+ * (打开那一刻已在的项随浮层 forge-pop-in 一起出现,不再各播一遍)。
  */
-function WorkTimeline({ work }: { work: ChatBlock[] }) {
+function WorkTimeline({ work, streaming = false }: { work: ChatBlock[]; streaming?: boolean }) {
   const [showProc, setShowProc] = useState(false);
   const timeline = buildTimeline(work);
+  const itemKey = (item: TimelineItem) => (item.type === 'activity' ? item.indices[0] : item.index);
+  const isFresh = useFreshKeys(timeline.map(itemKey));
 
-  const renderItem = (item: TimelineItem, key: number) => {
+  const renderBody = (item: TimelineItem): ReactNode => {
     if (item.type === 'activity') {
-      return <ActivitySegment key={key} blocks={work} indices={item.indices} />;
+      return <ActivitySegment blocks={work} indices={item.indices} streaming={streaming} />;
     }
     const block = work[item.index];
-    if (block.kind === 'tool') return <ToolLine key={key} block={block} />;
-    if (block.kind === 'text') return <MarkdownFlat key={key} text={block.text} />;
+    if (block.kind === 'tool') return <ToolLine block={block} streaming={streaming} />;
+    if (block.kind === 'text') return <MarkdownFlat text={block.text} />;
+    if (block.kind === 'approval') return <ApprovalCard block={block} />;
+    if (block.kind === 'subagent') return <SubagentRow block={block} />;
     if (block.kind === 'reasoning') {
-      return (
-        <div key={key} className="whitespace-pre-wrap text-[12px] text-fg-4">
-          {block.text}
-        </div>
-      );
+      return <div className="whitespace-pre-wrap text-[12px] text-fg-4">{block.text}</div>;
     }
     return null;
+  };
+  const renderItem = (item: TimelineItem, key: number) => {
+    const body = renderBody(item);
+    if (body === null) return null;
+    return (
+      <StreamEnter key={key} active={streaming && isFresh(itemKey(item))}>
+        {body}
+      </StreamEnter>
+    );
   };
 
   // 最后一个 text 块(黑色汇报)在 timeline 中的位置

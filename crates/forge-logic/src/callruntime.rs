@@ -17,7 +17,29 @@ use std::process::Command;
 
 use serde_json::Value;
 
-use crate::rxexport::{scan_export_c_fns, ExportedFn};
+/// Versioned bulk frame ABI. `kind`/`data` belong to the project script; the
+/// host owns entity IDs and validates every returned transform before applying.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+pub struct NativeBinding {
+    #[serde(rename="entityId")]
+    pub entity_id: u64,
+    pub kind: u32,
+    pub data: [i32; 6],
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NativeUpdate {
+    pub entity_id: u64,
+    pub translation: [f32; 3],
+    pub scale: [f32; 3],
+    /// -1 preserves the frame; >=0 requests a manual sprite frame.
+    pub frame: i32,
+    /// -1 preserves the animator parameter; 0/1 sets the named bool.
+    pub animator_bool: i32,
+}
+
+use crate::rxexport::{scan_export_c_fns, scan_rust_c_fns, ExportedFn};
 
 /// 调用失败(结构化,interp 转 logic.call_error 的 detail)。
 #[derive(Debug)]
@@ -56,6 +78,7 @@ struct LoadedModule {
 pub struct CallRuntime {
     root: PathBuf,
     rurixc: PathBuf,
+    rustc: PathBuf,
     cache_dir: PathBuf,
     modules: HashMap<String, LoadedModule>,
 }
@@ -72,13 +95,35 @@ impl std::fmt::Debug for CallRuntime {
 }
 
 impl CallRuntime {
+    /// One checked native call replaces hundreds of per-entity scalar calls.
+    /// The ABI passes emitter events, never individual GPU particle positions.
+    pub fn invoke_frame(&mut self,module:&str,fn_name:&str,dt:f32,bindings:&[NativeBinding])->Result<Vec<NativeUpdate>,CallError>{
+        if bindings.len()>4096 {return Err(CallError::Sig("native frame binding count exceeds 4096".into()));}
+        if !self.modules.contains_key(module){let loaded=self.build_and_load(module)?;self.modules.insert(module.into(),loaded);}
+        let m=self.modules.get(module).unwrap();
+        if !m.exports.iter().any(|f|f.name==fn_name){return Err(CallError::FnNotExported(fn_name.into()));}
+        let mut updates=vec![NativeUpdate::default();bindings.len()];
+        type FrameFn=unsafe extern "C" fn(u32,f32,*const NativeBinding,u32,*mut NativeUpdate,u32)->u32;
+        let count=unsafe{
+            let f=m.lib.get::<FrameFn>(fn_name.as_bytes()).map_err(|e|CallError::Load(e.to_string()))?;
+            f(1,dt,bindings.as_ptr(),bindings.len()as u32,updates.as_mut_ptr(),updates.len()as u32)
+        }as usize;
+        if count!=bindings.len(){return Err(CallError::Sig(format!("native frame returned {count} updates for {} bindings",bindings.len())));}
+        for (b,u) in bindings.iter().zip(&updates){
+            if b.entity_id!=u.entity_id||u.translation.iter().chain(u.scale.iter()).any(|v|!v.is_finite())|| !(-1..=1).contains(&u.animator_bool){
+                return Err(CallError::Sig("native frame returned an invalid entity/transform/animator value".into()));
+            }
+        }
+        Ok(updates)
+    }
     /// root = 项目根;rurixc 取 FORGE_RURIXC env,缺省 H:\rurix\target\debug\rurixc.exe(F4 先例)。
     pub fn new(root: PathBuf) -> Self {
         let rurixc = std::env::var("FORGE_RURIXC")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(r"H:\rurix\target\debug\rurixc.exe"));
         let cache_dir = root.join(".forge").join("cache").join("rxdll");
-        CallRuntime { root, rurixc, cache_dir, modules: HashMap::new() }
+        let rustc = std::env::var("FORGE_RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
+        CallRuntime { root, rurixc, rustc, cache_dir, modules: HashMap::new() }
     }
 
     /// 调用 module 的 fn(args)。同模块重复调用走已加载缓存(构建零重跑,08 §4.3 同源缓存纪律)。
@@ -104,7 +149,9 @@ impl CallRuntime {
         }
         let abs = self.root.join(module);
         let source = std::fs::read(&abs).map_err(|e| CallError::ModuleNotFound(format!("{module}: {e}")))?;
-        let exports = scan_export_c_fns(&String::from_utf8_lossy(&source));
+        let native_rust = mpath.extension().and_then(|s| s.to_str()) == Some("rs");
+        let exports = if native_rust { scan_rust_c_fns(&String::from_utf8_lossy(&source)) }
+            else { scan_export_c_fns(&String::from_utf8_lossy(&source)) };
         if exports.is_empty() {
             return Err(CallError::FnNotExported(format!("{module} 无任何 #[export(c)] 导出(空导出表)")));
         }
@@ -118,6 +165,9 @@ impl CallRuntime {
 
     /// 缓存键 = sha256(源字节) + sha256(rurixc.exe 字节)前 16 hex;命中(锁文件+ dll 在)零重建。
     fn ensure_dll(&self, module: &str, source: &[u8]) -> Result<PathBuf, CallError> {
+        if Path::new(module).extension().and_then(|s| s.to_str()) == Some("rs") {
+            return self.ensure_rust_dll(module, source);
+        }
         std::fs::create_dir_all(&self.cache_dir)
             .map_err(|e| CallError::Build(format!("建缓存目录 {}: {e}", self.cache_dir.display())))?;
         let mut h = rurix_pkg::sha256::Sha256::new();
@@ -166,6 +216,72 @@ impl CallRuntime {
         }
         Ok(dll_path)
     }
+
+    /// Self-contained Rust modules are an additional native script backend.
+    /// They share the checked scalar C ABI, project path rules and DLL lifetime.
+    /// No cargo dependencies are resolved or downloaded at play time.
+    fn ensure_rust_dll(&self, module: &str, source: &[u8]) -> Result<PathBuf, CallError> {
+        std::fs::create_dir_all(&self.cache_dir).map_err(|e| CallError::Build(e.to_string()))?;
+        let version = match Command::new(&self.rustc).args(["--version", "--verbose"]).output() {
+            Ok(v) if v.status.success() => v,
+            result => {
+                // Portable packs carry a verified binary/source manifest. They
+                // can run on a player's machine without installing a compiler.
+                if let Some(dll) = self.prebuilt_rust_dll(module, source) { return Ok(dll); }
+                return Err(CallError::Build(format!("rustc unavailable and no verified prebuilt native script: {result:?}")));
+            }
+        };
+        let mut h = rurix_pkg::sha256::Sha256::new();
+        h.update(source); h.update(b"|rust-cdylib-v1|edition2021|opt2|panic-abort|");
+        h.update(&version.stdout);
+        let key = rurix_pkg::sha256::hex(&h.finalize());
+        let stem = Path::new(module).file_stem().and_then(|s| s.to_str()).unwrap_or("script");
+        let dll = self.cache_dir.join(format!("{stem}-{}.dll", &key[..16]));
+        if dll.is_file() { self.write_native_manifest(module, source, &dll)?; return Ok(dll); }
+        let result = Command::new(&self.rustc).arg(self.root.join(module))
+            .args(["--crate-type", "cdylib", "--edition", "2021", "-C", "opt-level=2", "-C", "panic=abort"])
+            .arg("-o").arg(&dll).output()
+            .map_err(|e| CallError::Build(format!("spawn rustc: {e}")))?;
+        if !result.status.success() {
+            return Err(CallError::Build(format!("rustc: {}", String::from_utf8_lossy(&result.stderr).chars().take(4096).collect::<String>())));
+        }
+        if !dll.is_file() { return Err(CallError::Build("rustc reported success without DLL".into())); }
+        self.write_native_manifest(module, source, &dll)?;
+        Ok(dll)
+    }
+
+    fn write_native_manifest(&self, module: &str, source: &[u8], dll: &Path) -> Result<(), CallError> {
+        let bytes = std::fs::read(dll).map_err(|e| CallError::Build(e.to_string()))?;
+        let manifest = serde_json::json!({"backend":"rust-cdylib-v1","module":module,
+            "sourceSha256": digest(source), "dllSha256": digest(&bytes),
+            "dll":dll.file_name().unwrap().to_string_lossy()});
+        std::fs::write(dll.with_extension("native.json"), manifest.to_string())
+            .map_err(|e| CallError::Build(e.to_string()))
+    }
+
+    fn prebuilt_rust_dll(&self, module: &str, source: &[u8]) -> Option<PathBuf> {
+        let source_hash = digest(source);
+        let mut paths = std::fs::read_dir(&self.cache_dir).ok()?.filter_map(Result::ok)
+            .map(|e| e.path()).filter(|p| p.to_string_lossy().ends_with(".native.json")).collect::<Vec<_>>();
+        paths.sort();
+        for path in paths {
+            let Ok(bytes) = std::fs::read(path) else { continue };
+            let Ok(m) = serde_json::from_slice::<Value>(&bytes) else { continue };
+            if m["backend"] != "rust-cdylib-v1" || m["module"] != module || m["sourceSha256"] != source_hash { continue; }
+            let Some(name) = m["dll"].as_str() else { continue };
+            if Path::new(name).file_name().and_then(|s| s.to_str()) != Some(name) { continue; }
+            let dll = self.cache_dir.join(name);
+            if let Ok(bytes) = std::fs::read(&dll) {
+                if m["dllSha256"] == digest(&bytes) { return Some(dll); }
+            }
+        }
+        None
+    }
+}
+
+fn digest(bytes: &[u8]) -> String {
+    let mut hash = rurix_pkg::sha256::Sha256::new(); hash.update(bytes);
+    rurix_pkg::sha256::hex(&hash.finalize())
 }
 
 /// 标量编组调用(同构参数类型,arity 0..=4;bool ↔ C _Bool,Rust bool ABI 兼容)。
@@ -290,6 +406,63 @@ unsafe fn call_homo<T: HomoCall>(lib: &libloading::Library, sym: &str, ret: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn native_frame_abi_updates_in_bulk_and_rejects_bad_output_atomically(){
+        let root=std::env::temp_dir().join(format!("forge_native_frame_{}",std::process::id()));std::fs::create_dir_all(&root).unwrap();
+        let source=r#"
+#[repr(C)]
+pub struct NativeBinding{pub entity_id:u64,pub kind:u32,pub data:[i32;6]}
+#[repr(C)]
+pub struct NativeUpdate{pub entity_id:u64,pub translation:[f32;3],pub scale:[f32;3],pub frame:i32,pub animator_bool:i32}
+#[no_mangle]
+pub extern "C" fn frame(abi:u32,dt:f32,input:*const NativeBinding,count:u32,output:*mut NativeUpdate,capacity:u32)->u32{
+ if abi!=1||count>capacity{return 0;}unsafe{for i in 0..count as usize{let b=&*input.add(i);output.add(i).write(NativeUpdate{entity_id:if b.kind==99{999}else{b.entity_id},translation:[b.data[0]as f32+dt,2.,0.],scale:[1.;3],frame:2,animator_bool:0});}}count
+}
+"#;
+        std::fs::write(root.join("frame.rs"),source).unwrap();
+        {
+            let mut rt=CallRuntime::new(root.clone());let bindings=vec![NativeBinding{entity_id:3,kind:0,data:[7,0,0,0,0,0]},NativeBinding{entity_id:8,kind:0,data:[11,0,0,0,0,0]}];
+            let u=rt.invoke_frame("frame.rs","frame",0.25,&bindings).unwrap();
+            assert_eq!(u[0].translation,[7.25,2.,0.]);assert_eq!(u[1].entity_id,8);assert_eq!(u[1].frame,2);
+            let bad=vec![NativeBinding{entity_id:3,kind:99,data:[0;6]}];assert!(rt.invoke_frame("frame.rs","frame",0.,&bad).is_err());
+            assert_eq!(std::mem::size_of::<NativeBinding>(),40);assert_eq!(std::mem::size_of::<NativeUpdate>(),40);
+        }std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rust_native_state_survives_calls_and_source_change_rebuilds() {
+        let dir = std::env::temp_dir().join(format!("forge_native_state_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let make_source = |initial: i32| format!("use std::sync::atomic::{{AtomicI32, Ordering}};\nstatic STATE: AtomicI32 = AtomicI32::new({initial});\n#[no_mangle]\npub extern \"C\" fn advance(n: i32) -> i32 {{ STATE.fetch_add(n, Ordering::SeqCst) + n }}\n");
+        std::fs::write(dir.join("state.rs"), make_source(10)).unwrap();
+        {
+            let mut rt = CallRuntime::new(dir.clone());
+            assert_eq!(rt.invoke("state.rs", "advance", &[serde_json::json!(3)]).unwrap(), serde_json::json!(13));
+            assert_eq!(rt.invoke("state.rs", "advance", &[serde_json::json!(4)]).unwrap(), serde_json::json!(17));
+            assert!(rt.invoke("state.rs", "advance", &[serde_json::json!(true)]).is_err());
+        }
+        std::fs::write(dir.join("state.rs"), make_source(100)).unwrap();
+        {
+            let mut rt = CallRuntime::new(dir.clone());
+            assert_eq!(rt.invoke("state.rs", "advance", &[serde_json::json!(3)]).unwrap(), serde_json::json!(103));
+        }
+        {
+            let mut rt = CallRuntime::new(dir.clone());
+            rt.rustc = dir.join("not-installed-rustc.exe");
+            assert_eq!(rt.invoke("state.rs", "advance", &[serde_json::json!(5)]).unwrap(), serde_json::json!(105), "portable prebuilt works without compiler");
+        }
+        // A changed source must never run an older prebuilt binary.
+        std::fs::write(dir.join("state.rs"), make_source(200)).unwrap();
+        {
+            let mut rt = CallRuntime::new(dir.clone());
+            rt.rustc = dir.join("not-installed-rustc.exe");
+            assert!(rt.invoke("state.rs", "advance", &[serde_json::json!(5)]).is_err());
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
     use std::path::PathBuf;
 
     /// 临时项目根 + fixture .rx(真实 rurixc 构建,D-RD4-F)。
@@ -315,7 +488,9 @@ mod tests {
     }
 
     fn rurixc_available() -> bool {
-        Path::new(r"H:\rurix\target\debug\rurixc.exe").is_file()
+        let path = std::env::var("FORGE_RURIXC").map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(r"H:\rurix\target\debug\rurixc.exe"));
+        path.is_file()
     }
 
     #[test]

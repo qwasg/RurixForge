@@ -1,0 +1,11 @@
+{
+  "options": {"model": "o4-mini"},
+  "request": {
+    "model": "forge-o4",
+    "messages": [{"role": "user", "content": "Plan a trip to Kyoto."}],
+    "reasoning_effort": "high",
+    "tools": [{"type": "function", "function": {"name": "search", "parameters": {"type": "object", "properties": {"q": {"type": "string"}}}}}],
+    "tool_choice": {"type": "function", "function": {"name": "search"}},
+    "parallel_tool_calls": false
+  }
+}

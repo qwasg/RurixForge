@@ -1,0 +1,106 @@
+{
+  "guid": "71121929-fade-5a31-8fda-8ad383e7855d",
+  "type": "texture",
+  "importer": "png",
+  "build_state": "current",
+  "provenance": {
+    "origin": "user-import",
+    "detail": {
+      "method": "proportional atlas of verified vendor photographs",
+      "sources": [
+        {
+          "id": "rtx5060",
+          "model": "NVIDIA GeForce RTX 5060",
+          "picturedProduct": "MSI GeForce RTX 5060 8G VENTUS 2X OC (G5060-8V2C)",
+          "memoryGB": 8,
+          "memoryType": "GDDR7",
+          "formFactor": "PCIe desktop graphics card; PCI Express Gen 5 x16 connector, uses x8",
+          "image": "gpus/rtx-5060-msi-ventus2x.png",
+          "sourcePage": "https://us-store.msi.com/Graphics-Cards/NVIDIA-GPU/RTX-5060/GeForce-RTX-5060-8G-VENTUS-2X-OC",
+          "specSource": "https://ca.msi.com/Graphics-Card/GeForce-RTX-5060-8G-VENTUS-2X-OC/Specification",
+          "imageUrl": "https://asset-us-store.msi.com/image/cache/catalog/Pd_page/VGA/2025/50608GV2XOC/50608GV2XOC-2-400x400.png",
+          "imageVerification": "Official MSI product page image link; personally viewed local download: silver/black dual-fan physical card. This is the MSI VENTUS version, not a claimed NVIDIA Founders Edition."
+        },
+        {
+          "id": "rtx5070",
+          "model": "NVIDIA GeForce RTX 5070",
+          "picturedProduct": "NVIDIA GeForce RTX 5070 Founders Edition",
+          "memoryGB": 12,
+          "memoryType": "GDDR7",
+          "formFactor": "PCIe desktop graphics card",
+          "image": "gpus/rtx-5070-fe.png",
+          "sourcePage": "https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5070-family/",
+          "specSource": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/",
+          "imageUrl": "https://www.nvidia.com/content/dam/en-zz/Solutions/geforce/graphic-cards/50-series/5070-family/geforce-rtx-5070-banner-offset-bm-af-bottom-phone@2x.png",
+          "imageVerification": "NVIDIA family page asset specifically named RTX 5070; personally viewed local file and read RTX 5070 on the physical card. Not the family OG image named 5070 Ti."
+        },
+        {
+          "id": "rtx5080",
+          "model": "NVIDIA GeForce RTX 5080",
+          "picturedProduct": "NVIDIA GeForce RTX 5080 Founders Edition",
+          "memoryGB": 16,
+          "memoryType": "GDDR7",
+          "formFactor": "PCIe desktop graphics card",
+          "image": "gpus/rtx-5080-fe.jpg",
+          "sourcePage": "https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5080/",
+          "specSource": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/",
+          "imageUrl": "https://www.nvidia.com/content/dam/en-zz/Solutions/geforce/graphic-cards/50-series/rtx-5080/geforce-rtx-5080-af360-p@2x.jpg",
+          "imageVerification": "NVIDIA exact-model page product render. Personally viewed downloaded image; card body label says RTX 5080."
+        },
+        {
+          "id": "rtx5090",
+          "model": "NVIDIA GeForce RTX 5090",
+          "picturedProduct": "NVIDIA GeForce RTX 5090 Founders Edition",
+          "memoryGB": 32,
+          "memoryType": "GDDR7",
+          "formFactor": "PCIe desktop graphics card",
+          "image": "gpus/rtx-5090-fe.jpg",
+          "sourcePage": "https://www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5090/",
+          "specSource": "https://www.nvidia.com/en-us/geforce/graphics-cards/compare/",
+          "imageUrl": "https://www.nvidia.com/content/dam/en-zz/Solutions/geforce/graphic-cards/50-series/rtx-5090/geforce-rtx-5090-af360-p@2x.jpg",
+          "imageVerification": "NVIDIA exact-model page product render. Personally viewed downloaded image; card body label says RTX 5090."
+        },
+        {
+          "id": "rtxpro6000",
+          "model": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "picturedProduct": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+          "memoryGB": 96,
+          "memoryType": "GDDR7 ECC",
+          "formFactor": "PCIe Gen 5 x16; dual-slot, double flow-through workstation cooler",
+          "image": "gpus/rtx-pro6000-blackwell-workstation-card.jpg",
+          "sourcePage": "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000/",
+          "specSource": "https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000-family/",
+          "imageUrl": "https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/rtx-pro-6000-blackwell-workstation-edition/nvidia-geforce-rtx-pro-6000-og-1200x630.jpg",
+          "imageVerification": "Exact Workstation Edition page product image, personally viewed. Not Max-Q, Server Edition, or older RTX 6000 Ada. The filename contains geforce but actual product and card label are RTX PRO 6000."
+        },
+        {
+          "id": "a100",
+          "model": "NVIDIA A100 80GB PCIe",
+          "picturedProduct": "NVIDIA A100 80GB PCIe passive card, PNY product page",
+          "memoryGB": 80,
+          "memoryType": "HBM2e",
+          "formFactor": "PCIe passive accelerator board; NOT SXM module",
+          "image": "gpus/a100-80gb-pcie.png",
+          "sourcePage": "https://www.pny.com/nvidia-a100-80gb",
+          "specSource": "https://www.nvidia.com/en-us/data-center/a100/",
+          "imageUrl": "https://d2vfia6k6wrouk.cloudfront.net/productimages/edd51eab-59dc-42d5-a57d-ad7100b737d8/images/a100-pcie-3qtr.png",
+          "imageVerification": "Image extracted from fetched PNY exact 80GB product page. Personally viewed: gold passive heatsink cover, PCIe bracket, A100 side marking. Memory variant is established by page, not visible print alone."
+        },
+        {
+          "id": "h200",
+          "model": "NVIDIA H200 NVL 141GB",
+          "picturedProduct": "NVIDIA H200 NVL PCIe passive card, PNY product page",
+          "memoryGB": 141,
+          "memoryType": "HBM3e",
+          "formFactor": "PCIe Gen 5 NVL passive accelerator board; NOT H200 SXM",
+          "image": "gpus/h200-nvl-pcie.png",
+          "sourcePage": "https://www.pny.com/nvidia-h200-nvl?iscommercial=true",
+          "specSource": "https://www.nvidia.com/en-us/data-center/h200/",
+          "secondarySpecSource": "https://www.pny.com/en-eu/File%20Library/Professional/DATASHEET/DATA%20CENTER%20CARDS/h200-nvl-datasheet-eu.pdf",
+          "imageUrl": "https://d2vfia6k6wrouk.cloudfront.net/productimages/9dd6170d-325e-41cf-8258-b26b00d29347/images/h200-nvl-3qtr-right-reverse.png",
+          "imageVerification": "Fetched PNY exact H200 NVL page image; personally viewed local download: gold passive card with PCIe bracket. The photo is NVL PCIe, not SXM; 141GB is per GPU."
+        }
+      ]
+    }
+  }
+}

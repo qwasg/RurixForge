@@ -27,8 +27,9 @@ export default function RightPane() {
 
   return (
     <div data-testid="right-pane" className="flex h-full min-h-0 flex-col bg-shell-sidebar">
-      <div className="flex shrink-0 flex-col gap-1 px-2.5 pb-1.5 pt-2">
-        <span className="flex items-center gap-0.5 rounded-md bg-shell-sunk p-0.5">
+      {/* 标签条 + 折叠钮同一行(不再单独占一行) */}
+      <div className="flex shrink-0 items-center gap-1 px-2.5 pb-1.5 pt-2">
+        <span className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden rounded-md bg-shell-sunk p-0.5">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -36,12 +37,12 @@ export default function RightPane() {
               data-testid={`rightpane-tab-${id}`}
               onClick={() => setRightTab(id)}
               className={cn(
-                'flex items-center gap-1 rounded px-2 py-0.5 text-[11px] transition-colors',
+                'flex min-w-0 flex-auto items-center justify-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors',
                 tab === id ? 'bg-shell-panel text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2',
               )}
             >
-              <Icon size={11} />
-              {label}
+              <Icon size={11} className="shrink-0" />
+              <span className="truncate">{label}</span>
             </button>
           ))}
         </span>

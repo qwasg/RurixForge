@@ -1,0 +1,26 @@
+guid: 05585f15-f5bf-4f31-8577-8974831cd9cf
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T11:56:21Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b45e-6aa0-7010-9d2a-fffcd2244990
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b45e-6aa0-7010-9d2a-fffcd2244990/output/preview.png?Expires=1789991775&Signature=EP80EtP6tKVTGxB~gdyGk4hemSTC20u8SD62D2tmHqUWnE01r~9nJ3moBLJ-DSpxHGqJrcDxHGHkvedPpVjqeGz~gw44Aj7aVtepUWvmwEWv3SkSftF8cDEFLif97NRp~UrHjpXfF3JyCJuDlfM8HePCDmPh2bCJn7agISJ1UCwqM3QDU3rzUc4Bt6ahIgcZEKx80HnhqG-QU3T9uye5B9tpQH0CP8Z48-uBVI6LZIowCumwB153d~FpAhcilUtE6R06qPRLYqHwtAMac104nzzzJMUafXBcfJ9MylwRp~yg5PC1VYGbOrIhtuYDiNDRAwCGoJbCeC-ywiGDCa~D8A__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: 'Tier-3 attack jet fighter: streamlined graphite blue-gray fuselage, deep cyan glass canopy, swept pale titanium wings with thin brass leading edges, orange-tipped underwing missiles, canted graphite tail fins, twin amber exhaust nozzles. Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.'
+build_state: current

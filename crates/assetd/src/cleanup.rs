@@ -40,6 +40,7 @@ pub struct CleanupReport {
 fn expected_folder(atype: &str) -> Option<&'static str> {
     Some(match atype {
         "mesh" => "Meshes",
+        "model" => "Models",
         "texture" => "Textures",
         "material" => "Materials",
         "prefab" => "Prefabs",
@@ -86,7 +87,8 @@ pub fn scan_cleanup(project: &ForgeProject) -> Result<CleanupReport> {
 
         // 1. misplaced:类型应有目录 ≠ 当前一级目录。
         if let Some(want) = expected_folder(&meta.atype) {
-            if cur_folder != want {
+            let model_owned = cur_folder == "Models" && meta.provenance.as_ref().is_some_and(|p| p.origin == "blender");
+            if cur_folder != want && !model_owned {
                 proposals.push(CleanupProposal {
                     asset_path: rel.clone(),
                     guid: meta.guid.clone(),

@@ -1,15 +1,36 @@
 /**
  * GenerateDialog(F5 wave.3):Assets 右键「Generate...」直开的文生图对话框。
  * 提交 → gen_image → 候选进 CandidatesModal;未配置后端如实错误条
- * (GEN_BACKEND_NOT_CONFIGURED + 设置页 generation tab 指引),不伪造生成。
+ * (GEN_BACKEND_NOT_CONFIGURED + 直达 设置·模型 页「生成后端」),不伪造生成。
  */
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useAssetStore } from '@/lib/assetStore';
 import { configuredBackends, useGenStore } from '@/lib/genStore';
+import { useOverlayStore } from '@/lib/overlayStore';
+import { useSettingsStore } from '@/lib/settingsStore';
+import { genBackendLabel } from '@/lib/videoBackend';
 
 const SIZES = [256, 512, 1024] as const;
+
+/** 错误条里的直达钮:关掉生成对话框,打开 设置·模型(生成后端在该页)。 */
+function OpenModelsSettings() {
+  return (
+    <button
+      type="button"
+      data-testid="gen-open-settings"
+      onClick={() => {
+        useGenStore.getState().closeDialog();
+        useSettingsStore.getState().setPage('generation');
+        useOverlayStore.getState().open('settings');
+      }}
+      className="ml-1 text-acc underline underline-offset-2 hover:opacity-80"
+    >
+      打开设置
+    </button>
+  );
+}
 
 export default function GenerateDialog() {
   const open = useGenStore((s) => s.dialogOpen);
@@ -139,7 +160,7 @@ export default function GenerateDialog() {
         >
           {configured.map((b) => (
             <option key={b.id} value={b.id}>
-              {b.id}({b.kind})
+              {genBackendLabel(b.id, b.label)}
             </option>
           ))}
           {configured.length === 0 && <option value="">无已配置后端</option>}
@@ -152,16 +173,20 @@ export default function GenerateDialog() {
         )}
         {noBackend && (
           <p className="mt-1.5 text-2xs text-info" data-gen-error>
-            GEN_BACKEND_NOT_CONFIGURED:无已配置生成后端。请到 设置 → Generation 配置
-            (data/gen-backends.json),配置后重试。
+            GEN_BACKEND_NOT_CONFIGURED:无已配置生成后端。请到 设置 → 模型 →「生成后端」配置后重试。
+            <OpenModelsSettings />
           </p>
         )}
         {lastError && (
           <p className="mt-1.5 text-2xs text-danger" data-gen-error>
             {lastErrorCode ? `${lastErrorCode}:` : ''}
             {lastError}
-            {lastErrorCode === 'GEN_BACKEND_NOT_CONFIGURED' &&
-              '(请到 设置 → Generation 配置后端)'}
+            {lastErrorCode === 'GEN_BACKEND_NOT_CONFIGURED' && (
+              <>
+                (请到 设置 → 模型 →「生成后端」配置)
+                <OpenModelsSettings />
+              </>
+            )}
           </p>
         )}
 

@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Eye, Hammer, Pencil, Search } from 'lucide-react';
+import { Eye, Hammer, Pencil, Search } from 'lucide-react';
 import MarkdownFlat from '@/components/chat/MarkdownFlat';
 import ModelPicker from '@/components/chat/ModelPicker';
 import CodeEditor from '@/components/workbench/CodeEditor';
-import { StatusDot } from '@/components/shell/primitives';
+import TodoStatusIndicator from '@/components/workbench/TodoStatusIndicator';
 import { useChatStore } from '@/lib/chatStore';
 import { cn } from '@/lib/cn';
-import { parsePlanFile, planNameFromPath, type PlanTodo } from '@/lib/planFile';
+import { parsePlanFile, planNameFromPath, planTodoProgress, type PlanTodo } from '@/lib/planFile';
 import { buildPrompt, usePlanStore } from '@/lib/planStore';
 import { useFileEditor } from '@/lib/useFileEditor';
 import { useToastStore } from '@/lib/toastStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
+import { useSessionStore } from '@/lib/sessionStore';
+import { normalizeTodoStatus } from '@/lib/todoStatus';
+import { useFlowContext } from '@/components/chat/ultraplan/flowContext';
+import { PlanDecisionControls } from '@/components/chat/ultraplan/WorkflowCards';
 
 /**
  * D-035 Plan 页签:计划文件(.forge/plans/<名>.plan.md)的阅读 / 编辑 / 执行面。
@@ -23,39 +27,41 @@ import { useWorkbenchStore } from '@/lib/workbenchStore';
  * 不支持勾选框/嵌套列表(已知限制),清单是结构化数据,本就不该塞回文本里。
  */
 
-/** 会话待办按 planTodoId 建索引:Build 之后计划清单显示真实执行状态。 */
-function useTodoStatusByPlanId(): Map<string, string> {
+/** 会话待办按 planTodoId 建索引；UltraPlan 取当前版本及最新修复轮。 */
+function useTodoStatusByPlanId(flow: { id: string; planRev: number } | null): Map<string, string> {
   const todos = useChatStore((st) => st.todos);
+  const flowId = flow?.id;
+  const planRev = flow?.planRev;
   return useMemo(() => {
     const m = new Map<string, string>();
+    const rounds = new Map<string, number>();
+    const prefix = flowId === undefined ? null : `${flowId}:${planRev}:`;
     for (const t of todos) {
-      if (t.planTodoId) m.set(t.planTodoId, t.status);
+      if (!t.planTodoId) continue;
+      if (prefix === null) {
+        m.set(t.planTodoId, t.status);
+        continue;
+      }
+      if (!t.planTodoId.startsWith(prefix)) continue;
+      const key = t.planTodoId.slice(prefix.length);
+      const repair = /^fix:(\d+):(.+)$/.exec(key);
+      const id = repair?.[2] ?? key;
+      const round = repair ? Number(repair[1]) : 0;
+      if (round < (rounds.get(id) ?? -1)) continue;
+      rounds.set(id, round);
+      m.set(id, t.status);
     }
     return m;
-  }, [todos]);
+  }, [todos, flowId, planRev]);
 }
 
 function TodoRow({ todo, status }: { todo: PlanTodo; status: string }) {
-  const done = status === 'completed' || status === 'done';
-  const running = status === 'running' || status === 'in_progress';
-  const failed = status === 'failed' || status === 'blocked';
+  const state = normalizeTodoStatus(status);
+  const done = state === 'completed';
+  const failed = state === 'failed';
   return (
     <div className="flex items-start gap-2 py-1" data-testid={`plan-todo-${todo.id}`}>
-      {done ? (
-        <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-acc-bg">
-          <Check size={10} className="text-acc" />
-        </span>
-      ) : running ? (
-        <span className="mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center">
-          <StatusDot color="var(--dot-running)" pulse />
-        </span>
-      ) : failed ? (
-        <span className="mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center">
-          <StatusDot color="var(--dot-blocked)" />
-        </span>
-      ) : (
-        <span className="mt-px h-4 w-4 shrink-0 rounded-full border border-edge" />
-      )}
+      <TodoStatusIndicator status={status} className="mt-px" />
       <span
         className={cn(
           'min-w-0 flex-1 text-[13px]',
@@ -75,14 +81,33 @@ export default function PlanTab({ path, tabId }: { path: string; tabId: string }
   const setTabTitle = useWorkbenchStore((st) => st.setTabTitle);
   const forceCloseTab = useWorkbenchStore((st) => st.forceCloseTab);
   const cancelCloseTab = useWorkbenchStore((st) => st.cancelCloseTab);
+  const agentEngine = useSessionStore((st) =>
+    st.sessions.find((session) => session.id === st.activeSessionId)?.agentEngine ?? st.draftAgentEngine,
+  );
   const closeConfirm = useWorkbenchStore((st) => st.pendingCloseTabId === tabId);
-  const statusByPlanId = useTodoStatusByPlanId();
   const [editing, setEditing] = useState(false);
   const [building, setBuilding] = useState(false);
   // 编辑期间的实时草稿:切回预览要看到刚改的内容,不必先保存。
   const [draft, setDraft] = useState<string | null>(null);
 
   const ed = useFileEditor(path, tabId, reloadNonce);
+  const { flow, activeSessionId } = useFlowContext();
+  const owner = useWorkbenchStore((st) => st.tabs.find((t) => t.id === tabId));
+  const currentUltra = flow?.planPath === path ? flow : null;
+  const statusByPlanId = useTodoStatusByPlanId(currentUltra);
+  const ultraPlan = owner?.upId !== undefined || currentUltra !== null;
+  const ultraBlocked = owner?.sessionId && owner.sessionId !== activeSessionId
+    ? '该计划属于另一个会话,请回原会话确认'
+    : !currentUltra || (owner?.upId && owner.upId !== currentUltra.id)
+      ? '此 UltraPlan 流程已不存在或已被重新开始'
+      : ed.loading ? '正在读取计划'
+        : ed.error !== null ? '计划文件读取失败'
+          : null;
+  // 从文件树打开的当前 UltraPlan 文件也绑定流程,切会话后不能误走普通 Build。
+  useEffect(() => {
+    if (!currentUltra || !activeSessionId || owner?.upId) return;
+    useWorkbenchStore.setState((st) => ({ tabs: st.tabs.map((t) => t.id === tabId ? { ...t, upId: currentUltra.id, sessionId: activeSessionId } : t) }));
+  }, [currentUltra?.id, activeSessionId, owner?.upId, tabId]);
 
   const source = draft ?? ed.initialDoc;
   const plan = useMemo(() => parsePlanFile(source, path), [source, path]);
@@ -97,16 +122,12 @@ export default function PlanTab({ path, tabId }: { path: string; tabId: string }
     setDraft(null);
   }, [reloadNonce, ed.loadNonce]);
 
-  const progress = useMemo(() => {
-    let done = 0;
-    for (const t of plan.todos) {
-      const s = statusByPlanId.get(t.id) ?? t.status;
-      if (s === 'completed' || s === 'done') done += 1;
-    }
-    return { done, total: plan.todos.length };
-  }, [plan.todos, statusByPlanId]);
+  const progress = useMemo(
+    () => planTodoProgress(plan.todos, (id) => statusByPlanId.get(id)),
+    [plan.todos, statusByPlanId],
+  );
 
-  const canBuild = !ed.loading && ed.error === null && activeRunId === null && !building;
+  const canBuild = !ultraPlan && !ed.loading && ed.error === null && activeRunId === null && !building;
 
   const onBuild = async () => {
     if (!canBuild) return;
@@ -159,8 +180,14 @@ export default function PlanTab({ path, tabId }: { path: string; tabId: string }
             {editing ? <Eye size={12} /> : <Pencil size={12} />}
             {editing ? '预览' : '编辑'}
           </button>
-          <ModelPicker placement="down" align="right" />
-          <button
+          <ModelPicker
+            placement="down"
+            align="right"
+            provider={agentEngine === 'codex' ? 'codex' : undefined}
+            excludeProvider={agentEngine === 'local' ? 'codex' : undefined}
+            disabled={activeRunId !== null}
+          />
+          {!ultraPlan && <button
             type="button"
             data-testid="plan-start-build"
             disabled={!canBuild}
@@ -175,9 +202,21 @@ export default function PlanTab({ path, tabId }: { path: string; tabId: string }
           >
             <Hammer size={12} />
             Build
-          </button>
+          </button>}
         </div>
       </div>
+
+      {ultraPlan && <div className="shrink-0 border-b border-edge px-5 py-3">
+        {currentUltra?.renderBackend && <p className="mb-2 text-[11px] text-fg-3">游戏后端: {currentUltra.renderBackend}</p>}
+        <PlanDecisionControls
+          key={`${owner?.upId ?? currentUltra?.id}:${currentUltra?.planRev}:${activeSessionId}`}
+          upId={owner?.upId ?? currentUltra?.id ?? ''}
+          rev={currentUltra?.planRev ?? 0}
+          prefix="plan-tab-ultraplan"
+          blocked={ultraBlocked}
+          beforeStart={async () => !ed.dirty || ed.save()}
+        />
+      </div>}
 
       {/* 状态条:调研中 / 未保存 / 解析异常 / 保存失败 */}
       {planning && (
@@ -194,7 +233,7 @@ export default function PlanTab({ path, tabId }: { path: string; tabId: string }
           data-testid="plan-parse-error"
           className="shrink-0 border-b border-edge bg-warn-bg px-5 py-1 text-[11px] text-warn"
         >
-          计划头信息解析失败({plan.error}),下面按原文展示;Build 仍会按文件内容执行。
+          计划头信息解析失败({plan.error}),下面按原文展示;{ultraPlan ? '制作前仍会校验计划内容与确认版本。' : 'Build 仍会按文件内容执行。'}
         </div>
       )}
       {closeConfirm && (

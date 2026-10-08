@@ -13,6 +13,10 @@ use std::sync::Mutex;
 pub const ENGINE_LOCAL: &str = "local";
 pub const ENGINE_CODEX: &str = "codex";
 
+pub const AUTH_AUTO: &str = "auto";
+pub const AUTH_CLOUD: &str = "cloud";
+pub const AUTH_CHATGPT: &str = "chatgpt";
+
 /// 引擎标识合法性(sessions PATCH / create 入参校验同源)。
 pub fn is_known_engine(id: &str) -> bool {
     id == ENGINE_LOCAL || id == ENGINE_CODEX
@@ -40,6 +44,13 @@ pub struct CodexConfig {
     /// 注册 open-computer-use(桌面级 Computer Use;两种引擎共用同一开关)。
     #[serde(default)]
     pub computer_use: bool,
+    /// Codex 上游鉴权:auto = 已登录云账号时用 cloud;否则 chatgpt。
+    #[serde(default = "default_auth_source")]
+    pub auth_source: String,
+}
+
+fn default_auth_source() -> String {
+    AUTH_AUTO.to_string()
 }
 
 fn default_engine() -> String {
@@ -59,6 +70,7 @@ impl Default for CodexConfig {
             default_model: String::new(),
             auto_register_mcp: true,
             computer_use: false,
+            auth_source: default_auth_source(),
         }
     }
 }
@@ -73,6 +85,7 @@ impl CodexConfig {
             "defaultModel": self.default_model,
             "autoRegisterMcp": self.auto_register_mcp,
             "computerUse": self.computer_use,
+            "authSource": self.auth_source,
         })
     }
 }
@@ -93,10 +106,58 @@ pub struct CodexConfigPatch {
     pub auto_register_mcp: Option<bool>,
     #[serde(default)]
     pub computer_use: Option<bool>,
+    #[serde(default)]
+    pub auth_source: Option<String>,
 }
 
 fn path() -> PathBuf {
     crate::agent_data_root().join("codex-config.json")
+}
+
+/// 托管 CODEX_HOME(云模式 forge-cloud 网关;15 §8.4)。
+pub fn managed_cloud_home() -> PathBuf {
+    crate::agent_data_root().join("codex-cloud-home")
+}
+
+/// Official subscription credentials never inherit a user's reverse-proxy profile.
+pub fn managed_chatgpt_home() -> PathBuf {
+    crate::agent_data_root().join("codex-chatgpt-home")
+}
+
+/// 配置值 + 是否已登录 → 生效的 authSource。auto 且已登录用 cloud。
+pub fn decide_auth_source(configured: &str, logged_in: bool) -> &'static str {
+    match configured {
+        AUTH_CLOUD => AUTH_CLOUD,
+        AUTH_CHATGPT => AUTH_CHATGPT,
+        _ if logged_in => AUTH_CLOUD,
+        _ => AUTH_CHATGPT,
+    }
+}
+
+/// 生效的 authSource(配置 + 登录态)。
+pub fn effective_auth_source(cloud: &crate::cloud::CloudService) -> String {
+    let cfg = load();
+    decide_auth_source(&cfg.auth_source, cloud.is_logged_in()).to_string()
+}
+
+/// 写入 `data/codex-cloud-home/config.toml`(设备 Key 经 FORGE_CLOUD_API_KEY 注入)。
+pub fn ensure_cloud_codex_home(server_url: &str) -> std::io::Result<()> {
+    let dir = managed_cloud_home();
+    std::fs::create_dir_all(&dir)?;
+    let base = server_url.trim_end_matches('/');
+    let toml = format!(
+        "[model_providers.forge-cloud]\n\
+         name = \"RurixForge Cloud\"\n\
+         base_url = \"{base}/v1\"\n\
+         env_key = \"FORGE_CLOUD_API_KEY\"\n\
+         wire_api = \"responses\"\n\n\
+         [profiles.forge-cloud]\n\
+         model_provider = \"forge-cloud\"\n"
+    );
+    let path = dir.join("config.toml");
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, toml)?;
+    std::fs::rename(tmp, path)
 }
 
 fn write_lock() -> &'static Mutex<()> {
@@ -139,6 +200,13 @@ pub fn patch(req: CodexConfigPatch) -> Result<CodexConfig, String> {
     if let Some(v) = req.computer_use {
         cfg.computer_use = v;
     }
+    if let Some(v) = req.auth_source {
+        let v = v.trim().to_lowercase();
+        if !matches!(v.as_str(), AUTH_AUTO | AUTH_CLOUD | AUTH_CHATGPT) {
+            return Err(format!("未知 authSource: {v}(支持 auto|cloud|chatgpt)"));
+        }
+        cfg.auth_source = v;
+    }
     save_locked(&cfg)?;
     Ok(cfg)
 }
@@ -151,7 +219,31 @@ fn save_locked(cfg: &CodexConfig) -> Result<(), String> {
     let text = serde_json::to_string_pretty(cfg).map_err(|e| format!("序列化失败: {e}"))?;
     let tmp = p.with_extension("json.tmp");
     std::fs::write(&tmp, text).map_err(|e| format!("写临时文件失败: {e}"))?;
-    std::fs::rename(&tmp, &p).map_err(|e| format!("原子替换失败: {e}"))
+    replace_file(&tmp, &p)
+}
+
+/// Windows 的 `rename(tmp, existing)` 不会覆盖目标。锁内先把旧文件挪到备份，
+/// 再把完整临时文件换入；第二步失败时恢复旧文件，避免一次 PATCH 毁掉可用配置。
+fn replace_file(tmp: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
+    if !destination.exists() {
+        return std::fs::rename(tmp, destination).map_err(|e| format!("原子替换失败: {e}"));
+    }
+
+    let backup = destination.with_extension("json.bak");
+    if backup.exists() {
+        std::fs::remove_file(&backup).map_err(|e| format!("清理旧配置备份失败: {e}"))?;
+    }
+    std::fs::rename(destination, &backup).map_err(|e| format!("备份旧配置失败: {e}"))?;
+    if let Err(e) = std::fs::rename(tmp, destination) {
+        let restore = std::fs::rename(&backup, destination);
+        return Err(match restore {
+            Ok(()) => format!("替换配置失败，已恢复旧配置: {e}"),
+            Err(re) => format!("替换配置失败且恢复旧配置失败: {e}; {re}"),
+        });
+    }
+    // 替换已经成功；备份清理失败不应把一次成功的 PATCH 伪报成失败，下一次保存会清理。
+    let _ = std::fs::remove_file(&backup);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -203,6 +295,17 @@ mod tests {
         assert_eq!(saved.default_model, "gpt-5.6-terra");
         assert_eq!(load().default_engine, ENGINE_CODEX);
 
+        // Windows 上目标已存在时也必须能连续覆盖保存。
+        let overwritten = patch(CodexConfigPatch {
+            default_model: Some("gpt-5.6-luna".into()),
+            computer_use: Some(false),
+            ..Default::default()
+        })
+        .expect("第二次 PATCH 应覆盖成功");
+        assert_eq!(overwritten.default_model, "gpt-5.6-luna");
+        assert!(!overwritten.computer_use);
+        assert_eq!(load().default_model, "gpt-5.6-luna");
+
         let err = patch(CodexConfigPatch {
             default_engine: Some("gemini".into()),
             ..Default::default()
@@ -211,5 +314,14 @@ mod tests {
         assert!(err.contains("gemini"), "{err}");
         // 拒绝的 PATCH 不得改动已落盘配置。
         assert_eq!(load().default_engine, ENGINE_CODEX);
+    }
+
+    #[test]
+    fn auth_source_auto_follows_login() {
+        assert_eq!(decide_auth_source(AUTH_AUTO, true), AUTH_CLOUD);
+        assert_eq!(decide_auth_source(AUTH_AUTO, false), AUTH_CHATGPT);
+        assert_eq!(decide_auth_source(AUTH_CLOUD, false), AUTH_CLOUD);
+        assert_eq!(decide_auth_source(AUTH_CHATGPT, true), AUTH_CHATGPT);
+        assert_eq!(decide_auth_source("bogus", true), AUTH_CLOUD);
     }
 }

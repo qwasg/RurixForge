@@ -7,11 +7,23 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
-use crate::events::{new_id, EventDraft};
+use crate::events::{new_id, AgentEventContext};
 use crate::AppState;
 
 const DEFAULT_MODE: &str = "bypass";
 const APPROVAL_TIMEOUT_SECS: u64 = 60;
+
+pub fn is_known_mode(mode: &str) -> bool {
+    matches!(mode, "plan" | "auto" | "bypass")
+}
+
+pub fn mode_options() -> Value {
+    json!([
+        {"id":"plan", "label":"只读", "description":"允许查询，禁止写入项目文件、场景和资产"},
+        {"id":"auto", "label":"写入需批准", "description":"读取自动执行，写入工具调用前请求批准"},
+        {"id":"bypass", "label":"自动执行", "description":"读写工具自动执行，仍遵循工具和工作区边界"},
+    ])
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionRule {
@@ -19,12 +31,18 @@ pub struct PermissionRule {
     pub pattern: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SessionPerm {
     #[serde(default = "default_mode")]
     mode: String,
     #[serde(default)]
     rules: Vec<PermissionRule>,
+}
+
+impl Default for SessionPerm {
+    fn default() -> Self {
+        Self { mode: default_mode(), rules: Vec::new() }
+    }
 }
 
 fn default_mode() -> String {
@@ -42,10 +60,18 @@ enum Pending {
     Decision(oneshot::Sender<Value>),
 }
 
+struct PendingEntry {
+    run_id: String,
+    /// Grouping run can cancel the whole team; a member run cancels only itself.
+    display_run_id: Option<String>,
+    upstream_request_id: Option<String>,
+    sender: Pending,
+}
+
 pub struct PermissionService {
     path: PathBuf,
     inner: Mutex<HashMap<String, SessionPerm>>,
-    pending: Mutex<HashMap<String, Pending>>,
+    pending: Mutex<HashMap<String, PendingEntry>>,
 }
 
 impl PermissionService {
@@ -58,17 +84,15 @@ impl PermissionService {
         }
     }
 
-    fn persist_locked(&self, inner: &HashMap<String, SessionPerm>) {
+    fn persist_locked(&self, inner: &HashMap<String, SessionPerm>) -> Result<(), String> {
         let doc = json!({ "sessions": inner });
-        if let Ok(text) = serde_json::to_string_pretty(&doc) {
-            if let Some(parent) = self.path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let tmp = self.path.with_extension("json.tmp");
-            if std::fs::write(&tmp, text).is_ok() {
-                let _ = std::fs::rename(&tmp, &self.path);
-            }
+        let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("权限目录创建失败: {e}"))?;
         }
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, text).map_err(|e| format!("权限写入失败: {e}"))?;
+        replace_persisted_file(&tmp, &self.path).map_err(|e| format!("权限保存失败: {e}"))
     }
 
     pub fn mode(&self, session_id: &str) -> String {
@@ -81,20 +105,22 @@ impl PermissionService {
     }
 
     pub fn set_mode(&self, session_id: &str, mode: &str) -> Result<String, String> {
-        if !matches!(mode, "auto" | "plan" | "bypass") {
+        if !is_known_mode(mode) {
             return Err("invalid permission mode".into());
         }
         let mut inner = self.inner.lock().unwrap();
-        let entry = inner.entry(session_id.to_string()).or_default();
+        let mut next = inner.clone();
+        let entry = next.entry(session_id.to_string()).or_default();
         entry.mode = mode.to_string();
-        self.persist_locked(&inner);
+        self.persist_locked(&next)?;
+        *inner = next;
         Ok(mode.to_string())
     }
 
     pub fn snapshot(&self, session_id: &str) -> Value {
         let inner = self.inner.lock().unwrap();
         let p = inner.get(session_id).cloned().unwrap_or_default();
-        json!({ "mode": p.mode, "rules": p.rules })
+        json!({ "mode": p.mode, "rules": p.rules, "options": mode_options() })
     }
 
     /// 写工具在 plan 下拒绝；auto 下走审批。返回 Ok(true) 放行 / Ok(false) 拒绝。
@@ -106,7 +132,8 @@ impl PermissionService {
         tool: &str,
         is_write: bool,
     ) -> Result<bool, String> {
-        self.authorize_with(bus, session_id, run_id, tool, is_write, json!({})).await
+        self.authorize_with(bus, session_id, run_id, tool, is_write, json!({}))
+            .await
     }
 
     /// 带目标项目 / 参数摘要的审批(素材创作与普通聊天共用)。
@@ -119,6 +146,77 @@ impl PermissionService {
         is_write: bool,
         extra: Value,
     ) -> Result<bool, String> {
+        self.authorize_with_timeout(
+            bus,
+            session_id,
+            run_id,
+            tool,
+            is_write,
+            extra,
+            std::time::Duration::from_secs(APPROVAL_TIMEOUT_SECS),
+        )
+        .await
+    }
+
+    /// Host-attributed approval. The display run retains legacy timeline grouping;
+    /// cancellation is also indexed by the participant's independently owned run.
+    pub async fn authorize_for_agent(
+        &self,
+        bus: &crate::events::EventBus,
+        session_id: &str,
+        run_id: &str,
+        tool: &str,
+        is_write: bool,
+        extra: Value,
+        context: &AgentEventContext,
+    ) -> Result<bool, String> {
+        self.authorize_in_context_with_timeout(
+            bus,
+            session_id,
+            run_id,
+            tool,
+            is_write,
+            extra,
+            context,
+            std::time::Duration::from_secs(APPROVAL_TIMEOUT_SECS),
+        )
+        .await
+    }
+
+    async fn authorize_with_timeout(
+        &self,
+        bus: &crate::events::EventBus,
+        session_id: &str,
+        run_id: &str,
+        tool: &str,
+        is_write: bool,
+        extra: Value,
+        approval_timeout: std::time::Duration,
+    ) -> Result<bool, String> {
+        self.authorize_in_context_with_timeout(
+            bus,
+            session_id,
+            run_id,
+            tool,
+            is_write,
+            extra,
+            &AgentEventContext::default(),
+            approval_timeout,
+        )
+        .await
+    }
+
+    async fn authorize_in_context_with_timeout(
+        &self,
+        bus: &crate::events::EventBus,
+        session_id: &str,
+        run_id: &str,
+        tool: &str,
+        is_write: bool,
+        extra: Value,
+        context: &AgentEventContext,
+        approval_timeout: std::time::Duration,
+    ) -> Result<bool, String> {
         let mode = self.mode(session_id);
         if mode == "plan" && is_write {
             return Ok(false);
@@ -128,40 +226,68 @@ impl PermissionService {
         }
         let req_id = new_id("perm");
         let (tx, rx) = oneshot::channel();
-        self.pending
-            .lock()
-            .unwrap()
-            .insert(req_id.clone(), Pending::Bool(tx));
-        let mut payload = json!({
-            "id": req_id,
-            "runId": run_id,
-            "tool": tool,
-        });
-        if let Some(obj) = extra.as_object() {
-            if let Some(p) = payload.as_object_mut() {
-                for (k, v) in obj {
-                    p.insert(k.clone(), v.clone());
-                }
-            }
-        }
-        bus.emit(
-            EventDraft::new(session_id, "permission.requested", "agent").payload(payload),
+        self.pending.lock().unwrap().insert(
+            req_id.clone(),
+            PendingEntry {
+                run_id: context
+                    .agent_run_id
+                    .as_deref()
+                    .unwrap_or(run_id)
+                    .to_string(),
+                display_run_id: context
+                    .agent_run_id
+                    .as_ref()
+                    .filter(|id| id.as_str() != run_id)
+                    .map(|_| run_id.to_string()),
+                upstream_request_id: None,
+                sender: Pending::Bool(tx),
+            },
         );
-        let ok = tokio::time::timeout(
-            std::time::Duration::from_secs(APPROVAL_TIMEOUT_SECS),
-            rx,
-        )
-        .await
-        .map_err(|_| "PERMISSION_TIMEOUT".to_string())?
-        .unwrap_or(false);
-        bus.emit(
-            EventDraft::new(session_id, "permission.resolved", "agent").payload(json!({
+        let payload = approval_payload(
+            json!({
+                "id": req_id,
+                "runId": run_id,
+                "tool": tool,
+            }),
+            &extra,
+            context,
+        );
+        bus.emit(context.event(session_id, "permission.requested", "agent", payload));
+        let ok = match tokio::time::timeout(approval_timeout, rx).await {
+            Ok(result) => result.unwrap_or(false),
+            Err(_) => {
+                // `timeout` drops the receiver. Remove its sender as well; otherwise a
+                // later click removes a dead entry and incorrectly reports ok:true,
+                // while no waiter remains to emit permission.resolved for the UI.
+                self.pending.lock().unwrap().remove(&req_id);
+                bus.emit(context.event(
+                    session_id,
+                    "permission.resolved",
+                    "agent",
+                    json!({
+                        "id": req_id,
+                        "runId": run_id,
+                        "tool": tool,
+                        "allowed": false,
+                        "decision": "decline",
+                        "reason": "approval_timeout",
+                        "error": "PERMISSION_TIMEOUT",
+                    }),
+                ));
+                return Err("PERMISSION_TIMEOUT".to_string());
+            }
+        };
+        bus.emit(context.event(
+            session_id,
+            "permission.resolved",
+            "agent",
+            json!({
                 "id": req_id,
                 "runId": run_id,
                 "tool": tool,
                 "allowed": ok,
-            })),
-        );
+            }),
+        ));
         Ok(ok)
     }
 
@@ -178,37 +304,75 @@ impl PermissionService {
         run_id: &str,
         kind: &str,
         extra: Value,
+        upstream_request_id: &Value,
+    ) -> Result<Value, String> {
+        self.request_decision_for_agent(
+            bus,
+            session_id,
+            run_id,
+            kind,
+            extra,
+            upstream_request_id,
+            &AgentEventContext::default(),
+        )
+        .await
+    }
+
+    pub async fn request_decision_for_agent(
+        &self,
+        bus: &crate::events::EventBus,
+        session_id: &str,
+        run_id: &str,
+        kind: &str,
+        extra: Value,
+        upstream_request_id: &Value,
+        context: &AgentEventContext,
     ) -> Result<Value, String> {
         let req_id = new_id("perm");
         let (tx, rx) = oneshot::channel();
-        self.pending
-            .lock()
-            .unwrap()
-            .insert(req_id.clone(), Pending::Decision(tx));
-        let mut payload = json!({
-            "id": req_id,
-            "runId": run_id,
-            "kind": kind,
-            "engine": "codex",
-        });
-        if let (Some(obj), Some(p)) = (extra.as_object(), payload.as_object_mut()) {
-            for (k, v) in obj {
-                p.insert(k.clone(), v.clone());
-            }
-        }
-        bus.emit(EventDraft::new(session_id, "permission.requested", "agent").payload(payload));
+        self.pending.lock().unwrap().insert(
+            req_id.clone(),
+            PendingEntry {
+                run_id: context
+                    .agent_run_id
+                    .as_deref()
+                    .unwrap_or(run_id)
+                    .to_string(),
+                display_run_id: context
+                    .agent_run_id
+                    .as_ref()
+                    .filter(|id| id.as_str() != run_id)
+                    .map(|_| run_id.to_string()),
+                upstream_request_id: Some(request_id_key(upstream_request_id)),
+                sender: Pending::Decision(tx),
+            },
+        );
+        let payload = approval_payload(
+            json!({
+                "id": req_id,
+                "runId": run_id,
+                "kind": kind,
+                "engine": "codex",
+            }),
+            &extra,
+            context,
+        );
+        bus.emit(context.event(session_id, "permission.requested", "agent", payload));
         let decision = rx
             .await
             .map_err(|_| "PERMISSION_ABANDONED: 审批通道已关闭".to_string())?;
-        bus.emit(
-            EventDraft::new(session_id, "permission.resolved", "agent").payload(json!({
+        bus.emit(context.event(
+            session_id,
+            "permission.resolved",
+            "agent",
+            json!({
                 "id": req_id,
                 "runId": run_id,
                 "kind": kind,
                 "decision": decision.get("decision").cloned().unwrap_or(Value::Null),
                 "allowed": is_allow(&decision),
-            })),
-        );
+            }),
+        ));
         Ok(decision)
     }
 
@@ -222,18 +386,122 @@ impl PermissionService {
     /// 带决定原文的回话(Codex 的 acceptForSession / 答卷经此路)。
     pub fn resolve_with(&self, id: &str, decision: Value) -> bool {
         match self.pending.lock().unwrap().remove(id) {
-            Some(Pending::Decision(tx)) => {
-                let _ = tx.send(decision);
-                true
-            }
+            Some(PendingEntry {
+                sender: Pending::Decision(tx),
+                ..
+            }) => tx.send(decision).is_ok(),
             // 本地引擎那条腿只认布尔:任何非 decline 的决定都当放行。
-            Some(Pending::Bool(tx)) => {
-                let _ = tx.send(is_allow(&decision));
-                true
-            }
+            Some(PendingEntry {
+                sender: Pending::Bool(tx),
+                ..
+            }) => tx.send(is_allow(&decision)).is_ok(),
             None => false,
         }
     }
+
+    /// run 已结束/中止时统一拒绝仍悬挂的审批，释放 Codex server-request 回话任务。
+    /// request_decision/authorize_with 收到值后会走原有路径发 permission.resolved。
+    pub fn abandon_run(&self, run_id: &str) -> usize {
+        let mut pending = self.pending.lock().unwrap();
+        let ids = pending
+            .iter()
+            .filter_map(|(id, entry)| {
+                (entry.run_id == run_id || entry.display_run_id.as_deref() == Some(run_id))
+                    .then(|| id.clone())
+            })
+            .collect::<Vec<_>>();
+        for id in &ids {
+            let Some(entry) = pending.remove(id) else {
+                continue;
+            };
+            match entry.sender {
+                Pending::Bool(tx) => {
+                    let _ = tx.send(false);
+                }
+                Pending::Decision(tx) => {
+                    let _ = tx.send(json!({ "decision": "decline", "abandoned": true }));
+                }
+            }
+        }
+        ids.len()
+    }
+
+    /// app-server can resolve an approval from another client. Release the matching
+    /// Forge waiter immediately so the inline card does not remain actionable until
+    /// the whole turn ends.
+    pub fn abandon_upstream(&self, upstream_request_id: &Value) -> usize {
+        let key = request_id_key(upstream_request_id);
+        let mut pending = self.pending.lock().unwrap();
+        let ids = pending
+            .iter()
+            .filter_map(|(id, entry)| {
+                (entry.upstream_request_id.as_deref() == Some(key.as_str())).then(|| id.clone())
+            })
+            .collect::<Vec<_>>();
+        for id in &ids {
+            let Some(entry) = pending.remove(id) else {
+                continue;
+            };
+            match entry.sender {
+                Pending::Bool(tx) => {
+                    let _ = tx.send(false);
+                }
+                Pending::Decision(tx) => {
+                    let _ = tx.send(json!({ "decision": "decline", "abandoned": true }));
+                }
+            }
+        }
+        ids.len()
+    }
+}
+
+fn request_id_key(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
+}
+
+pub(crate) fn replace_persisted_file(
+    tmp: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<()> {
+    if !destination.exists() {
+        return std::fs::rename(tmp, destination);
+    }
+    let backup = destination.with_extension("json.bak");
+    if backup.exists() {
+        std::fs::remove_file(&backup)?;
+    }
+    std::fs::rename(destination, &backup)?;
+    if let Err(error) = std::fs::rename(tmp, destination) {
+        let _ = std::fs::rename(&backup, destination);
+        return Err(error);
+    }
+    let _ = std::fs::remove_file(backup);
+    Ok(())
+}
+
+/// Extra UI details must not replace host identities or the approval's routing key.
+fn approval_payload(mut base: Value, extra: &Value, context: &AgentEventContext) -> Value {
+    const RESERVED: &[&str] = &[
+        "id",
+        "runId",
+        "agentId",
+        "agentRunId",
+        "agentRole",
+        "agentName",
+        "parentAgentId",
+        "parentToolCallId",
+        "teamId",
+        "taskId",
+    ];
+    if let (Some(fields), Some(target)) = (extra.as_object(), base.as_object_mut()) {
+        for (key, value) in fields {
+            if !RESERVED.contains(&key.as_str()) && !target.contains_key(key) {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    context.apply(&mut base);
+    base
 }
 
 /// 决定是否为放行。缺省(没写 decision)按放行——这条路径只由「点了允许」的按钮走到。
@@ -248,6 +516,140 @@ fn is_allow(decision: &Value) -> bool {
 mod tests {
     use super::*;
 
+    fn member_context(id: &str) -> AgentEventContext {
+        AgentEventContext {
+            agent_id: Some(id.into()),
+            agent_run_id: Some(format!("run-{id}")),
+            parent_agent_id: Some("leader".into()),
+            parent_tool_call_id: Some(format!("card-{id}")),
+            team_id: Some("team".into()),
+            task_id: Some(format!("task-{id}")),
+            agent_name: Some(format!("Member {id}")),
+        }
+    }
+
+    #[tokio::test]
+    async fn member_cancel_isolated_and_parent_cancel_releases_remaining_approvals() {
+        let dir = std::env::temp_dir().join(new_id("forge-perm-member-cancel"));
+        let bus = crate::events::EventBus::new(dir.join("events"), 32);
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        svc.set_mode("session", "auto").unwrap();
+        let a = member_context("a");
+        let b = member_context("b");
+        let approve_a = svc.authorize_for_agent(
+            &bus,
+            "session",
+            "leader-run",
+            "write_file",
+            true,
+            json!({}),
+            &a,
+        );
+        let approve_b = svc.authorize_for_agent(
+            &bus,
+            "session",
+            "leader-run",
+            "write_file",
+            true,
+            json!({}),
+            &b,
+        );
+        let cancel = async {
+            while svc.pending.lock().unwrap().len() < 2 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(svc.abandon_run("run-a"), 1);
+            assert_eq!(svc.pending.lock().unwrap().len(), 1);
+            assert_eq!(svc.abandon_run("leader-run"), 1);
+        };
+        let (result_a, result_b, ()) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                tokio::join!(approve_a, approve_b, cancel)
+            })
+            .await
+            .unwrap();
+        assert_eq!(result_a, Ok(false));
+        assert_eq!(result_b, Ok(false));
+        let events = bus.persisted("session");
+        assert_eq!(events.len(), 4);
+        for event in events {
+            let id = event.payload["agentId"].as_str().unwrap();
+            assert!(id == "a" || id == "b");
+            assert_eq!(event.payload["runId"], "leader-run");
+            assert_eq!(event.payload["agentRunId"], format!("run-{id}"));
+            assert_eq!(event.payload["parentAgentId"], "leader");
+            assert_eq!(event.payload["teamId"], "team");
+            assert_eq!(event.payload["taskId"], format!("task-{id}"));
+            assert_eq!(event.source.get("actor").map(String::as_str), Some(id));
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn timed_out_member_approval_preserves_attribution_and_rejects_forged_extra_identity() {
+        let dir = std::env::temp_dir().join(new_id("forge-perm-member-timeout"));
+        let bus = crate::events::EventBus::new(dir.join("events"), 16);
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        svc.set_mode("session", "auto").unwrap();
+        let context = member_context("a");
+        let result = svc.authorize_in_context_with_timeout(
+            &bus, "session", "leader-run", "write_file", true,
+            json!({"id":"forged-id","runId":"forged-run","agentId":"leader","agentRunId":"forged-run","taskId":"forged-task","tool":"forged-tool","command":"echo ok"}),
+            &context, std::time::Duration::ZERO,
+        ).await;
+        assert_eq!(result, Err("PERMISSION_TIMEOUT".into()));
+        let events = bus.persisted("session");
+        assert_eq!(events.len(), 2);
+        for event in &events {
+            assert_eq!(event.payload["agentId"], "a");
+            assert_eq!(event.payload["agentRunId"], "run-a");
+            assert_eq!(event.payload["taskId"], "task-a");
+            assert_eq!(event.payload["runId"], "leader-run");
+            assert_eq!(event.payload["tool"], "write_file");
+            assert_ne!(event.payload["id"], "forged-id");
+        }
+        assert_eq!(events[0].payload["command"], "echo ok");
+        assert_eq!(events[0].payload["id"], events[1].payload["id"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn codex_member_decision_carries_context_on_both_events() {
+        let dir = std::env::temp_dir().join(new_id("forge-perm-codex-attribution"));
+        let bus = crate::events::EventBus::new(dir.join("events"), 16);
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        let context = member_context("a");
+        let upstream_request = Value::String("upstream-request".into());
+        let approve = svc.request_decision_for_agent(
+            &bus,
+            "session",
+            "leader-run",
+            "command",
+            json!({"command":"echo ok"}),
+            &upstream_request,
+            &context,
+        );
+        let cancel = async {
+            while svc.pending.lock().unwrap().is_empty() {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(svc.abandon_run("run-a"), 1);
+        };
+        let (decision, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            tokio::join!(approve, cancel)
+        })
+        .await
+        .unwrap();
+        assert_eq!(decision.unwrap()["decision"], "decline");
+        for event in bus.persisted("session") {
+            assert_eq!(event.payload["agentId"], "a");
+            assert_eq!(event.payload["agentRunId"], "run-a");
+            assert_eq!(event.payload["parentToolCallId"], "card-a");
+            assert_eq!(event.payload["runId"], "leader-run");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn mode_roundtrip_and_reject_invalid() {
         let dir = std::env::temp_dir().join(format!(
@@ -261,10 +663,27 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let svc = PermissionService::load(dir.join("permissions.json"));
         assert_eq!(svc.mode("s1"), "bypass");
+        assert_eq!(svc.snapshot("s1")["mode"], "bypass");
+        assert_eq!(svc.snapshot("s1")["options"], mode_options());
         assert_eq!(svc.set_mode("s1", "auto").unwrap(), "auto");
         assert_eq!(svc.mode("s1"), "auto");
+        assert_eq!(svc.set_mode("s1", "plan").unwrap(), "plan");
+        let reloaded = PermissionService::load(dir.join("permissions.json"));
+        assert_eq!(reloaded.mode("s1"), "plan", "第二次覆盖写也必须持久化");
         assert!(svc.set_mode("s1", "nope").is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_permission_save_keeps_the_previous_runtime_mode() {
+        let dir = std::env::temp_dir().join(new_id("permission-save-failure"));
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        svc.set_mode("s", "plan").unwrap();
+        std::fs::create_dir_all(dir.join("permissions.json.tmp")).unwrap();
+        assert!(svc.set_mode("s", "bypass").is_err());
+        assert_eq!(svc.mode("s"), "plan");
+        assert_eq!(PermissionService::load(dir.join("permissions.json")).mode("s"), "plan");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[tokio::test]
@@ -286,12 +705,116 @@ mod tests {
             .await
             .unwrap();
         assert!(ok);
-        assert!(
-            !bus.persisted("s1")
-                .iter()
-                .any(|e| e.event_type == "permission.requested")
-        );
+        assert!(!bus
+            .persisted("s1")
+            .iter()
+            .any(|e| e.event_type == "permission.requested"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn upstream_resolution_releases_pending_codex_decision() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-perm-abandon-{}-{}",
+            std::process::id(),
+            gend::timeutil::unix_millis()
+        ));
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        let (tx, rx) = oneshot::channel();
+        svc.pending.lock().unwrap().insert(
+            "perm_1".into(),
+            PendingEntry {
+                run_id: "run_1".into(),
+                display_run_id: None,
+                upstream_request_id: Some(request_id_key(&json!("up_1"))),
+                sender: Pending::Decision(tx),
+            },
+        );
+        assert_eq!(svc.abandon_upstream(&json!("up_1")), 1);
+        let decision = rx.await.unwrap();
+        assert_eq!(decision["decision"], "decline");
+        assert_eq!(decision["abandoned"], true);
+        assert_eq!(svc.abandon_run("run_1"), 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn abandon_run_immediately_rejects_local_and_codex_waiters() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-perm-cancel-{}-{}",
+            std::process::id(),
+            gend::timeutil::unix_millis()
+        ));
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        let (bool_tx, bool_rx) = oneshot::channel();
+        let (decision_tx, decision_rx) = oneshot::channel();
+        {
+            let mut pending = svc.pending.lock().unwrap();
+            pending.insert(
+                "perm_bool".into(),
+                PendingEntry {
+                    run_id: "run_1".into(),
+                    display_run_id: None,
+                    upstream_request_id: None,
+                    sender: Pending::Bool(bool_tx),
+                },
+            );
+            pending.insert(
+                "perm_decision".into(),
+                PendingEntry {
+                    run_id: "run_1".into(),
+                    display_run_id: None,
+                    upstream_request_id: Some(request_id_key(&json!("up_1"))),
+                    sender: Pending::Decision(decision_tx),
+                },
+            );
+        }
+
+        assert_eq!(svc.abandon_run("run_1"), 2);
+        assert!(!bool_rx.await.unwrap());
+        let decision = decision_rx.await.unwrap();
+        assert_eq!(decision["decision"], "decline");
+        assert_eq!(decision["abandoned"], true);
+        assert!(svc.pending.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolution_reports_false_when_waiter_is_already_gone() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-perm-dead-waiter-{}-{}",
+            std::process::id(),
+            gend::timeutil::unix_millis()
+        ));
+        let svc = PermissionService::load(dir.join("permissions.json"));
+
+        let (bool_tx, bool_rx) = oneshot::channel();
+        drop(bool_rx);
+        svc.pending.lock().unwrap().insert(
+            "perm_bool".into(),
+            PendingEntry {
+                run_id: "run_1".into(),
+                display_run_id: None,
+                upstream_request_id: None,
+                sender: Pending::Bool(bool_tx),
+            },
+        );
+        assert!(!svc.resolve("perm_bool", true));
+
+        let (decision_tx, decision_rx) = oneshot::channel();
+        drop(decision_rx);
+        svc.pending.lock().unwrap().insert(
+            "perm_decision".into(),
+            PendingEntry {
+                run_id: "run_1".into(),
+                display_run_id: None,
+                upstream_request_id: Some(request_id_key(&json!("up_1"))),
+                sender: Pending::Decision(decision_tx),
+            },
+        );
+        assert!(!svc.resolve_with("perm_decision", json!({ "decision": "accept" })));
+        assert!(svc.pending.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]
@@ -341,6 +864,48 @@ mod tests {
         assert!(!allowed);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[tokio::test]
+    async fn approval_timeout_clears_pending_and_emits_decline_resolution() {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-perm-timeout-{}-{}",
+            std::process::id(),
+            gend::timeutil::unix_millis()
+        ));
+        let bus = crate::events::EventBus::new(dir.join("events"), 16);
+        let svc = PermissionService::load(dir.join("permissions.json"));
+        svc.set_mode("s1", "auto").unwrap();
+
+        let result = svc
+            .authorize_with_timeout(
+                &bus,
+                "s1",
+                "run_1",
+                "write_file",
+                true,
+                json!({}),
+                std::time::Duration::ZERO,
+            )
+            .await;
+
+        assert_eq!(result, Err("PERMISSION_TIMEOUT".to_string()));
+        assert!(svc.pending.lock().unwrap().is_empty());
+        let events = bus.persisted("s1");
+        let requested = events
+            .iter()
+            .find(|event| event.event_type == "permission.requested")
+            .expect("须先发出审批请求");
+        let resolved = events
+            .iter()
+            .find(|event| event.event_type == "permission.resolved")
+            .expect("超时须收束审批卡");
+        assert_eq!(resolved.payload["id"], requested.payload["id"]);
+        assert_eq!(resolved.payload["allowed"], false);
+        assert_eq!(resolved.payload["decision"], "decline");
+        assert_eq!(resolved.payload["reason"], "approval_timeout");
+        assert_eq!(resolved.payload["error"], "PERMISSION_TIMEOUT");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 fn read_file(path: &std::path::Path) -> HashMap<String, SessionPerm> {
@@ -388,11 +953,17 @@ pub async fn set_permission(
         )
             .into_response();
     }
-    match state.permissions.set_mode(&id, &req.mode) {
-        Ok(mode) => axum::Json(json!({ "mode": mode })).into_response(),
-        Err(m) => (
+    if !is_known_mode(&req.mode) {
+        return (
             axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(json!({ "error": { "code": "INVALID_INPUT", "message": m } })),
+            axum::Json(json!({ "error": { "code": "INVALID_INPUT", "message": "未知执行权限" } })),
+        ).into_response();
+    }
+    match state.permissions.set_mode(&id, &req.mode) {
+        Ok(_) => axum::Json(state.permissions.snapshot(&id)).into_response(),
+        Err(m) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({ "error": { "code": "PERMISSION_SAVE_FAILED", "message": m } })),
         )
             .into_response(),
     }

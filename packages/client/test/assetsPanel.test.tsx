@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AssetsPanel from '@/components/editor/AssetsPanel';
 import { useAssetStore } from '@/lib/assetStore';
 import { useGenStore } from '@/lib/genStore';
+import { useOverlayStore } from '@/lib/overlayStore';
+import { useSettingsStore } from '@/lib/settingsStore';
 import { mockForgeBackend } from './forgeMock';
 
 /**
@@ -183,7 +185,14 @@ describe('<AssetsPanel /> F5 生成链', () => {
     expect(document.querySelector('[data-gen-error]')!.textContent).toContain(
       'GEN_BACKEND_NOT_CONFIGURED',
     );
-    expect(document.querySelector('[data-gen-error]')!.textContent).toContain('Generation');
+    // 指向真实存在的 设置·模型 页(生成后端在该页),并给直达钮
+    expect(document.querySelector('[data-gen-error]')!.textContent).toContain('设置 → 模型');
+    expect(document.querySelector('[data-gen-error]')!.textContent).not.toContain('Generation');
     expect((document.querySelector('[data-gen-submit]') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('gen-open-settings'));
+    expect(useSettingsStore.getState().page).toBe('generation');
+    expect(useOverlayStore.getState().settings).toBe(true);
+    expect(useGenStore.getState().dialogOpen).toBe(false);
+    useOverlayStore.getState().close('settings');
   });
 });

@@ -169,6 +169,17 @@ fn import_one(
         crate::sprite::validate_rxsprite(&v)?;
         meta.build_state = Some("current".into());
         meta.save(&meta_path)?;
+    } else if atype == AssetType::ShaderGraph {
+        let document:Value=serde_json::from_slice(&std::fs::read(dest_abs)?)
+            .map_err(|e|AssetError::new("SHADER_PARSE",e.to_string()))?;
+        let result=crate::shader::compile_document(&document)?;
+        meta.build_state=Some(if result["ok"]==true{"current"}else{"failed"}.into());meta.save(&meta_path)?;
+        if result["ok"]!=true{return Err(AssetError::new("SHADER_INVALID",result["diagnostics"].to_string()));}
+    } else if atype == AssetType::Font {
+        // D-045:字体导入即校验(解析不了的字体不登记,免得 Text 渲染时才报)。
+        crate::font::probe(dest_abs)?;
+        meta.build_state = Some("current".into());
+        meta.save(&meta_path)?;
     } else {
         meta.build_state = Some("current".into());
         meta.save(&meta_path)?;

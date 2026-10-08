@@ -19,6 +19,7 @@ use std::sync::{Mutex, OnceLock};
 /// 单网格三角上限(262 144 tri → 786 432 顶点 × 24B ≈ 18.9 MiB VB)。
 pub const MAX_MESH_TRIANGLES: usize = 1 << 18;
 /// 单会话不同网格类上限(res 资源数有界;超出回退 cube)。
+#[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
 pub const MAX_MESH_CLASSES: usize = 8;
 
 /// 顶点缓冲(交错 pos3+normal3 f32 LE,stride 24;三角形炸开 + 面法线)。
@@ -168,7 +169,7 @@ fn load_mesh_fresh(project_root: &Path, mesh_ref: &str) -> Result<MeshGpu, Strin
 pub fn load_mesh_cached(project_root: &Path, mesh_ref: &str) -> Result<MeshGpu, String> {
     static CACHE: OnceLock<Mutex<HashMap<String, Result<MeshGpu, String>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let key = format!("{}\u{0}{mesh_ref}", project_root.display());
+    let key = format!("{}\u{0}{mesh_ref}\u{0}{}", project_root.display(), crate::viewport::ASSET_GENERATION.load(std::sync::atomic::Ordering::Relaxed));
     let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(v) = guard.get(&key) {
         return v.clone();
@@ -183,6 +184,7 @@ pub fn load_mesh_cached(project_root: &Path, mesh_ref: &str) -> Result<MeshGpu, 
 
 /// `'static` 提升缓存(会话描述块 `ResourceDesc::data` 须 `'static`;每个不同引用
 /// 进程内至多一次 `Box::leak`,上界 = 进程内实际解析成功的不同 mesh 引用数)。
+#[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
 pub fn load_mesh_static_cached(
     project_root: &Path,
     mesh_ref: &str,
@@ -190,7 +192,7 @@ pub fn load_mesh_static_cached(
     static CACHE: OnceLock<Mutex<HashMap<String, Result<&'static MeshGpu, String>>>> =
         OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let key = format!("{}\u{0}{mesh_ref}", project_root.display());
+    let key = format!("{}\u{0}{mesh_ref}\u{0}{}", project_root.display(), crate::viewport::ASSET_GENERATION.load(std::sync::atomic::Ordering::Relaxed));
     let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(v) = guard.get(&key) {
         return v.clone();

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ModelPicker from '@/components/chat/ModelPicker';
 import { useChatStore, type SnapshotModel } from '@/lib/chatStore';
@@ -75,7 +75,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 /** 开主菜单并进到指定子菜单。 */
 function openSub(row: 'context' | 'effort' | 'model') {
@@ -140,9 +143,80 @@ describe('<ModelPicker /> chip', () => {
     render(<ModelPicker />);
     expect(screen.queryByTestId('composer-model-suffix')).not.toBeInTheDocument();
   });
+
+  it('Codex 冷启动会先预热动态模型，未显式选择时如实显示自动', async () => {
+    useChatStore.setState({
+      models: MODELS,
+      defaultModelId: 'openai-compat',
+      selectedModelId: null,
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.startsWith('/api/forge/codex/models')
+        ? { ok: true, models: [{ id: 'gpt-5.6-sol', displayName: 'GPT-5.6-Sol' }] }
+        : url === '/api/forge/design-snapshot'
+          ? {
+              models: {
+                models: [
+                  ...MODELS,
+                  {
+                    id: 'codex:gpt-5.6-sol',
+                    label: 'GPT-5.6-Sol',
+                    provider: 'codex',
+                    availability: 'available',
+                  },
+                ],
+                defaultModelId: 'openai-compat',
+              },
+            }
+          : null;
+      if (body === null) throw new Error(`未 mock: ${url}`);
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }));
+
+    render(<ModelPicker provider="codex" />);
+    expect(screen.getByTestId('composer-model')).toHaveTextContent('自动');
+    await waitFor(() => {
+      expect(useChatStore.getState().models.some((model) => model.provider === 'codex')).toBe(true);
+    });
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith('/api/forge/codex/models'))).toBe(true);
+
+    fireEvent.click(screen.getByTestId('composer-model'));
+    fireEvent.click(screen.getByTestId('spec-row-model'));
+    expect(screen.getByTestId('model-item-auto')).toHaveTextContent('使用 Codex 默认模型');
+    expect(screen.getByTestId('model-item-auto')).toHaveTextContent('自动');
+    expect(screen.getByTestId('model-item-codex:gpt-5.6-sol')).toBeInTheDocument();
+  });
+
+  it('运行期禁用模型选择，不打开菜单', () => {
+    render(<ModelPicker disabled />);
+    const trigger = screen.getByTestId('composer-model');
+    expect(trigger).toBeDisabled();
+    fireEvent.click(trigger);
+    expect(screen.queryByTestId('composer-model-menu')).not.toBeInTheDocument();
+  });
 });
 
 describe('<ModelPicker /> 主菜单四行', () => {
+  it('始终思考的云模型显示开启，保留强度选择，不发送关闭请求', () => {
+    const setThinking = vi.fn();
+    const model: SnapshotModel = {
+      ...MODELS[2], id: 'cloud:claude-opus-5-5', label: 'Claude Opus 5.5',
+      provider: 'cloud', thinkingMode: 'adaptive', thinkingAlwaysOn: true,
+    };
+    useChatStore.setState({ models: [model], selectedModelId: model.id, thinkingEnabled: false, setThinking });
+    render(<ModelPicker />);
+    fireEvent.click(screen.getByTestId('composer-model'));
+    expect(screen.getByTestId('spec-row-thinking-value')).toHaveTextContent('始终开启');
+    expect(screen.getByTestId('spec-thinking-switch')).toHaveAttribute('data-on');
+    expect(screen.getByTestId('spec-row-thinking')).toBeDisabled();
+    expect(screen.getByTestId('spec-row-effort')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('spec-row-thinking'));
+    expect(setThinking).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('spec-row-effort'));
+    expect(screen.getByTestId('spec-submenu-effort')).toBeInTheDocument();
+  });
+
   it('四行齐备,前三行显示当前值,Model 行显示模型名', () => {
     useChatStore.setState({ thinkingEnabled: true, contextOptionId: '300k' });
     render(<ModelPicker />);

@@ -206,7 +206,8 @@ describe('<Composer /> 语音输入钮', () => {
     expect(toast.title).toContain('Chrome');
   });
 
-  it('发送前自动停听', () => {
+  it('发送前自动停听', async () => {
+    useChatStore.setState({ sendMessage: vi.fn().mockResolvedValue(true) });
     render(<Composer />);
     fireEvent.click(screen.getByTestId('composer-voice'));
     const rec = latest();
@@ -214,6 +215,7 @@ describe('<Composer /> 语音输入钮', () => {
     fireEvent.click(screen.getByTestId('composer-send'));
     expect(rec.stopped).toBe(1);
     expect(screen.getByTestId('composer-voice')).toHaveAttribute('aria-pressed', 'false');
+    await act(async () => Promise.resolve());
     expect(input().value).toBe('');
   });
 

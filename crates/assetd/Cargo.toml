@@ -20,3 +20,9 @@ uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 forge-util = { path = "../forge-util" }
+forge-shader = { path = "../forge-shader" }
+# Standard glTF data path preserves UV/PBR/skin/animation alongside legacy RXGB.
+gltf = { version = "1.4.1", default-features = false, features = ["utils", "names", "extras", "KHR_materials_unlit", "KHR_texture_transform"] }
+fs2 = "0.4"
+# D-045:字体资产校验与族名读取(与 fontdue 依赖的 ttf-parser 同版本)。
+ttf-parser = "0.25"

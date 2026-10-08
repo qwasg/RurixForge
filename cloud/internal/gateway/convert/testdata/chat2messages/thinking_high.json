@@ -1,0 +1,13 @@
+{
+  "options": {"model": "claude-opus-4-1"},
+  "request": {
+    "model": "forge-opus",
+    "messages": [{"role": "user", "content": "Prove it."}],
+    "reasoning_effort": "high",
+    "max_completion_tokens": 4000,
+    "temperature": 0.3,
+    "top_p": 0.8,
+    "tools": [{"type": "function", "function": {"name": "calc", "parameters": {"type": "object", "properties": {"expr": {"type": "string"}}}}}],
+    "tool_choice": "auto"
+  }
+}

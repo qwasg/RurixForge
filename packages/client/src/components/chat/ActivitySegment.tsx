@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import {
   groupPhraseParts,
@@ -14,6 +14,9 @@ import {
   type ChatBlock,
 } from '@/lib/timeline';
 import { cn } from '@/lib/cn';
+import CommandBlock from './CommandBlock';
+import FileChangeBlock from './FileChangeBlock';
+import StreamEnter, { useFreshKeys } from './StreamEnter';
 
 /**
  * F7 wave.4 活动段(参考 render_activity_segment / render_summary_line / render_tool_line)。
@@ -28,13 +31,17 @@ import { cn } from '@/lib/cn';
  * - 段内只有思考块(无工具)时不套汇总行,裸行直出——截图里正文上方那条「Thought briefly」即此形态。
  * - 报错不特别标明(用户指令):汇总行与工具行不再出红字、不再缀「· n 失败」,
  *   错误原文只在展开详情里如实可见;+N/-N 一并降为浅灰(不借语义色喊话)。
+ *
+ * D-047(Cursor 式运行态):「正在执行」的行整行扫光(.forge-shimmer)——段内有工具在跑的汇总行、
+ * 运行中的工具行 / 命令块 / 文件变更块、思考中的 Thinking;一律以所在消息仍在流式为前提,
+ * 轮次已收束却残留 running 的块不扫。展开态下新到的明细行自上而下入场(StreamEnter)。
  */
 
 /** 两段式灰行(动词 + 目标 + 可选 +N/-N + 可选 chevron;点击展开 children)。 */
 export function SummaryLine({
   verb,
   detail = '',
-  verbClassName,
+  shimmer = false,
   added = 0,
   removed = 0,
   chevron = false,
@@ -45,14 +52,18 @@ export function SummaryLine({
 }: {
   verb: string;
   detail?: string;
-  verbClassName?: string;
+  /**
+   * D-047 正在执行:文字段整段扫光。扫光挂在贴字宽的内层(挂整行亮带大半时间在扫空白),
+   * 期间动词 / 目标统一取扫光底色(text_2),收尾后回两档灰。
+   */
+  shimmer?: boolean;
   added?: number;
   removed?: number;
   chevron?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
   testId?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <div className="flex flex-col">
@@ -60,23 +71,25 @@ export function SummaryLine({
         data-testid={testId}
         onClick={onToggle}
         className={cn(
-          'group/line flex items-center gap-[5px] py-0.5 text-[12.5px] text-fg-4',
+          'group/line flex items-center gap-[5px] py-0.5 text-[12.5px]',
           onToggle && 'cursor-pointer',
         )}
       >
-        {/* 动词后带一个空格文本节点:flex 行尾空白不渲染(视距仍由 gap 决定),
-            但复制整行与 textContent 取值时不会把「Read」「timeline.ts」黏成一坨。 */}
-        <span className={cn('shrink-0 text-fg-2', verbClassName)}>{verb}{' '}</span>
-        {detail !== '' && (
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{detail}</span>
-        )}
-        {added > 0 && <span className="shrink-0 text-[11.5px]">+{added}</span>}
-        {removed > 0 && <span className="shrink-0 text-[11.5px]">-{removed}</span>}
+        <span className={cn('flex min-w-0 items-center gap-[5px]', shimmer ? 'forge-shimmer' : 'text-fg-4')}>
+          {/* 动词后带一个空格文本节点:flex 行尾空白不渲染(视距仍由 gap 决定),
+              但复制整行与 textContent 取值时不会把「Read」「timeline.ts」黏成一坨。 */}
+          <span className={cn('shrink-0', !shimmer && 'text-fg-2')}>{verb}{' '}</span>
+          {detail !== '' && (
+            <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{detail}</span>
+          )}
+          {added > 0 && <span className="shrink-0 text-[11.5px]">+{added}</span>}
+          {removed > 0 && <span className="shrink-0 text-[11.5px]">-{removed}</span>}
+        </span>
         {chevron && onToggle && (
           <ChevronDown
             size={11}
             className={cn(
-              'shrink-0 transition-all duration-150',
+              'shrink-0 text-fg-4 transition-all duration-150',
               expanded ? 'rotate-180 opacity-70' : 'opacity-0 group-hover/line:opacity-70',
             )}
           />
@@ -128,13 +141,26 @@ function ToolDetailBody({ block }: { block: Extract<ChatBlock, { kind: 'tool' }>
   );
 }
 
-/** 单工具行「{动词} {目标}」,点击展开 args/结果/错误体。 */
-export function ToolLine({ block }: { block: Extract<ChatBlock, { kind: 'tool' }> }) {
+/**
+ * 单工具行「{动词} {目标}」,点击展开 args/结果/错误体。
+ * streaming = 所在消息仍在流式:此时运行中的工具行(含命令 / 文件变更块)扫光。
+ */
+export function ToolLine({
+  block,
+  streaming = false,
+}: {
+  block: Extract<ChatBlock, { kind: 'tool' }>;
+  streaming?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const live = streaming && toolStatus(block) === 'running';
+  if (block.toolKind === 'command') return <CommandBlock block={block} live={live} />;
+  if (block.toolKind === 'fileChange') return <FileChangeBlock block={block} live={live} />;
   return (
     <SummaryLine
       verb={toolVerb(block)}
       detail={toolTarget(block)}
+      shimmer={live}
       expanded={open}
       onToggle={() => setOpen((v) => !v)}
       testId={`tool-line-${block.toolCallId}`}
@@ -145,7 +171,7 @@ export function ToolLine({ block }: { block: Extract<ChatBlock, { kind: 'tool' }
 }
 
 /**
- * 思考行:进行中 = 渐变扫光「Thinking」(默认收起不剧透,点开可看实时思考流);
+ * 思考行:进行中 = 扫光「Thinking」(默认收起不剧透,点开可看实时思考流);
  * 结束 = 「Thought {时长}」,点击展开 12px text_4 全文。
  */
 export function ReasoningLine({
@@ -163,7 +189,7 @@ export function ReasoningLine({
     <SummaryLine
       verb={parts.verb}
       detail={parts.detail}
-      verbClassName={live ? 'forge-thinking' : undefined}
+      shimmer={live}
       chevron
       expanded={open}
       onToggle={() => setOpen((v) => !v)}
@@ -193,25 +219,27 @@ export default function ActivitySegment({
   const { verb, detail } = segmentPhraseParts(stats, running);
   const runs = groupSegmentItems(blocks, indices);
   const hasTool = indices.some((bi) => blocks[bi].kind === 'tool');
+  // 段本身的入场由外层(AssistantMessage)负责;这里只让段挂上之后才到的明细行各自入场
+  const isFresh = useFreshKeys(indices);
 
   const items = (
     <div className="flex flex-col">
       {runs.map((run, ri) => {
         const first = blocks[run[0]];
+        let row: ReactNode = null;
         if (run.length >= 2 && first.kind === 'tool') {
-          return <GroupedRun key={ri} blocks={blocks} run={run} />;
+          row = <GroupedRun blocks={blocks} run={run} />;
+        } else if (first.kind === 'tool') {
+          row = <ToolLine block={first} streaming={streaming} />;
+        } else if (first.kind === 'reasoning') {
+          row = <ReasoningLine block={first} live={streaming && run[0] === blocks.length - 1} />;
         }
-        if (first.kind === 'tool') return <ToolLine key={ri} block={first} />;
-        if (first.kind === 'reasoning') {
-          return (
-            <ReasoningLine
-              key={ri}
-              block={first}
-              live={streaming && run[0] === blocks.length - 1}
-            />
-          );
-        }
-        return null;
+        if (row === null) return null;
+        return (
+          <StreamEnter key={ri} active={streaming && isFresh(run[0])}>
+            {row}
+          </StreamEnter>
+        );
       })}
     </div>
   );
@@ -223,6 +251,7 @@ export default function ActivitySegment({
     <SummaryLine
       verb={verb}
       detail={detail}
+      shimmer={streaming && running}
       added={stats.added}
       removed={stats.removed}
       chevron

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="deployment-reticle-title deployment-reticle-desc"><title id="deployment-reticle-title">deployment reticle</title><desc id="deployment-reticle-desc">Original Code Sentinels tactical vector artwork.</desc>
+<path d="M128 22L234 128L128 234L22 128Z" fill="#EDB63B" fill-opacity=".055" stroke="#EDB63B" stroke-width="2"/>
+<path d="M128 40L216 128L128 216L40 128Z" stroke="#F2F0E9" stroke-opacity=".32" stroke-dasharray="3 8"/>
+<path d="M128 2V26M128 230V254M2 128H26M230 128H254" stroke="#F2F0E9" stroke-width="3"/>
+<path d="M102 20L128 4L154 20M236 102L252 128L236 154M102 236L128 252L154 236M20 102L4 128L20 154" stroke="#EDB63B" stroke-width="4"/>
+<circle cx="128" cy="128" r="20" stroke="#F2F0E9" stroke-opacity=".85" stroke-width="2"/>
+<path d="M128 91V108M128 148V165M91 128H108M148 128H165" stroke="#F2F0E9" stroke-width="2"/>
+<path d="M122 128H134M128 122V134" stroke="#EDB63B" stroke-width="2"/>
+<path d="M64 74L74 64M182 64L192 74M192 182L182 192M74 192L64 182" stroke="#7F878A" stroke-width="2"/></svg>

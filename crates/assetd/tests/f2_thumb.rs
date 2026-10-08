@@ -51,7 +51,7 @@ fn non_texture_thumbnail_is_no_thumbnail() {
     let root = tmp_project("thumb_mesh");
     let project = ForgeProject::with_defaults(root.clone());
     // 用 png 字节冒充 mesh 不行;直接用真实 gltf conformance 样本。
-    let src = PathBuf::from("H:/rurix/conformance/asset/gltf/accept/tri_min.gltf");
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tri_min.gltf");
     let dst = root.join("tri_min.gltf");
     std::fs::copy(&src, &dst).unwrap();
     let out = import_assets(&project, &[dst.to_string_lossy().into()], "Meshes", None).unwrap();

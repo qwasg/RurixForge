@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "description": "Original Code Sentinels industrial tactical SVG decoration kit; no Arknights art or brand assets included.",
+  "palette": {
+    "ivory": "#F2F0E9",
+    "ink": "#101316",
+    "grey": "#7F878A",
+    "amber": "#EDB63B",
+    "cyan": "#66D3ED",
+    "purple": "#B6A5EE"
+  },
+  "assets": [
+    {
+      "file": "operator-card-frame.svg",
+      "width": 600,
+      "height": 900,
+      "repeat": false,
+      "layer": "above-card-art"
+    },
+    {
+      "file": "hardware-card-frame.svg",
+      "width": 720,
+      "height": 480,
+      "repeat": false,
+      "layer": "above-card-art"
+    },
+    {
+      "file": "skill-diamond-frame.svg",
+      "width": 256,
+      "height": 256,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "deployment-reticle.svg",
+      "width": 256,
+      "height": 256,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "selection-corners.svg",
+      "width": 256,
+      "height": 256,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "scan-grid.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": "both",
+      "layer": "subtle-background"
+    },
+    {
+      "file": "diagonal-hazard-strip.svg",
+      "width": 256,
+      "height": 32,
+      "repeat": "x",
+      "layer": "decoration"
+    },
+    {
+      "file": "operation-seal.svg",
+      "width": 320,
+      "height": 320,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "victory-stamp.svg",
+      "width": 720,
+      "height": 240,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "defeat-stamp.svg",
+      "width": 720,
+      "height": 240,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "credit-emblem.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "energy-core-emblem.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "class-precision.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "class-debug.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "class-tide.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": false,
+      "layer": "decoration"
+    },
+    {
+      "file": "class-support.svg",
+      "width": 128,
+      "height": 128,
+      "repeat": false,
+      "layer": "decoration"
+    }
+  ]
+}

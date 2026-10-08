@@ -6,5 +6,7 @@ edition.workspace = true
 
 [dependencies]
 forge-util = { path = "../../forge-util" }
+# 02 §7.3:监督器经 assetd(forge.toml 唯一解析器)读 [render]。
+assetd = { path = "../../assetd" }
 serde.workspace = true
 serde_json.workspace = true

@@ -159,6 +159,7 @@
 | 资产 | `ASSET_*` | `ASSET_NOT_FOUND` `ASSET_BUILD_FAILED` `ASSET_REFERENCED` `ASSET_IMPORT_UNSUPPORTED` |
 | 代码 | `CODE_*` | `CODE_COMPILE_FAILED` `CODE_LSP_UNAVAILABLE` |
 | 项目 | `PROJECT_*` | `PROJECT_OUT_OF_ROOT` `PROJECT_GIT_CONFLICT` |
+| 工作区 git(D-040) | `GIT_*` | `GIT_NOT_FOUND` `GIT_TIMEOUT` `GIT_FAILED` |
 | 生成 | `GEN_*` | `GEN_BACKEND_NOT_CONFIGURED` `GEN_RATE_LIMITED` |
 | 测试 | `TEST_*` | `TEST_TIMEOUT` `TEST_ASSERT_FAILED` |
 | 治理 | `GOV_*` | `GOV_PROPOSAL_REQUIRED` `GOV_PERMISSION_DENIED` `GOV_SWARM_SHARD_OVERLAP` |
@@ -170,6 +171,22 @@
 
 ## Errata(只追加区)
 
+- **E-11-009(2026-10-07,用户指令)——手动压缩上下文**:①新路由 `POST /api/forge/sessions/{id}/compact`(无请求体):本地引擎用会话当前模型把摘要锚点之后的全部已结束轮次连同旧摘要合并成新摘要(与自动压缩共用 `summaries.json`,此后各轮从摘要续);Codex 引擎对已绑定线程发原生 `thread/compact/start` 并等压缩轮结束。压缩期间占会话运行锁,与起轮互斥。成功 200 `{engine, manual:true, turns?, tokensBefore?, tokensAfter?}`(后三项仅本地引擎回报,为估算值);错误 404 `SESSION_NOT_FOUND`、409 `SESSION_BUSY` / `AGENT_COMPACT_NOTHING`(无新对话可压缩,或 Codex 线程不存在)/ `AGENT_COMPACT_CANCELLED`、502 `AGENT_COMPACT_FAILED`(摘要调用或 Codex 压缩轮失败,`message` 带原因;mock 渠道与活跃 Goal 也走此码)。②新事件 `context.compacted`(domain `agent`,落盘):载荷同成功响应;前端据此在时间线画分隔线,上下文计量从分隔线之后重新估算。③`agent.usage` 的前端消费口径修订:Codex 载荷的 `promptTokens` 是线程累计,上下文计量改取 `last.promptTokens`(最近一次请求)与 `modelContextWindow`;本地引擎载荷无 `last`,口径不变。
+
+- **E-11-008(2026-10-06,D-045)——Design 模式契约(as-built)**:①`ask:execute` 的 `mode` 增 `design`;请求体增可选 `design: {id, rev, action, candidate?}`(在场 = 流程动作,`userInput` 可空);动作表、自由文本路由与错误码(409 `DESIGN_STAGE_MISMATCH`、400 `DESIGN_VISION_REQUIRED` / `DESIGN_NEEDS_WRITE`)见文末「Design 模式流程契约」。②新路由:`GET /api/forge/sessions/{id}/design`、`GET …/design/file?path=`、`POST …/design/{select|restart}`。③会话 DTO 增可选 `design`(DesignState,无流程时不出现)。④SSE 新频道 `design`,事件见下文。⑤`viewport.frame` 增 `camera` / `exact` 参数(05 E-05-004)。
+
+- **E-11-006(2026-09-26,D-040)——工作区搜索 / git 状态 / 轻量快照**(E-11-005 已被 D-041 占用,本条顺延):
+  - `GET /api/forge/workspace/search?q=&workspaceId=&limit=` → `{query, results[{path,name,dir}], total, truncated, source:"git"|"walk", scanned, scanTruncated}`。git 仓库用 `git ls-files`(遵守 .gitignore),否则有界遍历并跳过 `.git`/`node_modules`/`target`/`dist`;候选缓存 30s,空查询只预热。未知 `workspaceId` → 404 `WORKSPACE_NOT_FOUND`(与 tree/file 同口径)。
+  - `GET /api/forge/workspace/git?workspaceId=` → 非仓库 `{isRepo:false, reason}`;仓库 `{isRepo, branch, upstream, ahead, behind, detached, unborn, rootUntracked, files[{path,status,staged,dir,insertions,deletions,origPath}], counts, insertions, deletions, total, truncated}`。`status` ∈ `M|A|D|R|U|C`。工作区目录整体未跟踪时 `rootUntracked:true` 且 `files` 为空。无 git → 501 `GIT_NOT_FOUND`;超时 → 504 `GIT_TIMEOUT`;其余 → 500 `GIT_FAILED`。
+  - `GET /api/forge/design-snapshot` 增 `events=0`(或 `false`):跳过事件回放,`latestSeq` 与其余字段照常。`GET /api/forge/health`(host 自有)增 `user.name`、`platform`、`node`、`agentd{ok,version?,uptimeSec?}`(上游 `/health` 探测,800ms 超时,不可达 `ok:false`)。
+  - 两条 workspace 路由落在 host 既有 `/api/forge/workspace` 代理前缀内,代理表不改。
+- **E-11-005(2026-09-26,D-041)——账户 / 记忆 / 云模式契约面**:
+  - 新增 `/api/forge/account/*`(agentd BFF,经 host 代理;永不回显 refresh/access token 与设备 Key)与 `/api/forge/memory`,形状见 `15_CLOUD_SERVICE.md` §8.2 / §8.3。
+  - **删除** `GET /api/forge/llm/complete`(恒 mock 桩)。
+  - `agent.failed` payload 增 `code`(`CLOUD_LOGIN_REQUIRED` / `CLOUD_UNAUTHORIZED` / `INSUFFICIENT_BALANCE` / `MODEL_NOT_ALLOWED` / `MODEL_NOT_CONFIGURED` / `RATE_LIMITED` / `NO_AVAILABLE_ACCOUNT` / `UPSTREAM_ERROR` / `CLOUD_UNREACHABLE`,见 15 §8.5)。
+  - design-snapshot:`models.models[]` 追加云端条目(`id:"cloud:<id>"`、`provider:"cloud"`、`pricing`),已登录时 `defaultModelId` 为云端默认模型;顶层新增 `account` 摘要;`mock` 条目仅开发模式出现。
+  - `POST /api/forge/skills` 增 `scope: personal|workspace`(缺省 personal),列表条目增 `personal`;`/api/forge/codex/{config,status}` 增 `authSource`。
+  - 第 9 行「gateway JWT 鉴权」与第 78–79 行 `auth/*` 照搬口径由 forge-cloud `/api/v1/auth/*` 兑现(用户在云端鉴权;本机 agentd/host 仍是无鉴权的 localhost 服务);`/api/forge/channels` 维持不建。
 - **E-11-003(2026-09-03,PvZ 可玩化波 / D-037)——`POST /api/forge/mcp/call` 请求体增可选 `workspaceId`**:
   - 此前 REST 透传面恒锚 `projects/demo`(mcp.rs `default_project_root`),IDE 视口 / 层级 / 资产面板与会话 turn 面各看各的项目(双真相源):在 pvz 工作区里打开关卡场景后 `play_enter` 会到 demo 根下找图而失败。现同请求体带 `workspaceId` 时,项目根经 `scope::project_of` 解析(与 turn 面同一事实源、同一 engine-host 连接池槽);缺省 / 未注册 id → 默认工作区 → `projects/demo` 兜底,旧客户端零改动。
   - 客户端 `callTool*` 全部自动附带当前工作区 id(`lib/activeWorkspace.ts` 读 localStorage 镜像键,免 forgeApi ↔ workspaceStore 环依赖);切工作区时视口流通道按新工作区的 `viewport_stream_info` 重连,编辑器场景 / 实体 / 相机 / 资产面重拉。
@@ -191,3 +208,49 @@
   - **§4 DTO 增补**:`TodoItem` 加可选 `planTodoId`(来源计划文件的待办 id;Build 按 `(sessionId, planTodoId)` 去重,重复 Build 不重建)与既有 `source`(计划物化时为 `"plan"`);会话 DTO 加可选 `activePlanPath`(当前计划文件路径,随 `design-snapshot.activeSession` 下发,fork 时继承)。两者均 serde default + 未设置不序列化,旧 `todos.json`/`sessions.json` 兼容。
   - **计划文件格式**(前后端共同契约,写方 agentd `plan_doc.rs`,读方另有前端 `lib/planFile.ts`):YAML front matter `name`(必填)/`overview`/`todos[{id,content,status}]` + `---` 后的 Markdown 正文;front matter 内的值一律压成单行标量(不使用块标量/锚点等高级语法),两侧解析器据此保持一致。
   - **§2.1 `/api/forge/sessions/{id}/model`** 维持不实现(as-built:模型经 `PATCH /api/forge/sessions/{id}` 的 `selectedModelId` 切换);Plan 页签的模型切换器复用该路径,故「换模型后再 Build」即以新模型实施,无需 per-message 覆盖字段。
+
+
+## Agent 消息与 Team 协作契约（2026-10-03）
+
+持久化 `agentId` 标识参与者，`activeRunId` 标识其当前可取消执行；切换轮次不更换参与者身份。前端 DTO 位于 `packages/protocol/src/collaboration.ts`，实现位于 `crates/forge-agentd/src/collaboration.rs`。以下路径均由现有 Host `/api/forge/sessions` 代理透传，路径参数须编码。
+
+- `GET /api/forge/sessions/{sid}/agents` → `{agents: AgentParticipant[]}`；条目含 `id/sessionId/name/role/engine/status/parentAgentId/teamId/activeRunId`，角色为 `root/member/subagent`，状态为 `idle/running/stopped/recoveryRequired`。
+- `GET /api/forge/sessions/{sid}/agents/{agentId}/messages` → `{messages: AgentMessage[]}`，返回该参与者相关的发送及接收历史。
+- `POST /api/forge/sessions/{sid}/agents/{agentId}/messages` 正文 `{text, clientMessageId?, expectedRunId?}` → `{message}`。`text` 为 1–16000 字符；客户端重试使用同一 `clientMessageId`，同一键对应不同目标或正文返回 `MESSAGE_ID_CONFLICT`。提供 `expectedRunId` 时目标轮次变化返回 `AGENT_RUN_CONFLICT`。消息来源和发送者由宿主确定，请求不接受 `fromAgentId/source/kind/wake` 等身份字段。
+- `GET /api/forge/sessions/{sid}/team` → `{team: TeamState | null}`；`GET /api/forge/sessions/{sid}/teams/{teamId}` → `{team}`；`PATCH` 后一路径，正文 `{action: "pause" | "resume" | "stop" | "complete"}` → `{team}`。恢复和完成仍受服务端状态与任务约束校验。
+
+`AgentMessage` 包含 `id/sessionId/fromAgentId/toAgentId/source/text/clientMessageId/status/createdAt/injectedAt/runId/error`；`source` 为 `user/agent`，状态为 `queued/leased/injected/recoveryRequired/failed`。`injected` 表示目标已接收上下文，不表示任务完成。旧记录缺省 `kind: message, wake: true`；宿主自动终态回执使用 `kind: receipt, wake: false`。不能确认是否已注入的恢复记录保留原状，明确重发创建新的消息和幂等键，不自动重复注入。
+
+`TeamState` 包含 `id/sessionId/name/leaderAgentId/memberAgentIds/revision/maxParallel/maxFixRounds/fixRounds/tasks/createdAt/updatedAt`。状态为 `active/paused/blocked/stopped/completed/recoveryRequired`；任务含 `id/title/prompt/role/stage/deps/ownerAgentId/status/result/attempts`，任务状态为 `queued/running/completed/failed/blocked`。暂停不启动新的任务或消息唤醒，当前轮次可完成；停止取消现有执行。自由 Team 按显式依赖、阶段、并发与修复边界执行，不增加必需人工关卡；UltraPlan 的原有阶段约束保持有效。
+
+会话 SSE 新增 `agent.participant.updated`（payload 为完整参与者）、`agent.message.queued` / `agent.message.injected` / `agent.message.failed`（payload 为完整消息，恢复状态也经失败事件表达）、`team.updated`（payload 为 `{team}`）。客户端按持久消息 id 去重，已确认注入状态不因迟到 HTTP 响应回退；按同一 Team 的 `revision` 合并，切换 Team 后不沿用旧版本号。事件必须与当前会话及 payload 的 `sessionId` 相符；fork 复制的历史事件不恢复原会话的可操作参与者或团队。
+
+成员的工具、审批、文本和用量事件携带 `agentId/agentRunId/parentAgentId/teamId/taskId` 等归属字段；`agentRunId` 是取消和审批清理所用真实运行 id，旧 `runId/parentToolCallId` 可继续用于显示归组。主运行及成员运行的终态、用量和审批队列分别处理；同一主运行内多条用户引导按 `messageId/clientMessageId` 保存，不能再仅按 `runId` 合并为一条用户消息。
+
+## UltraPlan 完整流程契约（2026-10-03）
+
+实现及请求样例见 [UltraPlan 工作流](docs/ultraplan.md)。`ask:execute` 的 `mode: ultraplan` 处理探索、问答、Demo 和计划；制作动作必须使用 `mode: team` 并携带当前 `ultraplan.id/action/rev`。Forge 与 Codex 复用同一阶段机。父流程持有会话运行锁，过期版本或重复制作请求不会产生第二组任务。
+
+`GET /api/forge/sessions/{id}/ultraplan` 返回 `ultraplan/questionnaire/answers/demo/checks/production/acceptance/target/delivery`。`POST .../ultraplan/acceptance` 正文为 `{id, rev: planRev, round, results}`；`rollback_demo` 为 `{id, rev: demoIteration}`；`restart` 允许空正文并保留已生成文件。人工必需项必须通过，可选跳过和失败项需注明原因；有失败项保持验收阶段，由 `fix_production` 创建定向修复任务。客户端提交失败验收后自动发起该制作动作。
+
+计划正文、任务图、检查清单、目标后端和交付说明共同参与哈希；流程外改动后必须修订并重新确认。自动检查必须来自真实工具执行，并绑定报告、截图及正式项目文件指纹；最终完成再次核验。缺证据、未验证、终审拒绝或必需人工检查未过，均不能进入 `done`。新增事件使用既有 `ultraplan.*` 命名空间，详见工作流文档。
+
+## Design 模式流程契约（2026-10-06）
+
+实现及工序见 [Design 模式](docs/design-mode.md)。阶段 `concept → design_review → replication → done`,相位 `waiting / running / failed`;状态挂会话 `design` 字段(`id, slug, dir, title, workspaceId, stage, phase, running, lastError, designRev, candidates, selected, designType, aspect, approved, replicationRound, layoutReady, assetsReady, scenePath, verifyCount, lastVerify, passed`)。
+
+| action | 可用阶段 | rev 须等于 | 正文 |
+|---|---|---|---|
+| `approve_design` | design_review | designRev | 可空;`candidate` 缺省为 `selected` |
+| `revise_design` | design_review | designRev | 必填 |
+| `regenerate_design` | design_review | designRev | 可空 |
+| `resume_replication` | replication | replicationRound | 可空 |
+| `fix_replication` | replication / done | replicationRound | 必填 |
+
+`mode: design` 的自由文本:无流程或 done → 新流程;concept → 补充说明重试;design_review → 对 `selected` 候选修改;replication → 409。带动作的请求永不开新流程;id / rev / 阶段 / 候选不对、流程正在运行或工作区已换 → 409 `DESIGN_STAGE_MISMATCH`(`details: {stage, allowed}`)。
+
+`GET …/design` 返回 `{design, review, layout, assets, verify, result}`:`review` = 当前批次 `submission.json`,`verify` = 最近一次 `report.json`。`GET …/design/file?path=<流程目录相对或带 .forge/design/<slug>/ 前缀>` 只出 `.png` / `.json`。`POST …/design/select {id, rev, candidate}` 只在 design_review 生效;`POST …/design/restart` 要求会话空闲。
+
+事件(频道 `design`):`design.started{id,title,slug,dir}`、`design.stage{id,stage,phase,running,designRev,replicationRound,lastError?}`、`design.candidates.generated{id,rev,candidates}`、`design.review.ready{id,rev,candidates[{index,path,prompt,op}],summary,designType,aspect,width,height,base?}`、`design.decision{id,action,rev,candidate?,feedback?}`、`design.layout.ready{id,round,canvas,count,overlay,elements}`、`design.assets.ready{id,round,produced,errors,missing}`、`design.scene.built{id,scenePath,entities}`、`design.verify.result{id,round,n,passed,global,failed,sceneProblems,screenshots,reportPath}`、`design.done{id,round,passed,verify,summary,acceptedFailures,scenePath}`、`design.notice{id,code,message}`。轮次内事件均带 `runId`。
+
+验收结论只来自服务端截帧与场景文件核对,截图按 sha256 记入报告;未通过只能带原因收尾(`passed: false`),不会记为通过。

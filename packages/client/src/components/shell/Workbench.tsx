@@ -3,18 +3,21 @@ import {
   FileCode2,
   FileText,
   Film,
+  Gamepad2,
   GitCompare,
   ListChecks,
   ListTree,
   MessageSquareText,
   Sparkles,
   Store,
+  Target,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { runCommand } from '@/lib/commands';
 import { useWorkbenchStore, type TabKind } from '@/lib/workbenchStore';
 import EditorView from '@/views/EditorView';
+import DemoTab from '@/components/workbench/DemoTab';
 import FilePreviewTab from '@/components/workbench/FilePreviewTab';
 import PlanTab from '@/components/workbench/PlanTab';
 import ProposalsTab from '@/components/workbench/ProposalsTab';
@@ -22,6 +25,7 @@ import SkillsTab from '@/components/workbench/SkillsTab';
 import SpriteEditorView from '@/components/sprite/SpriteEditorView';
 import StoreTab from '@/components/workbench/StoreTab';
 import TodoTab from '@/components/workbench/TodoTab';
+import GoalTab from '@/components/workbench/GoalTab';
 
 /**
  * F7 wave.3/5 Workbench(参考 ui/workbench.rs):
@@ -31,6 +35,8 @@ import TodoTab from '@/components/workbench/TodoTab';
  * dirty tab 关闭钮显圆点,hover 换 X,关闭经 closeTab dirty 拦截 → 编辑器内联确认条);
  * 空态(无 tab)= 居中卡「个人工作区」+ 胶囊 tip(新建会话/打开编辑器/回到全屏对话)——
  * 无 tab 时默认由全屏对话主页接管整屏,这张卡只在手动「工作台」暂避后才看得到。
+ * D-044:Demo 页签 = UltraPlan 网页 Demo 的 iframe 试玩页(按流程 id 多开;只渲染激活页签,
+ * 所以切走即卸载 iframe、Demo 重置——页签里写明)。
  *
  * 差异留痕(wave.5):参考 diff tab 为代码 diff 页——本仓 proposals 是 F2 治理确认单
  * (无代码内容 diff 数据面),诚实适配为「提案」tab;双行号 gutter diff 渲染器留 RD-F7-004。
@@ -41,12 +47,15 @@ const TAB_ICONS: Record<TabKind, typeof FileCode2> = {
   // D-035:plan 现为按路径多开的计划文件页(.forge/plans/<名>.plan.md)。
   plan: ListTree,
   todo: ListChecks,
+  goal: Target,
   proposals: GitCompare,
   file: FileText,
   store: Store,
   skills: BookOpen,
   // F-GAME-4:精灵编辑器(.rxsprite 图集/动画)。
   'sprite-editor': Film,
+  // D-044:UltraPlan 网页 Demo 试玩页(按流程 id 多开)。
+  demo: Gamepad2,
 };
 
 export default function Workbench() {
@@ -122,6 +131,8 @@ export default function Workbench() {
           <PlanTab path={active.path} tabId={active.id} />
         ) : active?.kind === 'todo' ? (
           <TodoTab />
+        ) : active?.kind === 'goal' ? (
+          <GoalTab />
         ) : active?.kind === 'proposals' ? (
           <ProposalsTab />
         ) : active?.kind === 'store' ? (
@@ -132,6 +143,14 @@ export default function Workbench() {
           <SpriteEditorView />
         ) : active?.kind === 'file' && active.path ? (
           <FilePreviewTab path={active.path} tabId={active.id} />
+        ) : active?.kind === 'demo' && active.upId && active.sessionId ? (
+          <DemoTab
+            key={active.id}
+            upId={active.upId}
+            sessionId={active.sessionId}
+            tabId={active.id}
+            title={active.title}
+          />
         ) : (
           <div className="flex h-full items-center justify-center p-8">
             <div className="flex w-[420px] max-w-full flex-col gap-2.5 rounded-xl border border-edge bg-shell-panel p-7 shadow-sh1">

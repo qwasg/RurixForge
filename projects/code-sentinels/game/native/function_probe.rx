@@ -1,0 +1,7 @@
+fn main() {}
+static mut HP: f32 = 0.0;
+fn helper(value:f32) -> f32 { return value + 2.0; }
+#[export(c)]
+pub fn probe(value: f32) -> f32 {
+    unsafe { HP = helper(value); return HP; }
+}

@@ -124,6 +124,15 @@ pub struct Keystore {
 }
 
 impl Keystore {
+    /// Give an adapter only the named connection's key; never fall back to its template's key.
+    pub fn for_backend_alias(&self, alias: &str, adapter: &str) -> Self {
+        let mut keys = HashMap::new();
+        if let Some(key) = self.secret_for(alias) {
+            keys.insert(adapter.to_string(), key);
+        }
+        Self { keys }
+    }
+
     /// 从默认路径加载;文件缺失 = 空 keystore(不算错误)。
     pub fn load() -> Self {
         Self::load_from(&keystore_path())
@@ -155,20 +164,30 @@ impl Keystore {
         }
         self.keys.get(backend_id).cloned()
     }
+
+    /// 只取文件条目本身,不受 env FORGE_GEN_API_KEY 覆盖(该覆盖面向生成后端;
+    /// 云账号 refresh token / 设备 Key 这类条目绝不能被它顶替)。空值视同缺失。
+    pub fn secret_for(&self, id: &str) -> Option<String> {
+        self.keys.get(id).filter(|v| !v.is_empty()).cloned()
+    }
 }
 
 /// 写入/更新单个密钥条目(F5 wave.3 agentd configure REST 用):读-改-写 keystore.json,
 /// 保留其他条目;空 key 拒绝(调用方只在 apiKey 非空时调)。本函数是唯一写盘出口,
 /// 密钥值不进日志,错误仅带 IO 信息。RD-F5-001:Windows 下落盘为 DPAPI 加密形态。
 pub fn set_key(backend_id: &str, key: &str) -> std::io::Result<()> {
+    set_key_at(&keystore_path(), backend_id, key)
+}
+
+/// [set_key] 的显式路径版本。
+pub fn set_key_at(path: &std::path::Path, backend_id: &str, key: &str) -> std::io::Result<()> {
     if backend_id.is_empty() || key.is_empty() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "backend_id/key 不可空",
         ));
     }
-    let path = keystore_path();
-    let mut keys: HashMap<String, String> = std::fs::read_to_string(&path)
+    let mut keys: HashMap<String, String> = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| deserialize_store(&t).ok())
         .map(|(k, _)| k)
@@ -180,6 +199,28 @@ pub fn set_key(backend_id: &str, key: &str) -> std::io::Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, text)
+}
+
+/// 删除单个密钥条目(云账号登出清令牌):读-改-写 keystore.json,保留其他条目。
+/// 返回是否真的删掉了条目;文件缺失或条目不存在 = Ok(false),不写盘。
+pub fn remove_key(backend_id: &str) -> std::io::Result<bool> {
+    remove_key_at(&keystore_path(), backend_id)
+}
+
+/// [remove_key] 的显式路径版本。
+pub fn remove_key_at(path: &std::path::Path, backend_id: &str) -> std::io::Result<bool> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(false);
+    };
+    let (mut keys, _) = deserialize_store(&text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    if keys.remove(backend_id).is_none() {
+        return Ok(false);
+    }
+    let text = serialize_store(&keys)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(path, text)?;
+    Ok(true)
 }
 
 /// Debug 只暴露条目 id 清单,值一律脱敏(R-5)。
@@ -222,6 +263,52 @@ mod tests {
         std::env::remove_var("FORGE_GEN_API_KEY");
         assert_eq!(ks.key_for("remote-openai-compatible").as_deref(), Some("file-key"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn secret_for_ignores_env_override() {
+        let _g = env_lock();
+        let dir = std::env::temp_dir().join(format!("gend-ks6-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("keystore.json");
+        std::fs::write(&p, r#"{"keys":{"cloud:refresh":"rt_file","empty":""}}"#).unwrap();
+        let ks = Keystore::load_from(&p);
+        std::env::set_var("FORGE_GEN_API_KEY", "env-key");
+        assert_eq!(ks.secret_for("cloud:refresh").as_deref(), Some("rt_file"));
+        assert!(ks.secret_for("cloud:device-key").is_none(), "缺失条目不得回落到 env");
+        assert!(ks.secret_for("empty").is_none(), "空值视同缺失");
+        assert_eq!(ks.key_for("cloud:device-key").as_deref(), Some("env-key"));
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn remove_key_keeps_other_entries() {
+        let _g = env_lock();
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let dir = std::env::temp_dir().join(format!("gend-ks7-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
+        set_key("cloud:refresh", "rt_secret").unwrap();
+        set_key("deepseek", "sk-neighbor").unwrap();
+        assert!(remove_key("cloud:refresh").unwrap());
+        assert!(!remove_key("cloud:refresh").unwrap(), "二次删除应报告未删除");
+        assert!(!remove_key("never-existed").unwrap());
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        let ks = Keystore::load_from(&dir.join("keystore.json"));
+        assert!(ks.secret_for("cloud:refresh").is_none());
+        assert_eq!(ks.secret_for("deepseek").as_deref(), Some("sk-neighbor"));
+        let text = std::fs::read_to_string(dir.join("keystore.json")).unwrap();
+        assert!(!text.contains("rt_secret"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn remove_key_on_missing_file_is_noop() {
+        let dir = std::env::temp_dir().join(format!("gend-ks8-{}", std::process::id()));
+        let p = dir.join("no-such.json");
+        assert!(!remove_key_at(&p, "cloud:refresh").unwrap());
+        assert!(!p.exists(), "缺失文件不应被创建");
     }
 
     #[test]

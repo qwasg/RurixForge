@@ -47,16 +47,7 @@ XY 平面、正交相机、Sprite 精灵、sortingOrder 叠放、场景级重力
    **镜头完全固定**(不平移不推拉不旋转)、**单一纯色背景**(不要地面与投影)、
    **角色居中且全程不出画**、**不切镜不转场**。视频模型天生爱推镜头爱加场景,
    这三条不写死,截出来的帧没法当动画用。
-3. **截帧成图集**:`gen_video_frames { videoFileRef, fps: 8, maxFrames: 32,
-   chromaKey: "auto", crop: "union" }`。`crop=union` 让所有帧共用一个包围盒 = 帧等大、
-   脚底锚不抖(逐帧紧致裁切正是「AI 帧尺寸不一导致漂浮」的成因);背景不是纯色底时
-   auto 抠不干净,换 `magenta` 或回 2 重生成,别硬着头皮往下切。
-4. **帧数校验**:返回的 `frameCount` 与 `boxes` 长度须一致且 ≥ 2;整帧被抠空会直接报错
-   (`chromaKey=none` 可先看原帧排查)。校验通过再进 B。
-5. **入库**:`gen_accept { imageFileRef: <atlasFileRef>, destFolder: "Textures",
-   name, origin: "gen-video" }` 拿到图集 GUID,然后跳到 B 的第 3 步——但**用返回的
-   `frames` 显式建帧**而不是 `autoslice: true`(bbox 已经是精确的,再连通域检测一遍
-   反而可能把角色断开的部件切成两帧)。
+3. **截帧与入库**：执行 [`video-to-sprite`](../video-to-sprite/SKILL.md) 技能，默认 8 fps、32 帧、等大裁切。拿到真实图集并校验后，使用返回的 `frames` 显式建帧，再继续 C 的 clip 与锚点流程。
 
 ### B. 切帧入库(asset-pipeline 工具)
 1. `gen_accept` 入库贴图 → 记 GUID;

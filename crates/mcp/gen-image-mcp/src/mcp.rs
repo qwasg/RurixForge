@@ -1,5 +1,5 @@
 //! MCP stdio 服务:initialize / tools/list / tools/call(复刻 asset-pipeline-mcp 骨架)。
-//! 六工具(05 §7 逐字参数):gen_backends_list / gen_image / gen_texture_set /
+//! 七工具(05 §7 逐字参数):gen_backends_list / gen_image / gen_edit(D-045) / gen_texture_set /
 //! gen_accept / gen_variations / gen_video_frames。
 //! 工具错误 = isError:true + {error: <GEN_* code>, message}。
 //!
@@ -19,7 +19,7 @@ use gend::mock;
 use gend::timeutil::utc_now_iso8601;
 use gend::tmpstore;
 use gend::video_frames;
-use gend::{fnv1a64, GenError, GEN_BACKEND_ERROR, GEN_BACKEND_NOT_CONFIGURED, GEN_BAD_PARAMS};
+use gend::{fnv1a64, GenError, GEN_BACKEND_ERROR, GEN_BAD_PARAMS};
 use serde_json::{json, Value};
 
 fn tool_list() -> Value {
@@ -43,9 +43,31 @@ fn tool_list() -> Value {
                         "assetPath": { "type": "string", "description": "可选:目标资产路径(相对 Content/)——.meta 文字简介+标签直接并入提示词;资产无简介则 descBound=false 按原 prompt 生成" },
                         "seed": { "type": "integer", "description": "缺省 = hash(最终提示词)" },
                         "n": { "type": "integer", "minimum": 1, "maximum": 4 },
+                        "aspect": { "type": "string", "enum": ["square", "landscape", "portrait"], "description": "画幅:square 按 size 出正方形(缺省);landscape=1536x1024;portrait=1024x1536" },
+                        "quality": { "type": "string", "enum": ["low", "medium", "high", "auto"], "description": "画质档(后端支持时生效)" },
+                        "background": { "type": "string", "enum": ["transparent", "opaque", "auto"], "description": "背景(transparent 出透明底,后端支持时生效)" },
                         "backend": { "type": "string", "description": "后端 id,缺省 = 首个已配置后端" }
                     },
                     "required": ["prompt"]
+                }
+            },
+            {
+                "name": "gen_edit",
+                "description": "改图(img2img,D-045):以项目内图片为参考,按指令重绘;可选蒙版(透明像素 = 允许重绘区)。候选落 .forge/tmp/gen/,sidecar 记 sourceRefs;后端不支持改图 → GEN_UNSUPPORTED(不拿文生图冒充)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": { "type": "string", "description": "改图指令(建议写成「保持构图与风格,只改 X」)" },
+                        "imageRefs": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 4, "description": "参考图(项目相对路径,首张为主图)" },
+                        "maskRef": { "type": "string", "description": "可选蒙版 PNG(项目相对路径,与主图同尺寸)" },
+                        "aspect": { "type": "string", "enum": ["square", "landscape", "portrait"] },
+                        "quality": { "type": "string", "enum": ["low", "medium", "high", "auto"] },
+                        "background": { "type": "string", "enum": ["transparent", "opaque", "auto"] },
+                        "n": { "type": "integer", "minimum": 1, "maximum": 4 },
+                        "seed": { "type": "integer" },
+                        "backend": { "type": "string" }
+                    },
+                    "required": ["prompt", "imageRefs"]
                 }
             },
             {
@@ -87,7 +109,7 @@ fn tool_list() -> Value {
                         "videoFileRef": { "type": "string", "description": "项目相对路径(.forge/tmp/gen/ 内的 .mp4)" },
                         "fps": { "type": "number", "description": "截帧率,缺省 8(1..=30)" },
                         "maxFrames": { "type": "integer", "description": "帧数上限,缺省 32(2..=256)" },
-                        "chromaKey": { "type": "string", "enum": ["auto", "magenta", "none"], "description": "背景抠除:auto 四角采样(缺省)/ magenta 同视口色键 / none 不抠" },
+                        "chromaKey": { "type": "string", "enum": ["auto", "magenta", "black", "none"], "description": "背景抠除:auto 四角采样(缺省)/ magenta 同视口色键 / black 黑底发光特效保留亮度与软透明 / none 不抠" },
                         "crop": { "type": "string", "enum": ["union", "tight", "none"], "description": "union 全帧包围盒并集(缺省,帧等大脚底不抖)/ tight 逐帧紧致 / none 不裁" },
                         "padding": { "type": "integer", "description": "格间透明留白像素,缺省 2" },
                         "trimStartSec": { "type": "number" },
@@ -188,7 +210,7 @@ fn frame_options(args: &Value) -> Result<video_frames::FrameOptions, GenError> {
     opts.trim_end_sec = args.get("trimEndSec").and_then(Value::as_f64).map(|v| v as f32);
     if let Some(k) = args.get("chromaKey").and_then(Value::as_str) {
         opts.chroma_key = video_frames::ChromaKey::parse(k).ok_or_else(|| {
-            GenError::new(GEN_BAD_PARAMS, format!("chromaKey 须为 auto|magenta|none,实: {k}"))
+            GenError::new(GEN_BAD_PARAMS, format!("chromaKey 须为 auto|magenta|black|none,实: {k}"))
         })?;
     }
     if let Some(c) = args.get("crop").and_then(Value::as_str) {
@@ -205,44 +227,39 @@ fn video_frames_map(boxes: &[[u32; 4]]) -> Value {
     Value::Object(assetd::sprite::frames_from_boxes("frame", boxes))
 }
 
-/// 能力面 kinds 是否含该 kind。
-fn supports_kind(b: &dyn GenBackend, kind: &str) -> bool {
-    b.capabilities()["kinds"]
-        .as_array()
-        .map(|ks| ks.iter().any(|k| k == kind))
-        .unwrap_or(false)
-}
-/// 后端解析:指定 id → 须已配置(能力由调用处的门把关);缺省 → 注册表序首个「已配置
-/// 且支持 kind」者;全无 → GEN_BACKEND_NOT_CONFIGURED。缺省按能力过滤,是为了让只会
-/// text2img 的远程后端与兜 texture-set/variations 的占位后端共存时各取所需,
-/// 而不是让缺省解析一头撞上能力门。
+/// 后端解析(D-045 上移至 gend,与 agentd 共用同一判据)。
 fn resolve_backend(
     backend: Option<&str>,
     kind: &str,
     cfg: &GenConfig,
     keys: &Keystore,
 ) -> Result<Box<dyn GenBackend>, GenError> {
-    if let Some(id) = backend {
-        let b = backends::find(id)
-            .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, format!("未知后端 id: {id}")))?;
-        if !b.configured(cfg, keys) {
-            return Err(GenError::new(
-                GEN_BACKEND_NOT_CONFIGURED,
-                format!("后端未配置或不可用: {id}"),
-            ));
-        }
-        return Ok(b);
-    }
-    backends::registry()
-        .into_iter()
-        .find(|b| b.configured(cfg, keys) && supports_kind(b.as_ref(), kind))
-        .ok_or_else(|| {
-            GenError::new(
-                GEN_BACKEND_NOT_CONFIGURED,
-                format!("无支持 {kind} 的已配置生成后端(data/gen-backends.json 缺 enabled 条目)"),
-            )
-        })
+    backends::resolve_backend(backend, kind, cfg, keys)
 }
+
+/// 画幅 / 画质 / 背景参数(未知枚举值显式报错,不静默回落)。
+fn arg_aspect(args: &Value) -> Result<backends::Aspect, GenError> {
+    match args.get("aspect").and_then(Value::as_str) {
+        None => Ok(backends::Aspect::Square),
+        Some(a) => backends::Aspect::parse(a).ok_or_else(|| {
+            GenError::new(GEN_BAD_PARAMS, format!("aspect 须为 square|landscape|portrait,实: {a}"))
+        }),
+    }
+}
+
+fn arg_enum(args: &Value, key: &str, allowed: &[&str]) -> Result<Option<String>, GenError> {
+    match args.get(key).and_then(Value::as_str) {
+        None => Ok(None),
+        Some(v) if allowed.contains(&v) => Ok(Some(v.to_string())),
+        Some(v) => Err(GenError::new(
+            GEN_BAD_PARAMS,
+            format!("{key} 须为 {} 之一,实: {v}", allowed.join("|")),
+        )),
+    }
+}
+
+const QUALITIES: [&str; 4] = ["low", "medium", "high", "auto"];
+const BACKGROUNDS: [&str; 3] = ["transparent", "opaque", "auto"];
 
 /// 生成上下文 sidecar(08 §6.4 provenance detail 素材)。
 fn sidecar(
@@ -399,13 +416,10 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
             let cfg = GenConfig::load();
             let keys = Keystore::load();
             let backend = resolve_backend(args.get("backend").and_then(Value::as_str), "text2img", &cfg, &keys)?;
-            let req = GenRequest {
-                prompt: final_prompt.clone(),
-                negative_prompt: negative.map(str::to_string),
-                size,
-                seed,
-                n,
-            };
+            let mut req = GenRequest::square(final_prompt.clone(), negative.map(str::to_string), size, seed, n);
+            req.aspect = arg_aspect(&args)?;
+            req.quality = arg_enum(&args, "quality", &QUALITIES)?;
+            req.background = arg_enum(&args, "background", &BACKGROUNDS)?;
             let cands = backend.generate(&req, &cfg, &keys)?;
             // 绑定发生过(含尝试但无简介)→ sidecar 如实记录;未传 assetPath 保持旧形态。
             let extras: Vec<(&str, Value)> = if bind_info.get("descAssetPath").is_some() {
@@ -430,6 +444,68 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, G
                 "promptFinal": final_prompt,
                 "descBinding": bind_info,
             }))
+        }
+        "gen_edit" => {
+            let prompt = arg_str(&args, "prompt")?;
+            let refs: Vec<String> = args
+                .get("imageRefs")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default();
+            if refs.is_empty() || refs.len() > 4 {
+                return Err(GenError::new(GEN_BAD_PARAMS, "imageRefs 须 1..=4 个项目相对路径"));
+            }
+            let n = arg_n(&args, 1)?;
+            let aspect = arg_aspect(&args)?;
+            let quality = arg_enum(&args, "quality", &QUALITIES)?;
+            let background = arg_enum(&args, "background", &BACKGROUNDS)?;
+            // 后端门先于读文件(无配置一律 NOT_CONFIGURED,同 gen_variations)。
+            let cfg = GenConfig::load();
+            let keys = Keystore::load();
+            let backend = resolve_backend(args.get("backend").and_then(Value::as_str), "img2img", &cfg, &keys)?;
+            let p = lock(proj);
+            let mut images = Vec::with_capacity(refs.len());
+            for r in &refs {
+                images.push(std::fs::read(tmpstore::resolve_project_file(&p, r)?)?);
+            }
+            let mask_ref = args.get("maskRef").and_then(Value::as_str).filter(|s| !s.is_empty());
+            let mask = match mask_ref {
+                Some(m) => Some(std::fs::read(tmpstore::resolve_project_file(&p, m)?)?),
+                None => None,
+            };
+            let seed = args
+                .get("seed")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| gend::hash_parts(&[prompt.as_bytes(), &images[0]]));
+            let req = backends::EditRequest {
+                prompt: prompt.to_string(),
+                images,
+                mask,
+                aspect,
+                seed,
+                n,
+                quality,
+                background,
+            };
+            drop(p);
+            let cands = backend.edit(&req, &cfg, &keys)?;
+            let mut source_refs = refs.clone();
+            if let Some(m) = mask_ref {
+                source_refs.push(m.to_string());
+            }
+            let p = lock(proj);
+            let mut out = Vec::with_capacity(cands.len());
+            for (i, c) in cands.iter().enumerate() {
+                let sc = sidecar(backend.id(), prompt, None, c.seed, source_refs.clone(), &[("op", json!("edit"))]);
+                let r = tmpstore::save_candidate(&p, &c.png_bytes, c.seed, i as u32, &sc)?;
+                out.push(json!({
+                    "imageFileRef": r,
+                    "seed": c.seed,
+                    "backendId": backend.id(),
+                    "dataUrl": png_data_url(&c.png_bytes),
+                }));
+            }
+            Ok(json!({ "candidates": out }))
         }
         "gen_texture_set" => {
             let prompt = arg_str(&args, "prompt")?;
@@ -640,6 +716,7 @@ pub fn serve_stdio(proj: Arc<Mutex<ForgeProject>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gend::GEN_BACKEND_NOT_CONFIGURED;
     use std::sync::Mutex;
 
     /// FORGE_GEN_DATA_DIR / FORGE_GEN_API_KEY 进程级,测试串行。
@@ -663,10 +740,11 @@ mod tests {
     fn tools_list_six() {
         let tl = tool_list();
         let tools = tl["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 7);
         for t in [
             "gen_backends_list",
             "gen_image",
+            "gen_edit",
             "gen_texture_set",
             "gen_accept",
             "gen_variations",
@@ -759,6 +837,38 @@ mod tests {
         // n 越界 → GEN_BAD_PARAMS(参数校验先于后端门?此处后端门先——gen_image 参数校验在
         // resolve_backend 之前,空配置下 n=5 也应报 BAD_PARAMS)。
         let e = call(&proj, "gen_image", json!({ "prompt": "w", "n": 5 })).unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[test]
+    fn gen_edit_and_aspect_with_local_mock() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let data = temp_dir("edit-data");
+        std::fs::write(
+            data.join("gen-backends.json"),
+            r#"{"backends":[{"id":"local-mock","kind":"local","enabled":true}]}"#,
+        )
+        .unwrap();
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let proj = temp_project("edit-proj");
+        let v = call(&proj, "gen_image", json!({ "prompt": "menu", "aspect": "landscape" })).unwrap();
+        let r = v["candidates"][0]["imageFileRef"].as_str().unwrap().to_string();
+        let root = lock(&proj).root.clone();
+        let img = image::open(root.join(&r)).unwrap();
+        assert_eq!((img.width(), img.height()), (1536, 1024));
+        let e = call(&proj, "gen_image", json!({ "prompt": "m", "aspect": "wide" })).unwrap_err();
+        assert_eq!(e.code, GEN_BAD_PARAMS);
+        let v = call(&proj, "gen_edit", json!({ "prompt": "make it red", "imageRefs": [r.clone()], "n": 2 })).unwrap();
+        let cands = v["candidates"].as_array().unwrap();
+        assert_eq!(cands.len(), 2);
+        let out_ref = cands[0]["imageFileRef"].as_str().unwrap();
+        let side = tmpstore::load_sidecar(&lock(&proj), out_ref).unwrap();
+        assert_eq!(side["sourceRefs"][0], json!(r));
+        assert_eq!(side["op"], json!("edit"));
+        let e = call(&proj, "gen_edit", json!({ "prompt": "x", "imageRefs": [] })).unwrap_err();
         assert_eq!(e.code, GEN_BAD_PARAMS);
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();

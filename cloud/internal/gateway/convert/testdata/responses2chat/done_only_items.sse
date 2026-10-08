@@ -1,0 +1,10 @@
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_d","type":"message","role":"assistant","content":[]}}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_d","type":"message","role":"assistant","content":[{"type":"output_text","text":"Full text from done."}]}}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"fc_d","type":"function_call","call_id":"call_d","name":"lookup","arguments":""}}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"fc_d","type":"function_call","call_id":"call_d","name":"lookup","arguments":"{\"q\":\"x\"}"}}
+
+data: {"type":"response.completed","response":{"id":"resp_done1","status":"completed","output":[],"usage":{"input_tokens":8,"output_tokens":9,"total_tokens":17}}}
+

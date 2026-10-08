@@ -1,0 +1,51 @@
+{
+  "kimi": {
+    "attack": "Viewed full clean body-only source: original small pen/book are retained, one forearm extends and retracts, no sword or effect graphics, head remains rear-facing.",
+    "cast": "Viewed corrected upright body-only source: both arms rise and open, then lower, without the previous camera enlargement/clipped body; rear identity and flat green background preserved.",
+    "walk": "Viewed complete source: rear-only alternating steps, long dark-blue hair and moon ornaments stable, no side face or camera move.",
+    "hit": "Viewed dense24-frame source contact: a clear brief rear hunch and arm flinch occurs0.21-0.67s, then recovery; choose this actual short reaction window rather than later idle.",
+    "death": "Viewed full source: visible forward knee collapse and face-down rest, original blue-white clothing and rear hair maintained, whole body framed."
+  },
+  "claude": {
+    "cast": "Viewed clean body-only source: symmetric open-arm barrier stance and complete return; rear head remains fixed and green background never turns red, no baked aura.",
+    "walk": "Viewed complete rear-only source: actual alternating leg steps, gold cream costume, hair and rear flower ornaments stay consistent; no face shown.",
+    "hit": "Viewed full source: arms and shoulders flinch outward, hair sways, then recover to rear stance without a face turn.",
+    "death": "Viewed full source: rear-facing knee collapse and forward face-down fall with complete body framed, stable final corpse.",
+    "attack": "Viewed full source: short arm push from rear, small shoulder turn but no eye or face exposed, then hand lowers and body returns to neutral."
+  },
+  "gemini": {
+    "attack": "Viewed clean body-only source: two forearms lift and extend then return, no orbiting invented weapons or beams; rear identity, foot position and green background are stable.",
+    "walk": "Viewed complete source: rear-only alternating footfalls, ponytail and multicolor trim remain fixed identity, no camera or body turn.",
+    "hit": "Viewed dense24-frame source contact: short rear-facing hunch/arm flinch around0.21-0.67s followed by recovery; maintain true brief reaction window.",
+    "death": "Viewed full source: kneels and falls forward face-down, complete rear silhouette remains framed and rests, no direction flip.",
+    "cast": "Viewed full source: one arm points upward and the other extends, creates a large transparent rune while keeping rear-facing head; returns to neutral and differs from basic firing pose."
+  },
+  "gpt": {
+    "attack": "Viewed clean symmetric body-only source: compact forward push with wings reacting, no head turn or extra magic circle, followed by rear-facing recovery; distinct from raised-palm restoration cast.",
+    "walk": "Viewed complete rear-only source: alternating feet, white hair/horns/wings preserved; no face visible.",
+    "hit": "Viewed full source: symmetric rear-facing hunch/recoil and recovery, wings flex, no face or camera turn.",
+    "death": "Viewed full source: rear-facing knees give way and face-down collapse; complete silhouette remains framed and corpse stays down.",
+    "cast": "Viewed full source: rear-only symmetric raised palms and restoration glyphs, then calm recovery; differs from basic attack."
+  },
+  "glm": {
+    "walk": "Viewed complete source: alternating rear-view steps, long black hair with blue accents and rear bun/coat retained; no face visible.",
+    "hit": "Viewed complete source: short rear-facing upper-body recoil, coat and sleeves respond, then recover without revealing face.",
+    "death": "Viewed full source: knees lower and character collapses forward face-down, back and coat stay recognizable, body stays framed and down.",
+    "attack": "Viewed full source: a compact pen/palm attack aimed away, shoulders lean but face remains hidden by rear hair; recovers to rear idle.",
+    "cast": "Viewed full source: opens book and raises a small blue support glyph, distinct sustained casting pose; visible rear head and clothing retained."
+  },
+  "minimax": {
+    "walk": "Viewed complete source: real alternating rear steps with microphone carried, pink-black long hair and costume preserved; no face shown.",
+    "hit": "Viewed full source: clear shoulder/head recoil and hair swing then recovery, stays back-facing and does not fall.",
+    "death": "Viewed full source: forward fall settles face-down, microphone and full body remain inside frame, no face or camera turn.",
+    "attack": "Viewed full source: compact microphone pulse toward top of frame, rear torso retained; one shot differs from wider casting gesture.",
+    "cast": "Viewed full source: microphone raised and free arm spreads in a sustained vocal support gesture, followed by a clear return to rear idle."
+  },
+  "deepseek": {
+    "walk": "Viewed complete rear-only source: clear alternating steps, navy maid costume/back bow/blue whale tail retained; no face visible.",
+    "hit": "Viewed full source: rear-facing shoulders and arms recoil then return, with whale-tail counterbalance; original identity retained.",
+    "death": "Viewed full source: rear-facing forward collapse, skirt and whale tail settle, face stays hidden; entire body remains within frame.",
+    "attack": "Viewed full source: compact single hand blue pulse aimed away from viewer, preserves rear-facing hair/head without face exposure.",
+    "cast": "Viewed full source: broad two-handed data-wave sweep, substantial wave motion different from basic pulse, remains rear-facing and recovers."
+  }
+}

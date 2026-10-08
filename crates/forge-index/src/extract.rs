@@ -141,10 +141,11 @@ fn asset_doc(
                 }
                 Err(e) => facts.push_str(&format!(";网格统计不可用({})", e.code)),
             },
+            ("shadergraph", _) => {if let Ok(text)=std::fs::read_to_string(&abs){if let Ok(v)=serde_json::from_str::<serde_json::Value>(&text){facts.push_str(&format!(";Shader Graph:{};domain:{};nodes:{}",v["name"].as_str().unwrap_or(""),v["domain"].as_str().unwrap_or(""),v["nodes"].as_array().map_or(0,Vec::len)));if let Some(params)=v["parameters"].as_array(){for p in params{facts.push_str(&format!(";param:{}:{}",p["id"].as_str().unwrap_or(""),p["type"].as_str().unwrap_or("")));}}}}},
             ("material", _) => {
                 if let Ok(text) = std::fs::read_to_string(&abs) {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if let Some(shader) = v.get("shader").and_then(|s| s.as_str()) {
+                        if let Some(shader) = v.get("shaderGraph").or_else(||v.get("shader")).and_then(|s| s.as_str()) {
                             facts.push_str(&format!(";shader:{shader}"));
                         }
                         if let Some(params) = v.get("params").and_then(|p| p.as_object()) {

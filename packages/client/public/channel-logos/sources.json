@@ -1,0 +1,29 @@
+{
+  "downloadedAt": "2026-10-07",
+  "assets": [
+    {
+      "file": "codex.png",
+      "source": "https://developers.openai.com/favicon.png",
+      "sha256": "8d5575ee667ff715cd3e3074d5296edc68d5aadd89720d203e13131b68b22a04",
+      "bytes": 1841
+    },
+    {
+      "file": "kimi.png",
+      "source": "https://www.kimi.com/pwa-192.png",
+      "sha256": "6c14f9c3062e953b3ed57ae3e19db931c1c1bba38d4d8d55550544f31d55e469",
+      "bytes": 21645
+    },
+    {
+      "file": "glm.png",
+      "source": "https://bigmodel.cn/static/images/favicon.png",
+      "sha256": "94ff9c00af67774e5178428942a6e0a9952c7e2f3aba4c25f3b05c782841ee4c",
+      "bytes": 1441
+    },
+    {
+      "file": "antigravity.svg",
+      "source": "https://antigravity.google/favicon.svg",
+      "sha256": "de7911c3d206a3d2fe3d5b4e76e84b185c581d7a259406f64db247b5b824f02e",
+      "bytes": 5037
+    }
+  ]
+}

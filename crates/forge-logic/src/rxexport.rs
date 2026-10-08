@@ -63,6 +63,20 @@ pub fn scan_export_c_fns(source: &str) -> Vec<ExportedFn> {
     out
 }
 
+/// Native Rust scripts use the same scalar ABI as Rurix. Rustc remains the
+/// authority for symbol emission; this scanner only supplies marshalling types.
+pub fn scan_rust_c_fns(source: &str) -> Vec<ExportedFn> {
+    let normalized = source.lines().map(|line| {
+        let trimmed = line.trim();
+        if trimmed == "#[no_mangle]" || trimmed == "#[unsafe(no_mangle)]" {
+            "#[export(c)]".to_string()
+        } else if trimmed.starts_with("pub extern \"C\" fn ") {
+            trimmed.replacen("pub extern \"C\" fn ", "pub fn ", 1)
+        } else { line.to_string() }
+    }).collect::<Vec<_>>().join("\n");
+    scan_export_c_fns(&normalized)
+}
+
 /// 解析 `#[export(c)]` / `#[export(c, name = "foo")]` 的 name 覆写。
 fn parse_name_override(attr: &str) -> Option<String> {
     let inner = attr.strip_prefix("#[export(")?.strip_suffix(")]")?;
@@ -110,6 +124,15 @@ fn parse_signature(sig: &str) -> Option<ExportedFn> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_rust_exports_require_explicit_c_abi_and_symbol() {
+        let source = "#[no_mangle]\npub extern \"C\" fn tick(dt: f32) -> f32 { dt }\n#[unsafe(no_mangle)]\npub extern \"C\" fn reset() {}\npub extern \"C\" fn hidden() {}\n";
+        let fns = scan_rust_c_fns(source);
+        assert_eq!(fns.len(), 2);
+        assert_eq!(fns[0].params, vec![("dt".into(), "f32".into())]);
+        assert_eq!(fns[1].ret, "void");
+    }
 
     #[test]
     fn scans_basic_export() {

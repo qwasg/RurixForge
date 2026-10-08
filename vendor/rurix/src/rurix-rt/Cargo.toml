@@ -1,0 +1,241 @@
+[package]
+name = "rurix-rt"
+description = "Rurix 运行时(M4.3:CUDA Driver API 薄层 — Context/Stream/Buffer/Module/launch + 装载协商 + poisoned 状态机,08 §1/§2,D-230~D-234)"
+edition = "2024"
+version = "1.0.0"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# 零外部运行时依赖:nvcuda.dll 运行时动态加载(LoadLibraryA/GetProcAddress),
+# 不依赖 CUDA Toolkit 的 nvcuda.lib 导入库(08 §9 / 14 §2 PTX-only,无再分发物)。
+# G1.1 CUDA–D3D12 互操作(feature d3d12-interop)的 D3D12/DXGI 薄 C/C++ shim 边界:
+# 可选依赖,默认关闭(RFC-0001 §4.2;D3D12 侧不进语言,D-130)。
+rurix-d3d12 = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca", optional = true }
+# G8.2 M30 PSO cache(RXS-0314):pso_key 的 SHA-256 复用 rurix-pkg 手写实现(RXS-0306
+# 同源;workspace path 依赖,零外部 crate)。optional + 随 feature vulkan 启用——
+# default(CUDA-only)构建依赖面 0-byte 不动。
+rurix-pkg = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca", optional = true }
+
+[dev-dependencies]
+# G9.3 M94(RXS-0351):rt_clas 烘焙输入 32B 记录与 logical_v2 CLAS_RECORD_SIZE 的
+# 跨 crate ABI 一致性锚(仅测试依赖,运行时依赖面 0-byte 不动)。
+rurix-geom-pages = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+
+[features]
+default = []
+# mb1 Vulkan/SPIR-V 跨端后端运行时(RFC-0011 §4.5/§4.6;RXS-0206~0207)。默认关闭——
+# Vulkan compute 后端经手写 `vulkan-1.dll` 薄 FFI loader(RFC §9 Q-Binding 默认:零外部
+# 绑定,对齐 sys.rs 无依赖纪律);运行需 Vulkan 驱动(本机 NVIDIA / AMD 桌面 / Android
+# libvulkan.so)。gated on 红线 3 解除 + RFC-0011 批准。
+vulkan = ["dep:rurix-pkg"]
+# d3d12-interop:G1.1 CUDA–D3D12 互操作呈现 Rust 类型面(RXS-0140~0143,RFC-0001):
+# 生成式 brand + ExternalBuffer/ExternalSemaphore + Ready→Acquired→Presentable typestate
+# + CUDA external-resource FFI。依赖 rurix-d3d12 的 **stub**(纯 Rust,无 C++)——故
+# `cargo build/test -p rurix-rt --features d3d12-interop` **无需 MSVC/D3D12 SDK** 即可编译,
+# 类型面编译期拦截(三类错误)与 fence 协议可在任意环境验证;运行期 shim 不可用。
+d3d12-interop = ["dep:rurix-d3d12"]
+# d3d12-interop-real:在 d3d12-interop 之上经 rurix-d3d12/real-shim 编译真实 D3D12/DXGI
+# C++ shim(需 MSVC + Windows SDK + 交互桌面会话)。仅 runner 设备真跑(步骤 40/41)启用。
+d3d12-interop-real = ["d3d12-interop", "rurix-d3d12/real-shim"]
+# taichi-tirt:G6.5 Taichi Vulkan AOT spike 的 TiRT FFI 边界(RFC-0017 §4.E)。
+# `taichi_c_api.dll` 经环境变量 `RURIX_TAICHI_C_API_DLL` 给绝对路径运行时装载
+# (LoadLibrary/GetProcAddress,镜像 sys.rs 零外部依赖纪律;未设/不存在/符号缺失 →
+# 确定性 Err,fail-closed P-01,不搜默认路径)+ 自建并行 Vk 设备上下文(vk.rs
+# pub(crate) 新增,RFC-0017 §4.E2)+ TiVulkanRuntimeInteropInfo 注入 + NdArray
+# launch + ti_export_vulkan_memory 导出 → 同 device vkCmdCopyBuffer readback。
+# 依赖 feature vulkan(vk loader/设备骨架);零新外部依赖。默认关闭。
+taichi-tirt = ["vulkan"]
+# vendor-upscale:G13.2 M-a(M167) vendor 超分 FFI 边界(U58;G13_CONTRACT §4.2):
+# Streamline SDK 2.10.3(DLSS SR,Vulkan interop 臂)+ FidelityFX SDK 2.0.0
+# (FSR 3.1.5,DX12 臂——FSR SDK 2.x 已无 Vulkan 后端)运行时装载 + 各自建并行
+# 设备上下文 + 帧级上传/evaluate/回读。SDK 目录经环境变量 RURIX_STREAMLINE_SDK_DIR /
+# RURIX_FSR_SDK_DIR 或默认 external/ 相对路径;fail-closed P-01;零新外部依赖;
+# SDK 二进制零入 git(external/ gitignored + milestones/g13/g13_vendor_sdk_registry.json
+# 许可/digest 登记)。依赖 feature vulkan(rurix-pkg sha256 用于 DLL provenance)。
+# 默认关闭,default/vulkan 构建零改动零回归。
+vendor-upscale = ["vulkan"]
+# **默认关闭全部**:常驻回归网 `cargo build/test/clippy --workspace` 不触 interop / D3D12 而绿。
+
+# build.rs 经 rurixc 库把 kernels/saxpy.rx 全管线产 PTX 嵌入 EXE(M4.4,D-M4-5);
+# 仅构建期依赖,不进运行时产物(运行时仍零依赖)。feature vulkan-backend 额外让 build.rs
+# 经 vulkan_codegen 产 saxpy.spv(纯 Rust MIR→SPIR-V,RXS-0208 marshalling anchor 支撑);
+# 只影响 build-script 那份 rurixc 副本(build-deps 与运行时依赖独立解析),不改 rurixc
+# 默认特性、不进运行时产物。
+[build-dependencies]
+rurixc = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca", features = ["vulkan-backend"] }
+
+# mb1 Vulkan compute 真跑 demo(RXS-0207):须 feature vulkan(vk 模块)。
+[[bin]]
+name = "vk_saxpy"
+required-features = ["vulkan"]
+
+# mb1 Phase 3 Vulkan graphics offscreen 真跑 demo(RXS-0210):须 feature vulkan。
+[[bin]]
+name = "vk_triangle"
+required-features = ["vulkan"]
+
+# mb1 W6 Vulkan win32 swapchain present 真跑 demo(RXS-0210 L4 present 落地):须 feature vulkan。
+[[bin]]
+name = "vk_present"
+required-features = ["vulkan"]
+
+# G3.3 PR-S0 Vulkan graphics descriptor 建面 v2 最小闭环 demo(RXS-0230,RFC-0013 §4.B7):
+# v1/v2 同像素对照 + 三类资源(mip 纹理 / immutable sampler / storage image)建面真跑。
+[[bin]]
+name = "vk_desc_v2"
+required-features = ["vulkan"]
+
+# G3.3 PR-S3 采样超集 device 数值判据 harness(RXS-0223~0230,RFC-0013 §4.B8;验收门 G-G3-3):
+# ≥6 模式(sample_lod 选层 / load 越界钳制 / gather 角点 / sample_cmp shadow / storage 唯一写者 /
+# wrap-vs-clamp / 多分量)descriptor-消费着色器真采样 + 采样点像素判据 + 篡改红绿。device 真跑
+# 归 owner 本机(步骤 63,opt-in RURIX_SAMPLING_DEVICE=1);无 GPU → SKIP 三态。
+[[bin]]
+name = "sampling_modes"
+required-features = ["vulkan"]
+
+# G3.4 bindless device 索引判据 harness(步骤 64,opt-in RURIX_BINDLESS_DEVICE=1;
+# 四象限动态索引四色 + 篡改注册序换位 RED + feature chain 缺失 Err;判据阈值 TODO owner)。
+[[bin]]
+name = "bindless_modes"
+required-features = ["vulkan"]
+
+# G3.5 render graph device 自动 barrier hazard 判据 harness(步骤 65,opt-in
+# RURIX_GRAPH_DEVICE=1;两 pass 自动 RT→SRV barrier 出图 + 漏声明 read 装配期 RX6030 拒 RED /
+# 声明 GREEN + 推导逐字重放对照;判据阈值 TODO owner)。
+[[bin]]
+name = "graph_modes"
+required-features = ["vulkan"]
+
+# G3.6 mesh 管线 device 像素判据 harness(步骤 66,opt-in RURIX_MESH_DEVICE=1;mesh 管线无
+# vertex-input DrawMeshTasks 出图 + covered 计数 + 篡改 SetMeshOutputs 顶点数 RED;判据阈值 TODO owner)。
+[[bin]]
+name = "vk_mesh"
+required-features = ["vulkan"]
+
+# G3.6 RT(BLAS/TLAS/SBT/TraceRays)device 像素判据 harness(步骤 67,opt-in RURIX_RT_DEVICE=1;
+# 单三角形 TLAS raygen/miss/closesthit 命中/miss 双色 + 移动顶点命中区移动 RED;判据阈值 TODO owner)。
+[[bin]]
+name = "vk_rt"
+required-features = ["vulkan"]
+
+# G7.3 W3b compute RayQuery device 判据 harness(步骤 93 device 段,RFC-0018 章 C,G-G7-5;
+# rurixc .spv + 单所有者 VkAsManager 真实 TLAS + hit/miss 数据流红绿 + 三 RED 注入轴)。
+[[bin]]
+name = "vk_ray_query"
+required-features = ["vulkan"]
+
+# G8.2 M30 PSO cache device 门 harness(RXS-0314~0316;RFC-0019 §4.1.4;门 g8.p0.m30.pso_cache):
+# --collector-only(纯 host key 集合)/ --cold / --warm(全新进程)/ --tamper 四轴 +
+# --drop-key stall 能红反证腿;三模式独立进程,JSON stdout 供 ci/g8_pso_cache_smoke.py 消费。
+[[bin]]
+name = "vk_pso_cache"
+required-features = ["vulkan"]
+
+# G8.2 M50 RT pipeline 增量 device 门 harness(RXS-0325~0327;门
+# g8.p0.m50.rt_pipeline_incremental):多 hit group + SBT user data + stack +
+# pipeline library;`run_rt_pipeline_offscreen`(既有 vk_rt / run_ray_tracing_offscreen
+# 不得代绿)。
+[[bin]]
+name = "vk_rt_incremental"
+required-features = ["vulkan"]
+
+# G31+ 波 C Task C15 RT pipeline + SBT 宿主车道 harness(RFC-0048;门
+# g31.waveC.rtpipeline):slab 双材质 SBT 分派 RT 臂(镜像语料,非 .rx 编译)
+# + RayQuery compute 对拍臂(真 .rx 编译)+ SER reorder workload 臂。
+[[bin]]
+name = "g31_rt_slab_lane"
+required-features = ["vulkan"]
+
+# G8.3 M04 几何页 device 解码 harness(RXS-0342;门 g8.p0.m04.page_format_abi):
+# 消费 rurixc 产 geom_page_decode.spv + RXPM image,compute 整数域展开回读 digest。
+[[bin]]
+name = "vk_geom_page_decode"
+required-features = ["vulkan"]
+
+# G9.2 M102 DGC 最小链路 harness(RXS-0348;门 g9.p0.m102.dgc_abstraction;U54):
+# compute pre-pass 直写 DgcBuffer → vkCmdExecuteGeneratedCommandsEXT → 显式
+# readback pass 回读哨兵字;回读计数器 = 0;RURIX_REQUIRE_REAL=1 + 校验层。
+[[bin]]
+name = "vk_dgc"
+required-features = ["vulkan"]
+
+# G9.2 M103 descriptor buffer 全局表 device 出图 harness(步骤 134;RXS-0347;RFC-0023
+# §4.3;门 g9.p0.m103.descriptor_global_table):VK_EXT_descriptor_buffer 单一全局大表
+# ≥65536 条目 fixture 出图与 host 种子 golden 逐字节相等 + 分配律/leak/悬空/越界
+# host 判据 + v1/v2 旧路径回归对照(vk_desc_v2 范式扩 v3)。RURIX_REQUIRE_REAL=1 +
+# RURIX_VK_VALIDATION=1 双置。
+[[bin]]
+name = "vk_desc_v3"
+required-features = ["vulkan"]
+
+# G9.2 M91 页格式 v2 device 解码 harness(RXS-0344;门 g9.p0.m91.page_format_v2_abi):
+# 消费 rurixc 产 geom_page_decode_v2.spv + RXPL major=2 页字节,compute 整数域展开
+# 回读 digest,与 CPU expand_digest_v2 逐位等。
+[[bin]]
+name = "vk_geom_page_decode_v2"
+required-features = ["vulkan"]
+
+# G9.3 M94 CLAS×RT 合流 device 对拍 harness(RXS-0351;门 g9.p0.m94.clas_rt_convergence;
+# U56 探测段):VK_NV_cluster_acceleration_structure capability snapshot → 确定性簇集
+# 场景回退腿(传统 BLAS 分组)ray query 与 host 金标准逐命中容差 0 对拍(主腿在位时
+# CLAS×回退双腿对拍)+ 错开一簇 RED 臂 + 静态帧零 AS 构建断言。
+[[bin]]
+name = "vk_clas_rt"
+required-features = ["vulkan"]
+
+# G9.3 M105 command build node device harness(RXS-0354;门 g9.p1.m105.command_build_node;
+# 复用 U54 DGC device 面,零新 FFI):compute pre-pass 在 device 上构建
+# dispatch/draw/draw_indexed 内容流(手编 SPV kernel),indirect pass
+# (ExecuteGeneratedCommands)消费;产物经显式记账回读与 host build_reference 逐字节
+# 比对;同输入双构建 digest 相等;生产路径零隐式回读 + RED 注入臂。
+[[bin]]
+name = "vk_command_build"
+required-features = ["vulkan"]
+
+# G9.3 M106 Execution Set×PSO 衔接 device harness(RXS-0355;门
+# g9.p1.m106.execution_set_pso;U57):两条同状态仅换 shader 的 pipeline 组成
+# execution set,GPU 侧索引切换出图 vs CPU 侧 PSO 切换 golden 逐字节一致;失效
+# 重建确定性;capability fail-closed + D3D12 诚实降级登记(host 面引用进 checks)。
+[[bin]]
+name = "vk_execution_set"
+required-features = ["vulkan"]
+
+# G31+ 波 C Task C3 统一设备能力探测聚合 harness(设备兼容矩阵与能力降级链
+# 系统化;门 g31.waveC.capability):vk::probe_device_capability 逐物理设备聚合
+# (vendor/device id、RT/RayQuery、mesh shader、descriptor 面上限、显存 budget)
+# + DLSS/FSR 双臂 session 真建可用性 + TSR 自研恒可用面 → 单一 capability
+# report JSON(rurix.g31.capability_report.v1)。
+[[bin]]
+name = "vk_capability_report"
+required-features = ["vendor-upscale"]
+
+# DLSS 5 Neural Rendering(NGX feature 18)D3D12 直驱可用性探针(artifacts/day_0830_dlss5nr
+# Phase 1):驱动侧 NGX core 装载 + snippet 定位 + Init + GetCapabilityParameters(vtable
+# 逆序自检)+ CreateFeature(18) 双臂(core / 直驱 snippet)真跑,产 evidence JSON。
+# 泄露件 evaluation-only,default off,env opt-in;须 feature vendor-upscale。
+[[bin]]
+name = "g13_dlss5_nr_probe"
+required-features = ["vendor-upscale"]
+
+# G31+ 波 C Task C16 M61 ③ measured 对照 harness(RFC-0034 重判表三项闭集之③;
+# 门 g31.waveC.meshbench 由 ci/g31_mesh_vs_raster_bench.py 承载):单会话三臂
+# (vs_fetch 取数 / vs_procedural / mesh_procedural)同一确定性三角形集 ⇒ 像素
+# digest 逐臂对拍 + GPU timestamp 逐帧 measured(如实登记不设通过线);SPV 由
+# CI 驱动经 glslangValidator 现编;mesh feature 缺失 → SKIP 三态。
+[[bin]]
+name = "g31_mesh_vs_raster_bench"
+required-features = ["vulkan"]
+
+# unsafe 纪律(AGENTS 硬规则 9 / 10 §7.6):rurix-rt 是首个 unsafe 边界(Driver API
+# FFI)。块级豁免 `unsafe_code`(注册见 unsafe-audit/rurix-rt.md),仍强制每个
+# unsafe 块携 `// SAFETY:` 注释(clippy undocumented_unsafe_blocks = deny)。
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+[workspace]
+resolver = "2"
+

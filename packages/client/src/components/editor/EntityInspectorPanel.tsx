@@ -13,6 +13,8 @@ import {
 import { useAssetStore } from '@/lib/assetStore';
 import { useEditorStore } from '@/lib/editorStore';
 import { useGraphStore, type GraphDoc } from '@/lib/graphStore';
+import TemplateControls from './TemplateControls';
+import TextPropsEditor from './TextPropsEditor';
 
 const iconBtn =
   'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-3';
@@ -190,6 +192,7 @@ export default function EntityInspectorPanel() {
           <div className="space-y-1.5 px-2.5 pb-2 pt-1">
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono text-2xs text-fg-3">Entity #{entity.id}</span>
+              <AnnotationHandle reference={entityReference(entity)} label={entity.name} />
               {category && (
                 <span
                   className={cn(
@@ -227,6 +230,7 @@ export default function EntityInspectorPanel() {
           </div>
 
           {/* 素材区 */}
+          <TemplateControls key={entity.id} entity={entity} />
           <Section title="素材" defaultOpen>
             <div className="space-y-1 px-2 pb-1">
               {assetRefs.length === 0 && <p className="text-2xs text-fg-4">无关联素材</p>}
@@ -312,7 +316,7 @@ export default function EntityInspectorPanel() {
           {/* 属性区 */}
           <Section title="属性">
             <div className="border-t border-edge py-1">
-              <p className="px-2 py-0.5 text-2xs font-medium text-fg-2">Transform</p>
+              <p className="flex items-center px-2 py-0.5 text-2xs font-medium text-fg-2">Transform <AnnotationHandle reference={entityReference(entity, { kind: 'component', selection: { component: 'Transform' } })} label={`${entity.name}.Transform`} /></p>
               <VecRow
                 label="Position"
                 values={entity.transform.translation}
@@ -333,7 +337,7 @@ export default function EntityInspectorPanel() {
               />
             </div>
 
-            {entity.components.map((c) => (
+            {entity.components.filter((c) => !['PrefabInstance', 'ModelNode', 'Parent'].includes(c.type)).map((c) => (
               <div key={c.type} className="border-t border-edge py-1">
                 <div className="flex items-center gap-1.5 px-2 py-0.5">
                   <input
@@ -344,6 +348,7 @@ export default function EntityInspectorPanel() {
                     className="h-3 w-3 shrink-0 accent-[var(--accent)]"
                   />
                   <span className="min-w-0 flex-1 truncate text-2xs font-medium text-fg-2">{c.type}</span>
+                  <AnnotationHandle reference={entityReference(entity, { kind: 'component', selection: { component: c.type } })} label={`${entity.name}.${c.type}`} />
                   <button
                     type="button"
                     title="Remove component"
@@ -354,10 +359,12 @@ export default function EntityInspectorPanel() {
                   </button>
                 </div>
                 <div className="px-2 pl-7 font-mono text-2xs text-fg-3">
-                  {Object.keys(c.props).length === 0 && <p className="text-fg-4">(无属性)</p>}
-                  {Object.entries(c.props).map(([k, v]) => (
+                  {c.type === 'Text' && <TextPropsEditor entityId={entity.id} props={c.props} />}
+                  {c.type !== 'Text' && Object.keys(c.props).length === 0 && <p className="text-fg-4">(无属性)</p>}
+                  {c.type !== 'Text' && Object.entries(c.props).map(([k, v]) => (
                     <p key={k} className="truncate py-px" title={JSON.stringify(v)}>
                       <span className="text-fg-4">{k}</span>: {JSON.stringify(v)}
+                      <AnnotationHandle reference={entityReference(entity, { kind: 'property', selection: { component: c.type, property: k } })} label={`${entity.name}.${c.type}.${k}`} />
                     </p>
                   ))}
                 </div>
@@ -390,3 +397,5 @@ export default function EntityInspectorPanel() {
     </div>
   );
 }
+import AnnotationHandle from './AnnotationHandle';
+import { entityReference } from '@/lib/editorReferences';

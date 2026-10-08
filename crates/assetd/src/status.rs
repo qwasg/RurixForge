@@ -46,6 +46,12 @@ pub fn build_status(project: &ForgeProject, paths: &[String]) -> Result<Vec<Buil
             }
         };
         let current_key = meta.cache_key(&source_bytes);
+        if !crate::model::validation::asset_hash_matches(&meta,&source_bytes) {
+            out.push(BuildStatus {path:rel,state:BuildState::Stale,hash:current_key});continue;
+        }
+        if matches!(meta.atype.as_str(),"model"|"prefab") && crate::model::validate_asset_document(project,&rel).is_err() {
+            out.push(BuildStatus {path:rel,state:BuildState::Failed,hash:current_key});continue;
+        }
 
         // .meta 记的 buildState 是上次构建后状态;再用当前键比对缓存是否真存在。
         let cache_file = project.cache_root().join("rxmesh").join(format!("{current_key}.rxmesh"));

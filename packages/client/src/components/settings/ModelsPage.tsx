@@ -1,26 +1,62 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
 import {
-  apiFfmpegStatus,
   apiGet,
   apiPost,
-  ForgeApiError,
+  getAntigravityStatus,
   getEmbeddingStatus,
   getOpenAiCompatStatus,
+  postAntigravityConfig,
+  postAntigravityProbe,
   postEmbeddingConfig,
   postOpenAiCompatConfig,
+  type AntigravityAvailability,
+  type AntigravityConfigReq,
+  type AntigravityProbeReq,
+  type AntigravityQuota,
+  type AntigravityStatus,
   type EmbeddingStatus,
-  type FfmpegStatus,
   type OpenAiCompatStatus,
 } from '@/lib/forgeApi';
+import { useSystemPolling, useSystemStore } from '@/lib/systemStore';
 import { useToastStore } from '@/lib/toastStore';
-import { SetCard, SetH1, SetInput, SetRow, SetSectionLabel, SetToggle, SmBtn } from './controls';
+import { useSettingsStore } from '@/lib/settingsStore';
+import CloudModelsSection, { ByoAdvancedSection } from './CloudModelsSection';
+import ChannelConnections from './ChannelConnections';
+import { SetCard, SetH1, SetInput, SetRow, SetToggle, SmBtn } from './controls';
+
+/** Mock provider 行:状态来自快照模型目录(5s 轮询),不写死 available。 */
+function MockProviderRow() {
+  useSystemPolling();
+  const checked = useSystemStore((st) => st.checked);
+  const mock = useSystemStore((st) => st.catalog.find((m) => m.provider === 'mock'));
+  const state = !checked && !mock ? 'checking' : mock ? (mock.availability ?? 'unknown') : 'missing';
+  return (
+    <SetRow
+      title={mock?.label || 'Mock provider'}
+      desc="模拟模型:不调用真实大模型,回复为固定内容,适合离线走通工作流"
+      last
+      testId="models-mock-row"
+      control={
+        <span
+          data-testid="models-mock-state"
+          className={cn(
+            'flex h-[18px] items-center rounded-full px-1.5 text-[10px]',
+            state === 'available' ? 'bg-sage-bg text-sage' : 'bg-shell-active text-fg-3',
+          )}
+        >
+          {state === 'checking' ? '检测中' : state === 'missing' ? '未提供' : state}
+        </span>
+      }
+    />
+  );
+}
 
 /**
  * F7 wave.5 模型页(参考 set_page_models 渠道卡语义适配本仓面):
  * - LLM 渠道:deepseek 卡(design-snapshot availability 实测)+「配置 API Key」展开
  *   (password 输入 + 保存 → POST /api/forge/llm/key;R-5:密钥永不回显,响应只 {ok,configured});
- *   Mock provider 信息行(恒 available,无 key 时恒绿 seam)。
+ *   Mock provider 信息行(状态取 systemStore 轻量快照的模型目录,与状态栏同源)。
  * - F8 wave.2:OpenAI-Compatible 通用渠道卡(GET status 实测 configured/baseUrl/model/keyConfigured,
  *   配置展开 baseUrl+model+key → POST /api/forge/llm/openai-compat/config;key 永不回显);
  *   模型菜单经 design-snapshot models 数据面自动纳入 openai-compat 条目(未配 needs-key 禁用)。
@@ -36,44 +72,6 @@ interface SnapshotModel {
   label: string;
   provider?: string;
   availability?: string;
-}
-
-interface GenBackend {
-  id: string;
-  kind: string;
-  configured: boolean;
-  /** 条目 enabled 事实;缺失(旧 agentd)= 未知,表单退回不改动语义 */
-  enabled?: boolean;
-  endpointSet: boolean;
-  /** keystore 是否有该后端密钥(只回布尔);与 configured 不同——停用时 configured=false 但 key 仍在 */
-  keyConfigured?: boolean;
-  /** 已配置的模型名(非密,可回显;未配为 null) */
-  model?: string | null;
-  /** 能力面(text2img / text2video / tts / music / text2mesh / image2mesh 等,如实显示) */
-  capabilities?: {
-    kinds?: string[];
-    /** 供应商固定端点(如 meshy);有此值时 endpoint 留空即走官方地址 */
-    defaultEndpoint?: string;
-  };
-}
-
-/** 能力字符串 → 中文标注(未知能力原样显示,不臆造)。 */
-const KIND_LABELS: Record<string, string> = {
-  text2img: '文生图',
-  'texture-set': '贴图组',
-  variations: '变体',
-  text2video: '文生视频',
-  image2video: '图生视频',
-  tts: '语音合成',
-  music: '音乐生成',
-  text2mesh: '文生3D',
-  image2mesh: '图生3D',
-};
-
-function kindsDesc(b: GenBackend): string {
-  const kinds = b.capabilities?.kinds;
-  if (!Array.isArray(kinds) || kinds.length === 0) return '';
-  return kinds.map((k) => KIND_LABELS[k] ?? k).join('/');
 }
 
 // ---------- LLM 渠道区 ----------
@@ -310,6 +308,296 @@ function OpenAiCompatCard() {
   );
 }
 
+// ---------- Antigravity 订阅反代渠道卡 (R1 & R3) ----------
+
+export interface AntigravityLimitBucket {
+  id: string;
+  label: string;
+  remainingPercent: number;
+  resetsAt?: number | string;
+}
+
+export function formatResetTime(value?: number | string): string {
+  if (value === undefined || value === null || value === '') return '';
+  const date = new Date(typeof value === 'number' ? (value < 1e11 ? value * 1000 : value) : value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `重置 ${date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+}
+
+export function parseAntigravityLimits(quota?: AntigravityQuota | null): AntigravityLimitBucket[] {
+  if (!quota) return [];
+  const buckets: AntigravityLimitBucket[] = [];
+  if (quota.primary) {
+    const p = quota.primary;
+    const remaining = p.remainingPercent ?? (p.usedPercent !== undefined ? Math.max(0, 100 - p.usedPercent) : 100);
+    buckets.push({
+      id: 'primary',
+      label: '主要额度',
+      remainingPercent: Math.max(0, Math.min(100, Math.round(remaining))),
+      resetsAt: p.resetsAt,
+    });
+  }
+  if (quota.secondary) {
+    const s = quota.secondary;
+    const remaining = s.remainingPercent ?? (s.usedPercent !== undefined ? Math.max(0, 100 - s.usedPercent) : 100);
+    buckets.push({
+      id: 'secondary',
+      label: '次要额度',
+      remainingPercent: Math.max(0, Math.min(100, Math.round(remaining))),
+      resetsAt: s.resetsAt,
+    });
+  }
+  return buckets;
+}
+
+export function AntigravityRateLimitBar({ bucket }: { bucket: AntigravityLimitBucket }) {
+  const remaining = bucket.remainingPercent;
+  return (
+    <div data-testid={`antigravity-limit-${bucket.id}`} className="flex flex-col gap-1.5 px-4 py-3">
+      <div className="flex items-center text-[11.5px]">
+        <span className="min-w-0 flex-1 text-fg-2">{bucket.label}</span>
+        <span className="font-code text-fg-3">剩余 {remaining}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-shell-active">
+        <div
+          className={cn(
+            'h-full rounded-full transition-all duration-300',
+            remaining > 20 ? 'bg-sage' : remaining > 5 ? 'bg-warn' : 'bg-red-500',
+          )}
+          style={{ width: `${remaining}%` }}
+        />
+      </div>
+      {formatResetTime(bucket.resetsAt) && (
+        <div className="text-[10px] text-fg-4">{formatResetTime(bucket.resetsAt)}</div>
+      )}
+    </div>
+  );
+}
+
+const ANTIGRAVITY_STATUS_EMPTY: AntigravityStatus = {
+  configured: false,
+  baseUrl: '',
+  model: 'gemini-3.8-flash',
+  keyConfigured: false,
+  availability: 'needs-config',
+};
+
+const ANTIGRAVITY_PRESETS = ['gemini-3.8-flash', 'gemini-3.8-pro'];
+
+export function AntigravityCard() {
+  const [status, setStatus] = useState<AntigravityStatus>(ANTIGRAVITY_STATUS_EMPTY);
+  const [expanded, setExpanded] = useState(false);
+  const [baseUrl, setBaseUrl] = useState('');
+  const [model, setModel] = useState('gemini-3.8-flash');
+  const [key, setKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<{ ok: boolean; latency?: number; error?: string } | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await getAntigravityStatus();
+      setStatus(s);
+    } catch {
+      // 保持现状
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const openForm = () => {
+    setBaseUrl(status.baseUrl);
+    setModel(status.model || 'gemini-3.8-flash');
+    setKey('');
+    setProbeResult(null);
+    setExpanded((v) => !v);
+  };
+
+  const handleProbe = async () => {
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const res = await postAntigravityProbe({
+        baseUrl: baseUrl.trim() || undefined,
+        model: model.trim() || undefined,
+        key: key.trim() || undefined,
+      });
+      if (res.ok) {
+        setProbeResult({ ok: true, latency: res.latencyMs });
+        useToastStore.getState().push('success', `Antigravity 反代连接成功 (${res.latencyMs ?? 0}ms)`);
+        await refresh();
+      } else {
+        setProbeResult({ ok: false, error: res.error || '探针未通过' });
+        useToastStore.getState().push('error', `探针失败: ${res.error || '未知错误'}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setProbeResult({ ok: false, error: msg });
+      useToastStore.getState().push('error', `探测失败: ${msg}`);
+    } finally {
+      setProbing(false);
+    }
+  };
+
+  const handleSave = async () => {
+    const bu = baseUrl.trim();
+    const m = model.trim();
+    if (bu === '' || m === '' || saving) return;
+    setSaving(true);
+    try {
+      const payload: AntigravityConfigReq = { baseUrl: bu, model: m };
+      if (key.trim() !== '') payload.key = key.trim();
+      const r = await postAntigravityConfig(payload);
+      setKey('');
+      setExpanded(false);
+      useToastStore.getState().push('success', r.configured ? 'Antigravity 反代已配置' : '配置已保存');
+      await refresh();
+    } catch (err) {
+      useToastStore.getState().push('error', `保存失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const limits = parseAntigravityLimits(status.rateLimits ?? status.quota);
+  const currentAvailability: AntigravityAvailability =
+    status.availability ?? (status.configured ? 'available' : 'needs-config');
+
+  return (
+    <SetCard testId="channel-antigravity">
+      <SetRow
+        title="Antigravity 订阅反代"
+        desc="Google AI / Gemini 反代配额 · 原生 Agent LLM 供应商"
+        last={!expanded && limits.length === 0}
+        testId="channel-antigravity-row"
+        control={
+          <span className="flex items-center gap-2">
+            {status.latencyMs != null && status.latencyMs > 0 && (
+              <span
+                data-testid="antigravity-latency"
+                className="font-code text-[10.5px] text-fg-3"
+              >
+                {status.latencyMs}ms
+              </span>
+            )}
+            <span
+              data-testid="antigravity-availability"
+              className={cn(
+                'flex h-[18px] items-center rounded-full px-1.5 text-[10px]',
+                currentAvailability === 'available' && 'bg-sage-bg text-sage',
+                currentAvailability === 'needs-config' && 'bg-warn-bg text-warn',
+                (currentAvailability === 'offline' || currentAvailability === 'disconnected') && 'bg-shell-active text-fg-3',
+              )}
+            >
+              {currentAvailability}
+            </span>
+            <SmBtn label="配置" testId="antigravity-config-toggle" onClick={openForm} />
+          </span>
+        }
+      />
+      {/* 额度进度条 */}
+      {limits.length > 0 && (
+        <div className="divide-y divide-edge border-t border-edge" data-testid="antigravity-limits">
+          {limits.map((b) => (
+            <AntigravityRateLimitBar key={b.id} bucket={b} />
+          ))}
+        </div>
+      )}
+      {/* 当前配置状态摘要 */}
+      {!expanded && (status.baseUrl !== '' || status.model !== '' || status.keyConfigured) && (
+        <SetRow
+          title="当前配置"
+          desc={`${status.baseUrl || '(未配置 baseUrl)'} · ${status.model || '(未配置 model)'} · key ${status.keyConfigured ? '已配置' : '未配置'}`}
+          last
+          testId="antigravity-status-line"
+        />
+      )}
+      {/* 展开配置表单 */}
+      {expanded && (
+        <div className="flex flex-col gap-2.5 border-t border-edge px-4 py-3" data-testid="antigravity-config-form">
+          <SetInput
+            value={baseUrl}
+            onChange={setBaseUrl}
+            placeholder="baseUrl (如 http://127.0.0.1:8080 或 https://antigravity.example.com)"
+            width={360}
+            testId="antigravity-baseurl-input"
+          />
+          <div className="flex flex-col gap-1.5">
+            <SetInput
+              value={model}
+              onChange={setModel}
+              placeholder="model (如 gemini-3.8-flash / gemini-3.8-pro)"
+              width={360}
+              testId="antigravity-model-input"
+            />
+            <div className="flex items-center gap-1.5 text-[11px] text-fg-4">
+              <span>快捷预设:</span>
+              {ANTIGRAVITY_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  data-testid={`antigravity-preset-${preset}`}
+                  onClick={() => setModel(preset)}
+                  className={cn(
+                    'rounded border px-1.5 py-0.5 text-[11px] transition-colors',
+                    model === preset
+                      ? 'border-acc bg-acc-bg text-acc'
+                      : 'border-edge bg-shell-panel text-fg-2 hover:bg-shell-hover',
+                  )}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+          <SetInput
+            type="password"
+            value={key}
+            onChange={setKey}
+            placeholder={
+              status.keyConfigured
+                ? 'apiKey (已配置; 留空保留既有; 只写 keystore, 永不回显)'
+                : 'apiKey (留空保留既有; 只写 keystore, 永不回显)'
+            }
+            width={360}
+            testId="antigravity-key-input"
+          />
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <SmBtn
+              label={probing ? '测试中…' : '测试连接'}
+              disabled={probing}
+              testId="antigravity-probe-btn"
+              onClick={() => void handleProbe()}
+            />
+            <SmBtn
+              label={saving ? '保存中…' : '保存'}
+              accent
+              disabled={baseUrl.trim() === '' || model.trim() === '' || saving}
+              testId="antigravity-config-save"
+              onClick={() => void handleSave()}
+            />
+            {probeResult && (
+              <span
+                data-testid="antigravity-probe-feedback"
+                className={cn('text-[11px]', probeResult.ok ? 'text-sage' : 'text-warn')}
+              >
+                {probeResult.ok
+                  ? `✓ 连接正常${probeResult.latency != null ? ` (${probeResult.latency}ms)` : ''}`
+                  : `✕ ${probeResult.error}`}
+              </span>
+            )}
+          </div>
+          <span className="text-[10.5px] text-fg-4">
+            端点与模型持久化至本地数据目录；密钥写入加密本地 keystore，绝不回显。
+          </span>
+        </div>
+      )}
+    </SetCard>
+  );
+}
+
 // ---------- F10:Embedding 渠道卡(RAG 向量档;照 OpenAiCompatCard) ----------
 
 const EMBED_STATUS_EMPTY: EmbeddingStatus = {
@@ -439,286 +727,21 @@ function EmbeddingCard() {
   );
 }
 
-// ---------- 生成后端区(F5 平移) ----------
-
-function GenBackendCard({ backend, onSaved }: { backend: GenBackend; onSaved: () => void }) {
-  // 旧 agentd 不回 enabled:此时按「已配置即启用」推断,避免把未知当成 false 误停后端。
-  const backendEnabled = backend.enabled ?? backend.configured;
-  const [expanded, setExpanded] = useState(false);
-  const [enabled, setEnabled] = useState(backendEnabled);
-  const [endpoint, setEndpoint] = useState('');
-  const [model, setModel] = useState(backend.model ?? '');
-  const [apiKey, setApiKey] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // configure 的 enabled 是无条件覆盖,故展开时必须按清单事实重置,
-  // 否则「只改 key」的保存会把停用的后端悄悄改回启用。
-  // endpoint/apiKey 按契约不回显,恒空 = 保留既有。
-  const toggleForm = () => {
-    if (!expanded) {
-      setEnabled(backendEnabled);
-      setModel(backend.model ?? '');
-      setEndpoint('');
-      setApiKey('');
-    }
-    setExpanded((v) => !v);
-  };
-
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = { id: backend.id, kind: backend.kind, enabled };
-      if (endpoint.trim() !== '') payload.endpoint = endpoint.trim();
-      if (model.trim() !== '') payload.model = model.trim();
-      if (apiKey.trim() !== '') payload.apiKey = apiKey.trim();
-      await apiPost('/api/forge/gen/backends/configure', payload);
-      setApiKey('');
-      setExpanded(false);
-      useToastStore.getState().push('success', `生成后端 ${backend.id} 已保存`);
-      onSaved();
-    } catch (err) {
-      useToastStore.getState().push('error', `保存失败:${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const abilities = kindsDesc(backend);
-  const descParts = [`kind=${backend.kind}`];
-  if (abilities !== '') descParts.push(abilities);
-  descParts.push(backendEnabled ? '已启用' : '已停用');
-  const defaultEndpoint = backend.capabilities?.defaultEndpoint;
-  if (backend.kind === 'remote') {
-    // 有官方缺省端点的供应商,endpoint 空不等于「未配置」——别把可用状态说成缺件。
-    descParts.push(
-      backend.endpointSet
-        ? 'endpoint 已配置'
-        : defaultEndpoint
-          ? `endpoint ${defaultEndpoint}(缺省)`
-          : 'endpoint 未配置',
-    );
-    descParts.push(`key ${backend.keyConfigured ? '已配置' : '未配置'}`);
-    if (backend.model) descParts.push(`model=${backend.model}`);
-  }
-  return (
-    <SetCard testId={`gen-backend-${backend.id}`}>
-      <SetRow
-        title={backend.id}
-        desc={descParts.join(' · ')}
-        last={!expanded}
-        testId={`gen-backend-row-${backend.id}`}
-        control={
-          <span className="flex items-center gap-2">
-            <span
-              data-testid={`gen-configured-${backend.id}`}
-              className={
-                backend.configured
-                  ? 'flex h-[18px] items-center rounded-full bg-sage-bg px-1.5 text-[10px] text-sage'
-                  : 'flex h-[18px] items-center rounded-full bg-shell-active px-1.5 text-[10px] text-fg-3'
-              }
-            >
-              {backend.configured ? 'configured' : '未配置'}
-            </span>
-            <SmBtn label="配置" testId={`gen-configure-${backend.id}`} onClick={toggleForm} />
-          </span>
-        }
-      />
-      {expanded && (
-        <div className="flex flex-col gap-2 border-t border-edge px-4 py-3" data-testid={`gen-form-${backend.id}`}>
-          <label className="flex items-center gap-2 text-[12px] text-fg-2">
-            <SetToggle on={enabled} onChange={setEnabled} testId={`gen-enabled-${backend.id}`} />
-            启用该后端
-          </label>
-          {backend.kind === 'remote' && (
-            <>
-              <SetInput
-                value={endpoint}
-                onChange={setEndpoint}
-                placeholder={
-                  backend.endpointSet
-                    ? 'endpoint(已配置,不回显;留空保留既有)'
-                    : defaultEndpoint
-                      ? `endpoint(留空即走官方 ${defaultEndpoint})`
-                      : 'endpoint(如 https://api.example.com)'
-                }
-                width={320}
-                testId={`gen-endpoint-${backend.id}`}
-              />
-              <SetInput
-                value={model}
-                onChange={setModel}
-                placeholder="model(可选;留空保留既有,请求 body.model 透传)"
-                width={320}
-                testId={`gen-model-${backend.id}`}
-              />
-              <SetInput
-                type="password"
-                value={apiKey}
-                onChange={setApiKey}
-                placeholder={backend.keyConfigured ? 'apiKey(已配置,不回显;留空保留既有)' : 'apiKey(远程后端必填)'}
-                width={320}
-                testId={`gen-apikey-${backend.id}`}
-              />
-            </>
-          )}
-          <div>
-            <SmBtn
-              label={saving ? '保存中…' : '保存'}
-              accent
-              disabled={saving}
-              testId={`gen-save-${backend.id}`}
-              onClick={() => void save()}
-            />
-          </div>
-        </div>
-      )}
-    </SetCard>
-  );
-}
-
-// ---------- 外部工具:ffmpeg(角色动画截帧) ----------
-
-/**
- * ffmpeg 可用性卡。仓里没有 mp4 解码器,角色动画的「视频 → 精灵图集」这一步全靠它;
- * 找不到就明说找不到并给出三条配置路径,而不是让用户点了生成才撞上 501。
- */
-function FfmpegCard() {
-  const [status, setStatus] = useState<FfmpegStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      setStatus(await apiFfmpegStatus());
-      setError(null);
-    } catch (err) {
-      setStatus(null);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const desc =
-    error !== null
-      ? `探测失败:${error}`
-      : status === null
-        ? '探测中…'
-        : status.found
-          ? `${status.version ?? 'ffmpeg'} · ${status.path ?? ''}`
-          : '未找到。装好后置于 PATH,或放到 <workspace>/data/tools/,或用环境变量 FORGE_FFMPEG 指向可执行文件。未装时视频仍能生成,只是切不出精灵图集。';
-
-  return (
-    <SetCard testId="tools-ffmpeg">
-      <SetRow
-        title="ffmpeg(角色动画截帧)"
-        desc={desc}
-        last
-        control={
-          <span className="flex items-center gap-2">
-            <span
-              className={cn(
-                'flex h-[18px] items-center rounded-full px-1.5 text-[10px]',
-                status?.found === true ? 'bg-sage-bg text-sage' : 'bg-shell-sunk text-fg-4',
-              )}
-            >
-              {status?.found === true ? 'available' : 'not found'}
-            </span>
-            <SmBtn label="重新探测" testId="tools-ffmpeg-recheck" onClick={() => void refresh()} />
-          </span>
-        }
-      />
-    </SetCard>
-  );
-}
-
 export default function ModelsPage() {
-  const [backends, setBackends] = useState<GenBackend[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<{ message: string; offline: boolean } | null>(null);
-
-  const loadBackends = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await apiGet<{ backends: GenBackend[] }>('/api/forge/gen/backends');
-      setBackends(r.backends);
-      setLoadError(null);
-    } catch (err) {
-      // 502 UPSTREAM_UNREACHABLE = agentd 没起,与「清单本身出错」是两码事,分开说。
-      const offline = err instanceof ForgeApiError && (err.code === 'UPSTREAM_UNREACHABLE' || err.status === 502);
-      setLoadError({ message: err instanceof Error ? err.message : String(err), offline });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadBackends();
-  }, [loadBackends]);
-
+  const setPage = useSettingsStore((st) => st.setPage);
   return (
     <div data-testid="settings-page-models" className="flex flex-col">
       <SetH1>模型</SetH1>
-      <SetSectionLabel>LLM 渠道</SetSectionLabel>
-      <div className="flex flex-col gap-3">
+      <ChannelConnections />
+      <CloudModelsSection />
+      <ByoAdvancedSection>
         <DeepseekCard />
         <OpenAiCompatCard />
         <EmbeddingCard />
-        <SetCard>
-          <SetRow
-            title="Mock provider"
-            desc="无密钥恒绿 seam(不触网不触 MCP)"
-            last
-            control={
-              <span className="flex h-[18px] items-center rounded-full bg-sage-bg px-1.5 text-[10px] text-sage">
-                available
-              </span>
-            }
-          />
-        </SetCard>
-      </div>
-      <SetSectionLabel>生成后端</SetSectionLabel>
-      <div className="flex flex-col gap-3">
-        {loadError && (
-          <SetCard testId="gen-backends-error">
-            <SetRow
-              title={loadError.offline ? '生成后端服务未连接' : '生成后端清单加载失败'}
-              desc={
-                loadError.offline
-                  ? `agentd 未运行或不可达,配置面暂不可用。启动 agentd 后点重试。(${loadError.message})`
-                  : loadError.message
-              }
-              last
-              control={
-                <SmBtn
-                  label={loading ? '重试中…' : '重试'}
-                  disabled={loading}
-                  testId="gen-backends-retry"
-                  onClick={() => void loadBackends()}
-                />
-              }
-            />
-          </SetCard>
-        )}
-        {!loadError && loading && backends.length === 0 && (
-          <div className="text-[12px] text-fg-4" data-testid="gen-backends-loading">
-            加载中…
-          </div>
-        )}
-        {!loadError && !loading && backends.length === 0 && (
-          <div className="text-[12px] text-fg-4" data-testid="gen-backends-empty">
-            后端注册表为空
-          </div>
-        )}
-        {backends.map((b) => (
-          <GenBackendCard key={b.id} backend={b} onSaved={() => void loadBackends()} />
-        ))}
-      </div>
-      <SetSectionLabel>外部工具</SetSectionLabel>
-      <div className="flex flex-col gap-3">
-        <FfmpegCard />
+        <SetCard><MockProviderRow /></SetCard>
+      </ByoAdvancedSection>
+      <div className="mt-5">
+        <SetCard><SetRow title="生成服务" desc="管理图像、视频、音频与 3D 连接" last control={<SmBtn label="管理配置" testId="models-open-generation" onClick={() => setPage('generation')} />} /></SetCard>
       </div>
     </div>
   );

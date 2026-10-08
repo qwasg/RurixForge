@@ -68,7 +68,9 @@ impl ScopeContext {
 
     /// 当前 + 只读项目(检索遍历序;当前项目恒在首位)。
     pub fn searchable(&self) -> Vec<&ScopeProject> {
-        std::iter::once(&self.current).chain(self.readonly.iter()).collect()
+        std::iter::once(&self.current)
+            .chain(self.readonly.iter())
+            .collect()
     }
 
     /// 按模型给的 projectId 定位项目(未知 id → None)。
@@ -256,11 +258,22 @@ mod isolation_tests {
             workspaces: Arc::new(ws),
             runs: Arc::new(crate::agent::RunRegistry::default()),
             todos: Arc::new(crate::agent::TodoStore::load(dir.join("todos.json"))),
-            receipts: Arc::new(crate::receipts::ReceiptStore::load(dir.join("receipts.json"))),
+            receipts: Arc::new(crate::receipts::ReceiptStore::load(
+                dir.join("receipts.json"),
+            )),
             wakes: Arc::new(crate::agent::WakeRegistry::default()),
-            permissions: Arc::new(crate::permission::PermissionService::load(dir.join("perm.json"))),
+            collaboration: Arc::new(crate::collaboration::CollaborationStore::load(
+                dir.join("collaboration.json"),
+            )),
+            team_runtime: Arc::new(crate::collaboration_runtime::TeamRuntime::default()),
+            permissions: Arc::new(crate::permission::PermissionService::load(
+                dir.join("perm.json"),
+            )),
             codex: Arc::new(crate::codex::service::CodexService::default()),
             goals: Arc::new(crate::goals::GoalStore::load(dir.join("goals.json"))),
+            cloud: Arc::new(crate::cloud::CloudService::new()),
+            memory: Arc::new(crate::memory::MemoryStore::ephemeral()),
+            sync: Arc::new(crate::cloud::sync::SyncStore::ephemeral()),
         };
         let scope = resolve(
             &state,
@@ -270,11 +283,17 @@ mod isolation_tests {
         );
         assert_eq!(scope.current.workspace_id.as_deref(), Some(a.id.as_str()));
         assert_eq!(scope.readonly.len(), 1);
-        assert_eq!(scope.readonly[0].workspace_id.as_deref(), Some(b.id.as_str()));
+        assert_eq!(
+            scope.readonly[0].workspace_id.as_deref(),
+            Some(b.id.as_str())
+        );
         assert!(scope.find(&a.id).is_some());
         assert!(scope.find(&b.id).is_some());
         assert!(scope.find("ws_ghost").is_none());
-        assert!(scope.find(&_c.id).is_none(), "未勾选的 C 不得进入检索作用域");
+        assert!(
+            scope.find(&_c.id).is_none(),
+            "未勾选的 C 不得进入检索作用域"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

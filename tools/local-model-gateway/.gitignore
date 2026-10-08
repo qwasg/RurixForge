@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.log
+gateway.pid
+start.status
+smoke_report.json
+run-gateway.cmd
+gateway.pid

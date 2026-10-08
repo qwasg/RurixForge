@@ -1,0 +1,8 @@
+{
+  "name": "maze",
+  "project": "demo",
+  "load": "Content/Scenes/maze.rxscene",
+  "camera": {"target": [0.0, 0.5, 0.0], "yaw": 35.0, "pitch": 28.0, "dist": 9.0},
+  "width": 640,
+  "height": 360
+}

@@ -52,6 +52,9 @@ impl Component {
 /// 实体(id + 名称 + 变换 + 组件列表)。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entity {
+    /// Persistent editor identity; absent legacy documents remain byte compatible.
+    #[serde(default, rename = "entityGuid", skip_serializing_if = "Option::is_none")]
+    pub entity_guid: Option<String>,
     pub id: u64,
     pub name: String,
     pub transform: Transform,
@@ -101,6 +104,8 @@ pub const SCENE_MODE_3D: &str = "3d";
 /// mode/gravity 缺省值跳过序列化:旧 3D 场景 load→save 逐字节同态不变(F-GAME-3)。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scene {
+    #[serde(default, rename = "sceneGuid", skip_serializing_if = "Option::is_none")]
+    pub scene_guid: Option<String>,
     pub name: String,
     #[serde(default)]
     pub entities: Vec<Entity>,
@@ -149,6 +154,30 @@ impl From<std::io::Error> for SceneError {
     }
 }
 
+#[cfg(test)]
+mod editor_identity_tests {
+    use super::*;
+    #[test]
+    fn legacy_roundtrip_does_not_allocate_ids_but_explicit_upgrade_is_stable() {
+        let legacy=Scene::new("legacy").to_json().unwrap();
+        let mut scene=Scene::from_json(&legacy).unwrap();
+        assert_eq!(scene.to_json().unwrap(),legacy);
+        let mut counter=0;
+        scene.ensure_editor_identity(||{counter+=1;format!("guid-{counter}")}).unwrap();
+        let migrated=scene.to_json().unwrap();
+        assert!(migrated.contains("sceneGuid"));
+        scene.ensure_editor_identity(||panic!("identity must not regenerate")).unwrap();
+        assert_eq!(scene.to_json().unwrap(),migrated);
+        assert_eq!(Scene::from_json(&migrated).unwrap(),scene);
+    }
+    #[test]
+    fn duplicate_identity_is_rejected_not_silently_rebound() {
+        let mut scene=Scene::from_json(r#"{"name":"duplicate","entities":[{"id":1,"entityGuid":"same","name":"a","transform":{"translation":[0,0,0],"rotation":[0,0,0,1],"scale":[1,1,1]}},{"id":2,"entityGuid":"same","name":"b","transform":{"translation":[0,0,0],"rotation":[0,0,0,1],"scale":[1,1,1]}}]}"#).unwrap();
+        assert!(scene.ensure_editor_identity(||"new".into()).unwrap_err().starts_with("AMBIGUOUS_REFERENCE"));
+        assert!(scene.entity_by_guid("same").is_err());
+    }
+}
+
 impl From<serde_json::Error> for SceneError {
     fn from(e: serde_json::Error) -> Self {
         SceneError::Json(e)
@@ -177,6 +206,70 @@ pub struct ComponentSpec {
 /// F4 wave.2 + Script(10 §1 Unity 决策行:挂 .rx 模块或节点图,暴露属性 dict);
 /// F-GAME-3 + Sprite(2D 精灵)与 Camera 正交扩展(projection/orthoSize)。
 pub const REGISTRY: &[ComponentSpec] = &[
+    // Opt-in native GPU particle experiment. Transform carries center and
+    // [event age, lifetime, style]; it is not an ordinary mesh transform.
+    ComponentSpec { name: "ParticleEmitter", fields: &[] },
+    ComponentSpec {
+        name: "ModelRenderer",
+        fields: &[
+            FieldSpec { name: "model", ty: "string", default: None },
+            FieldSpec { name: "nodeId", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "materialOverrides", ty: "dict", default: Some("{}") },
+            FieldSpec { name: "materialBindings", ty: "dict", default: Some("{}") },
+            FieldSpec { name: "revision", ty: "number", default: Some("0") },
+        ],
+    },
+    ComponentSpec {
+        name: "ModelNode",
+        fields: &[
+            FieldSpec { name: "model", ty: "string", default: None },
+            FieldSpec { name: "nodeId", ty: "string", default: None },
+        ],
+    },
+    ComponentSpec {
+        name: "Parent",
+        fields: &[FieldSpec { name: "entity", ty: "number", default: None }],
+    },
+    ComponentSpec {
+        name: "PrefabInstance",
+        fields: &[
+            FieldSpec { name: "prefabRef", ty: "string", default: None },
+            FieldSpec { name: "revision", ty: "number", default: None },
+            FieldSpec { name: "baseline", ty: "dict", default: None },
+        ],
+    },
+    ComponentSpec {
+        name: "Animator",
+        fields: &[
+            FieldSpec { name: "clip", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "idleClip", ty: "string", default: Some("\"idle\"") },
+            FieldSpec { name: "walkClip", ty: "string", default: Some("\"walk\"") },
+            FieldSpec { name: "time", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "speed", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "playing", ty: "bool", default: Some("true") },
+            FieldSpec { name: "manualControl", ty: "bool", default: Some("false") },
+            FieldSpec { name: "loop", ty: "bool", default: Some("true") },
+        ],
+    },
+    ComponentSpec {
+        name: "Collider",
+        fields: &[
+            FieldSpec { name: "shape", ty: "enum:box|capsule|mesh", default: Some("\"box\"") },
+            FieldSpec { name: "model", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "halfExtents", ty: "[f32;3]", default: Some("[0.5,0.5,0.5]") },
+            FieldSpec { name: "radius", ty: "number", default: Some("0.35") },
+            FieldSpec { name: "height", ty: "number", default: Some("1.8") },
+        ],
+    },
+    ComponentSpec {
+        name: "CharacterController",
+        fields: &[
+            FieldSpec { name: "speed", ty: "number", default: Some("3.0") },
+            FieldSpec { name: "radius", ty: "number", default: Some("0.35") },
+            FieldSpec { name: "height", ty: "number", default: Some("1.8") },
+            FieldSpec { name: "controlled", ty: "bool", default: Some("true") },
+        ],
+    },
     ComponentSpec {
         name: "MeshRenderer",
         fields: &[
@@ -223,6 +316,8 @@ pub const REGISTRY: &[ComponentSpec] = &[
     ComponentSpec {
         name: "Sprite",
         fields: &[
+            FieldSpec { name: "material", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "materialParams", ty: "dict", default: Some("{}") },
             FieldSpec { name: "texture", ty: "string", default: Some("\"\"") },
             FieldSpec { name: "sprite", ty: "string", default: Some("\"\"") },
             FieldSpec { name: "clip", ty: "string", default: Some("\"\"") },
@@ -230,6 +325,35 @@ pub const REGISTRY: &[ComponentSpec] = &[
             FieldSpec { name: "tint", ty: "[f32;4]", default: Some("[1.0, 1.0, 1.0, 1.0]") },
             FieldSpec { name: "flipX", ty: "bool", default: Some("false") },
             FieldSpec { name: "flipY", ty: "bool", default: Some("false") },
+            FieldSpec { name: "pixelsPerUnit", ty: "number", default: Some("100.0") },
+            FieldSpec { name: "sortingOrder", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "chromaKey", ty: "enum:magenta|none", default: Some("\"magenta\"") },
+            FieldSpec { name: "blendMode", ty: "enum:opaque|alpha|additive", default: Some("\"opaque\"") },
+            FieldSpec { name: "spriteVariants", ty: "string[]", default: Some("[]") },
+            FieldSpec { name: "variantStride", ty: "number", default: Some("0.0") },
+        ],
+    },
+    // D-045(09 E-09-003):Text = 2D 文字——宿主用字体资产(font GUID)CPU 光栅化成贴图,
+    // 与 Sprite 同走 2D 绘制腿(alpha 混合、无色键)。尺寸单位是像素:世界尺寸 = 像素/pixelsPerUnit
+    // × transform.scale;锚点 = 文字框中心。boxSize 为 0 的轴按内容自动撑开;wrap 只在 boxSize.x>0 时生效。
+    // 字体缺失不画、发宿主事件 TEXT_FONT_MISSING(I-5,不偷换系统字体)。
+    ComponentSpec {
+        name: "Text",
+        fields: &[
+            FieldSpec { name: "text", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "font", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "size", ty: "number", default: Some("32.0") },
+            FieldSpec { name: "color", ty: "[f32;4]", default: Some("[1.0, 1.0, 1.0, 1.0]") },
+            FieldSpec { name: "align", ty: "enum:left|center|right", default: Some("\"left\"") },
+            FieldSpec { name: "verticalAlign", ty: "enum:top|middle|bottom", default: Some("\"top\"") },
+            FieldSpec { name: "boxSize", ty: "[f32;2]", default: Some("[0.0, 0.0]") },
+            FieldSpec { name: "wrap", ty: "bool", default: Some("false") },
+            FieldSpec { name: "lineHeight", ty: "number", default: Some("1.2") },
+            FieldSpec { name: "letterSpacing", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "outlineColor", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 1.0]") },
+            FieldSpec { name: "outlineWidth", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "shadowColor", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 0.0]") },
+            FieldSpec { name: "shadowOffset", ty: "[f32;2]", default: Some("[0.0, 0.0]") },
             FieldSpec { name: "pixelsPerUnit", ty: "number", default: Some("100.0") },
             FieldSpec { name: "sortingOrder", ty: "number", default: Some("0.0") },
         ],
@@ -267,6 +391,227 @@ pub const REGISTRY: &[ComponentSpec] = &[
             ty: "enum:role|map|interaction",
             default: None,
         }],
+    },
+    // Stage 5(Godot 渲染后端,02 §9.5 Stage 5 / 01 §6.3):环境 / 后处理 / GI / 反射 / 贴花 / 雾。
+    // 字段全部可选、缺省 = Godot 4.7.2 缺省(doc/classes/*.xml);颜色是 sRGB 编码值(同 Godot)。
+    // 只有 [render].backend = "godot" 时生效,rurix 不读这些组件(可观测行为不变)。
+    // 场景级(Environment / CameraAttributes / RenderSettings)取场景实体序第一个启用的,规则同 Camera。
+    ComponentSpec {
+        name: "Environment",
+        fields: &[
+            // clearColor = 当前渲染腿的清屏色(与没有 Environment 时的背景相同)。
+            FieldSpec { name: "background", ty: "enum:clearColor|color|sky", default: Some("\"clearColor\"") },
+            FieldSpec { name: "backgroundColor", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 1.0]") },
+            FieldSpec { name: "backgroundEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "skyType", ty: "enum:procedural|physical|panorama", default: Some("\"procedural\"") },
+            FieldSpec { name: "skyTexture", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "skyEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "skyRotation", ty: "[f32;3]", default: Some("[0.0, 0.0, 0.0]") },
+            FieldSpec { name: "ambientSource", ty: "enum:bg|disabled|color|sky", default: Some("\"bg\"") },
+            FieldSpec { name: "ambientColor", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 1.0]") },
+            FieldSpec { name: "ambientEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "ambientSkyContribution", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "reflectionSource", ty: "enum:bg|disabled|sky", default: Some("\"bg\"") },
+            FieldSpec { name: "tonemap", ty: "enum:linear|reinhard|filmic|aces|agx", default: Some("\"linear\"") },
+            FieldSpec { name: "exposure", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "white", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "agxContrast", ty: "number", default: Some("1.25") },
+            FieldSpec { name: "agxWhite", ty: "number", default: Some("16.29") },
+            FieldSpec { name: "glowEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "glowLevel1", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "glowLevel2", ty: "number", default: Some("0.8") },
+            FieldSpec { name: "glowLevel3", ty: "number", default: Some("0.4") },
+            FieldSpec { name: "glowLevel4", ty: "number", default: Some("0.1") },
+            FieldSpec { name: "glowLevel5", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "glowLevel6", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "glowLevel7", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "glowNormalized", ty: "bool", default: Some("false") },
+            FieldSpec { name: "glowIntensity", ty: "number", default: Some("0.3") },
+            FieldSpec { name: "glowStrength", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "glowMix", ty: "number", default: Some("0.05") },
+            FieldSpec { name: "glowBloom", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "glowBlendMode", ty: "enum:additive|screen|softlight|replace|mix", default: Some("\"screen\"") },
+            FieldSpec { name: "glowHdrThreshold", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "glowHdrScale", ty: "number", default: Some("2.0") },
+            FieldSpec { name: "glowHdrLuminanceCap", ty: "number", default: Some("12.0") },
+            FieldSpec { name: "ssaoEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "ssaoRadius", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "ssaoIntensity", ty: "number", default: Some("2.0") },
+            FieldSpec { name: "ssaoPower", ty: "number", default: Some("1.5") },
+            FieldSpec { name: "ssaoDetail", ty: "number", default: Some("0.5") },
+            FieldSpec { name: "ssaoHorizon", ty: "number", default: Some("0.06") },
+            FieldSpec { name: "ssaoSharpness", ty: "number", default: Some("0.98") },
+            FieldSpec { name: "ssaoLightAffect", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "ssaoAoChannelAffect", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "ssilEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "ssilRadius", ty: "number", default: Some("5.0") },
+            FieldSpec { name: "ssilIntensity", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "ssilSharpness", ty: "number", default: Some("0.98") },
+            FieldSpec { name: "ssilNormalRejection", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "ssrEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "ssrMaxSteps", ty: "number", default: Some("64") },
+            FieldSpec { name: "ssrFadeIn", ty: "number", default: Some("0.15") },
+            FieldSpec { name: "ssrFadeOut", ty: "number", default: Some("2.0") },
+            FieldSpec { name: "ssrDepthTolerance", ty: "number", default: Some("0.5") },
+            FieldSpec { name: "sdfgiEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "sdfgiCascades", ty: "number", default: Some("4") },
+            FieldSpec { name: "sdfgiMinCellSize", ty: "number", default: Some("0.2") },
+            FieldSpec { name: "sdfgiYScale", ty: "enum:50%|75%|100%", default: Some("\"75%\"") },
+            FieldSpec { name: "sdfgiUseOcclusion", ty: "bool", default: Some("false") },
+            FieldSpec { name: "sdfgiBounceFeedback", ty: "number", default: Some("0.5") },
+            FieldSpec { name: "sdfgiReadSkyLight", ty: "bool", default: Some("true") },
+            FieldSpec { name: "sdfgiEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "sdfgiNormalBias", ty: "number", default: Some("1.1") },
+            FieldSpec { name: "sdfgiProbeBias", ty: "number", default: Some("1.1") },
+            FieldSpec { name: "fogEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "fogMode", ty: "enum:exponential|depth", default: Some("\"exponential\"") },
+            FieldSpec { name: "fogLightColor", ty: "[f32;4]", default: Some("[0.518, 0.553, 0.608, 1.0]") },
+            FieldSpec { name: "fogLightEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "fogSunScatter", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "fogDensity", ty: "number", default: Some("0.01") },
+            FieldSpec { name: "fogAerialPerspective", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "fogSkyAffect", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "fogHeight", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "fogHeightDensity", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "fogDepthCurve", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "fogDepthBegin", ty: "number", default: Some("10.0") },
+            FieldSpec { name: "fogDepthEnd", ty: "number", default: Some("100.0") },
+            FieldSpec { name: "volumetricFogEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "volumetricFogDensity", ty: "number", default: Some("0.05") },
+            FieldSpec { name: "volumetricFogAlbedo", ty: "[f32;4]", default: Some("[1.0, 1.0, 1.0, 1.0]") },
+            FieldSpec { name: "volumetricFogEmission", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 1.0]") },
+            FieldSpec { name: "volumetricFogEmissionEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "volumetricFogAnisotropy", ty: "number", default: Some("0.2") },
+            FieldSpec { name: "volumetricFogLength", ty: "number", default: Some("64.0") },
+            FieldSpec { name: "volumetricFogDetailSpread", ty: "number", default: Some("2.0") },
+            FieldSpec { name: "volumetricFogGiInject", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "volumetricFogAmbientInject", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "volumetricFogSkyAffect", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "volumetricFogTemporalReprojection", ty: "bool", default: Some("true") },
+            FieldSpec { name: "volumetricFogTemporalReprojectionAmount", ty: "number", default: Some("0.9") },
+            FieldSpec { name: "adjustmentEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "adjustmentBrightness", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "adjustmentContrast", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "adjustmentSaturation", ty: "number", default: Some("1.0") },
+            // LUT 贴图 guid(高 1 像素 = 1D LUT)。
+            FieldSpec { name: "adjustmentColorCorrection", ty: "string", default: Some("\"\"") },
+        ],
+    },
+    ComponentSpec {
+        name: "CameraAttributes",
+        fields: &[
+            FieldSpec { name: "exposureMultiplier", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "exposureSensitivity", ty: "number", default: Some("100.0") },
+            FieldSpec { name: "autoExposureEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "autoExposureScale", ty: "number", default: Some("0.4") },
+            FieldSpec { name: "autoExposureSpeed", ty: "number", default: Some("0.5") },
+            FieldSpec { name: "autoExposureMinSensitivity", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "autoExposureMaxSensitivity", ty: "number", default: Some("800.0") },
+            FieldSpec { name: "dofBlurFarEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "dofBlurFarDistance", ty: "number", default: Some("10.0") },
+            FieldSpec { name: "dofBlurFarTransition", ty: "number", default: Some("5.0") },
+            FieldSpec { name: "dofBlurNearEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "dofBlurNearDistance", ty: "number", default: Some("2.0") },
+            FieldSpec { name: "dofBlurNearTransition", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "dofBlurAmount", ty: "number", default: Some("0.1") },
+        ],
+    },
+    // 视口级设置 + RS 全局质量设置(全局项只跟 Main 通道,组件消失时恢复 ProjectSettings 缺省)。
+    ComponentSpec {
+        name: "RenderSettings",
+        fields: &[
+            FieldSpec { name: "msaa3d", ty: "enum:disabled|2x|4x|8x", default: Some("\"disabled\"") },
+            FieldSpec { name: "screenSpaceAA", ty: "enum:disabled|fxaa|smaa", default: Some("\"disabled\"") },
+            FieldSpec { name: "taa", ty: "bool", default: Some("false") },
+            FieldSpec { name: "debanding", ty: "bool", default: Some("false") },
+            FieldSpec { name: "scaling3dMode", ty: "enum:bilinear|fsr|fsr2", default: Some("\"bilinear\"") },
+            FieldSpec { name: "scaling3dScale", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "fsrSharpness", ty: "number", default: Some("0.2") },
+            FieldSpec { name: "ssaoQuality", ty: "enum:veryLow|low|medium|high|ultra", default: Some("\"medium\"") },
+            FieldSpec { name: "ssilQuality", ty: "enum:veryLow|low|medium|high|ultra", default: Some("\"medium\"") },
+            FieldSpec { name: "sdfgiRayCount", ty: "enum:4|8|16|32|64|96|128", default: Some("\"8\"") },
+            FieldSpec { name: "volumetricFogVolumeSize", ty: "number", default: Some("64") },
+            FieldSpec { name: "volumetricFogVolumeDepth", ty: "number", default: Some("64") },
+        ],
+    },
+    // 实体级(位置 = modelrt::entity_world,走 Parent 链)。
+    ComponentSpec {
+        name: "ReflectionProbe",
+        fields: &[
+            FieldSpec { name: "size", ty: "[f32;3]", default: Some("[20.0, 20.0, 20.0]") },
+            FieldSpec { name: "originOffset", ty: "[f32;3]", default: Some("[0.0, 0.0, 0.0]") },
+            FieldSpec { name: "intensity", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "blendDistance", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "maxDistance", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "updateMode", ty: "enum:once|always", default: Some("\"once\"") },
+            FieldSpec { name: "boxProjection", ty: "bool", default: Some("false") },
+            FieldSpec { name: "interior", ty: "bool", default: Some("false") },
+            FieldSpec { name: "enableShadows", ty: "bool", default: Some("false") },
+            FieldSpec { name: "ambientMode", ty: "enum:disabled|environment|color", default: Some("\"environment\"") },
+            FieldSpec { name: "ambientColor", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 1.0]") },
+            FieldSpec { name: "ambientColorEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "cullMask", ty: "number", default: Some("1048575") },
+            FieldSpec { name: "reflectionMask", ty: "number", default: Some("1048575") },
+            FieldSpec { name: "meshLodThreshold", ty: "number", default: Some("1.0") },
+        ],
+    },
+    // 沿实体局部 −Y 投射(Godot Decal 约定);贴图字段是 guid。
+    ComponentSpec {
+        name: "Decal",
+        fields: &[
+            FieldSpec { name: "size", ty: "[f32;3]", default: Some("[2.0, 2.0, 2.0]") },
+            FieldSpec { name: "textureAlbedo", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "textureNormal", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "textureOrm", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "textureEmission", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "emissionEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "modulate", ty: "[f32;4]", default: Some("[1.0, 1.0, 1.0, 1.0]") },
+            FieldSpec { name: "albedoMix", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "normalFade", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "upperFade", ty: "number", default: Some("0.3") },
+            FieldSpec { name: "lowerFade", ty: "number", default: Some("0.3") },
+            FieldSpec { name: "distanceFadeEnabled", ty: "bool", default: Some("false") },
+            FieldSpec { name: "distanceFadeBegin", ty: "number", default: Some("40.0") },
+            FieldSpec { name: "distanceFadeLength", ty: "number", default: Some("10.0") },
+            FieldSpec { name: "cullMask", ty: "number", default: Some("1048575") },
+        ],
+    },
+    // 形状 + FogMaterial 参数(只在 Environment 开了体积雾时可见)。
+    ComponentSpec {
+        name: "FogVolume",
+        fields: &[
+            FieldSpec { name: "shape", ty: "enum:ellipsoid|cone|cylinder|box|world", default: Some("\"box\"") },
+            FieldSpec { name: "size", ty: "[f32;3]", default: Some("[2.0, 2.0, 2.0]") },
+            FieldSpec { name: "density", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "albedo", ty: "[f32;4]", default: Some("[1.0, 1.0, 1.0, 1.0]") },
+            FieldSpec { name: "emission", ty: "[f32;4]", default: Some("[0.0, 0.0, 0.0, 1.0]") },
+            FieldSpec { name: "heightFalloff", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "edgeFade", ty: "number", default: Some("0.1") },
+        ],
+    },
+    // 挂在 Light 实体上的 Godot 灯参数(Light 本身一个字段都不加,保证 rurix 的 entity.get / scene.save 不变)。
+    // 缺省 = Stage 4 的灯参数:−1 = 该灯种的 Godot 节点缺省;specular 取 1.0(Stage 4 标定值)。
+    ComponentSpec {
+        name: "LightParams",
+        fields: &[
+            FieldSpec { name: "range", ty: "number", default: Some("5.0") },
+            FieldSpec { name: "attenuation", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "spotAngle", ty: "number", default: Some("45.0") },
+            FieldSpec { name: "spotAttenuation", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "specular", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "indirectEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "volumetricFogEnergy", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "size", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "negative", ty: "bool", default: Some("false") },
+            FieldSpec { name: "shadowBias", ty: "number", default: Some("-1.0") },
+            FieldSpec { name: "shadowNormalBias", ty: "number", default: Some("-1.0") },
+            FieldSpec { name: "shadowBlur", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "shadowOpacity", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "shadowMaxDistance", ty: "number", default: Some("100.0") },
+            FieldSpec { name: "directionalShadowMode", ty: "enum:orthogonal|parallel2Splits|parallel4Splits", default: Some("\"parallel4Splits\"") },
+            // Stage 4 没设 omni 阴影模式,用的是 RS 缺省 DUAL_PARABOLOID(OmniLight3D 节点缺省是 cube)。
+            FieldSpec { name: "omniShadowMode", ty: "enum:dualParaboloid|cube", default: Some("\"dualParaboloid\"") },
+        ],
     },
 ];
 
@@ -355,8 +700,12 @@ pub fn list_types_json() -> Value {
 fn field_type_ok(ty: &str, v: &Value) -> bool {
     match ty {
         "string" => v.is_string(),
+        "string[]" => v.as_array().is_some_and(|a| a.iter().all(Value::is_string)),
         "number" => v.is_number(),
         "bool" => v.is_boolean(),
+        "[f32;2]" => v
+            .as_array()
+            .is_some_and(|a| a.len() == 2 && a.iter().all(Value::is_number)),
         "[f32;3]" => v
             .as_array()
             .is_some_and(|a| a.len() == 3 && a.iter().all(Value::is_number)),
@@ -387,6 +736,12 @@ pub fn validate_props(ctype: &str, props: &Value) -> Result<(), String> {
         };
         if !field_type_ok(f.ty, v) {
             return Err(format!("组件 {ctype} 字段 {} 类型须为 {}", f.name, f.ty));
+        }
+    }
+    if ctype == "Sprite" && obj.get("spriteVariants").and_then(Value::as_array).is_some_and(|a| !a.is_empty()) {
+        let stride = obj.get("variantStride").and_then(Value::as_f64).unwrap_or(0.);
+        if !stride.is_finite() || stride < 1. || stride.fract() != 0. {
+            return Err("Sprite spriteVariants requires a positive integer variantStride".into());
         }
     }
     Ok(())
@@ -474,9 +829,36 @@ fn write_canonical(v: &Value, out: &mut String, level: usize) {
 }
 
 impl Scene {
+    /// Allocate editor identities explicitly, never during parsing or serialization.
+    /// Existing identities are validated rather than silently repaired.
+    pub fn ensure_editor_identity(&mut self, mut allocate: impl FnMut() -> String) -> Result<(), String> {
+        if self.scene_guid.as_ref().is_some_and(|id| id.trim().is_empty()) {
+            return Err("INVALID_IDENTITY: empty sceneGuid".into());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for entity in &self.entities {
+            if let Some(id) = &entity.entity_guid {
+                if id.trim().is_empty() || !seen.insert(id.clone()) {
+                    return Err("AMBIGUOUS_REFERENCE: duplicate or empty entityGuid".into());
+                }
+            }
+        }
+        if self.scene_guid.is_none() { self.scene_guid = Some(allocate()); }
+        for entity in &mut self.entities {
+            if entity.entity_guid.is_none() { entity.entity_guid = Some(allocate()); }
+        }
+        Ok(())
+    }
+
+    pub fn entity_by_guid(&self, guid: &str) -> Result<&Entity, String> {
+        let mut matches = self.entities.iter().filter(|e| e.entity_guid.as_deref() == Some(guid));
+        let entity = matches.next().ok_or_else(|| "REFERENCE_NOT_FOUND: entityGuid is absent".to_string())?;
+        if matches.next().is_some() { return Err("AMBIGUOUS_REFERENCE: duplicate entityGuid".into()); }
+        Ok(entity)
+    }
     /// 建空场景(id 计数器从 1 起;模式 3d + 默认重力)。
     pub fn new(name: impl Into<String>) -> Self {
-        Scene {
+        Scene { scene_guid: None,
             name: name.into(),
             entities: Vec::new(),
             next_id: 1,
@@ -559,7 +941,7 @@ mod tests {
         let id1 = scene.alloc_id();
         let id2 = scene.alloc_id();
         scene.entities = vec![
-            Entity {
+            Entity { entity_guid: None,
                 id: id1,
                 name: "主角".into(),
                 transform: Transform::default(),
@@ -572,7 +954,7 @@ mod tests {
                     },
                 ],
             },
-            Entity {
+            Entity { entity_guid: None,
                 id: id2,
                 name: "地板".into(),
                 transform: Transform {
@@ -655,21 +1037,26 @@ mod tests {
     }
 
     #[test]
-    fn registry_lists_nine_types_with_fields() {
+    fn registry_lists_legacy_and_model_types_with_fields() {
         let v = list_types_json();
         let arr = v.as_array().unwrap();
-        assert_eq!(arr.len(), 9);
+        assert_eq!(arr.len(), 25);
         let names: Vec<&str> = arr.iter().filter_map(|t| t["name"].as_str()).collect();
         for want in [
+            "ParticleEmitter",
+            "ModelRenderer","ModelNode","Parent","PrefabInstance","Animator","Collider","CharacterController",
             "MeshRenderer",
             "RigidBody",
             "Light",
             "Camera",
             "Sprite",
+            "Text",
             "Script",
             "Tag",
             "Trigger",
             "Category",
+            // Stage 5(Godot 后端 schema,02 §9.5):全部可选字段。
+            "Environment", "CameraAttributes", "RenderSettings", "ReflectionProbe", "Decal", "FogVolume", "LightParams",
         ] {
             assert!(names.contains(&want), "注册表缺 {want}");
         }
@@ -689,11 +1076,14 @@ mod tests {
         let sp = arr.iter().find(|t| t["name"] == "Sprite").unwrap();
         let sfields: Vec<&str> = sp["fields"].as_array().unwrap().iter().filter_map(|f| f["name"].as_str()).collect();
         // F-GAME-4:+ sprite/clip/frame;texture 转可选(与 sprite 二选一)。
-        assert_eq!(sfields, ["texture", "sprite", "clip", "frame", "tint", "flipX", "flipY", "pixelsPerUnit", "sortingOrder"]);
-        assert_eq!(sp["fields"][0]["default"], "", "texture 缺省空串(sprite 模式下可缺)");
-        assert_eq!(sp["fields"][1]["default"], "");
-        assert_eq!(sp["fields"][3]["default"], 0.0);
-        assert_eq!(sp["fields"][7]["default"], 100.0);
+        assert_eq!(sfields, ["material", "materialParams", "texture", "sprite", "clip", "frame", "tint", "flipX", "flipY", "pixelsPerUnit", "sortingOrder", "chromaKey", "blendMode", "spriteVariants", "variantStride"]);
+        let default = |name: &str| sp["fields"].as_array().unwrap().iter().find(|field|field["name"] == name).unwrap()["default"].clone();
+        assert_eq!(default("material"), "");
+        assert_eq!(default("materialParams"), json!({}));
+        assert_eq!(default("texture"), "", "texture 缺省空串(sprite 模式下可缺)");
+        assert_eq!(default("sprite"), "");
+        assert_eq!(default("frame"), 0.0);
+        assert_eq!(default("pixelsPerUnit"), 100.0);
     }
 
     #[test]
@@ -730,6 +1120,22 @@ mod tests {
     }
 
     #[test]
+    fn text_validate_and_normalize() {
+        assert!(validate_props("Text", &json!({})).is_ok());
+        assert!(validate_props("Text", &json!({"text": "开始游戏", "font": "g", "size": 48.0})).is_ok());
+        assert!(validate_props("Text", &json!({"text": 1})).is_err());
+        assert!(validate_props("Text", &json!({"align": "justify"})).is_err());
+        assert!(validate_props("Text", &json!({"boxSize": [100.0]})).is_err());
+        assert!(validate_props("Text", &json!({"boxSize": [100.0, 40.0], "shadowOffset": [2, 2]})).is_ok());
+        assert!(validate_props("Text", &json!({"color": [1.0, 1.0, 1.0]})).is_err());
+        let n = normalize_props("Text", &json!({"text": "Hi"})).unwrap();
+        assert_eq!(n["size"], json!(32.0));
+        assert_eq!(n["align"], json!("left"));
+        assert_eq!(n["boxSize"], json!([0.0, 0.0]));
+        assert_eq!(n["pixelsPerUnit"], json!(100.0));
+    }
+
+    #[test]
     fn sprite_validate_and_normalize() {
         // F-GAME-4:texture/sprite 均可选带缺省(二选一语义在消费侧,注册表不做跨字段校验,
         // 与 Script module/graphRef 同纪律);类型错误仍拒。
@@ -749,6 +1155,11 @@ mod tests {
         assert_eq!(n["flipY"], false);
         assert_eq!(n["pixelsPerUnit"], 100.0);
         assert_eq!(n["sortingOrder"], 0.0);
+        assert_eq!(n["chromaKey"], "magenta");
+        assert_eq!(n["blendMode"], "opaque");
+        assert!(validate_props("Sprite", &json!({"chromaKey":"none", "blendMode":"alpha"})).is_ok());
+        assert!(validate_props("Sprite", &json!({"chromaKey":"none", "blendMode":"additive"})).is_ok());
+        assert!(validate_props("Sprite", &json!({"blendMode":"imaginary"})).is_err());
         // F-GAME-4 新字段缺省补齐。
         assert_eq!(n["sprite"], "");
         assert_eq!(n["clip"], "");
@@ -764,6 +1175,23 @@ mod tests {
         let n3 = normalize_props("Sprite", &legacy).unwrap();
         assert_eq!(n3["texture"], "g");
         assert_eq!(n3["sprite"], "");
+    }
+
+    #[test]
+    fn sprite_variants_require_valid_family_list_and_integer_stride() {
+        let props=json!({"spriteVariants":["family-a","family-b"],"variantStride":128,"frame":255});
+        let normalized=normalize_props("Sprite",&props).unwrap();
+        assert_eq!(normalized["spriteVariants"],props["spriteVariants"]);
+        assert_eq!(normalized["variantStride"],128);
+        assert_eq!(normalized["frame"],255);
+        for stride in [0.0,-1.0,0.5,128.5] {
+            assert!(validate_props("Sprite",&json!({"spriteVariants":["family-a"],"variantStride":stride})).is_err());
+        }
+        assert!(validate_props("Sprite",&json!({"spriteVariants":["family-a",12],"variantStride":128})).is_err());
+        assert!(validate_props("Sprite",&json!({"spriteVariants":"family-a","variantStride":128})).is_err());
+        let legacy=normalize_props("Sprite",&json!({"sprite":"old-atlas","spriteVariants":[]})).unwrap();
+        assert_eq!(legacy["sprite"],"old-atlas");
+        assert_eq!(legacy["variantStride"],0.0);
     }
 
     #[test]
@@ -827,7 +1255,7 @@ mod tests {
 
     #[test]
     fn classify_rules() {
-        let mesh_only = Entity {
+        let mesh_only = Entity { entity_guid: None,
             id: 1,
             name: "Wall".into(),
             transform: Transform::default(),
@@ -835,7 +1263,7 @@ mod tests {
         };
         assert_eq!(classify(&mesh_only), CAT_MAP);
 
-        let player_tag = Entity {
+        let player_tag = Entity { entity_guid: None,
             id: 2,
             name: "Player".into(),
             transform: Transform::default(),
@@ -846,7 +1274,7 @@ mod tests {
         };
         assert_eq!(classify(&player_tag), CAT_ROLE);
 
-        let dynamic_body = Entity {
+        let dynamic_body = Entity { entity_guid: None,
             id: 3,
             name: "Enemy".into(),
             transform: Transform::default(),
@@ -854,7 +1282,7 @@ mod tests {
         };
         assert_eq!(classify(&dynamic_body), CAT_ROLE);
 
-        let trigger_script = Entity {
+        let trigger_script = Entity { entity_guid: None,
             id: 4,
             name: "Key".into(),
             transform: Transform::default(),
@@ -868,7 +1296,7 @@ mod tests {
         };
         assert_eq!(classify(&trigger_script), CAT_INTERACTION);
 
-        let explicit = Entity {
+        let explicit = Entity { entity_guid: None,
             id: 5,
             name: "Decor".into(),
             transform: Transform::default(),

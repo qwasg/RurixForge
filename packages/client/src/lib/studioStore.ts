@@ -17,6 +17,9 @@ import { parseFrame, splitFrames } from './sseClient';
 import { useSpriteStore } from './spriteStore';
 import { useWorkbenchStore } from './workbenchStore';
 import { useWorkspaceStore } from './workspaceStore';
+import { useAssetStore } from './assetStore';
+import { useGenStore } from './genStore';
+import { resolveVideoBackend, videoBackendOptions } from './videoBackend';
 
 /**
  * 素材创作 store v1(素材创作波:与画板同位的第四页签)。
@@ -128,6 +131,11 @@ export const TEXT_TEMPLATES: TextTemplateDef[] = [
 
 /** 一次生成产出的版本(text 全文持久化;媒体存 fileRef,dataUrl 会话态)。 */
 export interface StudioVersion {
+  blenderJobId?: string;
+  blenderWorkspaceId?: string;
+  blenderRevision?: number;
+  prefabGuid?: string;
+  animationClips?: string[];
   id: string;
   createdAt: number;
   /** 生成来源(后端 id 或 llm provider 标签) */
@@ -532,6 +540,7 @@ interface StudioState {
   openNodeId: string | null;
   /** 选中的创作节点:主画布快捷键的作用对象(会话态,不持久化) */
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
   /** 待进入行内改名态的节点 / 连线(卡片与标签自己各存一份开合态会与菜单打架) */
   pendingRenameId: string | null;
   pendingEdgeId: string | null;
@@ -550,7 +559,7 @@ interface StudioState {
   setPrompt: (id: string, prompt: string) => void;
   setParam: (id: string, key: string, value: unknown) => void;
 
-  selectNode: (id: string | null) => void;
+  selectNode: (id: string | null, additive?: boolean) => void;
   /** 让节点卡标题进入行内改名态(右键菜单「重命名」与 F2 共用) */
   editNodeName: (id: string) => void;
   clearPendingRename: () => void;
@@ -583,6 +592,7 @@ interface StudioState {
   setIncludeLibrary: (on: boolean) => void;
   /** 图像/模型/角色动画版本入库(gen_accept → Content/<destFolder>);成功回写 assetPath/guid。 */
   acceptVersion: (nodeId: string, versionId: string) => Promise<void>;
+  recordBlenderVersion: (nodeId: string, job: import('../../../protocol/src/blender').BlenderJob) => void;
   /**
    * 角色动画:按当前截帧参数重切帧(不重新生成视频)。
    * 抠底/裁切/帧率是要反复试的旋钮,每试一次都重出一段视频既慢又不同源。
@@ -650,6 +660,9 @@ async function postJson<T>(path: string, payload: unknown, signal?: AbortSignal)
 }
 
 export const useStudioStore = create<StudioState>((set, get) => {
+  const videoRequests = new Map<string, { workspaceId: string | null; nodeId: string; token: symbol }>();
+  const videoErrors = new Map<string | null, StudioError>();
+  const videoRequestKey = (workspaceId: string | null, nodeId: string) => JSON.stringify([workspaceId, nodeId]);
   const commit = (
     patch: Partial<Pick<StudioState, 'nodes' | 'edges' | 'seq' | 'readonlyWorkspaceIds' | 'includeLibrary'>>,
   ): void => {
@@ -678,6 +691,21 @@ export const useStudioStore = create<StudioState>((set, get) => {
     }));
   };
 
+  // 视频可能在切换画板后完成:只更新发起时的画板,并在完成时分配版本 id。
+  const pushVideoVersions = (workspaceId: string | null, nodeId: string, versions: StudioVersion[]): void => {
+    if (versions.length === 0) return;
+    const active = get().workspaceId === workspaceId;
+    const doc = active ? get() : loadStudio(workspaceId);
+    if (!doc.nodes.some((n) => n.id === nodeId)) return;
+    const appended = versions.map((v, i) => ({ ...v, id: `v${doc.seq + i}` }));
+    const nodes = doc.nodes.map((n) => n.id === nodeId ? {
+      ...n, versions: [...n.versions, ...appended], currentVersionId: appended[appended.length - 1].id,
+    } : n);
+    const patch = { nodes, seq: doc.seq + appended.length };
+    if (active) commit(patch);
+    else persistStudio({ ...doc, ...patch }, workspaceId);
+  };
+
   const initial = loadStudio();
   return {
     ...initial,
@@ -686,6 +714,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
     pendingPermission: null,
     openNodeId: null,
     selectedNodeId: null,
+    selectedNodeIds: [],
     pendingRenameId: null,
     pendingEdgeId: null,
     busyIds: [],
@@ -711,7 +740,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
         currentVersionId: null,
       };
       commit({ nodes: [...nodes, node], seq: seq + 1 });
-      set({ selectedNodeId: id });
+      set({ selectedNodeId: id, selectedNodeIds: [id] });
       return id;
     },
 
@@ -729,7 +758,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
 
     removeNode: (id) => {
       if (get().openNodeId === id) set({ openNodeId: null });
-      if (get().selectedNodeId === id) set({ selectedNodeId: null });
+      set((state) => ({ selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId, selectedNodeIds: state.selectedNodeIds.filter((value) => value !== id) }));
       if (get().pendingRenameId === id) set({ pendingRenameId: null });
       commit({
         nodes: get().nodes.filter((n) => n.id !== id),
@@ -762,7 +791,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
         currentVersionId: null,
       };
       commit({ nodes: [...nodes, node], seq: seq + 1 });
-      set({ selectedNodeId: newId });
+      set({ selectedNodeId: newId, selectedNodeIds: [newId] });
       return newId;
     },
 
@@ -771,7 +800,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
     setParam: (id, key, value) =>
       patchNode(id, (n) => ({ ...n, params: { ...n.params, [key]: value } })),
 
-    selectNode: (id) => set({ selectedNodeId: id }),
+    selectNode: (id, additive = false) => set((state) => { const selectedNodeIds = id === null ? [] : additive ? state.selectedNodeIds.includes(id) ? state.selectedNodeIds.filter((value) => value !== id) : [...state.selectedNodeIds, id] : [id]; return { selectedNodeId: selectedNodeIds.at(-1) ?? null, selectedNodeIds }; }),
 
     editNodeName: (id) => {
       if (!get().nodes.some((n) => n.id === id)) return;
@@ -811,11 +840,14 @@ export const useStudioStore = create<StudioState>((set, get) => {
     closeNode: () => set({ openNodeId: null }),
 
     clearBoard: () => {
-      set({ openNodeId: null, selectedNodeId: null, pendingRenameId: null, lastError: null });
+      set({ openNodeId: null, selectedNodeId: null, selectedNodeIds: [], pendingRenameId: null, lastError: null });
       commit({ nodes: [], edges: [] });
     },
 
-    clearError: () => set({ lastError: null }),
+    clearError: () => {
+      videoErrors.delete(get().workspaceId);
+      set({ lastError: null });
+    },
 
     writeText: (id, text) => {
       const { seq } = get();
@@ -863,7 +895,9 @@ export const useStudioStore = create<StudioState>((set, get) => {
       }),
 
     generate: async (id) => {
-      const node = get().nodes.find((n) => n.id === id);
+      const { nodes: requestNodes, edges: requestEdges, workspaceId: boardWorkspaceId } = get();
+      const videoWorkspaceId = boardWorkspaceId ?? useWorkspaceStore.getState().activeWorkspaceId ?? readActiveWorkspaceId();
+      const node = requestNodes.find((n) => n.id === id);
       if (!node) return;
       const preset = presetOf(node.preset);
       if (!preset) return;
@@ -873,12 +907,37 @@ export const useStudioStore = create<StudioState>((set, get) => {
         return;
       }
       if (get().busyIds.includes(id)) return;
+      const videoToken = preset.kind === 'video' || preset.kind === 'sprite' ? Symbol() : null;
+      const videoKey = videoRequestKey(boardWorkspaceId, id);
+      if (videoToken !== null) {
+        videoRequests.set(videoKey, { workspaceId: boardWorkspaceId, nodeId: id, token: videoToken });
+        videoErrors.delete(boardWorkspaceId);
+      }
+      const recordVideoError = (error: StudioError | null): void => {
+        if (videoRequests.get(videoKey)?.token !== videoToken) return;
+        if (error === null) {
+          if (videoErrors.get(boardWorkspaceId)?.nodeId === id) videoErrors.delete(boardWorkspaceId);
+          return;
+        }
+        videoErrors.set(boardWorkspaceId, error);
+        if (get().workspaceId === boardWorkspaceId && get().nodes.some((n) => n.id === id)) set({ lastError: error });
+      };
       setBusy(id, true);
       set({ lastError: null });
       const context = upstreamContext(id, get().nodes, get().edges);
       const withContext = (p: string): string =>
         context !== '' ? `${context}\n\n${p}` : p;
       try {
+        let videoParams = node.params;
+        if (preset.kind === 'video' || preset.kind === 'sprite') {
+          if (!useGenStore.getState().backendsLoaded) await useGenStore.getState().loadBackends();
+          const backend = resolveVideoBackend(useGenStore.getState().backends, node.params,
+            preset.kind === 'sprite' ? 'image2video' : 'text2video');
+          if (backend) {
+            const { aspect, resolution, durationSec } = videoBackendOptions(backend, node.params);
+            videoParams = { ...node.params, aspect, resolution, durationSec };
+          }
+        }
         const { seq } = get();
         let consumed = 0;
         const nextId = (): string => {
@@ -1056,17 +1115,19 @@ export const useStudioStore = create<StudioState>((set, get) => {
           }
         } else if (preset.kind === 'video') {
           const r = await apiGenVideo({
+            workspaceId: videoWorkspaceId,
             prompt: withContext(prompt),
-            aspect: typeof node.params.aspect === 'string' ? node.params.aspect : undefined,
-            resolution: typeof node.params.resolution === 'string' ? node.params.resolution : undefined,
-            durationSec: typeof node.params.durationSec === 'number' ? node.params.durationSec : undefined,
+            imageRef: spriteRefImage(id, requestNodes, requestEdges, node.params),
+            aspect: typeof videoParams.aspect === 'string' ? videoParams.aspect : undefined,
+            resolution: typeof videoParams.resolution === 'string' ? videoParams.resolution : undefined,
+            durationSec: typeof videoParams.durationSec === 'number' ? videoParams.durationSec : undefined,
             backend: typeof node.params.backend === 'string' && node.params.backend !== '' ? node.params.backend : undefined,
           });
           for (const a of r.artifacts) {
             versions.push(mediaVersion(nextId(), r.backendId, prompt, a));
           }
         } else if (preset.kind === 'sprite') {
-          const ref = spriteRefImage(id, get().nodes, get().edges, node.params);
+          const ref = spriteRefImage(id, requestNodes, requestEdges, node.params);
           if (ref === undefined) {
             throw new ForgeApiError(
               'NO_REFERENCE_IMAGE',
@@ -1074,11 +1135,12 @@ export const useStudioStore = create<StudioState>((set, get) => {
             );
           }
           const r = await apiGenVideo({
+            workspaceId: videoWorkspaceId,
             prompt: `${withContext(prompt)}${CHARANIM_PROMPT_RULES}`,
             imageRef: ref,
-            aspect: typeof node.params.aspect === 'string' ? node.params.aspect : undefined,
-            resolution: typeof node.params.resolution === 'string' ? node.params.resolution : undefined,
-            durationSec: typeof node.params.durationSec === 'number' ? node.params.durationSec : undefined,
+            aspect: typeof videoParams.aspect === 'string' ? videoParams.aspect : undefined,
+            resolution: typeof videoParams.resolution === 'string' ? videoParams.resolution : undefined,
+            durationSec: typeof videoParams.durationSec === 'number' ? videoParams.durationSec : undefined,
             backend: typeof node.params.backend === 'string' && node.params.backend !== '' ? node.params.backend : undefined,
           });
           for (const a of r.artifacts) {
@@ -1088,6 +1150,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
           if (first?.videoFileRef !== undefined) {
             try {
               const f = await apiGenVideoFrames({
+                workspaceId: videoWorkspaceId,
                 videoFileRef: first.videoFileRef,
                 ...frameParams(node.params),
               });
@@ -1118,10 +1181,19 @@ export const useStudioStore = create<StudioState>((set, get) => {
           }
         }
 
-        commit({ seq: get().seq + consumed });
-        pushVersions(id, versions);
-        if (deferredError !== null) set({ lastError: deferredError });
+        if (videoToken !== null) {
+          pushVideoVersions(boardWorkspaceId, id, versions);
+          recordVideoError(deferredError);
+        } else {
+          commit({ seq: get().seq + consumed });
+          pushVersions(id, versions);
+          if (deferredError !== null) set({ lastError: deferredError });
+        }
       } catch (err) {
+        if (videoToken !== null) {
+          recordVideoError({ nodeId: id, code: err instanceof ForgeApiError ? err.code : 'ERROR', message: (err as Error).message });
+          return;
+        }
         if ((err as Error).name === 'AbortError') {
           set((s) => ({
             nodeRuns: {
@@ -1140,11 +1212,16 @@ export const useStudioStore = create<StudioState>((set, get) => {
           },
         }));
       } finally {
-        setBusy(id, false);
+        if (videoToken === null) setBusy(id, false);
+        else if (videoRequests.get(videoKey)?.token === videoToken) {
+          videoRequests.delete(videoKey);
+          if (get().workspaceId === boardWorkspaceId) setBusy(id, false);
+        }
       }
     },
 
     cancelGenerate: async (id) => {
+      videoRequests.delete(videoRequestKey(get().workspaceId, id));
       studioAborts.get(id)?.abort();
       studioStreams.get(id)?.close();
       studioAborts.delete(id);
@@ -1192,6 +1269,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
         cur.workspaceId,
       );
       const loaded = loadStudio(workspaceId);
+      const videoError = videoErrors.get(workspaceId);
       set({
         ...loaded,
         workspaceId,
@@ -1199,8 +1277,9 @@ export const useStudioStore = create<StudioState>((set, get) => {
         selectedNodeId: null,
         pendingRenameId: null,
         pendingEdgeId: null,
-        busyIds: [],
-        lastError: null,
+        busyIds: [...videoRequests.values()].filter((r) => r.workspaceId === workspaceId
+          && loaded.nodes.some((n) => n.id === r.nodeId)).map((r) => r.nodeId),
+        lastError: videoError && loaded.nodes.some((n) => n.id === videoError.nodeId) ? videoError : null,
         nodeRuns: {},
         pendingPermission: null,
       });
@@ -1296,6 +1375,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
     },
 
     resliceVersion: async (nodeId, versionId) => {
+      const videoWorkspaceId = get().workspaceId ?? useWorkspaceStore.getState().activeWorkspaceId ?? readActiveWorkspaceId();
       const node = get().nodes.find((n) => n.id === nodeId);
       const version = node?.versions.find((v) => v.id === versionId);
       if (!node || !version || version.videoFileRef === undefined) return;
@@ -1304,6 +1384,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ lastError: null });
       try {
         const f = await apiGenVideoFrames({
+          workspaceId: videoWorkspaceId,
           videoFileRef: version.videoFileRef,
           ...frameParams(node.params),
         });
@@ -1319,6 +1400,20 @@ export const useStudioStore = create<StudioState>((set, get) => {
       } finally {
         setBusy(nodeId, false);
       }
+    },
+
+    recordBlenderVersion: (nodeId, job) => {
+      if (!job.published) return;
+      const node = get().nodes.find((n) => n.id === nodeId);
+      if (!node || node.versions.some((v) => v.blenderJobId === job.id && v.blenderRevision === job.revision)) return;
+      const version: StudioVersion = {
+        id: `blender-${job.id}-${job.revision}`, createdAt: Date.now(), backendId: 'blender', prompt: job.prompt,
+        assetPath: job.published.modelPath, guid: job.published.modelGuid, prefabGuid: job.published.prefabGuid,
+        blenderJobId: job.id, blenderWorkspaceId: job.workspaceId, blenderRevision: job.revision,
+        animationClips: job.published.clips ?? [],
+      };
+      patchNode(nodeId, (n) => ({ ...n, versions: [...n.versions, version], currentVersionId: version.id }));
+      void useAssetStore.getState().load();
     },
 
     openInSpriteEditor: (nodeId, versionId) => {

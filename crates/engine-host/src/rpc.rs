@@ -18,6 +18,18 @@ use serde_json::{json, Value};
 
 use forge_util::timeutil::utc_now_iso8601;
 
+#[path = "editor.rs"]
+mod editor;
+#[path = "observation.rs"]
+mod observation;
+
+#[derive(Debug, Clone)]
+struct Command {
+    id: String,
+    change_set_id: Option<String>,
+    op: Op,
+}
+
 /// 固定步长(秒),与 WorldDesc.dt_fixed 位级一致(step 只收此值)。
 pub const DT_FIXED: f32 = 1.0 / 60.0;
 /// 事件 ring 容量(溢出丢最旧)。
@@ -97,6 +109,7 @@ impl Op {
                 Ok(Op::ReplaceScene(old))
             }
             Op::Batch(ops) => {
+                let next_id = scene.next_id;
                 let mut inverses: Vec<Op> = Vec::with_capacity(ops.len());
                 for (i, o) in ops.iter().enumerate() {
                     match o.apply(scene) {
@@ -106,6 +119,7 @@ impl Op {
                             for inv in inverses.iter().rev() {
                                 let _ = inv.apply(scene);
                             }
+                            scene.next_id = next_id;
                             return Err(format!("第 {} 个 op 失败:{e}", i + 1));
                         }
                     }
@@ -125,7 +139,7 @@ impl Op {
                 for c in components {
                     forge_scene::validate_component(c)?;
                 }
-                scene.entities.push(Entity {
+                scene.entities.push(Entity { entity_guid: Some(assetd::new_guid()),
                     id: *id,
                     name: name.clone(),
                     transform: *transform,
@@ -242,6 +256,7 @@ impl Op {
 
 /// 宿主共享状态(单 Mutex 全量守护,简洁优先)。
 pub struct HostState {
+    pub sentinels_v6: Option<crate::sentinels_v6::Session>,
     /// 编辑态场景(唯一真相源;play 态冻结但可检视语义由 active 选择保证)。
     pub scene: Scene,
     /// 运行态场景(play.enter 时克隆编辑态;exit 销毁)。
@@ -249,9 +264,21 @@ pub struct HostState {
     /// PIE 状态。
     pub play: PlayState,
     /// undo 栈(存逆操作)。
-    undo: Vec<Op>,
+    undo: Vec<Command>,
     /// redo 栈(存正操作)。
-    redo: Vec<Op>,
+    redo: Vec<Command>,
+    edit_history: Option<(Vec<Command>, Vec<Command>)>,
+    pub host_epoch: String,
+    pub content_revision: u64,
+    revision_clock: u64,
+    scene_revisions: HashMap<String,(u64,String)>,
+    editor_receipts: HashMap<String,(String,Value)>,
+    runtime_revision: u64,
+    scene_path: Option<String>,
+    persisted_guids: std::collections::HashSet<String>,
+    scene_documents: HashMap<String,(Option<String>,std::collections::HashSet<String>)>,
+    legacy_identities: HashMap<PathBuf,(String,String,HashMap<u64,String>)>,
+    observations: VecDeque<observation::Observation>,
     /// checkpoint 快照栈(编辑态)。
     pub checkpoints: Vec<Scene>,
     /// 物理世界(后端不可构造时为 None,summary 如实上报)。
@@ -278,6 +305,8 @@ pub struct HostState {
     pub logic: Option<LogicRuntime>,
     /// 精灵帧动画系统(F-GAME-4;play 会话生命周期,Sprite.frame/clip 唯一写者)。
     pub anim: crate::anim::AnimSystem,
+    pub controllers: crate::character::Controllers,
+    pub preview_animations:std::collections::HashSet<u64>,
     /// 实体 ↔ body 映射(F4 wave.3 D-F4-I;play.enter 批建,play.exit 批删)。
     pub body_map: HashMap<u64, BodyId>,
     /// 待派发输入事件队列(F4 wave.3 logic.inject_input;下一逻辑帧取空)。
@@ -358,9 +387,17 @@ impl H264State {
 }
 
 
+impl Default for HostState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HostState {
     /// 初始化:建物理世界(按 Jolt→Rapier 序取首个可构造后端;全失败则 None)。
     pub fn new() -> Self {
+        let mut scene = Scene::new("Untitled");
+        scene.ensure_editor_identity(assetd::new_guid).expect("new scene identity");
         let (world, backend) = create_world(forge_scene::default_scene_gravity());
         let mut events = VecDeque::with_capacity(16);
         events.push_back(json!({
@@ -369,11 +406,24 @@ impl HostState {
             "backend": backend,
         }));
         HostState {
-            scene: Scene::new("Untitled"),
+            sentinels_v6: None,
+            scene,
             run_scene: None,
             play: PlayState::Edit,
             undo: Vec::new(),
             redo: Vec::new(),
+            edit_history: None,
+            host_epoch: assetd::new_guid(),
+            content_revision: 0,
+            revision_clock: 0,
+            scene_revisions: Default::default(),
+            editor_receipts: Default::default(),
+            runtime_revision: 0,
+            scene_path: None,
+            persisted_guids: Default::default(),
+            scene_documents: Default::default(),
+            legacy_identities: Default::default(),
+            observations: VecDeque::new(),
             checkpoints: Vec::new(),
             physics: world,
             backend: backend.to_string(),
@@ -388,6 +438,8 @@ impl HostState {
             events,
             logic: None,
             anim: crate::anim::AnimSystem::default(),
+            controllers: crate::character::Controllers::default(),
+            preview_animations:std::collections::HashSet::new(),
             body_map: HashMap::new(),
             input_queue: Vec::new(),
             started: Instant::now(),
@@ -420,10 +472,44 @@ impl HostState {
 
     /// 变更类操作统一入口:应用到活动场景,逆操作压 undo 栈,清 redo 栈。
     fn apply_tracked(&mut self, op: Op) -> Result<(), String> {
+        self.remember_scene_document();
+        if matches!(&op,Op::ReplaceScene(_)){self.preview_animations.clear();}
         let inverse = op.apply(self.active_mut())?;
-        self.undo.push(inverse);
+        self.undo.push(Command { id: assetd::new_guid(), change_set_id: None, op: inverse });
         self.redo.clear();
         Ok(())
+    }
+
+    fn remember_scene_document(&mut self) {
+        if let Some(guid)=&self.scene.scene_guid {
+            self.scene_documents.insert(guid.clone(),(self.scene_path.clone(),self.persisted_guids.clone()));
+        }
+    }
+    fn restore_scene_document(&mut self) {
+        let metadata=self.scene.scene_guid.as_ref().and_then(|g|self.scene_documents.get(g)).cloned();
+        if let Some((path,persisted))=metadata { self.scene_path=path;self.persisted_guids=persisted; }
+        else { self.scene_path=None;self.persisted_guids.clear(); }
+    }
+    fn remember_scene_revision(&mut self) {
+        if let Some(guid)=&self.scene.scene_guid {
+            let hash=forge_util::hashutil::sha256_hex(self.scene.to_json().unwrap_or_default().as_bytes());
+            self.scene_revisions.insert(guid.clone(),(self.content_revision,hash));
+        }
+    }
+    fn commit_content_revision(&mut self,method:&str,previous_scene:Option<&str>) {
+        let hash=forge_util::hashutil::sha256_hex(self.scene.to_json().unwrap_or_default().as_bytes());
+        if self.play!=PlayState::Edit {
+            self.runtime_revision+=1;
+            // Runtime asset refresh can also replace the frozen edit scene. Do not allow an
+            // edit-mode request prepared before PIE to silently retain its old baseline.
+            let changed=self.scene.scene_guid.as_ref().and_then(|g|self.scene_revisions.get(g)).is_none_or(|(_,saved)|saved!=&hash);
+            if changed {self.revision_clock+=1;self.content_revision=self.revision_clock;self.remember_scene_revision();}
+            return;
+        }
+        let returning=method=="scene.load"||previous_scene!=self.scene.scene_guid.as_deref();
+        let previous=returning.then(||self.scene.scene_guid.as_ref().and_then(|g|self.scene_revisions.get(g))).flatten().filter(|(_,h)|h==&hash).map(|(rev,_)|*rev);
+        self.content_revision=match previous {Some(revision)=>revision,None=>{self.revision_clock+=1;self.revision_clock}};
+        if let Some(guid)=&self.scene.scene_guid {self.scene_revisions.insert(guid.clone(),(self.content_revision,hash));}
     }
 }
 
@@ -483,9 +569,22 @@ fn sync_camera_to_scene_mode(st: &mut HostState) {
 
 // ---------- F4 wave.3:图解释运行时 + 物理接线 ----------
 
+/// CoreConfig.project_root 的覆盖值(02 §5.3):start_core 至多设一次(godot-host 传 Some;bin 传 None,不设)。
+/// 不用 std::env::set_var——多线程下改环境变量不安全。
+static PROJECT_ROOT_OVERRIDE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// 设置项目根覆盖;已设过返回 Err(原样交回新值)。
+pub(crate) fn set_project_root(root: PathBuf) -> Result<(), PathBuf> {
+    PROJECT_ROOT_OVERRIDE.set(root)
+}
+
 /// 资产项目根 = <workspace>/projects/demo(CARGO_MANIFEST_DIR = crates/engine-host,
 /// 上两级 = workspace 根);env FORGE_PROJECT_ROOT 覆盖(测试注入临时项目根)。
+/// start_core 设过覆盖值(CoreConfig.project_root)时它优先于 env 与编译期回退。
 pub(crate) fn project_root() -> PathBuf {
+    if let Some(root) = PROJECT_ROOT_OVERRIDE.get() {
+        return root.clone();
+    }
     if let Ok(p) = std::env::var("FORGE_PROJECT_ROOT") {
         return PathBuf::from(p);
     }
@@ -576,6 +675,14 @@ fn collect_script_graphs(scene: &Scene) -> Vec<(u64, String, Value)> {
 /// BodyId→实体翻译(规范序保序)→ active_transforms 回写 run_scene →
 /// runtime.frame(trigger 沿检测在 frame 内)→ logic.* 事件进 ring。
 pub(crate) fn advance_frame(st: &mut HostState) {
+    if st.play != PlayState::Edit { st.runtime_revision = st.runtime_revision.wrapping_add(1); }
+    if st.sentinels_v6.is_some() { crate::sentinels_v6::advance(st); return; }
+    if let (Some(run),Some(world))=(st.run_scene.as_mut(),st.physics.as_mut()) {
+        if let Err(message)=st.controllers.advance(run,world,&st.body_map,&st.input_queue,DT_FIXED) {
+            st.step_errors+=1;
+            push_event(st,"character.error",json!({"message":message}));
+        }
+    }
     // F-TEAM-4:kinematic 正向同步——运动体语义 = 游戏逻辑驱动、物理跟随。
     // 图解释器上帧写的 transform 若不喂回物理,下一帧回写会用 body 旧位置把它
     // 覆盖掉(实测:打砖块挡板/球每步被拉回原位,逻辑驱动的运动体整体失效)。
@@ -628,6 +735,7 @@ pub(crate) fn advance_frame(st: &mut HostState) {
             for (body, t) in world.active_transforms() {
                 if let Some(&eid) = rev.get(&body) {
                     if let Some(e) = run.entity_mut(eid) {
+                        if e.component("CharacterController").is_some_and(|c|c.enabled) { continue; }
                         e.transform.translation = t.translation;
                         e.transform.rotation = t.rotation;
                     }
@@ -649,6 +757,7 @@ pub(crate) fn advance_frame(st: &mut HostState) {
         .unwrap_or_default();
     if let Some(run) = st.run_scene.as_mut() {
         st.anim.advance(run, anim_cmds, DT_FIXED, &mut logs);
+        crate::modelrt::advance(run,DT_FIXED);
     }
     for (name, payload) in logs {
         push_event(st, &name, payload);
@@ -662,10 +771,11 @@ fn ok(id: Value, result: Value) -> Value {
 
 /// 构造 JSON-RPC error 响应。
 pub fn err(id: Value, code: i64, message: &str) -> Value {
+    let kind = message.split(':').next().filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_uppercase() || c == '_')).unwrap_or("HOST_ERROR");
     json!({
         "jsonrpc": "2.0",
         "id": id,
-        "error": { "code": code, "message": message }
+        "error": { "code": code, "message": message, "data": { "code": kind } }
     })
 }
 
@@ -674,7 +784,7 @@ pub fn err(id: Value, code: i64, message: &str) -> Value {
 /// 处理器结果:Ok(result) 或 (code, message)。
 type HResult = Result<Value, (i64, String)>;
 
-fn param_err<T>(msg: impl Into<String>) -> Result<T, (i64, String)> {
+pub(crate) fn param_err<T>(msg: impl Into<String>) -> Result<T, (i64, String)> {
     Err((-32602, msg.into()))
 }
 
@@ -789,6 +899,16 @@ fn parse_batch_op(v: &Value, scene: &Scene) -> Result<Op, (i64, String)> {
         .and_then(Value::as_str)
         .ok_or((-32602, "invalid params: op 缺 op 字段".to_string()))?;
     match op_name {
+        "rename" => Ok(Op::RenameEntity { id:req_id(v)?, name:req_name(v)? }),
+        "destroy" => {
+            let id=req_id(v)?;
+            if scene.entity(id).is_none(){return domain_err("REFERENCE_NOT_FOUND: entity was removed");}
+            let mut ids=vec![id];let mut i=0;
+            while i<ids.len(){let parent=ids[i];for entity in &scene.entities{if entity.component("Parent").and_then(|p|p.props["entity"].as_u64())==Some(parent)&&!ids.contains(&entity.id){ids.push(entity.id);}}i+=1;}
+            Ok(Op::Batch(ids.into_iter().rev().map(|id|Op::DestroyEntity{id}).collect()))
+        },
+        "component_add" => Ok(Op::AddComponent { id:req_id(v)?, component:parse_component(v)? }),
+        "component_remove" => Ok(Op::RemoveComponent { id:req_id(v)?, ctype:req_ctype(v)? }),
         "create" => {
             let name = v
                 .get("name")
@@ -865,6 +985,7 @@ fn default_scene_path() -> PathBuf {
 /// 只读方法集(dispatch 成功后不 bump scene_rev;推流线程据 rev 做编辑态空闲跳帧)。
 /// 漏列的代价 = 多渲一帧,方向安全;误列才会让画面滞后,故仅收录确定无可视副作用者。
 const READONLY_METHODS: &[&str] = &[
+    "editor.resolve", "observation.capture", "observation.resolve", "shader.status",
     "host.ping",
     "scene.summary",
     "scene.index",
@@ -884,6 +1005,9 @@ const READONLY_METHODS: &[&str] = &[
     "viewport.getCamera",
     "viewport.pick",
     "viewport.streamInfo",
+    // 02 §4.6:渲染后端信息 / 能力(只读)。
+    "render.backendInfo",
+    "render.capabilities",
 ];
 
 /// 分派单条请求(请求已合法解析为 JSON;坏 JSON 由连接层回 -32700)。
@@ -894,15 +1018,266 @@ pub fn dispatch(state: &Mutex<HostState>, req: &Value) -> Value {
         None => return err(id, -32600, "invalid request: 缺 method"),
     };
     let params = req.get("params").cloned().unwrap_or(Value::Null);
+    if method == "shader.preview" {
+        return match crate::shader::preview(&params) {
+            Ok(result)=>ok(id,result),Err(message)=>err(id,-32000,&message),
+        };
+    }
+    if method == "observation.capture" {
+        return match observation::capture(state, &params) {
+            Ok(result) => ok(id, result),
+            Err((code, message)) => err(id, code, &message),
+        };
+    }
+    if method == "game.session.suggest" {
+        return match crate::sentinels_v6::suggest(state,&params) {
+            Ok(result)=>ok(id,result),
+            Err((code,message))=>err(id,code,&message),
+        };
+    }
+    if method == "game.session.preview" {
+        return match crate::sentinels_v6::preview(state,&params) {
+            Ok(result)=>ok(id,result),
+            Err((code,message))=>err(id,code,&message),
+        };
+    }
+    // 02 §4.5 第 8 项:Pipelined 后端的取帧 RPC 在锁外分流(rurix 下条件恒假)。
+    if matches!(method, "viewport.frame" | "template.preview") && crate::render::is_pipelined() {
+        return match pipelined_frame_rpc(state, method, &params) {
+            Ok(result) => ok(id, result),
+            Err((code, message)) => err(id, code, &message),
+        };
+    }
     let mut st = lock(state);
+    if method=="editor.apply" {
+        match editor::replay_receipt(&st,&params) {
+            Ok(Some(result))=>return ok(id,result),Ok(None)=>{},Err((code,message))=>return err(id,code,&message),
+        }
+    }
+    if let Err((code, message)) = editor::check_expected(&st, &params, false) {
+        return err(id, code, &message);
+    }
+    if matches!(method,"edit.undo"|"edit.redo") {
+        if let Err((code,message))=editor::check_history(&st,method,&params){return err(id,code,&message);}
+    }
+    let before = editor::changes_content(method).then(||st.active().clone());
+    if before.is_some() {st.remember_scene_revision();}
     match handle(&mut st, method, &params) {
-        Ok(result) => {
+        Ok(mut result) => {
+            if editor::changes_content(method) {
+                st.commit_content_revision(method,before.as_ref().and_then(|s|s.scene_guid.as_deref()));
+            }
             if !READONLY_METHODS.contains(&method) {
                 st.scene_rev = st.scene_rev.wrapping_add(1);
             }
+            if !method.starts_with("observation.") { editor::stamp(&st, &mut result); }
+            if method=="editor.apply" {editor::store_receipt(&mut st,&params,&result);}
             ok(id, result)
         }
-        Err((code, msg)) => err(id, code, &msg),
+        Err((code, msg)) => {
+            // Some legacy hot-reload methods fail after mutating. Never leave old references valid.
+            if before.as_ref().is_some_and(|before|before!=st.active()) {
+                st.commit_content_revision(method,before.as_ref().and_then(|s|s.scene_guid.as_deref()));
+                st.scene_rev=st.scene_rev.wrapping_add(1);
+            }
+            err(id, code, &msg)
+        },
+    }
+}
+
+/// Pipelined 后端的 viewport.frame / template.preview(02 §4.5 第 8 项):三段式"短锁建请求 → 放锁等帧 → 短锁记账"。
+/// GAME_ALLOWED 检查照搬 handle;rurix 下 dispatch 从不进这里。
+fn pipelined_frame_rpc(state: &Mutex<HostState>, method: &str, params: &Value) -> HResult {
+    if lock(state).game_mode && !GAME_ALLOWED.contains(&method) {
+        return Err((-32601, format!("game 模式禁编辑面: {method}")));
+    }
+    let b = crate::render::backend();
+    let crate::render::FramePath::Pipelined(p) = b.path() else {
+        return Err((-32000, crate::render::unsupported(method)));
+    };
+    if method == "template.preview" {
+        return pipelined_template_preview(state, b, p, params);
+    }
+    // ① 短锁建请求:与 viewport_frame 同序(尺寸 → 推流让位 → format / selected → vp_override,后者在 snapshot 里)。
+    let (snap, format, exact_size) = {
+        let st = lock(state);
+        let (mut w, mut h) = viewport_size(params)?;
+        // D-045:exact 按请求尺寸出帧,不让位推流;camera=scene 编辑态也取场景相机(同 viewport_frame)。
+        let (exact_size, scene_camera) = frame_options(params)?;
+        if !exact_size {
+            if let Some((sw, sh)) = crate::stream::primary_size() {
+                (w, h) = (sw, sh);
+            }
+        }
+        let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8").to_string();
+        let selected = params.get("selectedId").and_then(Value::as_u64);
+        let sp = crate::render::SnapshotParams {
+            width: w,
+            height: h,
+            selected,
+            want_readback: format != "none",
+            want_stats: true,
+            requester: crate::render::FrameRequester::ViewportFrame,
+            scene_camera,
+        };
+        let snap = crate::render::snapshot(&st, sp, p.next_seq());
+        if scene_camera && snap.vp_override.is_none() {
+            return domain_err("camera=scene 但场景没有启用的 Camera 组件");
+        }
+        (snap, format, exact_size)
+    };
+    // ② 放锁等帧;共享 buffer 喂帧此时只持 SH(今天 HS → SH 的子集)。
+    let (out, list) = pipelined_wait(b, p, crate::render::bus::Channel::Main, &snap)?;
+    let (frame_path, cpu_upload) = if exact_size {
+        ("exact_offscreen", false)
+    } else {
+        crate::render::sink::feed_share(&out).map_err(|e| (-32000, e))?
+    };
+    let f = &out.pixels;
+    let nonzero = nonzero_pixels(&f.rgba8, crate::render_core::list::clear_rgb8(list.clear_rgba));
+    // ③ 短锁记账:与 viewport_frame 同键同序;h264 仍在锁内编码。
+    let mut st = lock(state);
+    if cpu_upload {
+        st.cpu_uploads += 1;
+    }
+    st.frames += 1;
+    st.last_tris = f.triangles;
+    st.last_nonzero = nonzero;
+    flush_text_issues(&mut st);
+    let (frames, cpu_uploads) = (st.frames, st.cpu_uploads);
+    push_event(
+        &mut st,
+        "viewport.frame",
+        json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": nonzero, "framePath": frame_path }),
+    );
+    let mut v = json!({
+        "width": f.width,
+        "height": f.height,
+        "deviceName": f.device_name,
+        "draws": f.draws,
+        "truncated": f.truncated,
+        "triangles": f.triangles,
+        "meshFallbacks": f.mesh_fallbacks,
+        "meshClasses": f.mesh_classes,
+        "frames": frames,
+        "nonZeroPixels": nonzero,
+        "framePath": frame_path,
+        "cpuUploads": cpu_uploads,
+    });
+    match format.as_str() {
+        "none" => v["format"] = json!("none"),
+        "h264" => {
+            let (nal, keyframe) = st
+                .h264
+                .encode_frame(&f.rgba8, f.width, f.height)
+                .map_err(|e| (-32000, format!("H.264 编码失败: {e}")))?;
+            v["format"] = json!("h264");
+            v["nalB64"] = json!(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &nal));
+            v["keyframe"] = json!(keyframe);
+        }
+        _ => {
+            v["format"] = json!("rgba8");
+            v["pixelsB64"] = json!(f.pixels_b64());
+        }
+    }
+    Ok(v)
+}
+
+/// Pipelined 等帧上限(§4.5:deadline = now + 3 s)。
+const PIPELINED_FRAME_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(3000);
+
+type PipelinedFrame = (std::sync::Arc<crate::render::bus::FrameOut>, std::sync::Arc<crate::render_core::list::RenderList>);
+
+/// Render an isolated preview without touching the active scene, camera, or undo history.
+/// Preview uses exact sequence matching on pipelined backends and never waits while holding HostState.
+pub(crate) fn render_detached_preview(scene:Scene,camera:crate::viewport::EditorCamera,width:u32,height:u32)->HResult {
+    let (width,height)=viewport_size(&json!({"width":width,"height":height}))?;
+    let backend=crate::render::backend();
+    let snapshot=crate::render::snapshot::RenderSnapshot {
+        seq:match backend.path(){crate::render::FramePath::Pipelined(p)=>p.next_seq(),_=>0},
+        scene_rev:0,scene:std::sync::Arc::new(scene),camera,play:PlayState::Edit,vp_override:None,
+        params:crate::render::SnapshotParams{width,height,selected:None,want_readback:true,want_stats:false,requester:crate::render::FrameRequester::ViewportFrame,scene_camera:false},
+        project_root:std::sync::Arc::new(project_root()),
+        asset_generation:crate::render_core::assets::ASSET_GENERATION.load(std::sync::atomic::Ordering::Relaxed),
+    };
+    match backend.path() {
+        crate::render::FramePath::Pipelined(p)=>{
+            let(out,_)=pipelined_wait(backend,p,crate::render::bus::Channel::Preview,&snapshot)?;
+            Ok(json!({"width":out.pixels.width,"height":out.pixels.height,"format":"rgba8","pixelsB64":out.pixels.pixels_b64(),"draws":out.pixels.draws}))
+        },
+        crate::render::FramePath::Immediate(_)=>{
+            let frame=crate::render::render_preview(snapshot.input()).map_err(|e|(-32000,e))?;
+            Ok(json!({"width":frame.width,"height":frame.height,"format":"rgba8","pixelsB64":frame.pixels_b64(),"draws":frame.draws}))
+        },
+    }
+}
+
+/// ② 放锁等帧:按腿拦截 + extract → submit(带 FrameRequest)→ 等应答。不持任何锁(I4)。
+/// 超时:Main 通道首帧之前报 `RENDER_NOT_READY:`(冷启动),之后报 `RENDER_TIMEOUT:`。
+fn pipelined_wait(
+    b: &dyn crate::render::backend::RenderBackend,
+    p: &dyn crate::render::backend::PipelinedRender,
+    ch: crate::render::bus::Channel,
+    snap: &crate::render::snapshot::RenderSnapshot,
+) -> Result<PipelinedFrame, (i64, String)> {
+    let list = crate::render::pipelined_list(b, snap).map_err(|e| (-32000, e))?;
+    let size = (snap.params.width, snap.params.height);
+    let (req, rx) = crate::render::bus::FrameRequest::new(snap.seq, size, Instant::now() + PIPELINED_FRAME_TIMEOUT);
+    p.submit(ch, std::sync::Arc::clone(&list), Some(req)).map_err(|e| (-32000, e))?;
+    let not_ready = || format!("RENDER_NOT_READY: 渲染后端尚未出首帧(seq={} {}x{})", snap.seq, size.0, size.1);
+    match rx.recv_timeout(PIPELINED_FRAME_TIMEOUT + std::time::Duration::from_millis(500)) {
+        Ok(Ok(out)) => Ok((out, list)),
+        Ok(Err(e)) if e.starts_with("RENDER_TIMEOUT") && !p.ready() => Err((-32000, not_ready())),
+        Ok(Err(e)) => Err((-32000, e)),
+        Err(_) if !p.ready() => Err((-32000, not_ready())),
+        Err(_) => Err((-32000, format!("RENDER_TIMEOUT: 渲染后端无应答(seq={} {}x{})", snap.seq, size.0, size.1))),
+    }
+}
+
+/// Pipelined 的 nonZeroPixels:任一通道与本腿清屏色相差超过 1 的像素数;没有 CPU 像素时为 0。
+/// 容差 1:Godot Mobile 的 10 bit 颜色缓冲会把清屏色量化 ±1(23,24,29 → 22,25,28),精确比较会把整个背景算进去。
+/// (rurix 的统计在 viewport 腿内,仍是精确比较,不受影响。)
+fn nonzero_pixels(rgba8: &[u8], bg: [u8; 3]) -> usize {
+    rgba8.chunks_exact(4).filter(|p| (0..3).any(|i| p[i].abs_diff(bg[i]) > 1)).count()
+}
+
+/// template.preview 的 Pipelined 分支(§4.3):preview_job 锁外构造 → Preview 通道(PV 串行化,seq 必须相等)
+/// → 回复与 rurix 同键 → 短锁 scene_rev+1(template.preview 不在只读表,rurix 由 dispatch 做这一步)。
+fn pipelined_template_preview(
+    state: &Mutex<HostState>,
+    b: &dyn crate::render::backend::RenderBackend,
+    p: &dyn crate::render::backend::PipelinedRender,
+    params: &Value,
+) -> HResult {
+    static PV: Mutex<()> = Mutex::new(());
+    let job = crate::render::preview::preview_job(params)?;
+    let (out, list) = {
+        let _pv = PV.lock().unwrap_or_else(|e| e.into_inner());
+        let snap = job.into_snapshot(p.next_seq());
+        pipelined_wait(b, p, crate::render::bus::Channel::Preview, &snap)?
+    };
+    let f = &out.pixels;
+    let nonzero = nonzero_pixels(&f.rgba8, crate::render_core::list::clear_rgb8(list.clear_rgba));
+    let v = json!({"width":f.width,"height":f.height,"format":"rgba8","pixelsB64":f.pixels_b64(),"deviceName":f.device_name,"draws":f.draws,"triangles":f.triangles,"nonZeroPixels":nonzero,"meshFallbacks":0,"truncated":false});
+    let mut st = lock(state);
+    st.scene_rev = st.scene_rev.wrapping_add(1);
+    Ok(v)
+}
+
+/// §4.5 第 12/13 项:Pipelined 后端重建 / 关闭共享 buffer 之前,先让 [gmain] 停写旧 buffer 并释放 COM 引用
+/// (回执上限 500 ms)。rurix 下是空操作。
+fn pipelined_share_detach() {
+    if let crate::render::FramePath::Pipelined(p) = crate::render::backend().path() {
+        let _ = p.detach_share(std::time::Duration::from_millis(500));
+    }
+}
+
+/// share::open 成功之后:共享对象建在 Godot 的 device 上(LUID 相同)时交给 [gmain] 走 L1;否则只走 L2 的 CPU 上传档。
+fn pipelined_share_attach() {
+    if let crate::render::FramePath::Pipelined(p) = crate::render::backend().path() {
+        if let Some(t) = crate::share::gpu_target() {
+            let _ = p.control(crate::render::backend::ControlMsg::ShareAttach(t));
+        }
     }
 }
 
@@ -924,6 +1299,9 @@ const GAME_ALLOWED: &[&str] = &[
     "viewport.getCamera",
     "viewport.pick",
     "viewport.streamInfo",
+    // 02 §4.6
+    "render.backendInfo",
+    "render.capabilities",
 ];
 
 /// --game 启动(F6 wave.4):项目根相对场景 → scene_load → play_enter;失败如实 Err(main 退出)。
@@ -939,10 +1317,16 @@ pub(crate) fn game_boot(st: &mut HostState, scene_rel: &str) -> Result<(), Strin
 
 /// 方法分派(持锁内)。
 fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
+    if method.starts_with("game.session.") { return crate::sentinels_v6::handle(st, method, params); }
     if st.game_mode && !GAME_ALLOWED.contains(&method) {
         return Err((-32601, format!("game 模式禁编辑面: {method}")));
     }
     match method {
+        "editor.resolve" => editor::resolve(st, params),
+        "editor.apply" => editor::apply(st, params),
+        "observation.resolve" => observation::resolve(st, params),
+        "shader.publish" => crate::shader::publish(params.get("reference").and_then(Value::as_str).ok_or((-32602,"reference required".into()))?).map_err(|e|(-32000,e)),
+        "shader.status" => Ok(crate::shader::status()),
         "host.ping" => Ok(json!({
             "pong": true,
             "version": env!("CARGO_PKG_VERSION"),
@@ -955,11 +1339,19 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "scene.index" => Ok(scene_index(st)),
         "scene.graph_dump" => Ok(scene_graph_dump(st)),
         "render.once" => Ok(render_once(st)),
+        // 02 §4.6:不接受参数(params 忽略)。
+        "render.backendInfo" => Ok(crate::render::backend_info_json(crate::render::backend())),
+        "render.capabilities" => Ok(crate::render::capabilities_json(crate::render::backend())),
         "events.drain" => {
             let drained: Vec<Value> = st.events.drain(..).collect();
             Ok(Value::Array(drained))
         }
         "entity.create" => entity_create(st, params),
+        "prefab.instantiate" => prefab_instantiate(st,params),
+        "prefab.revert" => prefab_revert(st,params),
+        "asset.reload" => asset_reload(st,params),
+        "animation.control" => animation_control(st,params),
+        "template.preview" => template_preview(st,params),
         "entity.destroy" => entity_destroy(st, params),
         "entity.rename" => entity_rename(st, params),
         "entity.get" => entity_get(st, params),
@@ -997,6 +1389,7 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "viewport.streamInfo" => viewport_stream_info(),
         "viewport.shareOpen" => viewport_share_open(params),
         "viewport.shareClose" => {
+            pipelined_share_detach(); // §4.5 第 13 项;rurix 下是空操作
             crate::share::close();
             Ok(json!({ "closed": true }))
         }
@@ -1005,6 +1398,65 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
 }
 
 // ---------- F0 既有方法 ----------
+
+fn prefab_instantiate(st:&mut HostState,args:&Value)->HResult {
+    if st.play!=PlayState::Edit{return domain_err("prefab instantiate requires edit mode");}
+    let(scene,result)=crate::prefab::instantiate(st.active(),args).map_err(|e|(-32000,e))?;
+    st.apply_tracked(Op::ReplaceScene(scene)).map_err(|e|(-32000,e))?;
+    push_event(st,"prefab.instantiated",result.clone());Ok(result)
+}
+pub(crate) fn advance_preview(st:&mut HostState,dt:f32){
+    if st.play!=PlayState::Edit||st.preview_animations.is_empty(){return;}
+    let mut changed=false;
+    for id in &st.preview_animations{if let Some(a)=st.scene.entity_mut(*id).and_then(|e|e.component_mut("Animator")){if a.props["playing"].as_bool()==Some(true){let time=a.props["time"].as_f64().unwrap_or(0.);let speed=a.props["speed"].as_f64().unwrap_or(1.);let next=json!(time+f64::from(dt)*speed);changed|=a.props["time"]!=next;a.props["time"]=next;}}}
+    if changed {let scene=st.scene.scene_guid.clone();st.commit_content_revision("animation.preview",scene.as_deref());}
+    st.scene_rev+=1;
+}
+fn prefab_revert(st:&mut HostState,args:&Value)->HResult {
+    if st.play!=PlayState::Edit{return domain_err("prefab revert requires edit mode");}
+    let root=crate::prefab::root_id(st.active(),req_id(args)?).map_err(|e|(-32000,e))?;
+    let(scene,result)=crate::prefab::refresh(st.active(),Some(root),true).map_err(|e|(-32000,e))?;
+    st.apply_tracked(Op::ReplaceScene(scene)).map_err(|e|(-32000,e))?;push_event(st,"prefab.reverted",result.clone());Ok(result)
+}
+fn asset_reload(st:&mut HostState,args:&Value)->HResult {
+    crate::modelrt::invalidate();crate::modelrender::invalidate();crate::viewport::invalidate_assets();crate::render::backend().invalidate_assets();
+    let(scene,mut result)=crate::prefab::refresh(&st.scene,None,false).map_err(|e|(-32000,e))?;
+    let changed=scene!=st.scene;
+    if st.play==PlayState::Edit {if changed {st.apply_tracked(Op::ReplaceScene(scene)).map_err(|e|(-32000,e))?;}}
+    else {
+        let(run,run_result)=crate::prefab::refresh(st.run_scene.as_ref().unwrap(),None,false).map_err(|e|(-32000,e))?;
+        // Build a replacement collision world before swapping; failed rebuild keeps the running world intact.
+        let(world,backend)=create_world(run.gravity);let mut world=world.ok_or((-32000,"physics backend unavailable".into()))?;let mut descs=Vec::new();let mut owners=Vec::new();
+        for e in &run.entities {if let Some(d)=crate::character::body_desc(&run,e).map_err(|e|(-32000,e))?.or_else(||rigid_body_desc(e)){descs.push(d);owners.push(e.id);}}
+        let ids=world.add_bodies_batch(&descs).map_err(|e|(-32000,e.to_string()))?;
+        st.physics=Some(world);st.backend=backend.into();st.body_map=owners.into_iter().zip(ids).collect();st.controllers.clear();st.scene=scene;st.run_scene=Some(run);result["runtime"]=run_result;result["physicsRestarted"]=json!(true);
+    }
+    result["invalidated"]=args.get("guids").cloned().unwrap_or(json!(["all"]));
+    push_event(st,"asset.reloaded",result.clone());Ok(result)
+}
+fn animation_control(st:&mut HostState,args:&Value)->HResult {
+    let id=req_id(args)?;let e=st.active().entity(id).ok_or((-32000,"entity not found".into()))?;
+    let model_ref=e.component("ModelRenderer").or_else(||e.component("ModelNode")).or_else(||e.component("PrefabInstance")).and_then(|c|c.props["model"].as_str()).ok_or((-32000,"entity has no model reference".into()))?;
+    let model=crate::modelrt::load(model_ref).map_err(|e|(-32000,e))?;
+    let mut a=e.component("Animator").cloned().unwrap_or_else(||Component::new("Animator",forge_scene::normalize_props("Animator",&json!({})).unwrap()));
+    a.props["manualControl"]=json!(true);
+    if let Some(clip)=args.get("clip").and_then(Value::as_str){if !model.animations.iter().any(|c|c.name==clip){return domain_err(format!("ANIMATION_NOT_FOUND: {clip}"));}a.props["clip"]=json!(clip);a.props["time"]=json!(0.);}
+    if a.props["clip"].as_str().unwrap_or("").is_empty(){if let Some(clip)=model.animations.first(){a.props["clip"]=json!(clip.name);}else{return domain_err("model has no animation clips");}}
+    if let Some(looped)=args.get("loop"){if !looped.is_boolean(){return param_err("loop must be boolean");}a.props["loop"]=looped.clone();}
+    match args["action"].as_str().unwrap_or("play") {
+        "play"=>a.props["playing"]=json!(true),"pause"=>a.props["playing"]=json!(false),"stop"=>{a.props["playing"]=json!(false);a.props["time"]=json!(0.);},
+        "seek"=>{let t=args["time"].as_f64().filter(|t|t.is_finite()&&*t>=0.).ok_or((-32602,"seek time must be nonnegative".into()))?;a.props["time"]=json!(t);a.props["playing"]=json!(false);},_=>return param_err("unknown animation action"),
+    }
+    let result=json!({"id":id,"animator":a.props});let op=if e.component("Animator").is_some(){Op::SetComponent{id,component:a}}else{Op::AddComponent{id,component:a}};st.apply_tracked(op).map_err(|e|(-32000,e))?;
+    if st.play==PlayState::Edit{if args["action"].as_str().unwrap_or("play")=="play"{st.preview_animations.insert(id);}else{st.preview_animations.remove(&id);}}
+    push_event(st,"animation.changed",result.clone());Ok(result)
+}
+fn template_preview(_st:&mut HostState,args:&Value)->HResult {
+    // 02 §4.3:渲染前半段逐字搬到 render::preview::preview_job;渲染经后端 Immediate 腿(八个实参不变)。
+    let job=crate::render::preview::preview_job(args)?;
+    let f=crate::render::render_preview(job.input()).map_err(|e|(-32000,e))?;
+    Ok(json!({"width":f.width,"height":f.height,"format":"rgba8","pixelsB64":f.pixels_b64(),"deviceName":f.device_name,"draws":f.draws,"triangles":f.triangles,"nonZeroPixels":f.nonzero,"meshFallbacks":0,"truncated":false}))
+}
 
 /// 实体 JSON + 计算字段 category(不入 .rxscene)。
 fn entity_json_with_category(e: &Entity) -> Value {
@@ -1100,9 +1552,13 @@ fn scene_new(st: &mut HostState, params: &Value) -> HResult {
     if let Some(g) = gravity {
         scene.gravity = g;
     }
+    scene.ensure_editor_identity(assetd::new_guid).map_err(|e|(-32000,e))?;
     st.apply_tracked(Op::ReplaceScene(scene))
         .map_err(|e| (-32000, e))?;
     sync_camera_to_scene_mode(st);
+    st.scene_path = None;
+    st.persisted_guids.clear();
+    st.remember_scene_document();
     let mode = st.scene.mode.clone();
     push_event(st, "scene.created", json!({ "name": name, "mode": mode }));
     let s = st.scene.summary();
@@ -1157,7 +1613,7 @@ fn render_once(st: &mut HostState) -> Value {
 // ---------- F1 wave.2 Viewport ----------
 
 /// 取 width/height 参数(缺省 960×540;钳 16..=1920 / 16..=1080)。
-fn viewport_size(params: &Value) -> Result<(u32, u32), (i64, String)> {
+pub(crate) fn viewport_size(params: &Value) -> Result<(u32, u32), (i64, String)> {
     let g = |k: &str, d: u32| params.get(k).and_then(Value::as_u64).map(|v| v as u32).unwrap_or(d);
     if !params.is_null() && !params.is_object() {
         return param_err("invalid params: 须为对象");
@@ -1199,32 +1655,79 @@ fn viewport_stream_info() -> HResult {
     }
 }
 
+/// D-045:把光栅化文字时登记的字体问题转成宿主事件 `TEXT_FONT_MISSING`(不偷换字体,I-5)。
+/// 光栅化发生在渲染线程 / Godot 进程内,拿不到 HostState,所以先登记、由三条取帧路径
+/// (rurix 的 viewport.frame、Godot 的 pipelined 取帧、推流循环)在持锁记账时统一取走。
+pub(crate) fn flush_text_issues(st: &mut HostState) {
+    for (font, reason) in crate::render_core::text::drain_issues() {
+        push_event(st, "TEXT_FONT_MISSING", json!({ "font": font, "reason": reason }));
+    }
+}
+
+/// viewport.frame 的取帧选项(D-045):`exact` = 严格按请求尺寸离屏出帧(不让位推流、不喂共享纹理);
+/// `camera` = "scene" 时编辑态也用场景相机渲染。非法值显式 -32602,不静默当缺省——
+/// rurix 与 pipelined(Godot)两条取帧路径共用本函数,校验口径一致。
+fn frame_options(params: &Value) -> Result<(bool, bool), (i64, String)> {
+    let exact = match params.get("exact") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return param_err("invalid params: exact 须为布尔"),
+    };
+    let scene_camera = match params.get("camera") {
+        None | Some(Value::Null) => false,
+        Some(Value::String(s)) if s == "editor" => false,
+        Some(Value::String(s)) if s == "scene" => true,
+        Some(other) => return param_err(format!("invalid params: camera 须为 \"editor\"|\"scene\",实: {other}")),
+    };
+    Ok((exact, scene_camera))
+}
+
 /// viewport.frame:GPU 场景实渲染 + 回读;无设备 → DEV_ENV_DEGRADE 结构化错误(不充绿)。
 /// `format` = "rgba8"(默认) | "h264"(F1 wave.4 流腿:Annex B 码流,供纯 web 客户端)。
 fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
+    crate::shader::set_frame_time(if st.play==PlayState::Edit {0.0} else {st.steps as f32*DT_FIXED});
     let (mut w, mut h) = viewport_size(params)?;
+    // D-045:exact=true 按请求尺寸离屏出帧(设计稿验收要像素对齐),不让位于推流尺寸、不喂共享纹理;
+    // 代价是可能触发一次会话重建(1-5s),只给低频的验收截帧用。
+    let (exact, scene_camera) = frame_options(params)?;
     // 推流期间以流为尺寸权威:多消费者尺寸不一致会触发 1-5s 会话重建拉锯
     // (agent 截图 960×540 与流面板尺寸逐次交替重建)。遗留腿按流尺寸出帧,
     // 响应 width/height 如实回报实渲尺寸,消费者按实返自适应(既有契约)。
-    if let Some((sw, sh)) = crate::stream::primary_size() {
-        (w, h) = (sw, sh);
+    if !exact {
+        if let Some((sw, sh)) = crate::stream::primary_size() {
+            (w, h) = (sw, sh);
+        }
     }
     let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8");
     let selected = params.get("selectedId").and_then(Value::as_u64);
     let cam = st.camera;
     // F-GAME-2:PIE 期间视口由场景相机实体驱动(游戏画面 = 游戏相机);编辑态走编辑器相机。
-    let vp_override = if st.play != PlayState::Edit {
+    // D-045:camera=scene 时编辑态也用场景相机(复刻验收看的是游戏画面,不是编辑器视角)。
+    let vp_override = if st.play != PlayState::Edit || scene_camera {
         let aspect = w as f32 / h as f32;
         crate::viewport::scene_camera_view_proj(st.active(), aspect)
     } else {
         None
     };
+    if scene_camera && vp_override.is_none() {
+        return domain_err("camera=scene 但场景没有启用的 Camera 组件");
+    }
     // F6 wave.5:format=none 性能测量档不回读(渲染+提交产能口径);rgba8/h264 档帧通道端到端口径。
     let want_readback = format != "none";
-    match crate::viewport::render_scene_frame(st.active(), &cam, selected, w, h, want_readback, true, vp_override) {
+    #[cfg(feature = "backend-rurix")]
+    crate::viewport::rurix::FORCE_EXACT_SIZE.store(exact, std::sync::atomic::Ordering::Relaxed);
+    let rendered = crate::render::render_frame(crate::render::FrameInput { scene: st.active(), cam: &cam, selected, width: w, height: h, want_readback, want_stats: true, vp_override });
+    #[cfg(feature = "backend-rurix")]
+    crate::viewport::rurix::FORCE_EXACT_SIZE.store(false, std::sync::atomic::Ordering::Relaxed);
+    flush_text_issues(st);
+    match rendered {
         Ok(f) => {
             // 帧通道(F1 wave.2/3):帧源唯一 = render_scene_frame;share 喂帧与推流腿共用。
-            let (frame_path, cpu_upload) = feed_share_frame(&f).map_err(|e| (-32000, e))?;
+            let (frame_path, cpu_upload) = if exact {
+                ("exact_offscreen", false)
+            } else {
+                feed_share_frame(&f).map_err(|e| (-32000, e))?
+            };
             if cpu_upload {
                 st.cpu_uploads += 1;
             }
@@ -1373,7 +1876,8 @@ fn viewport_share_open(params: &Value) -> HResult {
         .and_then(Value::as_u64)
         .ok_or((-32602, "invalid params: 缺 pid".to_string()))? as u32;
     let (w, h) = viewport_size(params)?;
-    crate::share::open(w, h, pid)
+    pipelined_share_detach(); // §4.5 第 12 项:重建前让 [gmain] 放开旧 buffer;rurix 下是空操作
+    let r = crate::share::open(w, h, pid)
         .map(|(buf, fence, w, h, row_pitch, size)| {
             json!({
                 "texHandle": buf,
@@ -1386,7 +1890,11 @@ fn viewport_share_open(params: &Value) -> HResult {
                 "bufferSize": size,
             })
         })
-        .map_err(|e| (-32000, format!("共享 buffer 打开失败: {e}")))
+        .map_err(|e| (-32000, format!("共享 buffer 打开失败: {e}")));
+    if r.is_ok() {
+        pipelined_share_attach();
+    }
+    r
 }
 
 // ---------- entity.* ----------
@@ -1410,10 +1918,15 @@ fn entity_create(st: &mut HostState, params: &Value) -> HResult {
 
 fn entity_destroy(st: &mut HostState, params: &Value) -> HResult {
     let id = req_id(params)?;
-    st.apply_tracked(Op::DestroyEntity { id })
+    if st.active().entity(id).is_none(){return domain_err(format!("实体 {id} 不存在"));}
+    let mut deleted=vec![id];let mut i=0;while i<deleted.len(){let parent=deleted[i];for e in &st.active().entities{if e.component("Parent").and_then(|p|p.props["entity"].as_u64())==Some(parent)&&!deleted.contains(&e.id){deleted.push(e.id);}}i+=1;}
+    let mut ops=Vec::new();if let Ok(root)=crate::prefab::root_id(st.active(),id){if root!=id{if let Some(mut instance)=st.active().entity(root).and_then(|e|e.component("PrefabInstance")).cloned(){let mut local=instance.props["deletedLocalIds"].as_array().cloned().unwrap_or_default();for eid in &deleted{if let Some(local_id)=st.active().entity(*eid).and_then(|e|e.component("PrefabInstance")).and_then(|c|c.props["localId"].as_u64()){if !local.contains(&json!(local_id)){local.push(json!(local_id));}}}instance.props["deletedLocalIds"]=json!(local);ops.push(Op::SetComponent{id:root,component:instance});}}}
+    ops.extend(deleted.iter().rev().map(|&id|Op::DestroyEntity{id}));
+    st.apply_tracked(Op::Batch(ops))
         .map_err(|e| (-32000, e))?;
+    for id in &deleted{st.preview_animations.remove(id);if let Some(body)=st.body_map.remove(id){if let Some(world)=st.physics.as_mut(){world.remove_bodies_batch(&[body]).map_err(|e|(-32000,e.to_string()))?;}}}
     push_event(st, "entity.destroyed", json!({ "id": id }));
-    Ok(json!({ "destroyed": id }))
+    Ok(json!({ "destroyed": id,"entityIds":deleted }))
 }
 
 fn entity_rename(st: &mut HostState, params: &Value) -> HResult {
@@ -1445,10 +1958,12 @@ fn entity_batch_apply(st: &mut HostState, params: &Value) -> HResult {
     // 预分配 create id(从当前 next_id 起连续编号,保证批内 transform_set 可引用)。
     let mut next = st.active().next_id;
     let mut ops = Vec::with_capacity(ops_val.len());
+    let mut created_ids = Vec::new();
     for v in ops_val {
         let mut op = parse_batch_op(v, st.active())?;
         if let Op::CreateEntity { id, .. } = &mut op {
             *id = next;
+            created_ids.push((ops.len(), v.get("clientId").cloned(), next));
             next += 1;
         }
         ops.push(op);
@@ -1456,7 +1971,10 @@ fn entity_batch_apply(st: &mut HostState, params: &Value) -> HResult {
     let n = ops.len();
     st.apply_tracked(Op::Batch(ops)).map_err(|e| (-32000, e))?;
     push_event(st, "entity.batchApplied", json!({ "count": n }));
-    Ok(json!({ "applied": n }))
+    let created: Vec<Value> = created_ids.into_iter().map(|(index, client_id, id)| {
+        json!({"opIndex":index,"clientId":client_id,"id":id,"entityGuid":st.active().entity(id).and_then(|e|e.entity_guid.as_ref())})
+    }).collect();
+    Ok(json!({ "applied": n, "created": created, "commandId":st.undo.last().map(|c|&c.id) }))
 }
 
 // ---------- component.* ----------
@@ -1585,8 +2103,9 @@ fn transform_set(st: &mut HostState, params: &Value) -> HResult {
         .map_err(|e| (-32000, e))?;
     // F4 wave.3:play 态改带 body 实体的 transform → 同步 body(remove+re-add,
     // 双后端通用;速度/接触态重置——编辑器传送语义,否则下一步回写会踩回旧位)。
-    if st.play != PlayState::Edit && st.body_map.contains_key(&id) {
-        sync_body_after_transform(st, id)?;
+    if st.play != PlayState::Edit {
+        let owner=if st.body_map.contains_key(&id){Some(id)}else{crate::prefab::root_id(st.active(),id).ok().filter(|root|st.body_map.contains_key(root))};
+        if let Some(owner)=owner{sync_body_after_transform(st, owner)?;}
     }
     push_event(st, "transform.set", json!({ "id": id }));
     Ok(json!(t))
@@ -1601,7 +2120,7 @@ fn sync_body_after_transform(st: &mut HostState, id: u64) -> Result<(), (i64, St
     let e = run
         .entity(id)
         .ok_or((-32000, format!("实体 {id} 不存在")))?;
-    let Some(desc) = rigid_body_desc(e) else {
+    let Some(desc) = crate::character::body_desc(run,e).map_err(|e|(-32000,e))?.or_else(||rigid_body_desc(e)) else {
         return Ok(()); // RigidBody 被禁用/移除 → 不重建
     };
     let Some(world) = st.physics.as_mut() else {
@@ -1705,22 +2224,38 @@ fn resolve_scene_path(s: &str) -> Result<PathBuf, (i64, String)> {
     Err((-32602, format!("PATH_OUTSIDE_ROOT: {s}")))
 }
 
-fn scene_save(st: &HostState, params: &Value) -> HResult {
+fn scene_save(st: &mut HostState, params: &Value) -> HResult {
     let path = match params.get("path") {
-        None | Some(Value::Null) => default_scene_path(),
+        None | Some(Value::Null) => st.scene_path.as_ref().map(PathBuf::from).unwrap_or_else(default_scene_path),
         Some(Value::String(s)) => resolve_scene_path(s)?,
         Some(_) => return param_err("invalid params: path 须为字符串"),
     };
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
+    // Save-as creates an independent copy without silently replacing live references.
+    let copied=st.scene_path.as_ref().is_some_and(|source|!editor::same_scene_location(std::path::Path::new(source),&path));
+    let saved=if copied {editor::independent_scene_copy(&st.scene).map_err(|error|(-32000,error))?}else{st.scene.clone()};
     // 保存编辑态场景(唯一真相源;play 态下编辑态冻结,保存它语义最稳)。
-    let json = st.scene.to_json().map_err(|e| (-32000, e.to_string()))?;
+    let json = saved.to_json().map_err(|e| (-32000, e.to_string()))?;
     let bytes = json.len() + 1;
-    st.scene
+    saved
         .save(&path)
         .map_err(|e| (-32000, e.to_string()))?;
-    Ok(json!({ "path": path.to_string_lossy(), "bytes": bytes }))
+    let root=project_root();let project=assetd::project::ForgeProject::load(&root).unwrap_or_else(|_|assetd::project::ForgeProject::with_defaults(root));
+    let content=project.content_root();let indexed=match (path.canonicalize(),content.canonicalize()) {
+        (Ok(saved),Ok(content))=>if let Ok(rel)=saved.strip_prefix(&content){let rel=rel.to_string_lossy().replace('\\',"/");let(meta_path,mut meta)=assetd::meta::ensure_meta(&content,&rel).map_err(|e|(-32000,e.to_string()))?;meta.build_state=Some("current".into());meta.save(&meta_path).map_err(|e|(-32000,e.to_string()))?;assetd::refs::RefGraph::rebuild(&project).map_err(|e|(-32000,e.to_string()))?;true}else{false},_=>false,
+    };
+    if copied {
+        let copied_entities=saved.entities.iter().zip(&st.scene.entities).map(|(copy,source)|json!({"id":copy.id,"entityGuid":copy.entity_guid,"sourceEntityGuid":source.entity_guid})).collect::<Vec<_>>();
+        let persisted=saved.entities.iter().filter_map(|e|e.entity_guid.clone()).chain(saved.scene_guid.clone()).collect();
+        st.scene_documents.insert(saved.scene_guid.clone().unwrap(),(Some(path.to_string_lossy().into_owned()),persisted));
+        return Ok(json!({"path":path.to_string_lossy(),"bytes":bytes,"indexed":indexed,"savedCopy":true,"copySceneGuid":saved.scene_guid,"copiedEntities":copied_entities}));
+    }
+    st.scene_path = Some(path.to_string_lossy().into_owned());
+    st.persisted_guids = st.scene.entities.iter().filter_map(|e|e.entity_guid.clone()).chain(st.scene.scene_guid.clone()).collect();
+    st.remember_scene_document();
+    Ok(json!({ "path": path.to_string_lossy(), "bytes": bytes,"indexed":indexed,"savedCopy":false }))
 }
 
 fn scene_load(st: &mut HostState, params: &Value) -> HResult {
@@ -1731,11 +2266,30 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
         Some(Value::String(s)) => resolve_scene_path(s)?,
         _ => return param_err("invalid params: path 必填且须为字符串"),
     };
-    let scene = Scene::load(&path).map_err(|e| (-32000, e.to_string()))?;
+    let text=std::fs::read_to_string(&path).map_err(|e|(-32000,e.to_string()))?;
+    let mut scene=Scene::from_json(&text).map_err(|e|(-32000,e.to_string()))?;
+    let root=project_root();let project=assetd::project::ForgeProject::load(&root).unwrap_or_else(|_|assetd::project::ForgeProject::with_defaults(root));
+    editor::check_scene_identity(st,&scene,&path,&project.content_root())?;
+    let persisted_guids = scene.entities.iter().filter_map(|e|e.entity_guid.clone()).chain(scene.scene_guid.clone()).collect();
+    let identity_path=path.canonicalize().unwrap_or_else(|_|path.clone());
+    let fingerprint=forge_util::hashutil::sha256_hex(text.as_bytes());
+    if let Some((previous,scene_guid,entities))=st.legacy_identities.get(&identity_path).filter(|(hash,_,_)|hash==&fingerprint) {
+        let _=previous;
+        if scene.scene_guid.is_none(){scene.scene_guid=Some(scene_guid.clone());}
+        for entity in &mut scene.entities {if entity.entity_guid.is_none(){entity.entity_guid=entities.get(&entity.id).cloned();}}
+    }
+    scene.ensure_editor_identity(assetd::new_guid).map_err(|e|(-32000,e))?;
+    if st.legacy_identities.len()>=32&&!st.legacy_identities.contains_key(&identity_path) {
+        if let Some(key)=st.legacy_identities.keys().next().cloned(){st.legacy_identities.remove(&key);}
+    }
+    st.legacy_identities.insert(identity_path,(fingerprint,scene.scene_guid.clone().unwrap(),scene.entities.iter().filter_map(|e|e.entity_guid.clone().map(|g|(e.id,g))).collect()));
     st.apply_tracked(Op::ReplaceScene(scene))
         .map_err(|e| (-32000, e))?;
     // F-GAME-3:场景模式驱动编辑器相机(2d → 正交正视 XY 平面)。
     sync_camera_to_scene_mode(st);
+    st.scene_path = Some(path.to_string_lossy().into_owned());
+    st.persisted_guids = persisted_guids;
+    st.remember_scene_document();
     let mode = st.scene.mode.clone();
     push_event(st, "scene.loaded", json!({ "path": path.to_string_lossy(), "mode": mode }));
     let s = st.scene.summary();
@@ -1744,7 +2298,7 @@ fn scene_load(st: &mut HostState, params: &Value) -> HResult {
 
 fn scene_diff(st: &HostState, params: &Value) -> HResult {
     let path = match params.get("path") {
-        None | Some(Value::Null) => default_scene_path(),
+        None | Some(Value::Null) => st.scene_path.as_ref().map(PathBuf::from).unwrap_or_else(default_scene_path),
         Some(Value::String(s)) => resolve_scene_path(s)?,
         Some(_) => return param_err("invalid params: path 须为字符串"),
     };
@@ -1791,6 +2345,7 @@ fn scene_rollback(st: &mut HostState) -> HResult {
         .ok_or((-32000, "checkpoint 栈为空".to_string()))?;
     // rollback 是恢复操作,不进 undo 栈(与 checkpoint 配对使用)。
     st.scene = snap;
+    st.restore_scene_document();
     let depth = st.checkpoints.len();
     push_event(st, "scene.rollback", json!({ "depth": depth }));
     let s = st.scene.summary();
@@ -1802,23 +2357,27 @@ fn scene_rollback(st: &mut HostState) -> HResult {
 fn edit_undo(st: &mut HostState) -> HResult {
     let inv = st
         .undo
-        .pop()
+        .last().cloned()
         .ok_or((-32000, "undo 栈为空".to_string()))?;
-    let fwd = inv.apply(st.active_mut()).map_err(|e| (-32000, e))?;
-    st.redo.push(fwd);
+    let fwd = inv.op.apply(st.active_mut()).map_err(|e| (-32000, e))?;
+    st.undo.pop();
+    st.redo.push(Command { op: fwd, ..inv.clone() });
+    st.restore_scene_document();
     push_event(st, "edit.undo", json!({}));
-    Ok(json!({ "undone": true }))
+    Ok(json!({ "undone": true, "commandId":inv.id, "changeSetId":inv.change_set_id }))
 }
 
 fn edit_redo(st: &mut HostState) -> HResult {
     let fwd = st
         .redo
-        .pop()
+        .last().cloned()
         .ok_or((-32000, "redo 栈为空".to_string()))?;
-    let inv = fwd.apply(st.active_mut()).map_err(|e| (-32000, e))?;
-    st.undo.push(inv);
+    let inv = fwd.op.apply(st.active_mut()).map_err(|e| (-32000, e))?;
+    st.redo.pop();
+    st.undo.push(Command { op: inv, ..fwd.clone() });
+    st.restore_scene_document();
     push_event(st, "edit.redo", json!({}));
-    Ok(json!({ "redone": true }))
+    Ok(json!({ "redone": true, "commandId":fwd.id, "changeSetId":fwd.change_set_id }))
 }
 
 // ---------- play.*(PIE 双态) ----------
@@ -1845,7 +2404,7 @@ fn play_enter(st: &mut HostState) -> HResult {
     let mut descs = Vec::new();
     let mut owners = Vec::new();
     for e in &run.entities {
-        if let Some(d) = rigid_body_desc(e) {
+        if let Some(d) = crate::character::body_desc(&run,e).map_err(|e|(-32000,e))?.or_else(||rigid_body_desc(e)) {
             descs.push(d);
             owners.push(e.id);
         }
@@ -1883,10 +2442,11 @@ fn play_enter(st: &mut HostState) -> HResult {
     }
     st.logic = Some(rt);
     st.anim.clear(); // F-GAME-4:动画状态随 play 会话从零起
+    st.controllers.clear();
     st.play = PlayState::Running;
-    // 跨场景切换,命令栈清空避免误作用。
-    st.undo.clear();
-    st.redo.clear();
+    // Runtime edits have their own history; entering PIE must not erase editor undo.
+    st.edit_history = Some((std::mem::take(&mut st.undo), std::mem::take(&mut st.redo)));
+    st.runtime_revision = st.content_revision;
     for (name, payload) in logs {
         push_event(st, &name, payload);
     }
@@ -1913,6 +2473,8 @@ fn play_pause(st: &mut HostState) -> HResult {
         return domain_err(format!("当前状态 {} 禁止 play.pause", st.play.as_str()));
     }
     st.play = PlayState::Paused;
+    if st.sentinels_v6.is_some(){crate::sentinels_v6::reset_clock(st);crate::sentinels_v6_render::set_paused(true);}
+    st.controllers.clear();
     push_event(st, "play.pause", json!({}));
     Ok(json!({ "state": st.play.as_str() }))
 }
@@ -1923,6 +2485,7 @@ fn play_resume(st: &mut HostState) -> HResult {
     }
     st.play = PlayState::Running;
     push_event(st, "play.resume", json!({}));
+    if st.sentinels_v6.is_some(){crate::sentinels_v6::reset_clock(st);crate::sentinels_v6_render::set_paused(false);}
     Ok(json!({ "state": st.play.as_str() }))
 }
 
@@ -1951,10 +2514,12 @@ fn play_exit(st: &mut HostState) -> HResult {
     st.logic = None;
     st.anim.clear();
     st.input_queue.clear();
+    st.controllers.clear();
     st.run_scene = None;
     st.play = PlayState::Edit;
-    st.undo.clear();
-    st.redo.clear();
+    let (undo, redo) = st.edit_history.take().unwrap_or_default();
+    st.undo = undo;
+    st.redo = redo;
     push_event(st, "play.exit", json!({}));
     Ok(json!({ "state": st.play.as_str() }))
 }
@@ -2069,7 +2634,7 @@ fn logic_inject_input(st: &mut HostState, params: &Value) -> HResult {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     //! F4 wave.3 宿主接线测试:RigidBody→body 批建/回写、contact Begin 进环、
     //! trigger enter/exit + rotate_tween(G-F4-3 门)、规范序、热重载、坏图拒入。
     use super::*;
@@ -2077,7 +2642,7 @@ mod tests {
 
     /// 临时项目根(进程级一次):Content/Graphs 下落测试图,env FORGE_PROJECT_ROOT 指入。
     /// 各测试只读不写,无竞态。
-    fn test_project_root() -> PathBuf {
+    pub(crate) fn test_project_root() -> PathBuf {
         static ROOT: OnceLock<PathBuf> = OnceLock::new();
         ROOT.get_or_init(|| {
             let dir = std::env::temp_dir().join(format!("forge_f4w3_host_test_{}", std::process::id()));
@@ -2200,6 +2765,7 @@ mod tests {
 "#,
             )
             .unwrap();
+            crate::viewport::write_sprite_variant_fixture(&dir);
             std::env::set_var("FORGE_PROJECT_ROOT", &dir);
             dir
         })
@@ -2324,6 +2890,17 @@ mod tests {
     }
 
     /// F-GAME-3:Sprite 组件边界归一(可选字段补缺省)+ 缺 texture 必填拒绝。
+    #[test]
+    fn frame_options_validate_camera_and_exact() {
+        assert_eq!(frame_options(&json!({})).unwrap(), (false, false));
+        assert_eq!(frame_options(&json!({ "camera": "scene", "exact": true })).unwrap(), (true, true));
+        assert_eq!(frame_options(&json!({ "camera": "editor", "exact": false })).unwrap(), (false, false));
+        assert_eq!(frame_options(&json!({ "camera": null, "exact": null })).unwrap(), (false, false));
+        for bad in [json!({ "camera": "nope" }), json!({ "camera": 1 }), json!({ "exact": "yes" }), json!({ "exact": 1 })] {
+            assert_eq!(frame_options(&bad).unwrap_err().0, -32602, "{bad}");
+        }
+    }
+
     #[test]
     fn sprite_component_normalized_at_boundary() {
         let st = host();
@@ -2783,4 +3360,13 @@ mod tests {
             assert!(queue_input(&mut g, "overflow", 1.0).is_err());
         }
     }
+    #[test]
+    fn saved_scene_registers_type_and_model_reference_edges(){
+        let st=host();let project=assetd::project::ForgeProject::with_defaults(test_project_root());project.ensure_dirs().unwrap();let model_rel="Models/scene-save-test.rxmodel";std::fs::write(project.content_root().join(model_rel),"{}").unwrap();let(_,model)=assetd::meta::ensure_meta(&project.content_root(),model_rel).unwrap();
+        call(&st,"entity.create",json!({"name":"model","components":[{"type":"ModelRenderer","props":{"model":model.guid}}]}));let saved=call(&st,"scene.save",json!({"path":"Content/Scenes/model-save-index.rxscene"}));assert_eq!(saved["indexed"],json!(true));
+        let scene_path="Scenes/model-save-index.rxscene";assert!(project.scan_content().unwrap().contains(&scene_path.to_string()));let meta=assetd::meta::MetaDoc::load(&assetd::meta_path_for(&project.content_root(),scene_path)).unwrap();assert_eq!(meta.atype,"scene","asset_list reads type from this meta");let graph=assetd::refs::RefGraph::load(&project).unwrap();assert!(graph.referenced_by(&model.guid).iter().any(|e|e.from_guid==meta.guid));
+        let outside=call(&st,"scene.save",json!({"path":test_project_root().join("outside-content.rxscene").to_string_lossy()}));assert_eq!(outside["indexed"],json!(false));
+    }
+    #[test]
+    fn deleting_parent_removes_subtree_and_undo_restores_it(){let st=host();let root=call(&st,"entity.create",json!({"name":"parent"}))["id"].as_u64().unwrap();call(&st,"entity.create",json!({"name":"child","components":[{"type":"Parent","props":{"entity":root}}]}));let result=call(&st,"entity.destroy",json!({"id":root}));assert_eq!(result["entityIds"].as_array().unwrap().len(),2);assert!(lock(&st).scene.entities.is_empty());call(&st,"edit.undo",json!({}));assert_eq!(lock(&st).scene.entities.len(),2);}
 }

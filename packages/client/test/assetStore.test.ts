@@ -89,8 +89,26 @@ describe('assetStore', () => {
     await useAssetStore.getState().load();
 
     await expect(useAssetStore.getState().instantiate('g2', [0, 0, 0])).rejects.toThrow(
-      /仅 mesh\/prefab 可实例化/,
+      /仅 mesh\/model\/prefab 可实例化/,
     );
+  });
+
+  it('Blender prefab uses subtree instantiation, while model uses ModelRenderer', async () => {
+    forgeMock.setAssets([
+      { path: 'Models/hero/template.rxprefab', guid: 'prefab1', type: 'prefab', size: 1 },
+      { path: 'Models/hero/model.rxmodel', guid: 'model1', type: 'model', size: 1 },
+    ]);
+    forgeMock.setBuildStatus([]);
+    forgeMock.setDefault('prefab_instantiate', { rootId: 1, entityIds: [1, 2], revision: 1 });
+    forgeMock.setDefault('entity_create', { id: 3 });
+    await useAssetStore.getState().load();
+    await useAssetStore.getState().instantiate('prefab1', [1, 2, 3]);
+    const prefab = forgeMock.calls.find((c) => c.tool === 'mcp__engine-scene__prefab_instantiate');
+    expect(prefab?.arguments).toEqual({ prefabRef: 'prefab1', translation: [1, 2, 3] });
+    expect(forgeMock.calls.filter((c) => c.tool === 'mcp__engine-scene__entity_create')).toHaveLength(0);
+    await useAssetStore.getState().instantiate('model1', [0, 0, 0]);
+    const model = forgeMock.calls.find((c) => c.tool === 'mcp__engine-scene__entity_create');
+    expect(model?.arguments).toMatchObject({ components: [{ type: 'ModelRenderer', props: { model: 'model1' } }] });
   });
 
   it('删除后自动重载', async () => {

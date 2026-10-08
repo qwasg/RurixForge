@@ -53,3 +53,7 @@
 
 - 全量事件日志(JSONL)+ 会话 replay(`11 §3`):任何 agent 操作可事后追溯「哪个会话哪个工具用什么参数改了什么」。
 - 诊断导出(About tab):打包脱敏日志(密钥/token 模式掩码)供 issue 反馈。
+
+## Errata(只追加区)
+
+- **E-12-001(2026-09-26,D-041)——云端凭据与账号安全面**:①**R-5 延伸到云端凭据**:refresh token、access token、设备 API Key 只在 agentd(前两者分别在 keystore / 内存,设备 Key 在 keystore),不进前端、事件、日志与项目文件;唯一例外是用户在「账户 → API Key」里自建的 Key,创建响应明文返回一次(给外部工具用)。keystore 新增 `secret_for`(不受 `FORGE_GEN_API_KEY` 开发覆盖)与 `remove_key`。②**forge-cloud**:密码 argon2id;平台 Key 与 refresh token 仅存 SHA-256;上游凭据 AES-256-GCM(主密钥 `FORGE_CLOUD_MASTER_KEY`,丢失即无法解密);JWT 15 分钟 + refresh 轮换与复用检测(复用即吊销整个会话及其设备 Key);登录 / 兑换 / 验证码限速;管理写操作记审计日志且不含密钥明文;`FORGE_CLOUD_ENV=prod` 拒绝默认密钥启动;默认不落请求与响应正文。③**本机面不变**:agentd/host 仍只监听 127.0.0.1 且无鉴权,权限模式与 Proposal 门(§1–§3)照旧;云端只做账号与计费鉴权。④**合规**:以订阅账号(ChatGPT / Claude)对外售卖额度可能违反上游服务条款,有封号风险;对外商用流量建议以 API Key 账号为主(见 `15_CLOUD_SERVICE.md` §9)。

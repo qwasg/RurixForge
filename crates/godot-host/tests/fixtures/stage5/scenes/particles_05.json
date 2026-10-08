@@ -1,0 +1,106 @@
+{
+ "name": "particles_05",
+ "doc": "ParticleEmitter kinds 1-4 (jet / parabola / wobble / spiral) at age 0.5 s, life 1.2 s; FORGE_GPU_PARTICLES=1 on both backends",
+ "project": "models",
+ "entities": [
+  {
+   "name": "p1",
+   "translation": [
+    -2.5,
+    1.0,
+    0.0
+   ],
+   "scale": [
+    0.5,
+    1.2,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ParticleEmitter",
+     "enabled": true,
+     "props": {}
+    }
+   ]
+  },
+  {
+   "name": "p2",
+   "translation": [
+    0.5,
+    1.0,
+    0.0
+   ],
+   "scale": [
+    0.5,
+    1.2,
+    2.0
+   ],
+   "components": [
+    {
+     "type": "ParticleEmitter",
+     "enabled": true,
+     "props": {}
+    }
+   ]
+  },
+  {
+   "name": "p3",
+   "translation": [
+    -2.5,
+    -1.2,
+    0.0
+   ],
+   "scale": [
+    0.5,
+    1.2,
+    3.0
+   ],
+   "components": [
+    {
+     "type": "ParticleEmitter",
+     "enabled": true,
+     "props": {}
+    }
+   ]
+  },
+  {
+   "name": "p4",
+   "translation": [
+    1.0,
+    -1.2,
+    0.0
+   ],
+   "scale": [
+    0.5,
+    1.2,
+    4.0
+   ],
+   "components": [
+    {
+     "type": "ParticleEmitter",
+     "enabled": true,
+     "props": {}
+    }
+   ]
+  }
+ ],
+ "camera": {
+  "target": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0,
+  "pitch": 0.0,
+  "dist": 10.0,
+  "ortho": true,
+  "orthoSize": 3.0
+ },
+ "width": 640,
+ "height": 360,
+ "probes": [],
+ "probeLabels": [],
+ "env": {
+  "FORGE_GPU_PARTICLES": "1"
+ }
+}

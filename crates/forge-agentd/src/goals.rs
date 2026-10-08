@@ -130,6 +130,9 @@ impl GoalStore {
         if objective.is_empty() {
             return Err("objective 不可空".to_string());
         }
+        if objective.chars().count() > 4_000 {
+            return Err("objective 最多 4000 个字符".to_string());
+        }
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let budget = token_budget.unwrap_or(DEFAULT_TOKEN_BUDGET);
         let goal = match inner.get(session_id) {
@@ -194,6 +197,58 @@ impl GoalStore {
         existed
     }
 
+    /// Codex 原生 goal 通知 → 本地镜像。下一轮启动会从这个镜像决定是否再次
+    /// `thread/goal/set`，所以终态必须先落进来，否则旧 active 会把已完成目标复活。
+    pub fn sync_codex(&self, session_id: &str, remote: &Value) -> Option<Goal> {
+        let objective = remote
+            .get("objective")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut goal = match inner.get(session_id).cloned() {
+            Some(goal) => goal,
+            None => Goal::new(
+                session_id,
+                objective?,
+                remote_u64(remote, &["tokenBudget", "token_budget"]).unwrap_or(0),
+            ),
+        };
+        if let Some(objective) = objective {
+            goal.objective = objective.to_string();
+        }
+        if let Some(status) = remote.get("status").and_then(Value::as_str) {
+            if STATUSES.contains(&status) {
+                goal.status = status.to_string();
+            }
+        }
+        if remote.get("tokenBudget") == Some(&Value::Null) {
+            goal.token_budget = 0;
+        } else if let Some(value) = remote_u64(remote, &["tokenBudget", "token_budget"]) {
+            goal.token_budget = value;
+        }
+        if let Some(value) = remote_u64(remote, &["tokensUsed", "tokens_used"]).or_else(|| {
+            remote
+                .pointer("/tokenUsage/total/totalTokens")
+                .and_then(Value::as_u64)
+        }) {
+            goal.tokens_used = value;
+        }
+        if let Some(value) = remote_u64(remote, &["timeUsedSeconds", "time_used_seconds"]) {
+            goal.time_used_seconds = value;
+        }
+        if let Some(value) = remote_u64(remote, &["turns", "turnCount"]) {
+            goal.turns = value;
+        }
+        if let Some(note) = remote.get("note").and_then(Value::as_str) {
+            goal.note = Some(note.to_string());
+        }
+        goal.updated_at = now_rfc3339();
+        inner.insert(session_id.to_string(), goal.clone());
+        self.persist_locked(&inner);
+        Some(goal)
+    }
+
     fn persist_locked(&self, inner: &HashMap<String, Goal>) {
         if self.path.as_os_str().is_empty() {
             return;
@@ -208,9 +263,34 @@ impl GoalStore {
         }
         let tmp = self.path.with_extension("json.tmp");
         if std::fs::write(&tmp, text).is_ok() {
-            let _ = std::fs::rename(&tmp, &self.path);
+            if let Err(e) = replace_persisted_file(&tmp, &self.path) {
+                eprintln!("[goal] 持久化失败: {e}");
+            }
         }
     }
+}
+
+fn remote_u64(value: &Value, keys: &[&str]) -> Option<u64> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_u64))
+}
+
+/// Windows 不允许 `rename(tmp, existing)`；用同目录备份做可恢复替换。
+fn replace_persisted_file(tmp: &Path, destination: &Path) -> std::io::Result<()> {
+    if !destination.exists() {
+        return std::fs::rename(tmp, destination);
+    }
+    let backup = destination.with_extension("json.bak");
+    if backup.exists() {
+        std::fs::remove_file(&backup)?;
+    }
+    std::fs::rename(destination, &backup)?;
+    if let Err(e) = std::fs::rename(tmp, destination) {
+        let _ = std::fs::rename(&backup, destination);
+        return Err(e);
+    }
+    let _ = std::fs::remove_file(backup);
+    Ok(())
 }
 
 fn read_file(path: &Path) -> HashMap<String, Goal> {
@@ -257,10 +337,7 @@ pub enum Continuation {
     /// 起下一轮,正文如下。
     Continue(String),
     /// 停下,并把目标改成这个状态(附原因)。
-    Stop {
-        status: &'static str,
-        note: String,
-    },
+    Stop { status: &'static str, note: String },
     /// 什么都不做(没有目标 / 目标已不是 active)。
     Idle,
 }
@@ -329,13 +406,13 @@ pub fn goal_update_spec() -> Value {
         "function": {
             "name": GOAL_UPDATE_TOOL,
             "description": "更新当前目标的状态。目标达成 → completed;确实卡住(缺信息/缺权限/外部依赖不可用)→ blocked;\
-需要用户介入但目标仍成立 → paused。note 写清理由(用户直接看这行)。没有正在推进的目标时调用会返回错误。",
+    仍需继续自动推进 → continue;需要用户介入时可用 paused。note 写清理由(用户直接看这行)。没有正在推进的目标时调用会返回错误。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "status": {
                         "type": "string",
-                        "enum": ["completed", "blocked", "paused"],
+                        "enum": ["completed", "blocked", "continue", "paused"],
                         "description": "目标新状态"
                     },
                     "note": { "type": "string", "description": "一句话理由" }
@@ -354,7 +431,10 @@ pub fn dispatch_goal_update(state: &AppState, session_id: &str, args: &Value) ->
         .unwrap_or_default()
         .trim();
     if status.is_empty() {
-        return (false, "status 必填(completed|blocked|paused)".to_string());
+        return (
+            false,
+            "status 必填(completed|blocked|continue|paused)".to_string(),
+        );
     }
     // 模型不该经这个工具把目标重新激活——那是用户的决定(GoalBar 的「恢复」)。
     if status == STATUS_ACTIVE {
@@ -363,6 +443,10 @@ pub fn dispatch_goal_update(state: &AppState, session_id: &str, args: &Value) ->
             "不能经 goal_update 把目标改回 active(恢复目标由用户操作)".to_string(),
         );
     }
+    let status = match goal_update_status(status) {
+        Some(status) => status,
+        None => return (false, format!("未知 status: {status}")),
+    };
     let note = args.get("note").and_then(Value::as_str);
     match state.goals.set_status(session_id, status, note) {
         Ok(g) => {
@@ -372,11 +456,24 @@ pub fn dispatch_goal_update(state: &AppState, session_id: &str, args: &Value) ->
                 format!(
                     "目标状态已更新为 {}{}",
                     g.status,
-                    g.note.as_deref().map(|n| format!(":{n}")).unwrap_or_default()
+                    g.note
+                        .as_deref()
+                        .map(|n| format!(":{n}"))
+                        .unwrap_or_default()
                 ),
             )
         }
         Err(e) => (false, e),
+    }
+}
+
+fn goal_update_status(status: &str) -> Option<&str> {
+    match status {
+        "continue" => Some(STATUS_ACTIVE),
+        STATUS_COMPLETED => Some(STATUS_COMPLETED),
+        STATUS_BLOCKED => Some(STATUS_BLOCKED),
+        STATUS_PAUSED => Some(STATUS_PAUSED),
+        _ => None,
     }
 }
 
@@ -441,22 +538,25 @@ pub async fn put_goal(
     let Some(session) = state.sessions.get(&id) else {
         return not_found("SESSION_NOT_FOUND", format!("会话不存在: {id}"));
     };
-    let goal = match state
-        .goals
-        .set(&id, &req.objective, req.token_budget)
-    {
+    // D-044:会话有进行中的 UltraPlan 流程时不接受新目标(409 ULTRAPLAN_GOAL_BLOCKED)。
+    // 目标一设就会立刻自起一轮 build,之后每轮收尾再续跑——这些轮次没有阶段路由,
+    // 会绕过流程的闸去动项目。判定在 set 之前:被拒的请求不留下一条半截目标。
+    if session.ultraplan.as_ref().is_some_and(|u| u.is_active()) {
+        return crate::ultraplan::goal_blocked_response();
+    }
+    let goal = match state.goals.set(&id, &req.objective, req.token_budget) {
         Ok(g) => g,
         Err(e) => return bad_request("GOAL_INVALID", &e),
     };
-    // Codex 引擎:目标也要落到线程上,让 Codex 自己的 goal 循环接管推进。
+    // Codex 引擎:先建唯一的 run/订阅桥，再 set active。该 RPC 会立即自动起 turn。
     if session.is_codex() {
-        if let Some(thread) = session.codex_thread_id.as_deref() {
-            if let Err(e) = crate::codex::goal_set(&state, thread, &goal).await {
-                // 透传失败不回滚本地目标:本地这份仍是用户意图的记录,
-                // 下一轮 thread/start 会重新推送。如实告知即可。
-                eprintln!("[goal] Codex thread/goal/set 失败: {e}");
-            }
+        if let Err(e) = crate::codex::turn::start_goal_lifecycle(&state, &session, &goal).await {
+            // 透传失败不回滚本地目标:本地这份仍是用户意图的记录,
+            // 下一轮 thread/start 会重新推送。如实告知即可。
+            eprintln!("[goal] Codex Goal 启动失败: {e}");
         }
+    } else if let Err(e) = crate::agent::start_local_goal_lifecycle(&state, &session, &goal) {
+        eprintln!("[goal] 本地 Goal 启动失败: {e}");
     }
     emit_updated(&state, &goal, &session.agent_engine);
     axum::Json(json!({ "goal": goal_json(&goal, &session.agent_engine) })).into_response()
@@ -471,14 +571,21 @@ pub async fn delete_goal(
     let Some(session) = state.sessions.get(&id) else {
         return not_found("SESSION_NOT_FOUND", format!("会话不存在: {id}"));
     };
-    let existed = state.goals.clear(&id);
     if session.is_codex() {
         if let Some(thread) = session.codex_thread_id.as_deref() {
             if let Err(e) = crate::codex::goal_clear(&state, thread).await {
-                eprintln!("[goal] Codex thread/goal/clear 失败: {e}");
+                return (
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    axum::Json(json!({ "error": {
+                        "code": "CODEX_UPSTREAM",
+                        "message": format!("Codex Goal 清除失败: {e}")
+                    }})),
+                )
+                    .into_response();
             }
         }
     }
+    let existed = state.goals.clear(&id);
     if existed {
         emit_cleared(&state, &id, &session.agent_engine);
     }
@@ -487,9 +594,8 @@ pub async fn delete_goal(
 
 /// POST /api/forge/sessions/{id}/goal/pause|resume → {goal}。
 ///
-/// resume 只把状态改回 active,**不**立刻起一轮:用户可能只是想让下次发消息时目标重新生效。
-/// 要立刻推进就在 composer 发一句话(或用 `/goal` 重设),语义清楚且不会有「点了恢复
-/// 结果后台悄悄开始烧 token」的意外。
+/// 两种引擎的 resume 都会立即续跑。Codex 必须先建立原生通知桥；本地引擎则后台
+/// 重建一条 Goal turn（若当前已有 turn，交给其收尾接续）。
 pub async fn set_goal_status(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     axum::extract::Path((id, action)): axum::extract::Path<(String, String)>,
@@ -503,8 +609,45 @@ pub async fn set_goal_status(
         "resume" => STATUS_ACTIVE,
         other => return bad_request("GOAL_INVALID", &format!("未知动作: {other}")),
     };
+    // D-044:流程进行中同样不许恢复目标(恢复 = 立刻自起一轮,与 PUT 同一个问题);暂停不受限。
+    // 流程开始时被收尾逻辑暂停的目标,要等流程完成或重新开始之后才能恢复。
+    if status == STATUS_ACTIVE && session.ultraplan.as_ref().is_some_and(|u| u.is_active()) {
+        return crate::ultraplan::goal_blocked_response();
+    }
+    let previous = state.goals.get(&id);
     match state.goals.set_status(&id, status, None) {
         Ok(g) => {
+            if session.is_codex() {
+                let synced = if status == STATUS_ACTIVE {
+                    crate::codex::turn::start_goal_lifecycle(&state, &session, &g).await
+                } else if let Some(thread) = session.codex_thread_id.as_deref() {
+                    crate::codex::goal_status_set(&state, thread, status)
+                        .await
+                        .map(|_| ())
+                } else {
+                    Ok(())
+                };
+                if let Err(e) = synced {
+                    if let Some(previous) = previous {
+                        let _ =
+                            state
+                                .goals
+                                .set_status(&id, &previous.status, previous.note.as_deref());
+                    }
+                    return (
+                        axum::http::StatusCode::BAD_GATEWAY,
+                        axum::Json(json!({ "error": {
+                            "code": "CODEX_UPSTREAM",
+                            "message": format!("Codex Goal 状态同步失败: {e}")
+                        }})),
+                    )
+                        .into_response();
+                }
+            } else if status == STATUS_ACTIVE {
+                if let Err(e) = crate::agent::start_local_goal_lifecycle(&state, &session, &g) {
+                    eprintln!("[goal] 本地 Goal 恢复失败: {e}");
+                }
+            }
             emit_updated(&state, &g, &session.agent_engine);
             axum::Json(json!({ "goal": goal_json(&g, &session.agent_engine) })).into_response()
         }
@@ -542,7 +685,9 @@ mod tests {
         assert_eq!(g.time_used_seconds, 50);
         assert_eq!(g.turns, 2);
 
-        let g = s.set_status("s1", STATUS_BLOCKED, Some("缺美术素材")).unwrap();
+        let g = s
+            .set_status("s1", STATUS_BLOCKED, Some("缺美术素材"))
+            .unwrap();
         assert_eq!(g.status, STATUS_BLOCKED);
         assert_eq!(g.note.as_deref(), Some("缺美术素材"));
         assert!(s.set_status("s1", "whatever", None).is_err());
@@ -651,6 +796,49 @@ mod tests {
         assert_eq!(v["objective"], "目标");
         assert_eq!(v["budgetExhausted"], false);
         assert_eq!(v["status"], "active");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn codex_goal_terminal_state_updates_persistent_mirror() {
+        let (s, dir) = store("codex-sync");
+        s.set("s1", "完成存档系统", Some(10_000)).unwrap();
+        let synced = s
+            .sync_codex(
+                "s1",
+                &json!({
+                    "objective": "完成存档系统", "status": "completed",
+                    "tokenBudget": 10_000, "tokensUsed": 4_200,
+                    "timeUsedSeconds": 31, "turns": 3, "note": "已完成"
+                }),
+            )
+            .unwrap();
+        assert_eq!(synced.status, STATUS_COMPLETED);
+        assert_eq!(synced.tokens_used, 4_200);
+        let reread = GoalStore::load(dir.join("goals.json"));
+        let persisted = reread.get("s1").unwrap();
+        assert_eq!(persisted.status, STATUS_COMPLETED);
+        assert_eq!(persisted.turns, 3);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn goal_update_continue_keeps_goal_active() {
+        assert_eq!(goal_update_status("continue"), Some(STATUS_ACTIVE));
+        assert_eq!(goal_update_status("completed"), Some(STATUS_COMPLETED));
+        assert_eq!(goal_update_status("whatever"), None);
+        let spec = goal_update_spec();
+        let choices = spec["function"]["parameters"]["properties"]["status"]["enum"]
+            .as_array()
+            .unwrap();
+        assert!(choices.contains(&json!("continue")));
+    }
+
+    #[test]
+    fn goal_objective_matches_codex_length_limit() {
+        let (s, dir) = store("objective-limit");
+        assert!(s.set("s1", &"x".repeat(4_000), None).is_ok());
+        assert!(s.set("s2", &"x".repeat(4_001), None).is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -1,0 +1,30 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 2048,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Compare these."
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": "/9j/4AAQSkZJRg=="
+          }
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "url",
+            "url": "https://example.com/dog.png"
+          }
+        }
+      ]
+    }
+  ]
+}

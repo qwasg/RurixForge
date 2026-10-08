@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "deepseek": {
+    "reference": "references/deepseek-whalechan-overview.webp",
+    "output": "Content/Concepts/deepseek-maid.png",
+    "prompt": "Create ONE production game character reference image for image-to-video animation, using the attached image solely as the precise character identity reference. This is a faithful fan-art adaptation of the sourced DeepSeek whale girl / Whale-chan maid variant (Shangshan Wuxing original, ZipZipPipe maid variant, Neko3000 reference). Preserve this existing design; do not invent a different character. One full-body chibi figure, 3-heads tall, three-quarter view facing RIGHT, ready-to-cast idle pose with one hand extended toward the right. Preserve dark cobalt blue long hair fading cyan at the tips, blue eyes, small whale-fin ears, curved hair ahoge, white ruffled maid headband, dark navy puff-sleeve dress with thin gold floral hem embroidery, white apron bearing the little blue whale motif, white stockings, navy Mary Jane shoes, big navy blue whale tail with light underside curling behind. Friendly determined face, clear chunky readable silhouette, fine polished anime game rendering, restrained highlights. No other character, no pet, no text, no panel, no layout, no weapon, no added costume. Entire character including hair and tail kept inside the middle 70 percent of canvas with generous empty margin all around. Flat orthographic front three-quarter game-sprite view, NO perspective environment. Solid flat PURE MAGENTA #FF00FF background filling every background pixel; absolutely no ground, no floor, no shadow, no gradient, no particles or effects. Square composition. This is a SINGLE pose, not a sprite sheet."
+  }
+}

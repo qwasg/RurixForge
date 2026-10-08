@@ -35,8 +35,8 @@ use forge_store::install::{
 };
 use forge_store::library::Library;
 use forge_store::manifest::{PackageKind, PackageManifest};
-use forge_store::registry::{load_sources, save_sources, search_all, SourcesConfig};
 use forge_store::publish::{draft_from_project, publish_package, PublishInput};
+use forge_store::registry::{load_sources, save_sources, search_all, SourcesConfig};
 use forge_store::source::{open_source, SearchQuery, SourceConfig};
 use forge_store::StoreError;
 
@@ -74,7 +74,9 @@ fn sources() -> SourcesConfig {
     let dir = data_dir();
     if !forge_store::registry::sources_config_path(&dir).exists() {
         return SourcesConfig {
-            sources: vec![forge_store::registry::default_official_source(&workspace_root())],
+            sources: vec![forge_store::registry::default_official_source(
+                &workspace_root(),
+            )],
         };
     }
     load_sources(&dir)
@@ -183,27 +185,29 @@ impl TaskTable {
     fn new_task(&self, kind: &'static str) -> String {
         let n = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
         let id = format!("stask_{n}");
-        self.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(
-                id.clone(),
-                TaskState {
-                    id: id.clone(),
-                    kind,
-                    status: "running",
-                    phase: "queued".into(),
-                    done: 0,
-                    total: 0,
-                    error: None,
-                    result: None,
-                },
-            );
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).insert(
+            id.clone(),
+            TaskState {
+                id: id.clone(),
+                kind,
+                status: "running",
+                phase: "queued".into(),
+                done: 0,
+                total: 0,
+                error: None,
+                result: None,
+            },
+        );
         id
     }
 
     fn progress(&self, id: &str, phase: &str, done: u32, total: u32) {
-        if let Some(t) = self.inner.lock().unwrap_or_else(|e| e.into_inner()).get_mut(id) {
+        if let Some(t) = self
+            .inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(id)
+        {
             t.phase = phase.to_string();
             t.done = done;
             t.total = total;
@@ -211,7 +215,12 @@ impl TaskTable {
     }
 
     fn finish(&self, id: &str, outcome: Result<Value, StoreError>) {
-        if let Some(t) = self.inner.lock().unwrap_or_else(|e| e.into_inner()).get_mut(id) {
+        if let Some(t) = self
+            .inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(id)
+        {
             match outcome {
                 Ok(v) => {
                     t.status = "completed";
@@ -273,7 +282,11 @@ pub(crate) struct SourceCreateRequest {
 /// POST /api/forge/store/sources
 pub(crate) async fn sources_create(Json(req): Json<SourceCreateRequest>) -> Response {
     let id = req.id.trim().to_string();
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.') {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.')
+    {
         return bad_request(
             "FORGE_INVALID_ARGS",
             "源 id 须为小写英文/数字/中划线/点(如 acme-studio)",
@@ -292,7 +305,12 @@ pub(crate) async fn sources_create(Json(req): Json<SourceCreateRequest>) -> Resp
             .into_response();
     }
     // 令牌落 keystore,不进 store-sources.json(R-5)。
-    if let Some(t) = req.token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+    if let Some(t) = req
+        .token
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
         if let Err(e) = gend::keystore::set_key(&token_key(&id), t) {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -356,7 +374,10 @@ pub(crate) async fn sources_patch(
     }
     let entry = SourceConfig {
         id: id.clone(),
-        name: req.name.map(|n| n.trim().to_string()).unwrap_or(existing.name),
+        name: req
+            .name
+            .map(|n| n.trim().to_string())
+            .unwrap_or(existing.name),
         base_url: existing.base_url,
         enabled: req.enabled.unwrap_or(existing.enabled),
         token: None,
@@ -431,8 +452,11 @@ pub(crate) async fn search(Query(p): Query<SearchParams>) -> Response {
                 .into_response();
         }
     }
-    let names: HashMap<String, String> =
-        cfg.sources.iter().map(|s| (s.id.clone(), s.name.clone())).collect();
+    let names: HashMap<String, String> = cfg
+        .sources
+        .iter()
+        .map(|s| (s.id.clone(), s.name.clone()))
+        .collect();
     // ureq 阻塞:搬到阻塞线程池,别占 tokio 工作线程。
     let agg = tokio::task::spawn_blocking(move || search_all(&cfg, &q, &token_of))
         .await
@@ -476,7 +500,10 @@ pub(crate) async fn package_detail(Path((source_id, pkg_id)): Path<(String, Stri
         )
             .into_response();
     };
-    let with_token = SourceConfig { token: token_of(&source_id), ..scfg };
+    let with_token = SourceConfig {
+        token: token_of(&source_id),
+        ..scfg
+    };
     let r = tokio::task::spawn_blocking(move || -> Result<Value, StoreError> {
         let src = open_source(&with_token)?;
         let d = src.detail(&pkg_id)?;
@@ -508,7 +535,10 @@ pub(crate) async fn package_manifest(
         )
             .into_response();
     };
-    let with_token = SourceConfig { token: token_of(&source_id), ..scfg };
+    let with_token = SourceConfig {
+        token: token_of(&source_id),
+        ..scfg
+    };
     let r = tokio::task::spawn_blocking(move || -> Result<PackageManifest, StoreError> {
         let src = open_source(&with_token)?;
         src.manifest(&pkg_id, &version)
@@ -564,13 +594,19 @@ fn run_install(req: &InstallRequest, task_id: &str) -> Result<Value, StoreError>
         )
     })?;
     let source_name = scfg.name.clone();
-    let with_token = SourceConfig { token: token_of(&req.source_id), ..scfg };
+    let with_token = SourceConfig {
+        token: token_of(&req.source_id),
+        ..scfg
+    };
     let src = open_source(&with_token)?;
     let ver = match req.version.as_deref().filter(|v| !v.is_empty()) {
         Some(v) => v.to_string(),
         None => {
             let d = src.detail(&req.pkg_id)?;
-            d.versions.last().cloned().unwrap_or(d.summary.latest_version)
+            d.versions
+                .last()
+                .cloned()
+                .unwrap_or(d.summary.latest_version)
         }
     };
     let manifest = src.manifest(&req.pkg_id, &ver)?;
@@ -776,10 +812,12 @@ pub(crate) async fn library_add(Json(req): Json<LibraryAddRequest>) -> Response 
         Ok(l) => l,
         Err(e) => return store_error_response(&e),
     };
-    match lib.add_file(&name, &abs, "project", &req.tags).and_then(|item| {
-        lib.save()?;
-        Ok(item)
-    }) {
+    match lib
+        .add_file(&name, &abs, "project", &req.tags)
+        .and_then(|item| {
+            lib.save()?;
+            Ok(item)
+        }) {
         Ok(item) => Json(json!({ "item": serde_json::to_value(&item).unwrap_or(Value::Null) }))
             .into_response(),
         Err(e) => store_error_response(&e),
@@ -826,7 +864,9 @@ pub(crate) async fn library_post(
             ),
         };
     };
-    let req = body.map(|Json(b)| b).unwrap_or(LibraryInstallRequest { dest_folder: None });
+    let req = body
+        .map(|Json(b)| b)
+        .unwrap_or(LibraryInstallRequest { dest_folder: None });
     library_install(id.to_string(), req).await
 }
 
@@ -870,11 +910,10 @@ async fn library_install(id: String, req: LibraryInstallRequest) -> Response {
                 format!("入管线失败({}): {}", f.source, f.error),
             ));
         }
-        let one = outcome
-            .imported
-            .into_iter()
-            .next()
-            .ok_or_else(|| StoreError::new(forge_store::STORE_MANIFEST_INVALID, "入管线无结果"))?;
+        let one =
+            outcome.imported.into_iter().next().ok_or_else(|| {
+                StoreError::new(forge_store::STORE_MANIFEST_INVALID, "入管线无结果")
+            })?;
         Ok(json!({ "assetPath": one.asset_path, "guid": one.guid }))
     })
     .await
@@ -909,7 +948,10 @@ pub(crate) async fn publish(Json(req): Json<PublishRequest>) -> Response {
         )
             .into_response();
     };
-    let with_token = SourceConfig { token: token_of(&req.source_id), ..scfg };
+    let with_token = SourceConfig {
+        token: token_of(&req.source_id),
+        ..scfg
+    };
     let r = tokio::task::spawn_blocking(move || -> Result<PackageManifest, StoreError> {
         let proj = project();
         let input: PublishInput = draft_from_project(&proj, &req.asset_paths, req.manifest)?;
@@ -931,12 +973,27 @@ mod tests {
 
     #[test]
     fn store_status_maps_semantically() {
-        assert_eq!(store_status("STORE_PACKAGE_NOT_FOUND"), StatusCode::NOT_FOUND);
-        assert_eq!(store_status("STORE_ALREADY_INSTALLED"), StatusCode::CONFLICT);
-        assert_eq!(store_status("STORE_CHECKSUM_MISMATCH"), StatusCode::BAD_REQUEST);
-        assert_eq!(store_status("STORE_PAYMENT_REQUIRED"), StatusCode::PAYMENT_REQUIRED);
+        assert_eq!(
+            store_status("STORE_PACKAGE_NOT_FOUND"),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            store_status("STORE_ALREADY_INSTALLED"),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            store_status("STORE_CHECKSUM_MISMATCH"),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            store_status("STORE_PAYMENT_REQUIRED"),
+            StatusCode::PAYMENT_REQUIRED
+        );
         // 上游不可达是 502 而非 500——问题不在本机。
-        assert_eq!(store_status("STORE_SOURCE_UNREACHABLE"), StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            store_status("STORE_SOURCE_UNREACHABLE"),
+            StatusCode::BAD_GATEWAY
+        );
         assert_eq!(store_status("IO"), StatusCode::INTERNAL_SERVER_ERROR);
     }
 

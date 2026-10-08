@@ -36,7 +36,15 @@ const BODY_SHORT_CHARS: usize = 200;
 /// 正文必备三节(06 §1 skill 文档骨架;中文子串匹配,不require 精确标题层级)。
 const REQUIRED_SECTIONS: &[&str] = &["执行流程", "输出约束", "失败回退"];
 /// description 触发时机提示词(缺失只告警不拦截——存量 skill 文风不统一)。
-const TRIGGER_HINTS: &[&str] = &["当任务涉及", "当任务", "当用户", "当需要", "何时", "触发", "当"];
+const TRIGGER_HINTS: &[&str] = &[
+    "当任务涉及",
+    "当任务",
+    "当用户",
+    "当需要",
+    "何时",
+    "触发",
+    "当",
+];
 
 /// skills 状态测试锁:skills/ 目录与 data/skills-config.json 是进程级共享面,
 /// 并发读写必互踩(F4 wave.3 教训同源)。本模块与 main.rs 的 skills 测试统一取此锁。
@@ -75,7 +83,8 @@ fn strip_quotes(v: &str) -> String {
     let (Some(first), Some(last)) = (v.chars().next(), v.chars().next_back()) else {
         return v.to_string();
     };
-    if v.chars().count() >= 2 && ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+    if v.chars().count() >= 2 && ((first == '"' && last == '"') || (first == '\'' && last == '\''))
+    {
         return v[first.len_utf8()..v.len() - last.len_utf8()].to_string();
     }
     v.to_string()
@@ -286,7 +295,9 @@ pub struct SkillsConfig {
 }
 
 pub fn skills_config_path() -> PathBuf {
-    crate::workspace_root().join("data").join("skills-config.json")
+    crate::workspace_root()
+        .join("data")
+        .join("skills-config.json")
 }
 
 pub fn skills_config_load() -> SkillsConfig {
@@ -319,16 +330,26 @@ pub fn skills_config_save(cfg: &SkillsConfig) -> std::io::Result<()> {
     write_atomic(&skills_config_path(), &text)
 }
 
-/// 主 skills 目录(新建 skill 一律落这里)。
+/// 主 skills 目录(工作区技能;POST scope=workspace 落这里)。
 pub fn skills_root() -> PathBuf {
     crate::workspace_root().join("skills")
 }
 
-/// 扫描目录集:主 skills/ 优先 + config.extraDirs(相对 workspace 根解析)。
+/// 账号个人技能(15 §8.4;随云同步,POST scope=personal 缺省落这里)。
+pub fn user_skills_root() -> PathBuf {
+    crate::agent_data_root().join("user-skills")
+}
+
+/// scope 缺省或 personal → 个人技能;仅显式 workspace 落到仓内 skills/。
+pub(crate) fn skill_is_personal(scope: Option<&str>) -> bool {
+    !matches!(scope.map(str::trim), Some("workspace"))
+}
+
+/// 扫描目录集:主 skills/ → 个人 user-skills/ → config.extraDirs(相对 workspace 根解析)。
 /// 顺序即优先级——同名技能取先扫到的。
 pub fn skills_dirs(cfg: &SkillsConfig) -> Vec<PathBuf> {
     let root = crate::workspace_root();
-    let mut dirs = vec![skills_root()];
+    let mut dirs = vec![skills_root(), user_skills_root()];
     for d in &cfg.extra_dirs {
         dirs.push(root.join(d));
     }
@@ -346,6 +367,8 @@ pub struct SkillEntry {
     pub enabled: bool,
     /// 位于主 skills/ 下 = true;extraDirs 内 = false(供 UI 区分与只读保护)。
     pub builtin: bool,
+    /// 位于 data/user-skills/ 下(随账号云同步)。
+    pub personal: bool,
 }
 
 fn is_disabled(cfg: &SkillsConfig, front_name: &str, dir_name: &str) -> bool {
@@ -356,6 +379,7 @@ fn is_disabled(cfg: &SkillsConfig, front_name: &str, dir_name: &str) -> bool {
 
 fn scan_with(cfg: &SkillsConfig) -> Vec<SkillEntry> {
     let root = skills_root();
+    let personal_root = user_skills_root();
     let mut out: Vec<SkillEntry> = Vec::new();
     for dir in skills_dirs(cfg) {
         let Ok(rd) = std::fs::read_dir(&dir) else {
@@ -384,6 +408,7 @@ fn scan_with(cfg: &SkillsConfig) -> Vec<SkillEntry> {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let enabled = !is_disabled(cfg, &front.name, &dir_name);
+            let personal = d.starts_with(&personal_root);
             let builtin = d.starts_with(&root);
             out.push(SkillEntry {
                 front,
@@ -391,6 +416,7 @@ fn scan_with(cfg: &SkillsConfig) -> Vec<SkillEntry> {
                 file,
                 enabled,
                 builtin,
+                personal,
             });
         }
     }
@@ -412,6 +438,7 @@ pub fn find_skill(name: &str) -> Option<SkillEntry> {
     }
     let cfg = skills_config_load();
     let root = skills_root();
+    let personal_root = user_skills_root();
     for dir in skills_dirs(&cfg) {
         let d = dir.join(name);
         let file = d.join("SKILL.md");
@@ -428,6 +455,7 @@ pub fn find_skill(name: &str) -> Option<SkillEntry> {
             ..Default::default()
         });
         let enabled = !is_disabled(&cfg, &front.name, name);
+        let personal = d.starts_with(&personal_root);
         let builtin = d.starts_with(&root);
         return Some(SkillEntry {
             front,
@@ -435,6 +463,7 @@ pub fn find_skill(name: &str) -> Option<SkillEntry> {
             file,
             enabled,
             builtin,
+            personal,
         });
     }
     scan_with(&cfg).into_iter().find(|e| e.front.name == name)
@@ -562,11 +591,7 @@ fn not_found(name: &str) -> Response {
 }
 
 fn io_err(e: std::io::Error) -> Response {
-    err(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "FORGE_IO",
-        e.to_string(),
-    )
+    err(StatusCode::INTERNAL_SERVER_ERROR, "FORGE_IO", e.to_string())
 }
 
 /// 校验失败 → 按错误类型分派错误码(frontmatter 类优先)。
@@ -608,6 +633,7 @@ fn entry_json(e: &SkillEntry) -> Value {
         "tags": e.front.tags,
         "allowedTools": e.front.allowed_tools,
         "builtin": e.builtin,
+        "personal": e.personal,
         "dir": display_path(&e.dir),
     })
 }
@@ -647,12 +673,18 @@ pub(crate) struct SkillCreateRequest {
     /// 缺省 = 用内置模板生成骨架。
     #[serde(default)]
     content: Option<String>,
+    /// personal → data/user-skills/; workspace → skills/(缺省 personal)。
+    #[serde(default)]
+    scope: Option<String>,
 }
 
-/// POST /api/forge/skills:新建技能(落主 skills/ 目录)。
+/// POST /api/forge/skills:新建技能(scope 缺省 personal → data/user-skills/)。
 /// 400 SKILL_NAME_INVALID / 409 SKILL_ALREADY_EXISTS /
 /// 400 SKILL_FRONTMATTER_INVALID|SKILL_BODY_INCOMPLETE。
-pub(crate) async fn skills_create(Json(req): Json<SkillCreateRequest>) -> Response {
+pub(crate) async fn skills_create(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SkillCreateRequest>,
+) -> Response {
     let name = req.name.trim().to_string();
     if !is_valid_skill_name(&name) {
         return invalid_name(&name);
@@ -673,15 +705,25 @@ pub(crate) async fn skills_create(Json(req): Json<SkillCreateRequest>) -> Respon
         }
         None => skill_template(&name),
     };
-    let file = skills_root().join(&name).join("SKILL.md");
+    let personal = skill_is_personal(req.scope.as_deref());
+    let root = if personal {
+        user_skills_root()
+    } else {
+        skills_root()
+    };
+    let file = root.join(&name).join("SKILL.md");
     if let Err(e) = write_atomic(&file, &content) {
         return io_or_readonly(e, &name);
+    }
+    if personal {
+        state.sync.mark_skill_dirty(&name);
     }
     let warnings = validate_skill_doc(&content).warnings;
     Json(json!({
         "created": true,
         "name": name,
         "path": display_path(&file),
+        "personal": personal,
         "warnings": warnings,
     }))
     .into_response()
@@ -709,6 +751,7 @@ pub(crate) struct SkillUpdateRequest {
 /// PUT /api/forge/skills/{name}:整篇覆盖 SKILL.md(原子写)。
 /// extraDirs 内的技能同样允许改;目录只读 → 403 SKILL_READONLY_DIR。
 pub(crate) async fn skills_update(
+    State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<SkillUpdateRequest>,
 ) -> Response {
@@ -741,11 +784,15 @@ pub(crate) async fn skills_update(
     if let Err(e) = write_atomic(&entry.file, &req.content) {
         return io_or_readonly(e, &name);
     }
+    if entry.personal {
+        state.sync.mark_skill_dirty(&name);
+    }
     let warnings = validate_skill_doc(&req.content).warnings;
     Json(json!({
         "updated": true,
         "name": name,
         "path": display_path(&entry.file),
+        "personal": entry.personal,
         "warnings": warnings,
     }))
     .into_response()
@@ -766,7 +813,10 @@ pub(crate) async fn skills_delete(
         return not_found(&name);
     };
     let paths = vec![name.clone()];
-    if !state.proposals.has_approved_covering("skill.delete", &paths) {
+    if !state
+        .proposals
+        .has_approved_covering("skill.delete", &paths)
+    {
         let id = state.proposals.create(
             "skill.delete",
             format!(
@@ -797,7 +847,13 @@ pub(crate) async fn skills_delete(
         );
     }
     match std::fs::remove_dir_all(&entry.dir) {
-        Ok(()) => Json(json!({ "deleted": true, "name": name })).into_response(),
+        Ok(()) => {
+            if entry.personal {
+                state.sync.mark_skill_deleted(&name);
+            }
+            Json(json!({ "deleted": true, "name": name, "personal": entry.personal }))
+                .into_response()
+        }
         Err(e) => io_or_readonly(e, &name),
     }
 }
@@ -905,8 +961,8 @@ mod tests {
                 continue;
             }
             let text = std::fs::read_to_string(&f).unwrap();
-            let front = parse_frontmatter(&text)
-                .unwrap_or_else(|| panic!("解析失败: {}", f.display()));
+            let front =
+                parse_frontmatter(&text).unwrap_or_else(|| panic!("解析失败: {}", f.display()));
             assert!(!front.name.is_empty(), "{}", f.display());
             assert!(!front.description.is_empty(), "{}", f.display());
             assert!(
@@ -953,9 +1009,18 @@ unknownKey: 随便写\n\
 
     #[test]
     fn parse_rejects_missing_fields_and_no_frontmatter() {
-        assert!(parse_frontmatter("---\ndescription: d\n---\n正文\n").is_none(), "缺 name 应 None");
-        assert!(parse_frontmatter("---\nname: n\n---\n正文\n").is_none(), "缺 description 应 None");
-        assert!(parse_frontmatter("# 标题\nname: n\ndescription: d\n").is_none(), "首行非 --- 应 None");
+        assert!(
+            parse_frontmatter("---\ndescription: d\n---\n正文\n").is_none(),
+            "缺 name 应 None"
+        );
+        assert!(
+            parse_frontmatter("---\nname: n\n---\n正文\n").is_none(),
+            "缺 description 应 None"
+        );
+        assert!(
+            parse_frontmatter("# 标题\nname: n\ndescription: d\n").is_none(),
+            "首行非 --- 应 None"
+        );
         assert!(parse_frontmatter("").is_none(), "空文档应 None");
     }
 
@@ -969,14 +1034,21 @@ unknownKey: 随便写\n\
             }
             let v = validate_skill_doc(&std::fs::read_to_string(&f).unwrap());
             assert!(v.valid, "{} 校验不过: {:?}", f.display(), v.errors);
-            assert!(v.warnings.is_empty(), "{} 意外告警: {:?}", f.display(), v.warnings);
+            assert!(
+                v.warnings.is_empty(),
+                "{} 意外告警: {:?}",
+                f.display(),
+                v.warnings
+            );
         }
     }
 
     #[test]
     fn validate_reports_missing_sections_and_fields() {
         // 缺三节全缺。
-        let v = validate_skill_doc("---\nname: x\ndescription: 当任务涉及 X 时使用。\n---\n只有一句话。\n");
+        let v = validate_skill_doc(
+            "---\nname: x\ndescription: 当任务涉及 X 时使用。\n---\n只有一句话。\n",
+        );
         assert!(!v.valid);
         for sec in REQUIRED_SECTIONS {
             assert!(
@@ -985,15 +1057,29 @@ unknownKey: 随便写\n\
                 v.errors
             );
         }
-        assert!(v.warnings.iter().any(|w| w.contains("字符")), "短正文应告警: {:?}", v.warnings);
+        assert!(
+            v.warnings.iter().any(|w| w.contains("字符")),
+            "短正文应告警: {:?}",
+            v.warnings
+        );
 
         // 无 frontmatter。
         let v2 = validate_skill_doc("# 无 frontmatter\n执行流程 输出约束 失败回退\n");
-        assert!(v2.errors.iter().any(|e| e.contains("缺 frontmatter")), "{:?}", v2.errors);
+        assert!(
+            v2.errors.iter().any(|e| e.contains("缺 frontmatter")),
+            "{:?}",
+            v2.errors
+        );
 
         // name 不合白名单。
-        let v3 = validate_skill_doc("---\nname: Bad_Name\ndescription: 当任务涉及 X。\n---\n执行流程 输出约束 失败回退\n");
-        assert!(v3.errors.iter().any(|e| e.contains("小写英文")), "{:?}", v3.errors);
+        let v3 = validate_skill_doc(
+            "---\nname: Bad_Name\ndescription: 当任务涉及 X。\n---\n执行流程 输出约束 失败回退\n",
+        );
+        assert!(
+            v3.errors.iter().any(|e| e.contains("小写英文")),
+            "{:?}",
+            v3.errors
+        );
 
         // description 无触发时机 → 只告警不拦截。
         let v4 = validate_skill_doc(&format!(
@@ -1001,7 +1087,11 @@ unknownKey: 随便写\n\
             "## 执行流程\n## 输出约束\n## 失败回退\n".to_string() + &"填充。".repeat(120)
         ));
         assert!(v4.valid, "{:?}", v4.errors);
-        assert!(v4.warnings.iter().any(|w| w.contains("触发时机")), "{:?}", v4.warnings);
+        assert!(
+            v4.warnings.iter().any(|w| w.contains("触发时机")),
+            "{:?}",
+            v4.warnings
+        );
     }
 
     /// 内置模板必须自身合规(create 缺省路径不产出坏文档)。
@@ -1010,7 +1100,12 @@ unknownKey: 随便写\n\
         let v = validate_skill_doc(&skill_template("demo-skill"));
         assert!(v.valid, "模板不合规: {:?}", v.errors);
         assert!(v.warnings.is_empty(), "模板不该告警: {:?}", v.warnings);
-        assert_eq!(parse_frontmatter(&skill_template("demo-skill")).unwrap().name, "demo-skill");
+        assert_eq!(
+            parse_frontmatter(&skill_template("demo-skill"))
+                .unwrap()
+                .name,
+            "demo-skill"
+        );
     }
 
     #[test]
@@ -1023,7 +1118,7 @@ unknownKey: 随便写\n\
             let found = find_skill(&e.front.name)
                 .unwrap_or_else(|| panic!("list 有而 find 无: {}", e.front.name));
             assert_eq!(found.file, e.file);
-            assert!(e.builtin, "仓内技能应判定为 builtin: {}", e.front.name);
+            assert_eq!(found.builtin, e.builtin, "读取与扫描来源应一致: {}", e.front.name);
         }
         assert!(find_skill("no-such-skill").is_none());
         assert!(find_skill("../etc").is_none(), "非法名须被白名单挡住");
@@ -1039,20 +1134,32 @@ unknownKey: 随便写\n\
     }
 
     #[test]
+    fn personal_scope_is_default() {
+        assert!(skill_is_personal(None));
+        assert!(skill_is_personal(Some("personal")));
+        assert!(skill_is_personal(Some("")));
+        assert!(!skill_is_personal(Some("workspace")));
+        assert!(!skill_is_personal(Some(" workspace ")));
+    }
+
+    #[test]
     fn preamble_injects_full_skill_text() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let (text, hit) =
-            skills_preamble(&["scene-greybox".to_string()]).expect("应命中");
+        let (text, hit) = skills_preamble(&["scene-greybox".to_string()]).expect("应命中");
         assert_eq!(hit, vec!["scene-greybox".to_string()]);
         assert!(text.contains("### 技能: scene-greybox"), "{text}");
         // 正文片段逐字取自磁盘,确认注入的是全文而非摘要。
-        let disk = std::fs::read_to_string(skills_root().join("scene-greybox").join("SKILL.md")).unwrap();
+        let disk =
+            std::fs::read_to_string(skills_root().join("scene-greybox").join("SKILL.md")).unwrap();
         let probe: String = disk.lines().filter(|l| l.contains("执行流程")).collect();
         assert!(!probe.is_empty() && text.contains(probe.trim()), "{text}");
         // 不存在项跳过且不进命中名单(调用侧据此算 missing)。
         let (_, hit2) = skills_preamble(&["scene-greybox".into(), "no-such-skill".into()]).unwrap();
         assert_eq!(hit2, vec!["scene-greybox".to_string()]);
-        assert!(skills_preamble(&["no-such-skill".into()]).is_none(), "全不命中应 None");
+        assert!(
+            skills_preamble(&["no-such-skill".into()]).is_none(),
+            "全不命中应 None"
+        );
         assert!(skills_preamble(&[]).is_none(), "空清单应 None");
     }
 }

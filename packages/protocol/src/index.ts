@@ -4,6 +4,9 @@
  */
 
 /** 会话事件类型(对标 dsh turn/step 生命周期,冻结子集) */
+export * from './blender.js';
+export * from './collaboration.js';
+
 export const SESSION_EVENT_TYPES = [
   'turn/start',
   'step/start',
@@ -41,6 +44,13 @@ export interface CreateSessionRequest {
   title?: string;
 }
 
+/** D-040:host 健康接口对上游 agentd `/health` 的探测结果(不可达 ok=false,不抛错)。 */
+export interface AgentdProbe {
+  ok: boolean;
+  version?: string;
+  uptimeSec?: number;
+}
+
 export interface HealthStatus {
   status: 'ok';
   service: 'forge-host';
@@ -48,6 +58,14 @@ export interface HealthStatus {
   port: number;
   uptimeSec: number;
   time: string;
+  /** D-040:本机登录用户名(账户卡 / 首页问候);取不到则缺省。 */
+  user?: { name: string };
+  /** D-040:运行平台(process.platform)。 */
+  platform?: string;
+  /** D-040:host 所用 Node 版本。 */
+  node?: string;
+  /** D-040:上游 agentd 探测;无代理插件(base profile)时缺省。 */
+  agentd?: AgentdProbe;
 }
 
 /** 结构化错误(I-5 不静默回退) */
@@ -76,3 +94,5 @@ export function isEventEnvelope(x: unknown): x is EventEnvelope {
     'payload' in e
   );
 }
+export * from './editor.js';
+export * from './shaderGraph.js';

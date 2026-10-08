@@ -18,7 +18,7 @@ fn tmp_project(tag: &str) -> PathBuf {
 }
 
 fn copy_conformance(name: &str, dest_dir: &std::path::Path) -> PathBuf {
-    let src = PathBuf::from("H:/rurix/conformance/asset/gltf/accept").join(name);
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name);
     let dst = dest_dir.join(name);
     std::fs::copy(&src, &dst).unwrap();
     dst

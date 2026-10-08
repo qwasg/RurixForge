@@ -33,6 +33,14 @@ pub enum Action {
     },
     /// `turn/plan/updated` 的步骤 → TodoStore 同步。
     SyncTodos(Vec<PlanStep>),
+    /// Codex 原生 goal 的本地持久镜像（避免下一轮用旧 active 状态回推）。
+    SyncGoal(Value),
+    /// Codex 清除了原生 goal，同步清本地镜像。
+    ClearGoal,
+    /// Another app-server client resolved a pending server request.
+    ResolveServerRequest(Value),
+    /// Native image bytes are persisted by the host, never copied into tool text.
+    ImageResult { item: Value, payload: Value },
     /// 本轮结束(status:completed|failed|cancelled)。
     TurnEnd {
         status: String,
@@ -109,6 +117,15 @@ impl Mapper {
         self.assistant_streamed.clone()
     }
 
+    /// 原生 Goal 会在同一个 thread 中连续自动启动多轮。每轮完成后清掉只属于
+    /// 本轮的累积，下一轮不能把上一轮正文/工具跟踪重复带进来。
+    pub fn reset_turn(&mut self) {
+        self.tools.clear();
+        self.assistant.clear();
+        self.assistant_streamed.clear();
+        self.plan_stream.clear();
+    }
+
     fn emit(&self, event_type: &str, domain: &'static str, mut payload: Value) -> Action {
         payload["runId"] = json!(self.run_id);
         Action::Emit {
@@ -135,8 +152,13 @@ impl Mapper {
                 self.assistant_streamed.push_str(&d);
                 vec![self.stream("agent.token.stream.delta", json!({ "delta": d }))]
             }
-            "item/reasoning/summaryTextDelta" | "item/reasoning/delta" => {
-                vec![self.stream("agent.reasoning.delta", json!({ "delta": delta_of(params) }))]
+            "item/reasoning/summaryTextDelta"
+            | "item/reasoning/textDelta"
+            | "item/reasoning/delta" => {
+                vec![self.stream(
+                    "agent.reasoning.delta",
+                    json!({ "delta": delta_of(params) }),
+                )]
             }
             "item/commandExecution/outputDelta" => {
                 let id = item_id_of(params);
@@ -145,6 +167,31 @@ impl Mapper {
                     json!({ "toolCallId": id, "delta": delta_of(params) }),
                 )]
             }
+            "item/fileChange/outputDelta" => {
+                vec![self.stream(
+                    "agent.tool.output.delta",
+                    json!({ "toolCallId": item_id_of(params), "delta": delta_of(params) }),
+                )]
+            }
+            "item/fileChange/patchUpdated" => {
+                let changes = changes_of(params);
+                if changes.is_empty() {
+                    return Vec::new();
+                }
+                let delta = serde_json::to_string_pretty(&changes).unwrap_or_default();
+                vec![self.stream(
+                    "agent.tool.output.delta",
+                    json!({
+                        "toolCallId": item_id_of(params),
+                        "delta": delta,
+                        "changes": changes,
+                    }),
+                )]
+            }
+            "item/mcpToolCall/progress" => vec![self.stream(
+                "agent.tool.output.delta",
+                json!({ "toolCallId": item_id_of(params), "delta": delta_of(params) }),
+            )],
             "item/plan/delta" | "item/planUpdate/delta" => {
                 let d = delta_of(params);
                 self.plan_stream.push_str(&d);
@@ -178,6 +225,21 @@ impl Mapper {
                 vec![self.emit("agent.usage", "agent", usage_payload(params))]
             }
             "turn/completed" => {
+                if self.final_text().is_empty() {
+                    if let Some(text) = params
+                        .pointer("/turn/items")
+                        .and_then(Value::as_array)
+                        .and_then(|items| {
+                            items.iter().rev().find_map(|item| {
+                                (item_type_of(item) == "agentMessage")
+                                    .then(|| text_of(item))
+                                    .filter(|text| !text.is_empty())
+                            })
+                        })
+                    {
+                        self.assistant = text;
+                    }
+                }
                 let status = params
                     .get("turn")
                     .and_then(|t| t.get("status"))
@@ -208,15 +270,54 @@ impl Mapper {
                 status: "cancelled".to_string(),
                 error: None,
             }],
+            // Top-level `error` is diagnostic, not a terminal lifecycle event. Even
+            // with willRetry=false app-server subsequently emits turn/completed;
+            // ending here would drop that terminal event (and native Goal updates).
+            "error" => {
+                let message = error_text(params);
+                let warning = self.emit(
+                    "agent.warning",
+                    "agent",
+                    json!({
+                        "code": "CODEX_ERROR",
+                        "message": message,
+                        "willRetry": params.get("willRetry").cloned().unwrap_or(json!(false)),
+                        "codexErrorInfo": params.get("codexErrorInfo").cloned().unwrap_or(Value::Null),
+                    }),
+                );
+                vec![warning]
+            }
 
             // ---- 目标(Codex 原生 goal) ----
             "thread/goal/updated" => {
-                let goal = params.get("goal").cloned().unwrap_or_else(|| params.clone());
-                vec![self.emit("goal.updated", "goal", json!({ "goal": goal, "engine": "codex" }))]
+                let goal = super::normalize_goal_value(
+                    params
+                        .get("goal")
+                        .cloned()
+                        .unwrap_or_else(|| params.clone()),
+                );
+                vec![
+                    Action::SyncGoal(goal.clone()),
+                    self.emit(
+                        "goal.updated",
+                        "goal",
+                        json!({ "goal": goal, "engine": "codex" }),
+                    ),
+                ]
             }
             "thread/goal/cleared" => {
-                vec![self.emit("goal.cleared", "goal", json!({ "engine": "codex" }))]
+                vec![
+                    Action::ClearGoal,
+                    self.emit("goal.cleared", "goal", json!({ "engine": "codex" })),
+                ]
             }
+
+            "serverRequest/resolved" => params
+                .get("requestId")
+                .cloned()
+                .map(Action::ResolveServerRequest)
+                .into_iter()
+                .collect(),
 
             // ---- 账户/额度(ephemeral,状态栏与设置页用) ----
             "account/rateLimits/updated" => {
@@ -227,7 +328,12 @@ impl Mapper {
                 vec![self.stream("codex.rateLimits.updated", json!({ "rateLimits": limits }))]
             }
             "account/updated" | "authStatusChange" => {
-                vec![self.stream("codex.account.updated", json!({ "account": params.clone() }))]
+                // 账户通知只转展示字段。即使旧版 authStatusChange 携带 token/key，
+                // 也绝不能进入事件（ephemeral 仍会经过 SSE，不能视作安全存储）。
+                vec![self.stream(
+                    "codex.account.updated",
+                    json!({ "account": safe_account_payload(params) }),
+                )]
             }
 
             _ => Vec::new(),
@@ -332,8 +438,19 @@ impl Mapper {
                     }),
                 )]
             }
+            "imageGeneration" => {
+                self.track(&id, "imagegen", "native");
+                vec![self.emit(
+                    "agent.tool.invoked",
+                    "tool",
+                    json!({
+                        "name": "imagegen", "toolKind": "native", "toolCallId": id,
+                        "args": { "prompt": item.get("revisedPrompt"), "transparentBackground": item.get("transparentBackground") },
+                    }),
+                )]
+            }
             // Codex 起子代理:映到本仓既有的 subagent 卡片(前端已有 subagent 块)。
-            "collabToolCall" => {
+            "collabAgentToolCall" | "collabToolCall" => {
                 let title = item
                     .get("description")
                     .or_else(|| item.get("prompt"))
@@ -347,7 +464,15 @@ impl Mapper {
                     json!({
                         "subagentId": id,
                         "description": title,
-                        "subagentType": item.get("agent").cloned().unwrap_or(Value::Null),
+                        "subagentType": item
+                            .get("agent")
+                            .or_else(|| item.get("tool"))
+                            .cloned()
+                            .unwrap_or(Value::Null),
+                        "tool": item.get("tool").cloned().unwrap_or(Value::Null),
+                        "senderThreadId": item.get("senderThreadId").cloned().unwrap_or(Value::Null),
+                        "receiverThreadIds": receiver_thread_ids(&item),
+                        "agentStates": collab_agent_states(&item),
                     }),
                 )]
             }
@@ -414,14 +539,22 @@ impl Mapper {
                     body,
                 }]
             }
-            "error" => vec![Action::TurnEnd {
-                status: "failed".to_string(),
-                error: Some(error_text(&item)),
-            }],
-            "collabToolCall" if completed => {
+            "error" => vec![self.emit(
+                "agent.warning",
+                "agent",
+                json!({
+                    "code": "CODEX_ITEM_ERROR",
+                    "message": error_text(&item),
+                    "itemId": id,
+                }),
+            )],
+            "collabAgentToolCall" | "collabToolCall" if completed => {
                 self.tools.remove(&id);
                 let status = status_of(&item);
-                let etype = if status == "failed" {
+                let etype = if matches!(
+                    status.as_str(),
+                    "failed" | "interrupted" | "cancelled" | "canceled" | "aborted"
+                ) {
                     "subagent.failed"
                 } else {
                     "subagent.completed"
@@ -429,12 +562,22 @@ impl Mapper {
                 vec![self.emit(
                     etype,
                     "agent",
-                    json!({ "subagentId": id, "result": item.get("result").cloned() }),
+                    json!({
+                        "subagentId": id,
+                        "status": item
+                            .get("status")
+                            .or_else(|| item.get("agentStatus"))
+                            .cloned()
+                            .unwrap_or(Value::Null),
+                        "result": item.get("result").cloned().unwrap_or(Value::Null),
+                        "senderThreadId": item.get("senderThreadId").cloned().unwrap_or(Value::Null),
+                        "receiverThreadIds": receiver_thread_ids(&item),
+                        "agentStates": collab_agent_states(&item),
+                    }),
                 )]
             }
             // 工具类:只在 completed 收尾(updated 是中间态,重复发会让工具卡闪成两条)。
-            "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch"
-            | "dynamicToolCall" => {
+            "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" | "dynamicToolCall" | "imageGeneration" => {
                 if !completed {
                     return Vec::new();
                 }
@@ -442,7 +585,13 @@ impl Mapper {
                     // 没见过 started 的 completed:补一条 invoked 才不会让前端出现孤儿结果卡。
                     let mut out = self.on_item_started(params);
                     self.tools.remove(&id);
-                    out.extend(self.tool_result(&item, &id, &item_type_name(&item_type, &item), tool_kind_of(&item_type), 0));
+                    out.extend(self.tool_result(
+                        &item,
+                        &id,
+                        &item_type_name(&item_type, &item),
+                        tool_kind_of(&item_type),
+                        0,
+                    ));
                     return out;
                 };
                 let elapsed = now_ms().saturating_sub(track.started_ms) as u64;
@@ -467,6 +616,14 @@ impl Mapper {
             "toolCallId": id,
             "durationMs": duration_ms,
         });
+        if name == "imagegen" {
+            if status == "completed" && item.get("failure").is_none_or(Value::is_null) {
+                payload["runId"] = json!(self.run_id);
+                return vec![Action::ImageResult { item: item.clone(), payload }];
+            }
+            payload["error"] = json!(super::imagegen::failure_message(item));
+            return vec![self.emit("agent.tool.failed", "tool", payload)];
+        }
         if let Some(code) = item
             .get("exitCode")
             .or_else(|| item.get("exit_code"))
@@ -570,6 +727,7 @@ fn item_type_name(item_type: &str, _item: &Value) -> String {
         "commandExecution" => "shell".to_string(),
         "fileChange" => "apply_patch".to_string(),
         "webSearch" => "web_search".to_string(),
+        "imageGeneration" => "imagegen".to_string(),
         _ => item_type.to_string(),
     }
 }
@@ -585,7 +743,7 @@ fn item_id_of(params: &Value) -> String {
 }
 
 fn delta_of(params: &Value) -> String {
-    for k in ["delta", "text", "chunk", "output"] {
+    for k in ["delta", "text", "chunk", "output", "message"] {
         if let Some(s) = params.get(k).and_then(Value::as_str) {
             return s.to_string();
         }
@@ -669,9 +827,42 @@ fn output_text(item: &Value) -> String {
 fn status_of(item: &Value) -> String {
     let body = item_body(item, &item_type_of(item));
     body.get("status")
+        .or_else(|| body.get("agentStatus"))
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
+}
+
+fn receiver_thread_ids(item: &Value) -> Value {
+    if let Some(ids) = item.get("receiverThreadIds") {
+        return ids.clone();
+    }
+    item.get("receiverThreadId")
+        .or_else(|| item.get("newThreadId"))
+        .cloned()
+        .map(|id| json!([id]))
+        .unwrap_or(Value::Null)
+}
+
+fn collab_agent_states(item: &Value) -> Value {
+    if let Some(states) = item.get("agentStates") {
+        return states.clone();
+    }
+    let Some(thread_id) = item
+        .get("receiverThreadId")
+        .or_else(|| item.get("newThreadId"))
+        .and_then(Value::as_str)
+    else {
+        return Value::Null;
+    };
+    let status = item
+        .get("agentStatus")
+        .or_else(|| item.get("status"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut states = serde_json::Map::new();
+    states.insert(thread_id.to_string(), status);
+    Value::Object(states)
 }
 
 fn changes_of(item: &Value) -> Vec<Value> {
@@ -743,11 +934,12 @@ fn plan_steps_of(params: &Value) -> Vec<PlanStep> {
 }
 
 fn usage_payload(params: &Value) -> Value {
-    let u = params
+    let usage = params
         .get("usage")
         .or_else(|| params.get("tokenUsage"))
-        .cloned()
-        .unwrap_or_else(|| params.clone());
+        .unwrap_or(params);
+    // 正式 schema 是 tokenUsage.total / tokenUsage.last；旧版扁平形态继续兼容。
+    let u = usage.get("total").unwrap_or(usage);
     let pick = |keys: &[&str]| -> u64 {
         for k in keys {
             if let Some(n) = u.get(*k).and_then(Value::as_u64) {
@@ -762,13 +954,63 @@ fn usage_payload(params: &Value) -> Value {
         0 => prompt + completion,
         n => n,
     };
-    json!({
+    let mut out = json!({
         "provider": "codex",
         "promptTokens": prompt,
         "completionTokens": completion,
         "totalTokens": total,
         "cachedTokens": pick(&["cachedInputTokens", "cached_input_tokens"]),
+    });
+    if let Some(last) = usage.get("last") {
+        out["last"] = normalize_token_counts(last);
+    }
+    if let Some(window) = usage.get("modelContextWindow") {
+        out["modelContextWindow"] = window.clone();
+    }
+    out
+}
+
+fn normalize_token_counts(u: &Value) -> Value {
+    let pick = |keys: &[&str]| -> u64 {
+        keys.iter()
+            .find_map(|key| u.get(*key).and_then(Value::as_u64))
+            .unwrap_or(0)
+    };
+    let input = pick(&["inputTokens", "input_tokens", "promptTokens"]);
+    let output = pick(&["outputTokens", "output_tokens", "completionTokens"]);
+    let total = match pick(&["totalTokens", "total_tokens"]) {
+        0 => input + output,
+        n => n,
+    };
+    json!({
+        "promptTokens": input,
+        "completionTokens": output,
+        "totalTokens": total,
+        "cachedTokens": pick(&["cachedInputTokens", "cached_input_tokens"]),
     })
+}
+
+fn safe_account_payload(params: &Value) -> Value {
+    let root = params.get("account").unwrap_or(params);
+    if root.is_null() {
+        return Value::Null;
+    }
+    let mut out = serde_json::Map::new();
+    for key in [
+        "authMode",
+        "auth_mode",
+        "planType",
+        "plan_type",
+        "email",
+        "authenticated",
+        "requiresOpenaiAuth",
+        "type",
+    ] {
+        if let Some(value) = root.get(key) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    Value::Object(out)
 }
 
 /// 错误文案。配额耗尽(UsageLimitExceeded)这类必须原文上屏——用户得知道是额度问题
@@ -780,7 +1022,10 @@ fn error_text(v: &Value) -> String {
             return s.to_string();
         }
         if let Some(s) = c.get("message").and_then(Value::as_str) {
-            let code = c.get("type").or_else(|| c.get("code")).and_then(Value::as_str);
+            let code = c
+                .get("type")
+                .or_else(|| c.get("code"))
+                .and_then(Value::as_str);
             return match code {
                 Some(t) if !s.contains(t) => format!("{t}: {s}"),
                 _ => s.to_string(),
@@ -836,6 +1081,53 @@ mod tests {
         assert!(m.owns(&json!({ "planType": "pro" })));
     }
 
+    #[test]
+    fn native_imagegen_lifecycle_keeps_binary_out_of_tool_text() {
+        let mut m = mapper();
+        let (kind, payload) = only_emit(m.handle("item/started", &json!({
+            "threadId": "th_1", "item": {"type": "imageGeneration", "id": "img_1", "status": "in_progress", "result": ""}
+        })));
+        assert_eq!(kind, "agent.tool.invoked");
+        assert_eq!(payload["name"], "imagegen");
+        assert_eq!(payload["toolKind"], "native");
+        assert!(m.handle("item/updated", &json!({"threadId":"th_1", "item":{"type":"imageGeneration","id":"img_1"}})).is_empty());
+        let actions = m.handle("item/completed", &json!({
+            "threadId": "th_1", "item": {"type": "imageGeneration", "id": "img_1", "status": "completed", "result": "png-base64", "savedPath": "C:/native/image.png"}
+        }));
+        assert_eq!(actions.len(), 1);
+        let Action::ImageResult { item, payload } = &actions[0] else { panic!("expected image persistence"); };
+        assert_eq!(item["result"], "png-base64");
+        assert!(payload.get("output").is_none());
+        assert_eq!(payload["toolCallId"], "img_1");
+        assert_eq!(payload["runId"], "run_1");
+    }
+
+    #[test]
+    fn native_imagegen_orphan_and_quota_failure_are_visible() {
+        let mut m = mapper();
+        let actions = m.handle("item/completed", &json!({
+            "threadId":"th_1", "item":{"type":"imageGeneration","id":"img_2","status":"completed","result":"png-base64"}
+        }));
+        assert!(matches!(&actions[0], Action::Emit { payload, .. } if payload["name"] == "imagegen"));
+        assert!(matches!(&actions[1], Action::ImageResult { payload, .. } if payload["name"] == "imagegen"));
+        let actions = m.handle("item/completed", &json!({
+            "threadId":"th_1", "item":{"type":"imageGeneration","id":"img_3","status":"failed","result":"", "failure":{"type":"usageLimitExceeded","limitId":"imagegen"}}
+        }));
+        assert!(matches!(&actions[1], Action::Emit { event_type, payload, .. }
+            if event_type == "agent.tool.failed" && payload["error"].as_str().unwrap().contains("usageLimitExceeded")));
+        assert!(!actions.iter().any(|action| matches!(action, Action::ImageResult { .. })));
+    }
+
+    #[test]
+    fn resolved_server_request_releases_matching_approval() {
+        let mut m = mapper();
+        let actions = m.handle(
+            "serverRequest/resolved",
+            &json!({ "threadId": "th_1", "requestId": "req_7" }),
+        );
+        assert_eq!(actions, vec![Action::ResolveServerRequest(json!("req_7"))]);
+    }
+
     /// 正文:delta 走 ephemeral,终稿以 completed 全文为准。
     #[test]
     fn agent_message_delta_then_final_text() {
@@ -858,6 +1150,26 @@ mod tests {
             .is_empty());
         // delta 可能被限流合并,拼出来的不完整;终稿必须覆盖它。
         assert_eq!(m.final_text(), "你好,已完成三处改动。");
+    }
+
+    #[test]
+    fn completed_turn_items_supply_missing_final_message() {
+        let mut m = mapper();
+        let actions = m.handle(
+            "turn/completed",
+            &json!({
+                "threadId": "th_1",
+                "turn": {
+                    "status": "completed",
+                    "items": [
+                        { "id": "r1", "type": "reasoning", "text": "internal" },
+                        { "id": "a1", "type": "agentMessage", "text": "最终答复" }
+                    ]
+                }
+            }),
+        );
+        assert!(matches!(actions[0], Action::TurnEnd { .. }));
+        assert_eq!(m.final_text(), "最终答复");
     }
 
     /// 命令执行:started → invoked(name=shell 对上 TOOL_META),输出 delta,
@@ -926,6 +1238,17 @@ mod tests {
         ));
         assert_eq!(t, "agent.tool.completed");
         assert_eq!(p["changes"][0]["path"], "src/a.rs");
+
+        let (t, p) = only_stream(m.handle(
+            "item/fileChange/patchUpdated",
+            &json!({
+                "threadId": "th_1", "itemId": "f1",
+                "changes": { "src/b.rs": { "kind": "add", "diff": "+hello" } }
+            }),
+        ));
+        assert_eq!(t, "agent.tool.output.delta");
+        assert_eq!(p["changes"][0]["path"], "src/b.rs");
+        assert!(p["delta"].as_str().unwrap().contains("src/b.rs"));
     }
 
     /// 用户拒批 → agent.tool.denied(前端已有拒绝态,不需要新块)。
@@ -961,6 +1284,13 @@ mod tests {
         ));
         assert_eq!(p["name"], "mcp__engine-scene__entity_create");
         assert_eq!(p["args"]["name"], "Player");
+
+        let (t, p) = only_stream(m.handle(
+            "item/mcpToolCall/progress",
+            &json!({ "threadId": "th_1", "itemId": "m1", "message": "loading assets" }),
+        ));
+        assert_eq!(t, "agent.tool.output.delta");
+        assert_eq!(p["delta"], "loading assets");
     }
 
     /// externally-tagged 单键包裹形态(codex 的枚举默认序列化)也要认。
@@ -1063,6 +1393,143 @@ mod tests {
         assert_eq!(p["provider"], "codex");
     }
 
+    #[test]
+    fn nested_token_usage_uses_cumulative_total() {
+        let mut m = mapper();
+        let (t, p) = only_emit(m.handle(
+            "thread/tokenUsage/updated",
+            &json!({ "threadId": "th_1", "tokenUsage": {
+                "total": {
+                    "inputTokens": 1200, "outputTokens": 300,
+                    "totalTokens": 1500, "cachedInputTokens": 900
+                },
+                "last": { "inputTokens": 20, "outputTokens": 5, "totalTokens": 25 },
+                "modelContextWindow": 128000
+            }}),
+        ));
+        assert_eq!(t, "agent.usage");
+        assert_eq!(p["totalTokens"], 1500);
+        assert_eq!(p["last"]["totalTokens"], 25);
+        assert_eq!(p["modelContextWindow"], 128000);
+    }
+
+    #[test]
+    fn formal_collab_agent_item_maps_to_subagent_lifecycle() {
+        let mut m = mapper();
+        let (started, payload) = only_emit(m.handle(
+            "item/started",
+            &json!({ "threadId": "th_1", "item": {
+                "id": "collab_1", "type": "collabAgentToolCall",
+                "tool": "spawn_agent", "prompt": "检查存档逻辑",
+                "senderThreadId": "th_1", "receiverThreadIds": ["th_child"],
+                "agentStates": { "th_child": "running" }, "status": "inProgress"
+            }}),
+        ));
+        assert_eq!(started, "subagent.started");
+        assert_eq!(payload["description"], "检查存档逻辑");
+        assert_eq!(payload["receiverThreadIds"], json!(["th_child"]));
+
+        let (completed, payload) = only_emit(m.handle(
+            "item/completed",
+            &json!({ "threadId": "th_1", "item": {
+                "id": "collab_1", "type": "collabAgentToolCall",
+                "tool": "spawn_agent", "prompt": "检查存档逻辑",
+                "senderThreadId": "th_1", "receiverThreadIds": ["th_child"],
+                "agentStates": { "th_child": "completed" }, "status": "completed"
+            }}),
+        ));
+        assert_eq!(completed, "subagent.completed");
+        assert_eq!(payload["agentStates"]["th_child"], "completed");
+
+        let (failed, payload) = only_emit(m.handle(
+            "item/completed",
+            &json!({ "threadId": "th_1", "item": {
+                "id": "collab_2", "type": "collabAgentToolCall",
+                "newThreadId": "th_new", "agentStatus": "interrupted"
+            }}),
+        ));
+        assert_eq!(failed, "subagent.failed");
+        assert_eq!(payload["receiverThreadIds"], json!(["th_new"]));
+        assert_eq!(payload["agentStates"]["th_new"], "interrupted");
+    }
+
+    #[test]
+    fn raw_reasoning_text_delta_is_streamed() {
+        let mut m = mapper();
+        let (event, payload) = only_stream(m.handle(
+            "item/reasoning/textDelta",
+            &json!({ "threadId": "th_1", "delta": "checking state" }),
+        ));
+        assert_eq!(event, "agent.reasoning.delta");
+        assert_eq!(payload["delta"], "checking state");
+    }
+
+    #[test]
+    fn retryable_top_level_error_warns_without_ending_turn() {
+        let mut m = mapper();
+        let actions = m.handle(
+            "error",
+            &json!({
+                "threadId": "th_1", "willRetry": true,
+                "error": { "message": "temporary disconnect", "type": "stream" },
+                "codexErrorInfo": { "kind": "stream" }
+            }),
+        );
+        assert_eq!(actions.len(), 1);
+        let Action::Emit {
+            event_type,
+            payload,
+            ..
+        } = &actions[0]
+        else {
+            panic!("可重试错误只能产生 warning: {actions:?}");
+        };
+        assert_eq!(event_type, "agent.warning");
+        assert_eq!(payload["willRetry"], true);
+        assert_eq!(payload["codexErrorInfo"]["kind"], "stream");
+
+        let fatal = m.handle(
+            "error",
+            &json!({ "threadId": "th_1", "willRetry": false, "message": "fatal" }),
+        );
+        assert_eq!(
+            fatal.len(),
+            1,
+            "terminal state must come from turn/completed"
+        );
+        assert!(
+            matches!(fatal[0], Action::Emit { ref event_type, .. } if event_type == "agent.warning")
+        );
+
+        let item_error = m.handle(
+            "item/completed",
+            &json!({ "threadId": "th_1", "item": {
+                "id": "err_1", "type": "error", "message": "tool stream failed"
+            }}),
+        );
+        assert_eq!(item_error.len(), 1);
+        assert!(
+            matches!(item_error[0], Action::Emit { ref event_type, .. } if event_type == "agent.warning")
+        );
+    }
+
+    #[test]
+    fn account_events_never_forward_credentials() {
+        let mut m = mapper();
+        let (t, p) = only_stream(m.handle(
+            "authStatusChange",
+            &json!({
+                "authMode": "chatgpt", "planType": "pro", "email": "a@b.c",
+                "accessToken": "secret-access", "apiKey": "sk-secret"
+            }),
+        ));
+        assert_eq!(t, "codex.account.updated");
+        let wire = p.to_string();
+        assert!(!wire.contains("secret-access"), "{wire}");
+        assert!(!wire.contains("sk-secret"), "{wire}");
+        assert_eq!(p["account"]["authMode"], "chatgpt");
+    }
+
     /// 失败原因原文上屏:配额耗尽必须能被用户看懂,不能糊成「Codex 出错了」。
     #[test]
     fn failure_reason_is_verbatim() {
@@ -1105,13 +1572,18 @@ mod tests {
     #[test]
     fn goal_persists_and_rate_limits_stream() {
         let mut m = mapper();
-        let (t, p) = only_emit(m.handle(
+        let actions = m.handle(
             "thread/goal/updated",
             &json!({ "threadId": "th_1", "goal": { "objective": "做个平台跳跃 demo", "status": "active" }}),
-        ));
+        );
+        assert!(matches!(&actions[0], Action::SyncGoal(goal) if goal["status"] == "active"));
+        let (t, p) = only_emit(vec![actions[1].clone()]);
         assert_eq!(t, "goal.updated");
         assert_eq!(p["goal"]["objective"], "做个平台跳跃 demo");
         assert_eq!(p["engine"], "codex");
+
+        let cleared = m.handle("thread/goal/cleared", &json!({ "threadId": "th_1" }));
+        assert!(matches!(cleared[0], Action::ClearGoal));
 
         let (t, p) = only_stream(m.handle(
             "account/rateLimits/updated",

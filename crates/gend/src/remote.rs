@@ -9,7 +9,7 @@
 use base64::Engine;
 use serde_json::{json, Value};
 
-use crate::backends::{GenBackend, GenCandidate, GenRequest, MAX_BATCH, SIZES};
+use crate::backends::{Aspect, EditRequest, GenBackend, GenCandidate, GenRequest, ASPECTS, MAX_BATCH, SIZES};
 use crate::config::GenConfig;
 use crate::keystore::Keystore;
 use crate::{
@@ -54,9 +54,10 @@ impl GenBackend for RemoteOpenAi {
 
     fn capabilities(&self) -> Value {
         json!({
-            // v1 仅 text2img;img2img/styleRef/texture-set 为已知 seam(RD-F5-002)。
-            "kinds": ["text2img"],
+            // D-045:img2img 经 /v1/images/edits(参考图 + 蒙版);styleRef/texture-set 仍为 seam。
+            "kinds": ["text2img", "img2img"],
             "sizes": SIZES,
+            "aspects": ASPECTS,
             "maxBatch": MAX_BATCH,
         })
     }
@@ -99,13 +100,20 @@ impl GenBackend for RemoteOpenAi {
             prompt.push_str("\n\nAvoid the following: ");
             prompt.push_str(np);
         }
+        let (out_w, out_h) = req.dims();
         let mut body = json!({
             "prompt": prompt,
             "n": req.n,
-            "size": format!("{REMOTE_NATIVE_SIZE}x{REMOTE_NATIVE_SIZE}"),
+            "size": native_size(req.aspect),
         });
         if let Some(m) = &entry.model {
             body["model"] = json!(m);
+        }
+        if let Some(q) = req.quality.as_deref().filter(|s| !s.is_empty()) {
+            body["quality"] = json!(q);
+        }
+        if let Some(b) = req.background.as_deref().filter(|s| !s.is_empty()) {
+            body["background"] = json!(b);
         }
 
         let agent = ureq::AgentBuilder::new()
@@ -155,10 +163,10 @@ impl GenBackend for RemoteOpenAi {
                 let raw = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| {
                     GenError::new(GEN_BACKEND_ERROR, format!("b64_json 解码失败: {e}"))
                 })?;
-                out.push(GenCandidate { png_bytes: fit_to_size(raw, req.size)?, seed });
+                out.push(GenCandidate { png_bytes: fit_to_dims(raw, out_w, out_h)?, seed });
             } else if let Some(u) = item.get("url").and_then(Value::as_str) {
                 let raw = fetch_url(&agent, u)?;
-                out.push(GenCandidate { png_bytes: fit_to_size(raw, req.size)?, seed });
+                out.push(GenCandidate { png_bytes: fit_to_dims(raw, out_w, out_h)?, seed });
             } else {
                 return Err(GenError::new(
                     GEN_BACKEND_ERROR,
@@ -171,6 +179,153 @@ impl GenBackend for RemoteOpenAi {
         }
         Ok(out)
     }
+
+    /// D-045:POST {endpoint}/v1/images/edits(multipart:image / image[] + mask? + prompt/n/size/model/quality/background)。
+    /// 产物保持后端原生尺寸(调用方按需再适配,如干净底图要回到定稿尺寸)。
+    fn edit(&self, req: &EditRequest, cfg: &GenConfig, keys: &Keystore) -> Result<Vec<GenCandidate>> {
+        req.validate()?;
+        if !self.configured(cfg, keys) {
+            return Err(GenError::new(
+                GEN_BACKEND_NOT_CONFIGURED,
+                "remote-openai-compatible 未配置(需 enabled + endpoint + key)",
+            ));
+        }
+        let entry = cfg.entry(REMOTE_OPENAI_ID).expect("configured 为真必有条目");
+        let endpoint = entry.endpoint.as_deref().expect("configured 为真必有 endpoint");
+        // key 只用于拼 Authorization 头;任何分支不得把 key 写入错误信息(R-5)。
+        let key = keys.key_for(REMOTE_OPENAI_ID).expect("configured 为真必有 key");
+        let url = format!("{}/v1/images/edits", endpoint.trim_end_matches('/'));
+        let mut form = Multipart::new(req.seed);
+        if let Some(m) = &entry.model {
+            form.text("model", m);
+        }
+        form.text("prompt", &req.prompt);
+        form.text("n", &req.n.to_string());
+        form.text("size", &native_size(req.aspect));
+        if let Some(q) = req.quality.as_deref().filter(|s| !s.is_empty()) {
+            form.text("quality", q);
+        }
+        if let Some(b) = req.background.as_deref().filter(|s| !s.is_empty()) {
+            form.text("background", b);
+        }
+        let field = if req.images.len() > 1 { "image[]" } else { "image" };
+        for (i, img) in req.images.iter().enumerate() {
+            form.file(field, &format!("ref{i}.png"), &as_png(img)?);
+        }
+        if let Some(mask) = &req.mask {
+            form.file("mask", "mask.png", &as_png(mask)?);
+        }
+        let (content_type, body) = form.finish();
+        let agent = ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+            .build();
+        let resp = agent
+            .post(&url)
+            .set("Authorization", &format!("Bearer {key}"))
+            .set("Content-Type", &content_type)
+            .send_bytes(&body);
+        let resp = match resp {
+            Ok(r) => r,
+            Err(ureq::Error::Status(429, r)) => {
+                return Err(GenError::new(
+                    GEN_RATE_LIMITED,
+                    format!("远程后端限流(HTTP 429){}", error_detail(r)),
+                ))
+            }
+            Err(ureq::Error::Status(code, r)) => {
+                return Err(GenError::new(
+                    GEN_BACKEND_ERROR,
+                    format!("远程改图 HTTP {code}{}", error_detail(r)),
+                ))
+            }
+            Err(ureq::Error::Transport(t)) => {
+                return Err(GenError::new(GEN_BACKEND_ERROR, format!("远程后端连接失败: {t}")))
+            }
+        };
+        let doc: Value = serde_json::from_slice(&read_body(resp)?)
+            .map_err(|e| GenError::new(GEN_BACKEND_ERROR, format!("远程响应非 JSON: {e}")))?;
+        let data = doc
+            .get("data")
+            .and_then(Value::as_array)
+            .ok_or_else(|| GenError::new(GEN_BACKEND_ERROR, "远程响应缺 data[]"))?;
+        let mut out = Vec::new();
+        for (i, item) in data.iter().enumerate() {
+            let raw = if let Some(b64) = item.get("b64_json").and_then(Value::as_str) {
+                base64::engine::general_purpose::STANDARD
+                    .decode(b64)
+                    .map_err(|e| GenError::new(GEN_BACKEND_ERROR, format!("b64_json 解码失败: {e}")))?
+            } else if let Some(u) = item.get("url").and_then(Value::as_str) {
+                fetch_url(&agent, u)?
+            } else {
+                return Err(GenError::new(
+                    GEN_BACKEND_ERROR,
+                    format!("远程响应 data[{i}] 无 b64_json/url"),
+                ));
+            };
+            out.push(GenCandidate { png_bytes: as_png(&raw)?, seed: req.seed.wrapping_add(i as u64) });
+        }
+        if out.is_empty() {
+            return Err(GenError::new(GEN_BACKEND_ERROR, "远程响应 data[] 为空"));
+        }
+        Ok(out)
+    }
+}
+
+/// 请求原生尺寸:正方形一律 1024(再本地降采样),横/竖版直出 3:2。
+fn native_size(aspect: Aspect) -> String {
+    let (w, h) = aspect.dims(REMOTE_NATIVE_SIZE);
+    format!("{w}x{h}")
+}
+
+/// 手写 multipart/form-data(无额外依赖;照 media/comfyui_h3.rs 先例)。
+struct Multipart {
+    boundary: String,
+    body: Vec<u8>,
+}
+
+impl Multipart {
+    fn new(salt: u64) -> Self {
+        Multipart { boundary: format!("forge-gend-{salt:016x}"), body: Vec::new() }
+    }
+
+    fn text(&mut self, name: &str, value: &str) {
+        self.body.extend_from_slice(
+            format!(
+                "--{}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n",
+                self.boundary
+            )
+            .as_bytes(),
+        );
+    }
+
+    fn file(&mut self, name: &str, filename: &str, bytes: &[u8]) {
+        self.body.extend_from_slice(
+            format!(
+                "--{}\r\nContent-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: image/png\r\n\r\n",
+                self.boundary
+            )
+            .as_bytes(),
+        );
+        self.body.extend_from_slice(bytes);
+        self.body.extend_from_slice(b"\r\n");
+    }
+
+    fn finish(mut self) -> (String, Vec<u8>) {
+        self.body.extend_from_slice(format!("--{}--\r\n", self.boundary).as_bytes());
+        (format!("multipart/form-data; boundary={}", self.boundary), self.body)
+    }
+}
+
+/// 任意可解码图 → PNG 字节(已是 PNG 原样透传)。
+fn as_png(bytes: &[u8]) -> Result<Vec<u8>> {
+    const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    if bytes.starts_with(&PNG_MAGIC) {
+        return Ok(bytes.to_vec());
+    }
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| GenError::new(GEN_BAD_PARAMS, format!("图片解码失败: {e}")))?;
+    let rgba = img.to_rgba8();
+    crate::mock::encode_png_rgba8(rgba.as_raw(), rgba.width(), rgba.height())
 }
 
 /// 响应体读全(ureq into_reader,无 charset/json 特性依赖)。
@@ -208,18 +363,23 @@ fn error_detail(resp: ureq::Response) -> String {
 
 /// 远程产物归一到调用方要的边长与 PNG 容器(下游 tmpstore/accept 一律按 .png 落盘)。
 /// 已是目标尺寸的 PNG 则原样透传,不做无谓重编码。
+#[cfg(test)]
 fn fit_to_size(bytes: Vec<u8>, size: u32) -> Result<Vec<u8>> {
+    fit_to_dims(bytes, size, size)
+}
+
+fn fit_to_dims(bytes: Vec<u8>, w: u32, h: u32) -> Result<Vec<u8>> {
     const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     let img = image::load_from_memory(&bytes)
         .map_err(|e| GenError::new(GEN_BACKEND_ERROR, format!("远程产物解码失败: {e}")))?;
-    let sized = img.width() == size && img.height() == size;
+    let sized = img.width() == w && img.height() == h;
     if sized && bytes.starts_with(&PNG_MAGIC) {
         return Ok(bytes);
     }
     let img = if sized {
         img
     } else {
-        img.resize_exact(size, size, image::imageops::FilterType::Lanczos3)
+        img.resize_exact(w, h, image::imageops::FilterType::Lanczos3)
     };
     let rgba = img.to_rgba8();
     let mut buf = Vec::new();
@@ -336,7 +496,45 @@ mod tests {
     }
 
     fn req() -> GenRequest {
-        GenRequest { prompt: "p".into(), negative_prompt: None, size: 256, seed: 7, n: 1 }
+        GenRequest::square("p", None, 256, 7, 1)
+    }
+
+    #[test]
+    fn edit_sends_multipart_with_image_mask_and_landscape_size() {
+        let _g = env_lock();
+        std::env::set_var("FORGE_GEN_API_KEY", "sk-test-dummy");
+        let png = crate::mock::encode_png_rgba8(&[9u8; 6 * 4 * 4], 6, 4).unwrap();
+        let (ep, rx) = http_stub_capture("200 OK", b64_body(&png));
+        let cfg = cfg_with_endpoint(&ep);
+        let ks = Keystore::load_from(std::path::Path::new("no-such-ks.json"));
+        let req = EditRequest {
+            prompt: "remove the buttons".into(),
+            images: vec![png.clone()],
+            mask: Some(png.clone()),
+            aspect: Aspect::Landscape,
+            seed: 5,
+            n: 1,
+            quality: Some("high".into()),
+            background: None,
+        };
+        let out = RemoteOpenAi.edit(&req, &cfg, &ks).unwrap();
+        assert_eq!(out.len(), 1);
+        let sent = rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        assert!(sent.contains("name=\"prompt\"\r\n\r\nremove the buttons"), "{sent}");
+        assert!(sent.contains("name=\"size\"\r\n\r\n1536x1024"));
+        assert!(sent.contains("name=\"model\"\r\n\r\ntest-model"));
+        assert!(sent.contains("name=\"quality\"\r\n\r\nhigh"));
+        assert!(sent.contains("name=\"image\"; filename=\"ref0.png\""));
+        assert!(sent.contains("name=\"mask\"; filename=\"mask.png\""));
+        assert!(!sent.contains("background"));
+        std::env::remove_var("FORGE_GEN_API_KEY");
+    }
+
+    #[test]
+    fn capabilities_advertise_img2img_and_aspects() {
+        let caps = RemoteOpenAi.capabilities();
+        assert!(caps["kinds"].as_array().unwrap().iter().any(|k| k == "img2img"));
+        assert_eq!(caps["aspects"].as_array().unwrap().len(), 3);
     }
 
     #[test]

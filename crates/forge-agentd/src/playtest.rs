@@ -1,5 +1,5 @@
 //! F6 wave.1 playtest 工具面(D-F6-A):断言库四类(entity_count / component_field /
-//! transform_near / screenshot_ssim)+ 断言矩阵执行器(经 mcp::call_tool 编排:
+//! transform_near / screenshot_ssim / screenshot_nonblank)+ 断言矩阵执行器(经 mcp::call_tool 编排:
 //! scene_load → camera? → play_enter → play_pause → inputs 注入 → play_step×N →
 //! 逐 case 求值 → play_exit → 结构化报告)。SSIM 自实现(8x8 块亮度统计,确定性 f64)。
 //! 诚实纪律:断言求值内部错误(工具失败/实体缺失)= case fail 如实标红,不中断矩阵;
@@ -34,14 +34,14 @@ pub struct Matrix {
     #[serde(default)]
     pub camera: Option<Value>,
     /// 是否进 PIE(默认 true;纯编辑态断言显式 false)。
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "enterPlay")]
     pub enter_play: bool,
     /// play_enter 后输入注入序列:[{action, value, settle?}]——
     /// 引擎输入队列每逻辑帧取空(578 行语义),故逐条注入 + 各自 settle 步进(缺省 1 帧)。
     #[serde(default)]
     pub inputs: Vec<Value>,
     /// 输入序列结束后的追加 settle 帧数(默认 0;等 tween/触发收尾用)。
-    #[serde(default)]
+    #[serde(default, alias = "settleFrames")]
     pub settle_frames: u32,
     pub cases: Vec<Case>,
 }
@@ -182,7 +182,8 @@ fn compare(op: &str, actual: &Value, expected: &Value) -> Result<bool, String> {
             None => actual != expected,
         }),
         "gt" | "ge" | "lt" | "le" => {
-            let (a, b) = num_pair().ok_or_else(|| format!("op {op} 须数值比较,实: {actual} vs {expected}"))?;
+            let (a, b) = num_pair()
+                .ok_or_else(|| format!("op {op} 须数值比较,实: {actual} vs {expected}"))?;
             Ok(match op {
                 "gt" => a > b,
                 "ge" => a >= b,
@@ -202,7 +203,12 @@ where
 {
     match eval_inner(a, call).await {
         Ok(r) => r,
-        Err(detail) => (false, Value::Null, a.get("expected").cloned().unwrap_or(Value::Null), detail),
+        Err(detail) => (
+            false,
+            Value::Null,
+            a.get("expected").cloned().unwrap_or(Value::Null),
+            detail,
+        ),
     }
 }
 
@@ -220,7 +226,11 @@ where
             let expected = a.get("expected").cloned().unwrap_or(Value::Null);
             let sum = call("mcp__engine-scene__scene_summary".into(), json!({})).await?;
             let actual = sum.get("entityCount").cloned().unwrap_or(Value::Null);
-            let pass = compare(a.get("op").and_then(Value::as_str).unwrap_or("eq"), &actual, &expected)?;
+            let pass = compare(
+                a.get("op").and_then(Value::as_str).unwrap_or("eq"),
+                &actual,
+                &expected,
+            )?;
             Ok((pass, actual, expected, String::new()))
         }
         "component_field" => {
@@ -242,30 +252,70 @@ where
                 .cloned()
                 .ok_or_else(|| format!("字段路径「{field}」在 {ctype} 响应中不存在"))?;
             let expected = a.get("expected").cloned().unwrap_or(Value::Null);
-            let pass = compare(a.get("op").and_then(Value::as_str).unwrap_or("eq"), &actual, &expected)?;
+            let pass = compare(
+                a.get("op").and_then(Value::as_str).unwrap_or("eq"),
+                &actual,
+                &expected,
+            )?;
             Ok((pass, actual, expected, String::new()))
         }
         "transform_near" => {
             let id = resolve_entity(a, call).await?;
-            let t = call("mcp__engine-scene__transform_get".into(), json!({ "id": id })).await?;
+            let t = call(
+                "mcp__engine-scene__transform_get".into(),
+                json!({ "id": id }),
+            )
+            .await?;
             let actual = t
                 .get("translation")
                 .cloned()
                 .ok_or_else(|| "transform_get 响应缺 translation".to_string())?;
-            let expected = a.get("translation").cloned().ok_or_else(|| "transform_near 缺 translation".to_string())?;
-            let tol = a.get("tolerance").and_then(Value::as_f64).unwrap_or(0.1);
-            let aa = actual.as_array().ok_or_else(|| "actual translation 非数组".to_string())?;
-            let ee = expected.as_array().ok_or_else(|| "expected translation 非数组".to_string())?;
+            let expected = a
+                .get("translation")
+                .cloned()
+                .ok_or_else(|| "transform_near 缺 translation".to_string())?;
+            let tol = match a.get("tolerance") {
+                None => 0.1,
+                Some(value) => value.as_f64().filter(|n| n.is_finite() && *n >= 0.0)
+                    .ok_or("transform_near tolerance须为有限非负数")?,
+            };
+            let aa = actual
+                .as_array()
+                .ok_or_else(|| "actual translation 非数组".to_string())?;
+            let ee = expected
+                .as_array()
+                .ok_or_else(|| "expected translation 非数组".to_string())?;
             if aa.len() != 3 || ee.len() != 3 {
-                return Err(format!("translation 须三元组,实: {} vs {}", aa.len(), ee.len()));
+                return Err(format!(
+                    "translation 须三元组,实: {} vs {}",
+                    aa.len(),
+                    ee.len()
+                ));
             }
             let mut max_dev = 0.0f64;
             for i in 0..3 {
-                let d = (aa[i].as_f64().unwrap_or(f64::NAN) - ee[i].as_f64().unwrap_or(f64::NAN)).abs();
+                let actual_value = aa[i].as_f64().filter(|n| n.is_finite()).ok_or("actual translation须为有限数值三元组")?;
+                let expected_value = ee[i].as_f64().filter(|n| n.is_finite()).ok_or("expected translation须为有限数值三元组")?;
+                let d = (actual_value - expected_value).abs();
                 max_dev = max_dev.max(d);
             }
             let pass = max_dev <= tol;
-            Ok((pass, actual, expected, format!("maxDeviation={max_dev:.6}, tolerance={tol}")))
+            Ok((
+                pass,
+                actual,
+                expected,
+                format!("maxDeviation={max_dev:.6}, tolerance={tol}"),
+            ))
+        }
+        "screenshot_nonblank" => {
+            let (w, h, rgba) = capture_rgba(a, call).await?;
+            let first = &rgba[..3];
+            let visible = rgba.chunks_exact(4).filter(|p| p[3] > 0 && &p[..3] != first).count();
+            let minimum = (w * h / 1000).max(1);
+            Ok((visible >= minimum,
+                json!({ "width":w,"height":h,"visiblePixelsDifferentFromBackground":visible }),
+                json!({ "minimumVisiblePixelsDifferentFromBackground":minimum }),
+                "真实视口非空检查；布局、美术和需求符合度仍须reviewer依据回传截图目视审阅".into()))
         }
         "screenshot_ssim" => {
             let golden_rel = a
@@ -273,23 +323,8 @@ where
                 .and_then(Value::as_str)
                 .ok_or_else(|| "screenshot_ssim 缺 golden".to_string())?;
             let threshold = a.get("threshold").and_then(Value::as_f64).unwrap_or(0.98);
-            let w = a.get("width").and_then(Value::as_u64).unwrap_or(960) as u32;
-            let h = a.get("height").and_then(Value::as_u64).unwrap_or(540) as u32;
-            let frame = call(
-                "mcp__engine-scene__viewport_frame".into(),
-                json!({ "width": w, "height": h }),
-            )
-            .await?;
-            let fw = frame.get("width").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let fh = frame.get("height").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let b64 = frame
-                .get("pixelsB64")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "viewport_frame 响应缺 pixelsB64".to_string())?;
-            use base64::Engine as _;
-            let rgba = base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .map_err(|e| format!("pixelsB64 解码失败: {e}"))?;
+            if !(0.0..=1.0).contains(&threshold) { return Err("SSIM threshold须为0..1".into()); }
+            let (fw, fh, rgba) = capture_rgba(a, call).await?;
             // golden:相对路径以 workspace 根为基。
             let golden_path = resolve_workspace_path(golden_rel);
             let golden_img = image::open(&golden_path)
@@ -301,10 +336,60 @@ where
             }
             let score = ssim_luma(&rgba, golden_img.as_raw(), fw, fh);
             let pass = score >= threshold;
-            Ok((pass, json!(score), json!(threshold), format!("ssim={score:.6}, threshold={threshold}")))
+            Ok((
+                pass,
+                json!(score),
+                json!(threshold),
+                format!("ssim={score:.6}, threshold={threshold}"),
+            ))
         }
-        other => Err(format!("未知断言 kind「{other}」(entity_count/component_field/transform_near/screenshot_ssim)")),
+        other => Err(format!(
+            "未知断言 kind「{other}」(entity_count/component_field/transform_near/screenshot_ssim/screenshot_nonblank)"
+        )),
     }
+}
+
+async fn capture_rgba<F, Fut>(a: &Value, call: &mut F) -> Result<(usize, usize, Vec<u8>), String>
+where
+    F: FnMut(String, Value) -> Fut,
+    Fut: std::future::Future<Output = ToolResult>,
+{
+    let dimension = |key: &str, default: u64, maximum: u64| -> Result<usize, String> {
+        let n = match a.get(key) {
+            None => default,
+            Some(v) => v.as_u64().ok_or_else(|| format!("截图{key}须为整数"))?,
+        };
+        if !(8..=maximum).contains(&n) {
+            return Err(format!("截图{key}越界"));
+        }
+        Ok(n as usize)
+    };
+    let (w, h) = (
+        dimension("width", 960, 1920)?,
+        dimension("height", 540, 1080)?,
+    );
+    let frame = call(
+        "mcp__engine-scene__viewport_frame".into(),
+        json!({"width":w,"height":h}),
+    )
+    .await?;
+    if frame["width"].as_u64() != Some(w as u64) || frame["height"].as_u64() != Some(h as u64) {
+        return Err("视口实际尺寸与请求不符".into());
+    }
+    let b64 = frame["pixelsB64"]
+        .as_str()
+        .ok_or("viewport_frame响应缺pixelsB64")?;
+    if b64.len() > 12 * 1024 * 1024 {
+        return Err("视口帧超过限制".into());
+    }
+    use base64::Engine as _;
+    let rgba = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("pixelsB64解码失败: {e}"))?;
+    if rgba.len() != w * h * 4 {
+        return Err("视口RGBA像素长度与尺寸不符".into());
+    }
+    Ok((w, h, rgba))
 }
 
 // ---------- SSIM(8x8 块亮度;C1/C2 标准常数;确定性 f64)----------
@@ -351,7 +436,8 @@ pub fn ssim_luma(a: &[u8], b: &[u8], w: usize, h: usize) -> f64 {
             va /= 64.0;
             vb /= 64.0;
             cov /= 64.0;
-            let s = ((2.0 * ma * mb + C1) * (2.0 * cov + C2)) / ((ma * ma + mb * mb + C1) * (va + vb + C2));
+            let s = ((2.0 * ma * mb + C1) * (2.0 * cov + C2))
+                / ((ma * ma + mb * mb + C1) * (va + vb + C2));
             sum += s;
             n += 1;
             bx += 8;
@@ -372,10 +458,35 @@ where
     F: FnMut(String, Value) -> Fut,
     Fut: std::future::Future<Output = ToolResult>,
 {
+    if m.cases.is_empty() {
+        return Err("矩阵至少需要一条验收断言".into());
+    }
+    // Limit generated input plans before entering play; malformed durations must not hang QA.
+    let mut frames = u64::from(m.settle_frames);
+    if m.inputs.len() > 256 || m.cases.len() > 256 {
+        return Err("矩阵最多 256 条输入和断言".into());
+    }
+    for input in &m.inputs {
+        let settle = match input.get("settle") {
+            None => 1,
+            Some(value) => value
+                .as_u64()
+                .ok_or_else(|| "输入 settle 须为非负整数".to_string())?,
+        };
+        frames = frames
+            .checked_add(settle)
+            .ok_or_else(|| "矩阵推进帧数溢出".to_string())?;
+    }
+    if frames > 3600 {
+        return Err("矩阵最多推进 3600 帧,请拆分测试".into());
+    }
     let t0 = std::time::Instant::now();
-    call("mcp__engine-scene__scene_load".into(), json!({ "path": m.scene }))
-        .await
-        .map_err(|e| format!("scene_load 失败 {}: {e}", m.scene))?;
+    call(
+        "mcp__engine-scene__scene_load".into(),
+        json!({ "path": m.scene }),
+    )
+    .await
+    .map_err(|e| format!("scene_load 失败 {}: {e}", m.scene))?;
     if let Some(cam) = &m.camera {
         call("mcp__engine-scene__viewport_set_camera".into(), cam.clone())
             .await
@@ -383,18 +494,36 @@ where
     }
     let mut results: Vec<CaseResult> = Vec::new();
     if m.enter_play {
-        call("mcp__engine-scene__play_enter".into(), json!({}))
-            .await
-            .map_err(|e| format!("play_enter 失败: {e}"))?;
+        if let Err(error) = call("mcp__engine-scene__play_enter".into(), json!({})).await {
+            // A transport failure can arrive after the engine entered play.
+            let cleanup = call("mcp__engine-scene__play_exit".into(), json!({}))
+                .await
+                .err();
+            return Err(format!(
+                "play_enter 失败: {error}{}",
+                cleanup
+                    .map(|e| format!("; play_exit 失败: {e}"))
+                    .unwrap_or_default()
+            ));
+        }
         // 确定性 settle:暂停后逐条注入 + 各自步进(F4 wave.3 规范序语义;
         // 引擎输入队列每逻辑帧取空,故注入与步进必须交错,不能先全注再统一步进)。
-        let _ = call("mcp__engine-scene__play_pause".into(), json!({})).await;
-        for (i, input) in m.inputs.iter().enumerate() {
-            let settle = input
-                .get("settle")
-                .and_then(Value::as_u64)
-                .unwrap_or(1) as u32;
-            if let Err(e) = call("mcp__engine-scene__logic_inject_input".into(), input.clone()).await {
+        let mut controls_ok = true;
+        if let Err(error) = call("mcp__engine-scene__play_pause".into(), json!({})).await {
+            results.push(control_failure("play_pause", error));
+            controls_ok = false;
+        }
+        'inputs: for (i, input) in m.inputs.iter().enumerate() {
+            if !controls_ok {
+                break;
+            }
+            let settle = input.get("settle").and_then(Value::as_u64).unwrap_or(1) as u32;
+            if let Err(e) = call(
+                "mcp__engine-scene__logic_inject_input".into(),
+                input.clone(),
+            )
+            .await
+            {
                 results.push(CaseResult {
                     name: format!("(inputs[{i}] 注入)"),
                     kind: "inject".into(),
@@ -403,14 +532,26 @@ where
                     expected: input.clone(),
                     detail: e,
                 });
+                controls_ok = false;
+                break;
             }
             for _ in 0..settle {
-                let _ = call("mcp__engine-scene__play_step".into(), json!({})).await;
+                if let Err(error) = call("mcp__engine-scene__play_step".into(), json!({})).await {
+                    results.push(control_failure("play_step", error));
+                    controls_ok = false;
+                    break 'inputs;
+                }
             }
         }
         // 输入序列后的追加 settle(tween/触发收尾)。
         for _ in 0..m.settle_frames {
-            let _ = call("mcp__engine-scene__play_step".into(), json!({})).await;
+            if !controls_ok {
+                break;
+            }
+            if let Err(error) = call("mcp__engine-scene__play_step".into(), json!({})).await {
+                results.push(control_failure("play_step", error));
+                break;
+            }
         }
     }
     for c in &m.cases {
@@ -432,7 +573,9 @@ where
     }
     if m.enter_play {
         // 兜底退出 PIE(编辑态原样恢复;失败不掩盖已得报告)。
-        let _ = call("mcp__engine-scene__play_exit".into(), json!({})).await;
+        if let Err(error) = call("mcp__engine-scene__play_exit".into(), json!({})).await {
+            results.push(control_failure("play_exit", error));
+        }
     }
     let passed = results.iter().filter(|r| r.pass).count();
     let failed = results.len() - passed;
@@ -446,13 +589,26 @@ where
     })
 }
 
+fn control_failure(operation: &str, detail: String) -> CaseResult {
+    CaseResult {
+        name: format!("({operation})"),
+        kind: "lifecycle".into(),
+        pass: false,
+        actual: Value::Null,
+        expected: json!("success"),
+        detail,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
 
     /// 桩调用面:工具全名 → 响应(未 mock 即 Err,如实)。
-    fn stub(map: HashMap<&'static str, Value>) -> impl FnMut(String, Value) -> std::future::Ready<ToolResult> {
+    fn stub(
+        map: HashMap<&'static str, Value>,
+    ) -> impl FnMut(String, Value) -> std::future::Ready<ToolResult> {
         move |tool: String, _args: Value| {
             let r = map.get(tool.as_str()).cloned();
             std::future::ready(r.ok_or_else(|| format!("未 mock 的工具: {tool}")))
@@ -468,13 +624,16 @@ mod tests {
 
     #[tokio::test]
     async fn entity_count_pass_and_fail() {
-        let mut c = stub(HashMap::from([
-            ("mcp__engine-scene__scene_summary", json!({ "name": "s", "entityCount": 2, "playState": "play_paused", "render": {} })),
-        ]));
-        let (pass, actual, ..) = eval_assertion(&json!({ "kind": "entity_count", "expected": 2 }), &mut c).await;
+        let mut c = stub(HashMap::from([(
+            "mcp__engine-scene__scene_summary",
+            json!({ "name": "s", "entityCount": 2, "playState": "play_paused", "render": {} }),
+        )]));
+        let (pass, actual, ..) =
+            eval_assertion(&json!({ "kind": "entity_count", "expected": 2 }), &mut c).await;
         assert!(pass);
         assert_eq!(actual, 2);
-        let (pass2, ..) = eval_assertion(&json!({ "kind": "entity_count", "expected": 5 }), &mut c).await;
+        let (pass2, ..) =
+            eval_assertion(&json!({ "kind": "entity_count", "expected": 5 }), &mut c).await;
         assert!(!pass2);
     }
 
@@ -482,7 +641,10 @@ mod tests {
     async fn component_field_ops_and_paths() {
         let mut c = stub(HashMap::from([
             ("mcp__engine-scene__entity_list", entity_list_fixture()),
-            ("mcp__engine-scene__component_get", json!({ "id": 1, "type": "Script", "props": { "graphRef": "g.rxgraph", "props": { "keys": 1, "speed": 2.5 } } })),
+            (
+                "mcp__engine-scene__component_get",
+                json!({ "id": 1, "type": "Script", "props": { "graphRef": "g.rxgraph", "props": { "keys": 1, "speed": 2.5 } } }),
+            ),
         ]));
         // 嵌套路径 props.props.keys eq 1。
         let (pass, actual, ..) = eval_assertion(
@@ -516,7 +678,10 @@ mod tests {
     async fn transform_near_tolerance() {
         let mut c = stub(HashMap::from([
             ("mcp__engine-scene__entity_list", entity_list_fixture()),
-            ("mcp__engine-scene__transform_get", json!({ "id": 1, "translation": [0.05, 0.5, -0.03], "rotation": [0,0,0,1], "scale": [1,1,1] })),
+            (
+                "mcp__engine-scene__transform_get",
+                json!({ "id": 1, "translation": [0.05, 0.5, -0.03], "rotation": [0,0,0,1], "scale": [1,1,1] }),
+            ),
         ]));
         let (pass, _, _, detail) = eval_assertion(
             &json!({ "kind": "transform_near", "entity": "Player", "translation": [0.0, 0.5, 0.0], "tolerance": 0.1 }),
@@ -529,6 +694,28 @@ mod tests {
         ).await;
         assert!(!pass2, "{detail2}");
         assert!(detail2.contains("maxDeviation"), "{detail2}");
+        for invalid in [
+            json!({"kind":"transform_near","entity":1,"translation":["bad",null,{}]}),
+            json!({"kind":"transform_near","entity":1,"translation":[0,0,0],"tolerance":-1}),
+            json!({"kind":"transform_near","entity":1,"translation":[0,0,0],"tolerance":"wide"}),
+        ] {
+            assert!(
+                !eval_assertion(&invalid, &mut c).await.0,
+                "malformed assertion must fail: {invalid}"
+            );
+        }
+        let mut malformed_engine = stub(HashMap::from([(
+            "mcp__engine-scene__transform_get",
+            json!({"translation":[null,"bad",{}]}),
+        )]));
+        assert!(
+            !eval_assertion(
+                &json!({"kind":"transform_near","entity":1,"translation":[0,0,0]}),
+                &mut malformed_engine
+            )
+            .await
+            .0
+        );
     }
 
     #[test]
@@ -548,7 +735,8 @@ mod tests {
         use base64::Engine as _;
         let (w, h) = (16usize, 16usize);
         let frame_rgba: Vec<u8> = (0..w * h * 4).map(|i| ((i * 7) % 256) as u8).collect();
-        let golden_path = std::env::temp_dir().join(format!("f6-golden-{}.png", std::process::id()));
+        let golden_path =
+            std::env::temp_dir().join(format!("f6-golden-{}.png", std::process::id()));
         image::save_buffer(
             &golden_path,
             &frame_rgba,
@@ -563,15 +751,53 @@ mod tests {
 
         let golden = golden_path.to_string_lossy().replace('\\', "/");
         let a_pass = json!({ "kind": "screenshot_ssim", "golden": golden, "threshold": 0.99, "width": w, "height": h });
-        let mut c1 = stub(HashMap::from([("mcp__engine-scene__viewport_frame", same_frame)]));
+        let mut c1 = stub(HashMap::from([(
+            "mcp__engine-scene__viewport_frame",
+            same_frame,
+        )]));
         let (pass, actual, _, detail) = eval_assertion(&a_pass, &mut c1).await;
         assert!(pass, "同图应过: {detail}");
-        assert!((actual.as_f64().unwrap() - 1.0).abs() < 1e-9, "ssim 须 1.0: {actual}");
+        assert!(
+            (actual.as_f64().unwrap() - 1.0).abs() < 1e-9,
+            "ssim 须 1.0: {actual}"
+        );
 
-        let mut c2 = stub(HashMap::from([("mcp__engine-scene__viewport_frame", diff_frame)]));
+        let mut c2 = stub(HashMap::from([(
+            "mcp__engine-scene__viewport_frame",
+            diff_frame,
+        )]));
         let (pass2, _, _, detail2) = eval_assertion(&a_pass, &mut c2).await;
         assert!(!pass2, "反色图应 FAIL: {detail2}");
         std::fs::remove_file(&golden_path).ok();
+    }
+
+    #[tokio::test]
+    async fn first_visual_check_needs_real_nonblank_pixels_but_no_golden() {
+        use base64::Engine as _;
+        let a = json!({"kind":"screenshot_nonblank","width":16,"height":16});
+        let mut visible = vec![0u8; 16 * 16 * 4];
+        for pixel in visible.chunks_exact_mut(4) {
+            pixel[3] = 255;
+        }
+        visible[4] = 255;
+        let actual = json!({"width":16,"height":16,"pixelsB64":base64::engine::general_purpose::STANDARD.encode(&visible)});
+        let mut call = stub(HashMap::from([(
+            "mcp__engine-scene__viewport_frame",
+            actual.clone(),
+        )]));
+        assert!(eval_assertion(&a, &mut call).await.0);
+        let mut bad_dimension = actual.clone();
+        bad_dimension["width"] = json!(32);
+        let mut missing_pixels = actual.clone();
+        missing_pixels["pixelsB64"] = json!("AA==");
+        let blank = json!({"width":16,"height":16,"pixelsB64":base64::engine::general_purpose::STANDARD.encode(vec![255u8;16*16*4])});
+        for invalid in [bad_dimension, missing_pixels, blank] {
+            let mut call = stub(HashMap::from([(
+                "mcp__engine-scene__viewport_frame",
+                invalid,
+            )]));
+            assert!(!eval_assertion(&a, &mut call).await.0);
+        }
     }
 
     #[tokio::test]
@@ -580,12 +806,27 @@ mod tests {
         let calls2 = calls.clone();
         let map: HashMap<&'static str, Value> = HashMap::from([
             ("mcp__engine-scene__scene_load", json!({ "loaded": true })),
-            ("mcp__engine-scene__play_enter", json!({ "state": "play_running" })),
-            ("mcp__engine-scene__play_pause", json!({ "state": "play_paused" })),
-            ("mcp__engine-scene__logic_inject_input", json!({ "injected": true })),
-            ("mcp__engine-scene__play_step", json!({ "state": "play_paused" })),
+            (
+                "mcp__engine-scene__play_enter",
+                json!({ "state": "play_running" }),
+            ),
+            (
+                "mcp__engine-scene__play_pause",
+                json!({ "state": "play_paused" }),
+            ),
+            (
+                "mcp__engine-scene__logic_inject_input",
+                json!({ "injected": true }),
+            ),
+            (
+                "mcp__engine-scene__play_step",
+                json!({ "state": "play_paused" }),
+            ),
             ("mcp__engine-scene__play_exit", json!({ "state": "edit" })),
-            ("mcp__engine-scene__scene_summary", json!({ "name": "s", "entityCount": 2, "playState": "play_paused", "render": {} })),
+            (
+                "mcp__engine-scene__scene_summary",
+                json!({ "name": "s", "entityCount": 2, "playState": "play_paused", "render": {} }),
+            ),
         ]);
         let mut caller = move |tool: String, _args: Value| {
             calls2.borrow_mut().push(tool.clone());
@@ -599,8 +840,14 @@ mod tests {
             inputs: vec![json!({ "action": "forward", "value": 1.0, "settle": 2 })],
             settle_frames: 3,
             cases: vec![
-                Case { name: "计数过".into(), assert_: json!({ "kind": "entity_count", "expected": 2 }) },
-                Case { name: "计数红".into(), assert_: json!({ "kind": "entity_count", "expected": 9 }) },
+                Case {
+                    name: "计数过".into(),
+                    assert_: json!({ "kind": "entity_count", "expected": 2 }),
+                },
+                Case {
+                    name: "计数红".into(),
+                    assert_: json!({ "kind": "entity_count", "expected": 9 }),
+                },
             ],
         };
         let report = run_matrix(&m, &mut caller).await.expect("矩阵应完成");
@@ -613,11 +860,24 @@ mod tests {
         let find = |pat: &str| seq.iter().position(|t| t == pat).expect(pat);
         assert!(find("mcp__engine-scene__scene_load") < find("mcp__engine-scene__play_enter"));
         assert!(find("mcp__engine-scene__play_enter") < find("mcp__engine-scene__play_pause"));
-        assert!(find("mcp__engine-scene__play_pause") < find("mcp__engine-scene__logic_inject_input"));
-        assert!(find("mcp__engine-scene__logic_inject_input") < find("mcp__engine-scene__play_step"));
-        let steps = seq.iter().filter(|t| *t == "mcp__engine-scene__play_step").count();
-        assert_eq!(steps, 5, "输入 settle=2 + 尾部 settle_frames=3 须 step×5,实 {steps}");
-        let last_summary = seq.iter().rposition(|t| t == "mcp__engine-scene__scene_summary").unwrap();
+        assert!(
+            find("mcp__engine-scene__play_pause") < find("mcp__engine-scene__logic_inject_input")
+        );
+        assert!(
+            find("mcp__engine-scene__logic_inject_input") < find("mcp__engine-scene__play_step")
+        );
+        let steps = seq
+            .iter()
+            .filter(|t| *t == "mcp__engine-scene__play_step")
+            .count();
+        assert_eq!(
+            steps, 5,
+            "输入 settle=2 + 尾部 settle_frames=3 须 step×5,实 {steps}"
+        );
+        let last_summary = seq
+            .iter()
+            .rposition(|t| t == "mcp__engine-scene__scene_summary")
+            .unwrap();
         let exit_pos = find("mcp__engine-scene__play_exit");
         assert!(last_summary < exit_pos, "play_exit 须在最后: {seq:?}");
         // 报告 JSON 面。
@@ -629,13 +889,81 @@ mod tests {
     #[test]
     fn unwrap_envelope_paths() {
         // isError → Err 如实。
-        let err = unwrap_envelope(&json!({ "isError": true, "content": [{ "type": "text", "text": "{\"error\":\"X\"}" }] }));
+        let err = unwrap_envelope(
+            &json!({ "isError": true, "content": [{ "type": "text", "text": "{\"error\":\"X\"}" }] }),
+        );
         assert!(err.is_err());
         // content text JSON 二次解析。
-        let ok = unwrap_envelope(&json!({ "content": [{ "type": "text", "text": "{\"a\":1}" }] })).unwrap();
+        let ok = unwrap_envelope(&json!({ "content": [{ "type": "text", "text": "{\"a\":1}" }] }))
+            .unwrap();
         assert_eq!(ok["a"], 1);
         // structuredContent 退化。
         let sc = unwrap_envelope(&json!({ "structuredContent": { "b": 2 } })).unwrap();
         assert_eq!(sc["b"], 2);
+    }
+
+    #[test]
+    fn matrix_accepts_camel_case_and_legacy_names() {
+        for input in [
+            json!({"scene":"x", "enterPlay":false, "settleFrames":9, "cases":[]}),
+            json!({"scene":"x", "enter_play":false, "settle_frames":9, "cases":[]}),
+        ] {
+            let matrix: Matrix = serde_json::from_value(input).unwrap();
+            assert!(!matrix.enter_play);
+            assert_eq!(matrix.settle_frames, 9);
+        }
+    }
+
+    #[tokio::test]
+    async fn lifecycle_failures_are_red_and_always_attempt_exit() {
+        for failing in ["play_enter", "play_pause", "play_step", "play_exit"] {
+            let calls = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+            let seen = calls.clone();
+            let mut caller = move |tool: String, _: Value| {
+                seen.borrow_mut().push(tool.clone());
+                let result = if tool == format!("mcp__engine-scene__{failing}") {
+                    Err(format!("{failing} unavailable"))
+                } else {
+                    Ok(json!({"entityCount":2}))
+                };
+                std::future::ready(result)
+            };
+            let matrix: Matrix = serde_json::from_value(json!({"scene":"x", "settleFrames":1,
+                "cases":[{"name":"count","assert":{"kind":"entity_count","expected":2}}]}))
+            .unwrap();
+            let report = run_matrix(&matrix, &mut caller).await;
+            if failing == "play_enter" {
+                assert!(report.is_err());
+            } else {
+                let report = report.unwrap();
+                assert!(
+                    !report.ok,
+                    "{failing} cannot be hidden by passing assertions"
+                );
+                assert!(report
+                    .cases
+                    .iter()
+                    .any(|case| case.kind == "lifecycle" && !case.pass));
+            }
+            assert_eq!(
+                calls.borrow().last().unwrap(),
+                "mcp__engine-scene__play_exit"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_and_excessive_matrices_fail_before_touching_the_engine() {
+        for value in [
+            json!({"scene":"x","cases":[]}),
+            json!({"scene":"x","settleFrames":3601,"cases":[{"name":"x","assert":{}}]}),
+            json!({"scene":"x","inputs":[{"settle":-1}],"cases":[{"name":"x","assert":{}}]}),
+        ] {
+            let matrix: Matrix = serde_json::from_value(value).unwrap();
+            let mut caller = |_: String, _: Value| -> std::future::Ready<ToolResult> {
+                panic!("engine must not be called")
+            };
+            assert!(run_matrix(&matrix, &mut caller).await.is_err());
+        }
     }
 }

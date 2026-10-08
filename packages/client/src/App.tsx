@@ -6,6 +6,14 @@ import { useSessionStore } from './lib/sessionStore';
 import { useSettingsStore, type SettingsPage } from './lib/settingsStore';
 import { useThemeStore, type ThemeMode } from './lib/themeStore';
 import { useWorkbenchStore, type BuiltinTabKind } from './lib/workbenchStore';
+import { useBlenderSync } from './lib/useBlenderSync';
+import { useAccountStore } from './lib/accountStore';
+import { useAccountRuntime } from './lib/accountRuntime';
+import AuthScreen from './components/account/AuthScreen';
+import CodeSentinelsCards from './views/CodeSentinelsCards';
+import CodeSentinelsCommand from './views/CodeSentinelsCommand';
+import CommandLobby from './components/game/CommandLobby';
+import CodeSentinelsV6 from './views/CodeSentinelsV6';
 
 /**
  * F7 wave.3:App = 新壳(titlebar/三栏/statusbar + 浮层)。
@@ -13,6 +21,16 @@ import { useWorkbenchStore, type BuiltinTabKind } from './lib/workbenchStore';
  * 主题初始化在 main.tsx(initTheme,首帧前注入 CSS 变量)。
  */
 export default function App() {
+  const query = new URLSearchParams(window.location.search);
+  if (query.get('play') !== 'code-sentinels') return <EditorApp />;
+  if (query.get('version') === '6') return <CodeSentinelsV6 />;
+  if (query.get('lobby') === '1') return <CommandLobby />;
+  return query.get('version') === '3' ? <CodeSentinelsCards /> : <CodeSentinelsCommand version={query.get('version') === '4' ? 4 : 5} />;
+}
+
+function EditorApp() {
+  useBlenderSync();
+  useAccountRuntime();
   // desktop 冒烟 seam(F7 wave.3):window.__forgeShell 暴露最小 action 面,
   // 供 apps/desktop main.cjs 冒烟场景 executeJavaScript 驱动(开编辑器 tab /
   // 主题切换 / 建会话)。与 F5 gen 冒烟的 data-* 选择器同级,属调试 seam。
@@ -38,6 +56,7 @@ export default function App() {
         sessions: useSessionStore,
         chat: useChatStore,
         settings: useSettingsStore,
+        account: useAccountStore,
       },
     };
     return () => {
@@ -45,5 +64,10 @@ export default function App() {
     };
   }, []);
 
-  return <Shell />;
+  return (
+    <>
+      <Shell />
+      <AuthScreen />
+    </>
+  );
 }

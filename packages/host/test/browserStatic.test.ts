@@ -98,6 +98,21 @@ describe('host 静态托管浏览器直开兼容(F8 wave.3)', () => {
     const buf = Buffer.from(await res.arrayBuffer());
     expect(buf).toEqual(Buffer.from([0, 1, 2, 3]));
   });
+
+  it("D-044:静态托管响应带 CSP frame-ancestors 'none'(应用壳不可被 Demo iframe 框住),且只此一条指令", async () => {
+    for (const p of ['/', '/index.html', '/some/spa/route', '/u/0123abcd/', '/assets/app-abc123.js']) {
+      const res = await fetch(`${base}${p}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      expect(res.headers.get('x-frame-options')).toBeNull();
+      await res.arrayBuffer();
+    }
+    // 非 GET 落到 serveStatic 的 host 自写 404,同样带头。
+    const post = await fetch(`${base}/`, { method: 'POST' });
+    expect(post.status).toBe(404);
+    expect(post.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+    await post.arrayBuffer();
+  });
 });
 
 describe('host SSE 透传浏览器兼容(F8 wave.3)', () => {
@@ -110,6 +125,7 @@ describe('host SSE 透传浏览器兼容(F8 wave.3)', () => {
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     expect(res.headers.get('cache-control')).toBe('no-cache');
     expect(res.headers.get('x-accel-buffering')).toBe('no');
+    expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
 
     // 首块即为上游 keep-alive 注释行(流式,不等整包)
     const reader = res.body!.getReader();

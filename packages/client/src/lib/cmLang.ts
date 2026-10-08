@@ -40,6 +40,7 @@ export function langIdForPath(path: string): CmLangId | null {
     case 'rxscene':
     case 'rxgraph':
     case 'rxmat':
+    case 'rxshadergraph':
     case 'meta':
       return 'json';
     case 'md':

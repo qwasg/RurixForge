@@ -1,0 +1,24 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [
+      {"role": "user", "content": "Weather in Paris and Tokyo?"},
+      {"role": "assistant", "content": "Checking.", "tool_calls": [
+        {"id": "call:1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\": \"Paris\"}"}},
+        {"id": "call_2", "type": "function", "function": {"name": "get_weather", "arguments": "not json"}},
+        {"id": "call_3", "type": "function", "function": {"name": "get_time", "arguments": ""}}
+      ]},
+      {"role": "tool", "tool_call_id": "call:1", "content": "18°C"},
+      {"role": "tool", "tool_call_id": "call_2", "content": [{"type": "text", "text": "error: bad args"}]},
+      {"role": "tool", "tool_call_id": "call_3", "content": ""},
+      {"role": "user", "content": "Also summarize."}
+    ],
+    "tools": [
+      {"type": "function", "function": {"name": "get_weather", "description": "Weather", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}},
+      {"type": "function", "function": {"name": "get_time"}}
+    ],
+    "tool_choice": "required",
+    "parallel_tool_calls": false
+  }
+}

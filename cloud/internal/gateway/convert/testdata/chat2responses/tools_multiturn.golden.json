@@ -1,0 +1,110 @@
+{
+  "model": "gpt-5",
+  "instructions": "Use tools when needed.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Weather in Paris and the time in Tokyo?"
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Let me check both."
+        }
+      ]
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_a",
+      "name": "get_weather",
+      "arguments": "{\"city\":\"Paris\"}"
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_b",
+      "name": "get_time",
+      "arguments": "{}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_a",
+      "output": "18°C, cloudy"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_b",
+      "output": "09:30 JST"
+    },
+    {
+      "type": "function_call",
+      "call_id": "call_c",
+      "name": "get_weather",
+      "arguments": "{\"city\":\"Tokyo\"}"
+    },
+    {
+      "type": "function_call_output",
+      "call_id": "call_c",
+      "output": "22°C, sunny"
+    },
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Paris: 18°C cloudy. Tokyo: 09:30, 22°C sunny."
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Thanks!"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "name": "get_weather",
+      "description": "Get current weather",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "name": "get_time",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      },
+      "strict": false
+    }
+  ],
+  "tool_choice": "auto",
+  "parallel_tool_calls": true,
+  "stream": true
+}

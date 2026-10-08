@@ -1,0 +1,26 @@
+guid: 548d6d69-9d78-4b30-88e3-b89f498aebc1
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T11:52:03Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b459-132c-75e0-8299-df9e7bd354cc
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b459-132c-75e0-8299-df9e7bd354cc/output/preview.png?Expires=1789991515&Signature=ErCQ30ew5V8gOEzarPVWI-wE7wqvqyseh3JouFWRkVsuEljcD6MxQpuX7Hm1J2a7XXbXxXaIP5BWKY7yC0LcNnLt6j0y4tjz7lQlWQ0TLY3OrgijxkKFqh0gESDO88QElQ9xVzQfBGcePb5IWTg0TZDfrYObZAEGnCUSbC89a9avBmN5MyPFbSCoCNHQ9RX8fbujNXuQDYq5AITKG-xFULtvLJLhQSrnNC8YiS~zBHi~7yB0qmTZ7cHXkSa~j94~PKuotCiMHWE6IOG3sICxN8KYGyrKrwYEeggQ1LsHGPTtJ42DduvNB544fvggkU~4fy6vx7ddD6T42jmXN25HGQ__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: 'Tier-1 autocannon defense turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with a brass identification bar, pale titanium side armor modules, single kinetic autocannon barrel with dark muzzle brake, amber sensor dome. Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.'
+build_state: current

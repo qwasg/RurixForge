@@ -1,0 +1,17 @@
+{
+  "name": "graycard_mesh",
+  "project": "models",
+  "doc": "entities[] 是 entity.create 的参数;idMod8 = k:先不带组件建实体,id % 8 != k 就再建(不挂组件),满足后逐个 component.add;props 里 \"@名字\" = 同配方先建的同名实体 id。 MeshRenderer.material 是必填字段,空串 = 走 id 调色板(id % 8 == 6 → [0.60,0.60,0.66])。",
+  "entities": [
+    {"name": "card-0", "translation": [-2.0, 0.0, 0.0], "rotation": [-0.494464, 0.278136, 0.0, 0.823496], "scale": [0.8, 0.8, 0.8], "components": [{"type": "MeshRenderer", "enabled": true, "props": {"mesh": "cube", "material": ""}}], "idMod8": 6},
+    {"name": "card-1", "translation": [-1.0, 0.0, 0.0], "rotation": [-0.242121, 0.136193, 0.0, 0.96064], "scale": [0.8, 0.8, 0.8], "components": [{"type": "MeshRenderer", "enabled": true, "props": {"mesh": "cube", "material": ""}}], "idMod8": 6},
+    {"name": "card-2", "translation": [0.0, 0.0, 0.0], "rotation": [-0.12128, 0.06822, 0.0, 0.990271], "scale": [0.8, 0.8, 0.8], "components": [{"type": "MeshRenderer", "enabled": true, "props": {"mesh": "cube", "material": ""}}], "idMod8": 6},
+    {"name": "card-3", "translation": [1.0, 0.0, 0.0], "rotation": [-0.020577, 0.011574, 0.0, 0.999721], "scale": [0.8, 0.8, 0.8], "components": [{"type": "MeshRenderer", "enabled": true, "props": {"mesh": "cube", "material": ""}}], "idMod8": 6},
+    {"name": "card-4", "translation": [2.0, 0.0, 0.0], "rotation": [0.070927, -0.039897, 0.0, 0.996683], "scale": [0.8, 0.8, 0.8], "components": [{"type": "MeshRenderer", "enabled": true, "props": {"mesh": "cube", "material": ""}}], "idMod8": 6}
+  ],
+  "camera": {"target": [0.0, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0, "dist": 10.0, "ortho": true, "orthoSize": 1.5},
+  "width": 640,
+  "height": 360,
+  "probes": [[80, 180], [200, 180], [320, 180], [440, 180], [560, 180]],
+  "probeLabels": ["NdotL=1.0", "NdotL=0.8", "NdotL=0.6", "NdotL=0.4", "NdotL=0.2"]
+}

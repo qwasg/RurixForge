@@ -1,0 +1,13 @@
+{
+  "name": "anim",
+  "project": "models",
+  "entities": [
+    {"name": "walk-0.5", "translation": [-1.5, -0.5, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/skinned.rxmodel"}}, {"type": "Animator", "enabled": true, "props": {"clip": "walk", "time": 0.5}}]},
+    {"name": "walk-1.5", "translation": [1.0, -0.5, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/skinned.rxmodel"}}, {"type": "Animator", "enabled": true, "props": {"clip": "walk", "time": 1.5}}]}
+  ],
+  "camera": {"target": [0.25, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0, "dist": 5.0, "fovY": 50.0, "ortho": false},
+  "width": 640,
+  "height": 360,
+  "probes": [[204, 219], [223, 141], [436, 219], [455, 141]],
+  "probeLabels": ["t0.5.skinned", "t0.5.prop", "t1.5.skinned", "t1.5.prop"]
+}

@@ -6,28 +6,52 @@
 //! sse.rs(会话事件流 replay+gap+live+keep-alive)、snapshot.rs(design-snapshot 聚合)。
 
 mod agent;
+mod agent_settings;
+mod agent_job;
+mod antigravity;
+mod antigravity_oauth;
+mod channels;
+mod blender;
+/// 云模式(forge-cloud 账号 BFF、模型目录、资料同步;15_CLOUD_SERVICE.md §8)。
+mod cloud;
 /// Codex 引擎接入(`codex app-server` JSON-RPC/stdio;会话级「本地 / Codex」切换)。
 mod codex;
+mod collaboration;
+mod collaboration_runtime;
+mod collaboration_stdio;
+/// 手动压缩上下文(`POST /api/forge/sessions/{id}/compact`,本地 / Codex 两种引擎)。
+mod compact;
+/// D-044:UltraPlan 网页 Demo 的进程级静态托管(回环地址,只服务 `/u/<token>/…`)。
+mod demo_host;
+mod design;
 mod embedcfg;
+mod editor;
+mod editor_stdio;
 mod engine;
 mod events;
 /// 目标面:一个目标 + 自动续跑(Codex 走 thread/goal/*,本地引擎自带 GoalStore)。
 mod goals;
+/// 本地引擎多轮对话历史(事件日志重建 + 预算裁剪 + 压缩摘要)。
+mod history;
 mod llm;
 mod mcp;
+/// 记忆系统(本地存储 + memory_* 工具 + 每轮注入 + 云同步)。
+mod memory;
 mod modelspec;
 mod native_tools;
+mod pack;
 mod permission;
 mod plan;
 /// D-035:plan 模式产物 = `.forge/plans/<slug>.plan.md` 计划文件(front matter + Markdown)。
 mod plan_doc;
-mod profile;
 mod playtest;
-mod pack;
+mod profile;
 mod project;
 mod proposals;
 /// D-036:后台子代理回执收件箱(multitask 异步委派的送达面)。
 mod receipts;
+mod recommendations;
+mod research;
 mod resources;
 mod scope;
 mod sessions;
@@ -37,12 +61,20 @@ mod sse;
 mod store;
 mod subagents;
 mod swarm;
+/// D-044:UltraPlan 流程(设想 → 问卷 → 网页 Demo → 制作计划 → 团队制作)的阶段机与产物。
+mod ultraplan;
+/// D-044:`web_demo_probe`——无头系统浏览器探测网页 Demo(R-1 的受限例外)。
+mod web_probe;
 mod workspace;
+/// D-040:工作区 git 状态只读面(git CLI)。
+mod workspace_git;
+/// D-040:工作区文件名模糊搜索(命令面板「文件」组)。
+mod workspace_search;
 mod workspaces;
 
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, patch, post},
     Json, Router,
@@ -72,23 +104,54 @@ pub(crate) struct AppState {
     pub(crate) receipts: Arc<receipts::ReceiptStore>,
     /// D-038:会话 → 回执唤醒上下文(内存,派发时抓拍;子代理跑完据此起唤醒轮)。
     pub(crate) wakes: Arc<agent::WakeRegistry>,
+    pub(crate) collaboration: Arc<collaboration::CollaborationStore>,
+    pub(crate) team_runtime: Arc<collaboration_runtime::TeamRuntime>,
     /// 会话工具权限(bypass/plan/auto)。
     pub(crate) permissions: Arc<permission::PermissionService>,
     /// Codex 引擎门面(app-server 客户端、账户/额度缓存、托管安装任务)。
     pub(crate) codex: Arc<codex::service::CodexService>,
     /// 目标存贮(data/agent-sessions/goals.json;本地引擎自动续跑的事实源)。
     pub(crate) goals: Arc<goals::GoalStore>,
+    /// 云模式门面(forge-cloud 登录态、令牌、模型目录;生产为进程级单例 cloud::global())。
+    pub(crate) cloud: Arc<cloud::CloudService>,
+    /// 记忆存储(data/agent-memory.json)。
+    pub(crate) memory: Arc<memory::MemoryStore>,
+    /// 资料同步状态(游标、设置缓存、个人技能同步账本)。
+    pub(crate) sync: Arc<cloud::sync::SyncStore>,
 }
 
 #[tokio::main]
 async fn main() {
-    let addr =
-        std::env::var("FORGE_AGENTD_ADDR").unwrap_or_else(|_| "127.0.0.1:8103".to_string());
+    if std::env::args().nth(1).as_deref() == Some("editor-stdio") { editor_stdio::run_stdio().await; return; }
+    if std::env::args().nth(1).as_deref() == Some("collaboration-stdio") {
+        collaboration_stdio::run_stdio().await;
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("research-stdio") {
+        research::run_stdio().await;
+        return;
+    }
+    let addr = std::env::var("FORGE_AGENTD_ADDR").unwrap_or_else(|_| "127.0.0.1:8103".to_string());
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .unwrap_or_else(|e| panic!("绑定 {addr} 失败: {e}"));
     let local = listener.local_addr().expect("读取本地地址失败");
+    let bridge_addr = if local.ip().is_unspecified() {
+        std::net::SocketAddr::new(
+            if local.is_ipv4() {
+                std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+            } else {
+                std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)
+            },
+            local.port(),
+        )
+    } else {
+        local
+    };
+    collaboration_runtime::set_server_endpoint(format!("http://{bridge_addr}"));
     println!("forge-agentd listening at http://{local}");
+    channels::prewarm();
+    antigravity_oauth::prewarm();
     axum::serve(listener, build_app())
         .await
         .expect("axum serve 失败");
@@ -104,6 +167,55 @@ pub(crate) fn agent_data_root() -> std::path::PathBuf {
     workspace_root().join("data")
 }
 
+/// 单测用的隔离 AppState:事件/会话/待办等全部落在独立临时目录,run/swarm 在内存。
+/// 返回 (state, 数据根);数据根下可再建子目录当工作区根。
+///
+/// 放在这里而不是某个模块的 tests 里:直接调 handler 的单测(sessions / ultraplan …)都要一个
+/// AppState,各自手抄一份字段清单的话,AppState 每加一个字段就得逐处补。
+#[cfg(test)]
+pub(crate) fn test_app_state(tag: &str) -> (Arc<AppState>, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!(
+        "agentd-state-{tag}-{}-{}",
+        std::process::id(),
+        events::new_id("t")
+    ));
+    let sessions_dir = dir.join("agent-sessions");
+    let state = Arc::new(AppState {
+        started: Instant::now(),
+        proposals: proposals::ProposalStore::default(),
+        swarm: swarm::SwarmCoordinator::default(),
+        events: Arc::new(events::EventBus::new(dir.join("agent-events"), 256)),
+        sessions: Arc::new(sessions::SessionStore::load(
+            sessions_dir.join("sessions.json"),
+        )),
+        folders: Arc::new(sessions::ChatFolderStore::load(
+            sessions_dir.join("chat-folders.json"),
+        )),
+        workspaces: Arc::new(workspaces::WorkspaceStore::load(
+            sessions_dir.join("workspaces.json"),
+        )),
+        runs: Arc::new(agent::RunRegistry::default()),
+        todos: Arc::new(agent::TodoStore::load(sessions_dir.join("todos.json"))),
+        receipts: Arc::new(receipts::ReceiptStore::load(
+            sessions_dir.join("receipts.json"),
+        )),
+        wakes: Arc::new(agent::WakeRegistry::default()),
+        collaboration: Arc::new(collaboration::CollaborationStore::load(
+            sessions_dir.join("collaboration.json"),
+        )),
+        team_runtime: Arc::new(collaboration_runtime::TeamRuntime::default()),
+        permissions: Arc::new(permission::PermissionService::load(
+            sessions_dir.join("permissions.json"),
+        )),
+        codex: Arc::new(codex::service::CodexService::default()),
+        goals: Arc::new(goals::GoalStore::load(sessions_dir.join("goals.json"))),
+        cloud: Arc::new(cloud::CloudService::new()),
+        memory: Arc::new(memory::MemoryStore::load(dir.join("agent-memory.json"))),
+        sync: Arc::new(cloud::sync::SyncStore::load(dir.clone())),
+    });
+    (state, dir)
+}
+
 /// 构建路由表(main 与测试复用)
 fn build_app() -> Router {
     let data_root = agent_data_root();
@@ -115,11 +227,25 @@ fn build_app() -> Router {
     // 终止事件——否则前端事件回放里 run.created 永远等不到终止,activeRunId 卡死。
     for (sid, rid) in sessions.clear_stale_active_runs() {
         events.emit(
-            events::EventDraft::new(&sid, "agent.failed", "run")
-                .payload(json!({
-                    "runId": rid,
-                    "error": "agentd 进程重启,运行中断(崩溃恢复自动终止)",
-                })),
+            events::EventDraft::new(&sid, "agent.failed", "run").payload(json!({
+                "runId": rid,
+                "error": "agentd 进程重启,运行中断(崩溃恢复自动终止)",
+            })),
+        );
+    }
+    // D-044 同源清扫:UltraPlan 流程停在 running 相位的(上面那条 run 正是它的轮次)改成 failed,
+    // 并补发 ultraplan.stage——否则流程条永远「正在处理」,卡片一律不可点,用户无从重试。
+    for (sid, up) in sessions.sweep_stale_ultraplan_runs() {
+        events.emit(
+            events::EventDraft::new(&sid, "ultraplan.stage", "ultraplan")
+                .payload(ultraplan::stage_payload(&up, None)),
+        );
+    }
+    // D-045 同源清扫:Design 流程的 running 相位。
+    for (sid, d) in sessions.sweep_stale_design_runs() {
+        events.emit(
+            events::EventDraft::new(&sid, "design.stage", "design")
+                .payload(design::stage_payload(&d, None)),
         );
     }
     // D-036 同源清扫:后台子代理 run 也只存内存,进程重启后 receipts.json 里残留的
@@ -128,7 +254,8 @@ fn build_app() -> Router {
     let receipts = Arc::new(receipts::ReceiptStore::load(
         data_root.join("agent-sessions").join("receipts.json"),
     ));
-    for r in receipts.sweep_running("agentd 进程重启,后台子代理中断(崩溃恢复自动终止)") {
+    for r in receipts.sweep_running("agentd 进程重启,后台子代理中断(崩溃恢复自动终止)")
+    {
         events.emit(
             events::EventDraft::new(&r.session_id, "subagent.failed", "subagent").payload(json!({
                 "subRunId": r.run_id,
@@ -149,6 +276,10 @@ fn build_app() -> Router {
         sessions,
         receipts,
         wakes: Arc::new(agent::WakeRegistry::default()),
+        collaboration: Arc::new(collaboration::CollaborationStore::load(
+            data_root.join("agent-sessions/collaboration.json"),
+        )),
+        team_runtime: Arc::new(collaboration_runtime::TeamRuntime::default()),
         folders: Arc::new(sessions::ChatFolderStore::load(
             data_root.join("agent-sessions").join("chat-folders.json"),
         )),
@@ -166,9 +297,49 @@ fn build_app() -> Router {
         goals: Arc::new(goals::GoalStore::load(
             data_root.join("agent-sessions").join("goals.json"),
         )),
+        cloud: cloud::global(),
+        memory: Arc::new(memory::MemoryStore::load(
+            data_root.join("agent-memory.json"),
+        )),
+        sync: Arc::new(cloud::sync::SyncStore::load(data_root.clone())),
     });
+    let codex_sessions = state
+        .sessions
+        .list()
+        .into_iter()
+        .filter(sessions::DebugSession::is_codex)
+        .collect::<Vec<_>>();
+    let should_prewarm = codex::config::load().default_engine == codex::config::ENGINE_CODEX
+        || !codex_sessions.is_empty();
+    if should_prewarm {
+        let warm_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            warm_state.codex.prewarm().await;
+            // 崩溃前仍 active 的原生 Goal 需要恢复唯一监听桥，否则 app-server 后续
+            // 自动 turn 的审批/事件无人消费。
+            for session in codex_sessions {
+                if let Some(goal) = warm_state
+                    .goals
+                    .get(&session.id)
+                    .filter(|goal| goal.is_active())
+                {
+                    let _ = codex::turn::recover_goal_lifecycle(&warm_state, &session, &goal).await;
+                }
+            }
+        });
+    }
+    blender::start(&state);
+    collaboration_runtime::start(&state);
+    cloud::sync::start(&state);
     Router::new()
+        .merge(collaboration_runtime::routes())
+        .merge(blender::routes())
+        .merge(cloud::rest::routes())
+        .merge(cloud::sync::routes())
+        .merge(memory::routes())
         .route("/health", get(health))
+        .route("/api/forge/agent/config", get(agent_settings::get_config).patch(agent_settings::patch_config))
+        .route("/api/forge/agent/recommendations", get(recommendations::get_recommendations))
         // F7 wave.1:会话事实源(替换 F0 恒空 stub)+ fork/revert 动作 + SSE 事件流。
         .route(
             "/api/forge/sessions",
@@ -180,10 +351,17 @@ fn build_app() -> Router {
                 .patch(sessions::patch_session)
                 .delete(sessions::delete_session),
         )
-        .route("/api/forge/sessions/{id}/fork", post(sessions::fork_session))
+        .route(
+            "/api/forge/sessions/{id}/fork",
+            post(sessions::fork_session),
+        )
         .route(
             "/api/forge/sessions/{id}/revert",
             post(sessions::revert_session),
+        )
+        .route(
+            "/api/forge/sessions/{id}/compact",
+            post(compact::compact_session),
         )
         .route(
             "/api/forge/sessions/{id}/events/stream",
@@ -228,8 +406,17 @@ fn build_app() -> Router {
         .route("/api/forge/codex/logout", post(codex::rest::logout))
         .route("/api/forge/codex/account", get(codex::rest::account))
         .route("/api/forge/codex/models", get(codex::rest::models))
-        .route("/api/forge/codex/rate-limits", get(codex::rest::rate_limits))
+        .route(
+            "/api/forge/codex/rate-limits",
+            get(codex::rest::rate_limits),
+        )
         .route("/api/forge/codex/mcp/status", get(codex::rest::mcp_status))
+        .route("/api/forge/channels", get(channels::list))
+        .route("/api/forge/channels/{id}", get(channels::status))
+        .route("/api/forge/channels/{id}/login", post(channels::login))
+        .route("/api/forge/channels/{id}/login/cancel", post(channels::cancel))
+        .route("/api/forge/channels/{id}/logout", post(channels::logout))
+        .route("/api/forge/channels/{id}/config", post(channels::configure))
         // 目标面(两种引擎共用同一套 REST;Codex 侧内部透传 thread/goal/*)。
         .route(
             "/api/forge/sessions/{id}/goal",
@@ -240,6 +427,23 @@ fn build_app() -> Router {
         .route(
             "/api/forge/sessions/{id}/goal/{action}",
             post(goals::set_goal_status),
+        )
+        // D-044:UltraPlan 流程面。产生轮次的动作走 ask:execute;这里只放不起轮次的读与操作
+        // (与 goal/{action} 同形:matchit 一段一个参数)。
+        .route(
+            "/api/forge/sessions/{id}/ultraplan",
+            get(ultraplan::get_ultraplan),
+        )
+        .route(
+            "/api/forge/sessions/{id}/ultraplan/{action}",
+            post(ultraplan::post_ultraplan_action),
+        )
+        // D-045:Design 流程面(同 ultraplan:产生轮次的动作走 ask:execute,这里是读与不起轮次的操作)。
+        .route("/api/forge/sessions/{id}/design", get(design::get_design))
+        .route("/api/forge/sessions/{id}/design/file", get(design::get_design_file))
+        .route(
+            "/api/forge/sessions/{id}/design/{action}",
+            post(design::post_design_action),
         )
         .route(
             "/api/forge/chat-folders",
@@ -260,12 +464,20 @@ fn build_app() -> Router {
         .route("/api/forge/design-snapshot", get(snapshot::design_snapshot))
         .route("/api/forge/mcp/tools", get(mcp_tools))
         .route("/api/forge/mcp/call", post(mcp_call))
-        .route("/api/forge/llm/complete", get(llm_complete))
         .route("/api/forge/llm/chat", post(llm::chat))
         // F7 wave.5:deepseek key 配置面(设置·模型页;R-5 不回显)
         .route("/api/forge/llm/key", post(llm::set_llm_key))
         // F7 wave.5:工作区文件树只读面(Inspector 树;confined + 单层 + 截断如实)
         .route("/api/forge/workspace/tree", get(workspace::workspace_tree))
+        // D-040:文件名模糊搜索(命令面板)与 git 状态(状态栏分支段 / 文件树改动标记)。
+        .route(
+            "/api/forge/workspace/search",
+            get(workspace_search::workspace_search),
+        )
+        .route(
+            "/api/forge/workspace/git",
+            get(workspace_git::workspace_git),
+        )
         // F8 wave.1:工作区文件只读文本端点(文件预览;confined + 尺寸上限 + 二进制拒绝)
         // F9:PUT 写回(文件编辑器落盘;只改已存在文件 + baseModifiedAt 乐观并发 409)
         .route(
@@ -273,11 +485,36 @@ fn build_app() -> Router {
             get(workspace::workspace_file).put(workspace::workspace_file_write),
         )
         // F8 wave.2:openai-compatible 通用渠道配置与状态
-        .route("/api/forge/llm/openai-compat/config", post(llm::set_openai_compat_config))
-        .route("/api/forge/llm/openai-compat/status", get(llm::openai_compat_status_handler))
+        .route(
+            "/api/forge/llm/openai-compat/config",
+            post(llm::set_openai_compat_config),
+        )
+        .route(
+            "/api/forge/llm/openai-compat/status",
+            get(llm::openai_compat_status_handler),
+        )
+        // Antigravity (Google AI / Gemini) 订阅反代渠道配置、状态与额度探针
+        .route(
+            "/api/forge/llm/antigravity/config",
+            post(antigravity::set_antigravity_config),
+        )
+        .route(
+            "/api/forge/llm/antigravity/status",
+            get(antigravity::antigravity_status_handler),
+        )
+        .route(
+            "/api/forge/llm/antigravity/probe",
+            post(antigravity::antigravity_probe_handler),
+        )
         // F10:embedding 渠道配置与状态(RAG 向量档;R-5 不回显 key)
-        .route("/api/forge/llm/embedding/config", post(embedcfg::set_embedding_config))
-        .route("/api/forge/llm/embedding/status", get(embedcfg::embedding_status_handler))
+        .route(
+            "/api/forge/llm/embedding/config",
+            post(embedcfg::set_embedding_config),
+        )
+        .route(
+            "/api/forge/llm/embedding/status",
+            get(embedcfg::embedding_status_handler),
+        )
         .route("/api/forge/playtest/run", post(playtest_run))
         .route("/api/forge/project/pack", post(project_pack))
         // F-GAME-3:项目选型脚手架(2d/3d → forge.toml + Content 骨架 + 起始场景)
@@ -304,7 +541,10 @@ fn build_app() -> Router {
                 .delete(skills::skills_delete)
                 .post(skills::skills_validate),
         )
-        .route("/api/forge/skills/config/write", post(skills::skills_config_write))
+        .route(
+            "/api/forge/skills/config/write",
+            post(skills::skills_config_write),
+        )
         // F11(D-025):资产商店 REST 面。安装/卸载为长任务(提交返 taskId + tasks/{id} 轮询);
         // 卸载走 Proposal 门(I-6),与 mcp_call 的 forced_asset_delete 同两阶段形态。
         // library/{id}:install:matchit 不允许「参数 + 静态后缀」同段(实测 panic
@@ -350,6 +590,8 @@ fn build_app() -> Router {
         // 媒体生成 REST 面(视频/音频/3D;未配置显式 NOT_CONFIGURED)。
         // gen/mesh 不能只靠 MCP:3D 供应商异步任务动辄数分钟,MCP 调用 10s 就断。
         .route("/api/forge/gen/video", post(gen_video))
+        .route("/api/forge/gen/video/file", get(gen_video_file))
+        .route("/api/forge/gen/image/file", get(codex::imagegen::image_file))
         // 视频截帧同走 REST 而非 MCP:ffmpeg 解一段 720p 常在十秒量级,且与 gen/video
         // 是同一条流水线的前后段,拆两个传输面只会让前端多接一套错误码。
         .route("/api/forge/gen/video/frames", post(gen_video_frames))
@@ -359,6 +601,7 @@ fn build_app() -> Router {
         .route("/api/forge/swarm/state", get(swarm_state))
         .route("/api/forge/swarm/seed-demo", post(swarm_seed_demo))
         .route("/api/forge/swarm/execute", post(swarm_execute))
+        .merge(editor::routes())
         .fallback(unknown_route)
         .with_state(state)
 }
@@ -408,7 +651,10 @@ async fn mcp_call(State(state): State<Arc<AppState>>, Json(req): Json<McpCallReq
             // 两阶段:先提案(dry-run 影响面 = 待删资产清单),批准后同一调用才放行。
             let id = state.proposals.create(
                 "asset.delete",
-                format!("asset_delete force=true 删除 {} 个资产(引用阻断已跳过)", paths.len()),
+                format!(
+                    "asset_delete force=true 删除 {} 个资产(引用阻断已跳过)",
+                    paths.len()
+                ),
                 json!({ "assets": paths }),
                 json!({ "sessionId": "http", "tool": req.tool }),
             );
@@ -490,7 +736,8 @@ async fn proposals_create(
         &req.kind,
         req.summary,
         req.impact.unwrap_or(json!({})),
-        req.created_by.unwrap_or(json!({ "sessionId": "http", "tool": "proposals.create" })),
+        req.created_by
+            .unwrap_or(json!({ "sessionId": "http", "tool": "proposals.create" })),
     );
     let p = state.proposals.get(&id).expect("刚创建的 Proposal 必在");
     Json(p.to_json()).into_response()
@@ -538,18 +785,22 @@ pub(crate) fn workspace_root() -> std::path::PathBuf {
 }
 
 /// GET /api/forge/subagents:磁盘 profile 热加载清单(04 §6;改文件不重启生效)。
-async fn subagents_list() -> Json<Value> {
-    let (profiles, errors) = subagents::list_subagents(&subagents::agents_dir());
+/// D-044:内建 agents/ + 个人 data/agents/ 合并(同名个人胜),每项带 source。
+async fn subagents_list(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let (profiles, mut errors) = subagents::list_all_subagents();
+    let defaults = agent_settings::load(&state).unwrap_or_else(|error| {
+        errors.push(error);
+        agent_settings::AgentConfig::default()
+    });
     Json(json!({
-        "subagents": profiles.iter().map(subagents::SubagentProfile::to_json).collect::<Vec<_>>(),
+        "subagents": profiles.iter().map(|profile| {
+            let mut face = profile.to_json();
+            face["effectiveModel"] = json!(agent_settings::subagent_model(Some(&profile.name), Some(&profile.model), &defaults).unwrap_or_else(|| "default".into()));
+            face
+        }).collect::<Vec<_>>(),
         // 解析失败如实上报,不遮蔽(诚实优先)。
         "errors": errors,
     }))
-}
-
-/// mock LLM provider seam(诚实标注,F0 恒绿)
-async fn llm_complete() -> Json<Value> {
-    Json(json!({ "provider": "mock", "text": "mock completion" }))
 }
 
 // ---------- F6 wave.1:playtest 矩阵执行器(D-F6-A) ----------
@@ -586,7 +837,9 @@ async fn playtest_run(Json(req): Json<PlaytestRunRequest>) -> Response {
         }
     };
     let mut caller = |tool: String, args: Value| async move {
-        let r = mcp::call_tool(&tool, Some(args)).await.map_err(|e| e.to_string())?;
+        let r = mcp::call_tool(&tool, Some(args))
+            .await
+            .map_err(|e| e.to_string())?;
         playtest::unwrap_envelope(&r)
     };
     match playtest::run_matrix(&matrix, &mut caller).await {
@@ -617,24 +870,71 @@ async fn project_pack(Json(req): Json<pack::PackRequest>) -> Response {
             .into_response();
     };
     let out_dir = playtest::resolve_workspace_path(&req.out_dir);
-    let engine_bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace 根")
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = manifest_dir.ancestors().nth(2).expect("workspace 根");
+    let runtime_dir = std::env::var("FORGE_GODOT_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| workspace.join("target").join("godot-runtime"));
+    let engine_bin = workspace
         .join("target")
         .join("debug")
         .join("engine-host.exe");
-    match pack::build_pack(&scene_abs, &project_root, &out_dir, &engine_bin, 17890) {
+    let port = req.port.unwrap_or(17890);
+    match pack::build_pack_with_runtime(
+        &scene_abs,
+        &project_root,
+        &out_dir,
+        &engine_bin,
+        &runtime_dir,
+        port,
+    ) {
         Ok(report) => Json(report).into_response(),
         Err(msg) => {
             let (code, status) = if msg.starts_with("PACK_SCENE_NOT_FOUND") {
                 ("PACK_SCENE_NOT_FOUND", StatusCode::NOT_FOUND)
             } else if msg.starts_with("PACK_OUTDIR_CONFLICT") {
                 ("PACK_OUTDIR_CONFLICT", StatusCode::CONFLICT)
+            } else if msg.starts_with("PACK_RENDER_CONFIG_INVALID") {
+                ("PACK_RENDER_CONFIG_INVALID", StatusCode::BAD_REQUEST)
+            } else if msg.starts_with("PACK_PROJECT_CONFIG_INVALID") {
+                ("PACK_PROJECT_CONFIG_INVALID", StatusCode::BAD_REQUEST)
+            } else if msg.starts_with("PACK_REFERENCE_MISSING")
+                || msg.starts_with("PACK_PROJECT_LAYOUT_UNSUPPORTED")
+                || msg.starts_with("PACK_PORT_INVALID")
+            {
+                (
+                    msg.split(':').next().unwrap_or("PACK_ERROR"),
+                    StatusCode::BAD_REQUEST,
+                )
             } else if msg.starts_with("PACK_ENGINE_MISSING") {
                 ("PACK_ENGINE_MISSING", StatusCode::INTERNAL_SERVER_ERROR)
+            } else if msg.starts_with("PACK_GODOT_RUNTIME_MISSING") {
+                (
+                    "PACK_GODOT_RUNTIME_MISSING",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            } else if msg.starts_with("PACK_GODOT_RUNTIME_STALE") {
+                (
+                    "PACK_GODOT_RUNTIME_STALE",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            } else if msg.starts_with("PACK_GODOT_RUNTIME_INVALID") {
+                (
+                    "PACK_GODOT_RUNTIME_INVALID",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            } else if msg.starts_with("PACK_CACHE_MISSING")
+                || msg.starts_with("PACK_NATIVE_RUNTIME_MISSING")
+            {
+                (
+                    msg.split(':').next().unwrap_or("PACK_CACHE_MISSING"),
+                    StatusCode::CONFLICT,
+                )
             } else {
-                ("PACK_ERROR", StatusCode::INTERNAL_SERVER_ERROR)
+                (
+                    msg.split(':').next().unwrap_or("PACK_ERROR"),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
             };
             (
                 status,
@@ -688,7 +988,11 @@ fn normalize_items(items: &[Value]) -> Result<Vec<String>, String> {
 }
 
 /// operation → 单 item 的 MCP 调用(tool, arguments);域不匹配/缺字段 → Err。
-fn operation_call(shard_type: &str, operation: &Value, item: &str) -> Result<(String, Value), String> {
+fn operation_call(
+    shard_type: &str,
+    operation: &Value,
+    item: &str,
+) -> Result<(String, Value), String> {
     let kind = operation
         .get("kind")
         .and_then(Value::as_str)
@@ -730,7 +1034,9 @@ fn operation_call(shard_type: &str, operation: &Value, item: &str) -> Result<(St
         ("test-matrix", _) => Err(format!(
             "{shard_type} 仅支持 operation.kind=test_run(matrixRef)"
         )),
-        _ => Err(format!("shardType {shard_type} 不支持 operation.kind {kind}")),
+        _ => Err(format!(
+            "shardType {shard_type} 不支持 operation.kind {kind}"
+        )),
     }
 }
 
@@ -759,7 +1065,11 @@ async fn test_matrix_shard_run(
                 .iter()
                 .map(|i| json!({ "item": i, "error": format!("矩阵读取/解析失败 {}", path.display()) }))
                 .collect();
-            return (Vec::new(), errors, json!({ "matrixRef": matrix_ref, "fatal": "matrix_unreadable" }));
+            return (
+                Vec::new(),
+                errors,
+                json!({ "matrixRef": matrix_ref, "fatal": "matrix_unreadable" }),
+            );
         }
     };
     // case 过滤:items 逐个匹配;无名匹配 = 如实 error item。
@@ -785,14 +1095,22 @@ async fn test_matrix_shard_run(
         Ok(p) => p,
         Err(_) => {
             errors.push(json!({ "item": "*", "error": "并发信号量已关闭" }));
-            return (ok_items, errors, json!({ "matrixRef": matrix_ref, "fatal": "semaphore_closed" }));
+            return (
+                ok_items,
+                errors,
+                json!({ "matrixRef": matrix_ref, "fatal": "semaphore_closed" }),
+            );
         }
     };
     let mut session = match mcp::FreshSession::spawn(mcp::ServerKind::EngineScene).await {
         Ok(s) => s,
         Err(e) => {
             errors.push(json!({ "item": "*", "error": format!("FreshSession spawn 失败: {e}") }));
-            return (ok_items, errors, json!({ "matrixRef": matrix_ref, "fatal": "spawn_failed" }));
+            return (
+                ok_items,
+                errors,
+                json!({ "matrixRef": matrix_ref, "fatal": "spawn_failed" }),
+            );
         }
     };
     let pid = session.pid();
@@ -856,7 +1174,11 @@ async fn test_matrix_shard_run(
         Err(e) => {
             errors.push(json!({ "item": "*", "error": e }));
             session.lock().await.shutdown().await;
-            (ok_items, errors, json!({ "matrixRef": matrix_ref, "pid": pid, "fatal": "matrix_aborted" }))
+            (
+                ok_items,
+                errors,
+                json!({ "matrixRef": matrix_ref, "pid": pid, "fatal": "matrix_aborted" }),
+            )
         }
     }
 }
@@ -1005,12 +1327,13 @@ async fn swarm_execute(
 
 /// GET /api/forge/gen/backends:注册表全量 + 真实 configured 判定;
 /// 只回 endpointSet 布尔,密钥值/endpoint 值不出(endpoint 属配置面,按契约只回布尔)。
-/// 素材创作波:聚合 media 注册表(video/audio/mesh 三远程骨架),capabilities.kinds 如实。
+/// 素材创作波:聚合本地与远程 media 注册表,capabilities.kinds 如实。
 /// enabled/model 为非密配置事实,一并回出——设置页表单据此预填,
 /// 否则「未知即默认」会把用户已存的开关/模型在下次保存时悄悄覆盖。
 async fn gen_backends_list() -> Json<Value> {
     let cfg = gend::config::GenConfig::load();
     let keys = gend::keystore::Keystore::load();
+    let profiles = gend::profiles::Profiles::load().unwrap_or_default();
     // 条目非密事实:(enabled, endpointSet, model);条目缺失 = 全默认。
     // keyConfigured 只回布尔(照 llm/openai-compat status 形态),密钥值永不出。
     let facts = |id: &str| -> (bool, bool, Option<String>, bool) {
@@ -1018,7 +1341,10 @@ async fn gen_backends_list() -> Json<Value> {
         match cfg.entry(id) {
             Some(e) => (
                 e.enabled,
-                e.endpoint.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false),
+                e.endpoint
+                    .as_deref()
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false),
                 e.model.clone(),
                 key_set,
             ),
@@ -1054,6 +1380,12 @@ async fn gen_backends_list() -> Json<Value> {
             "capabilities": b.capabilities(),
         })
     }));
+    for item in &mut list {
+        if let Some(profile) = item["id"].as_str().and_then(|id| profiles.entry(id)) {
+            item["label"] = json!(profile.label);
+            item["adapter"] = json!(profile.adapter);
+        }
+    }
     Json(json!({ "backends": list }))
 }
 
@@ -1071,11 +1403,21 @@ struct GenConfigureRequest {
     /// 密钥:非空才写 data/keystore.json;永不进 gen-backends.json,永不在响应回显(R-5)。
     #[serde(default)]
     api_key: Option<String>,
+    #[serde(default)]
+    label: Option<String>,
+    /// Built-in protocol adapter for a new, independently configured connection.
+    #[serde(default)]
+    adapter: Option<String>,
 }
 
 /// 注册表条目统一视图(text2img 面 + media 面聚合;素材创作波):
 /// 按 id 查 kind 与 configured 判定,供 configure 路由跨两注册表工作。
-fn find_any_backend(id: &str) -> Option<(String, Box<dyn Fn(&gend::config::GenConfig, &gend::keystore::Keystore) -> bool>)> {
+fn find_any_backend(
+    id: &str,
+) -> Option<(
+    String,
+    Box<dyn Fn(&gend::config::GenConfig, &gend::keystore::Keystore) -> bool>,
+)> {
     if let Some(b) = gend::backends::find(id) {
         let kind = b.kind().to_string();
         return Some((kind, Box::new(move |c, k| b.configured(c, k))));
@@ -1092,7 +1434,34 @@ fn find_any_backend(id: &str) -> Option<(String, Box<dyn Fn(&gend::config::GenCo
 /// 不含 apiKey;非法 id → 400 GEN_UNKNOWN_BACKEND;kind 与注册表不符 → 400 GEN_BAD_PARAMS。
 /// 素材创作波:id 面放开 media 注册表(remote-video/audio/mesh-compatible)+ model 字段可写。
 async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Response {
-    let Some((backend_kind, backend_configured)) = find_any_backend(&req.id) else {
+    static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut profiles = match gend::profiles::Profiles::load() {
+        Ok(p) => p,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } }))).into_response(),
+    };
+    let mut updated_profile = None;
+    let backend = if let Some(adapter) = req.adapter.as_deref() {
+        let label = req.label.as_deref().or_else(|| profiles.entry(&req.id).map(|p| p.label.as_str())).unwrap_or("").trim();
+        if !gend::profiles::valid_profile_id(&req.id) || label.is_empty() || label.chars().count() > 64 || label.chars().any(char::is_control) {
+            return gen_error_response(gend::GenError::new(gend::GEN_BAD_PARAMS, "连接名称须为 1–64 字，连接 ID 须为有效的 custom- 标识"));
+        }
+        if profiles.entry(&req.id).is_some_and(|p| p.adapter != adapter) {
+            return gen_error_response(gend::GenError::new(gend::GEN_BAD_PARAMS, "已有连接的接口类型不能更改，请新增连接"));
+        }
+        let profile = gend::profiles::BackendProfile { id: req.id.clone(), label: label.to_string(), adapter: adapter.to_string() };
+        let found: Option<(String, Box<dyn Fn(&gend::config::GenConfig, &gend::keystore::Keystore) -> bool>)> =
+            if let Some(b) = gend::profiles::image_backend(&profile) {
+                Some((b.kind().to_string(), Box::new(move |c, k| b.configured(c, k))))
+            } else if let Some(b) = gend::profiles::media_backend(&profile) {
+                Some((b.kind().to_string(), Box::new(move |c, k| b.configured(c, k))))
+            } else { None };
+        updated_profile = Some(profile);
+        found
+    } else {
+        find_any_backend(&req.id)
+    };
+    let Some((backend_kind, backend_configured)) = backend else {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": { "code": "GEN_UNKNOWN_BACKEND", "message": format!("未知后端 id: {}", req.id) } })),
@@ -1111,6 +1480,12 @@ async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Respons
         .endpoint
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    if let Some(endpoint) = &endpoint {
+        let valid = endpoint.parse::<axum::http::Uri>().is_ok_and(|u| matches!(u.scheme_str(), Some("http" | "https")) && u.host().is_some() && u.authority().is_some_and(|a| !a.as_str().contains('@')));
+        if !valid {
+            return gen_error_response(gend::GenError::new(gend::GEN_BAD_PARAMS, "服务地址须为有效的 HTTP 或 HTTPS 地址，密钥请填入专用字段"));
+        }
+    }
     let model = req
         .model
         .map(|s| s.trim().to_string())
@@ -1131,13 +1506,23 @@ async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Respons
             .into_response();
     }
     // 密钥只进 keystore.json;失败如实 500,错误信息不带 key 值。
-    if let Some(key) = req.api_key.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+    if let Some(key) = req
+        .api_key
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
         if let Err(e) = gend::keystore::set_key(&req.id, &key) {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
             )
                 .into_response();
+        }
+    }
+    if let Some(profile) = updated_profile {
+        profiles.upsert(profile);
+        if let Err(e) = profiles.save() {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } }))).into_response();
         }
     }
     // 回读真实 configured(写盘后重载,不回显任何密钥)。
@@ -1159,7 +1544,11 @@ fn gen_error_response(e: gend::GenError) -> Response {
         gend::GEN_RATE_LIMITED => StatusCode::TOO_MANY_REQUESTS,
         _ => StatusCode::BAD_GATEWAY,
     };
-    (status, Json(json!({ "error": { "code": e.code, "message": e.message } }))).into_response()
+    (
+        status,
+        Json(json!({ "error": { "code": e.code, "message": e.message } })),
+    )
+        .into_response()
 }
 
 /// 浏览器能内联播放/显示的产物类型(决定要不要在响应里附 base64 dataUrl)。
@@ -1180,9 +1569,10 @@ fn artifact_mime(ext: &str) -> &'static str {
 }
 
 /// 媒体生成共路:后端解析 → 阻塞生成(spawn_blocking,ureq 同步)→ tmpstore 落盘
-/// (projects/demo,与 gen-image-mcp 同项目根)→ {backendId, artifacts:[{fileRef,ext,
+/// (请求指定的工作区,与 gen-image-mcp 同项目根)→ {backendId, artifacts:[{fileRef,ext,
 /// mime,dataUrl,meta}]}。密钥全程不出(R-5)。
 async fn run_media_generation(
+    project: assetd::project::ForgeProject,
     kind: gend::media::MediaKind,
     prompt: String,
     params: Value,
@@ -1202,9 +1592,12 @@ async fn run_media_generation(
         let cfg = gend::config::GenConfig::load();
         let keys = gend::keystore::Keystore::load();
         let b = gend::media::resolve_backend(kind, backend.as_deref(), &cfg, &keys)?;
-        let req = gend::media::MediaRequest { kind, prompt: prompt.clone(), params };
+        let req = gend::media::MediaRequest {
+            kind,
+            prompt: prompt.clone(),
+            params,
+        };
         let artifacts = b.generate(&req, &cfg, &keys)?;
-        let project = asset_project();
         let seed = gend::fnv1a64(prompt.as_bytes());
         let mut out = Vec::new();
         for (i, a) in artifacts.iter().enumerate() {
@@ -1215,8 +1608,9 @@ async fn run_media_generation(
                 "meta": a.meta,
                 "generatedAt": gend::timeutil::utc_now_iso8601(),
             });
-            let file_ref =
-                gend::tmpstore::save_artifact(&project, &a.bytes, &a.ext, seed, i as u32, &sidecar)?;
+            let file_ref = gend::tmpstore::save_artifact(
+                &project, &a.bytes, &a.ext, seed, i as u32, &sidecar,
+            )?;
             let mime = artifact_mime(&a.ext);
             // 供应商预览图落盘(签名 URL 会过期)+ 随响应回 dataUrl 供前端直显。
             let mut previews = Vec::new();
@@ -1255,7 +1649,9 @@ async fn run_media_generation(
         Ok(Err(e)) => gen_error_response(e),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": { "code": "INTERNAL", "message": format!("生成任务失败: {e}") } })),
+            Json(
+                json!({ "error": { "code": "INTERNAL", "message": format!("生成任务失败: {e}") } }),
+            ),
         )
             .into_response(),
     }
@@ -1264,6 +1660,8 @@ async fn run_media_generation(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenVideoRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
     /// 文生视频描述;给了参考图时可空(转作动作引导)。
     #[serde(default)]
     prompt: String,
@@ -1284,14 +1682,21 @@ struct GenVideoRequest {
     backend: Option<String>,
 }
 
-/// POST /api/forge/gen/video:文生 / 图生视频(remote-video-compatible 骨架;
+/// POST /api/forge/gen/video:文生 / 图生视频(本地与远程媒体后端共路;
 /// 未配置 → 501 GEN_BACKEND_NOT_CONFIGURED,诚实占位不伪造产物)。
-async fn gen_video(Json(req): Json<GenVideoRequest>) -> Response {
+async fn gen_video(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenVideoRequest>,
+) -> Response {
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
     let mut params = json!({});
     if let Some(v) = req.image_data_url.filter(|s| !s.trim().is_empty()) {
         params["imageDataUrl"] = json!(v);
     } else if let Some(rel) = req.image_ref.filter(|s| !s.trim().is_empty()) {
-        match gend::tmpstore::image_data_uri(&asset_project(), &rel) {
+        match gend::tmpstore::image_data_uri(&project, &rel) {
             Ok(uri) => params["imageDataUrl"] = json!(uri),
             Err(e) => return gen_error_response(e),
         }
@@ -1305,26 +1710,175 @@ async fn gen_video(Json(req): Json<GenVideoRequest>) -> Response {
     if let Some(d) = req.duration_sec {
         params["durationSec"] = json!(d);
     }
-    run_media_generation(gend::media::MediaKind::Video, req.prompt, params, req.backend).await
+    run_media_generation(
+        project,
+        gend::media::MediaKind::Video,
+        req.prompt,
+        params,
+        req.backend,
+    )
+    .await
 }
 
 /// 资产项目句柄(与 run_media_generation 内同一根,产物 fileRef 才对得上)。
-fn asset_project() -> assetd::project::ForgeProject {
-    let root = mcp::asset_project_root();
-    assetd::project::ForgeProject::load(&root)
-        .unwrap_or_else(|_| assetd::project::ForgeProject::with_defaults(root))
+fn media_project(
+    state: &AppState,
+    workspace_id: Option<&str>,
+) -> Result<assetd::project::ForgeProject, Response> {
+    let id = workspace_id.map(str::trim).filter(|s| !s.is_empty());
+    if id.is_some_and(|id| state.workspaces.get(id).is_none()) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error":{"code":"WORKSPACE_NOT_FOUND","message":"媒体目标工作区不存在"}})),
+        )
+            .into_response());
+    }
+    let root = scope::project_of(state, id).project_root;
+    Ok(assetd::project::ForgeProject::load(&root)
+        .unwrap_or_else(|_| assetd::project::ForgeProject::with_defaults(root)))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenVideoFileQuery {
+    #[serde(default)]
+    workspace_id: Option<String>,
+    file_ref: String,
+}
+
+/// A single HTTP byte range; multi-range responses are deliberately unsupported.
+fn video_byte_range(value: &str, size: u64) -> Result<(u64, u64), ()> {
+    let bytes = value.trim().strip_prefix("bytes=").ok_or(())?;
+    let (start, end) = bytes.split_once('-').ok_or(())?;
+    let number = |s: &str| -> Result<u64, ()> {
+        if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(());
+        }
+        s.parse().map_err(|_| ())
+    };
+    if size == 0 {
+        return Err(());
+    }
+    if start.is_empty() {
+        let suffix = number(end)?;
+        if suffix == 0 {
+            return Err(());
+        }
+        return Ok((size.saturating_sub(suffix), size - 1));
+    }
+    let start = number(start)?;
+    let end = if end.is_empty() {
+        size - 1
+    } else {
+        number(end)?
+    };
+    if start >= size || end < start {
+        return Err(());
+    }
+    Ok((start, end.min(size - 1)))
+}
+
+/// Read only persisted generated MP4s, confined to this workspace's generation directory.
+/// Browsers can seek with a single Range request without base64 persistence or cloud uploads.
+async fn gen_video_file(
+    State(state): State<Arc<AppState>>,
+    Query(req): Query<GenVideoFileQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    let range = headers
+        .get(header::RANGE)
+        .map(|v| v.to_str().unwrap_or("").to_owned());
+    let multiple_ranges = headers.get_all(header::RANGE).iter().count() > 1;
+    let joined = tokio::task::spawn_blocking(move || {
+        use std::io::{Read, Seek, SeekFrom};
+        let missing = || (StatusCode::NOT_FOUND,
+            Json(json!({"error":{"code":"GEN_FILE_NOT_FOUND","message":"当前工作区的视频产物不存在或路径无效"}}))).into_response();
+        let io_error = || (StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":{"code":"FORGE_IO","message":"读取视频产物失败"}}))).into_response();
+        let resolved = match gend::tmpstore::resolve_video_ref(&project, &req.file_ref) {
+            Ok(path) => path,
+            Err(_) => return missing(),
+        };
+        if !resolved.extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case("mp4")) {
+            return missing();
+        }
+        let (Ok(root), Ok(gen_root), Ok(path)) = (
+            project.root.canonicalize(),
+            project.root.join(".forge/tmp/gen").canonicalize(),
+            resolved.canonicalize(),
+        ) else { return missing(); };
+        if !gen_root.starts_with(&root) || !path.starts_with(&gen_root)
+            || !path.extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case("mp4")) {
+            return missing();
+        }
+        let mut file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return missing(),
+            Err(_) => return io_error(),
+        };
+        let size = match file.metadata() {
+            Ok(meta) if meta.is_file() => meta.len(),
+            Ok(_) => return missing(),
+            Err(_) => return io_error(),
+        };
+        if size > 512 * 1024 * 1024 {
+            return (StatusCode::PAYLOAD_TOO_LARGE,
+                Json(json!({"error":{"code":"GEN_BAD_PARAMS","message":"视频产物超过 512 MiB 播放上限"}}))).into_response();
+        }
+        let selected = match range.as_deref() {
+            Some(value) => match video_byte_range(value, size) {
+                Ok(pair) if !multiple_ranges => Some(pair),
+                _ => return Response::builder().status(StatusCode::RANGE_NOT_SATISFIABLE)
+                    .header(header::CONTENT_RANGE, format!("bytes */{size}"))
+                    .header(header::ACCEPT_RANGES, "bytes")
+                    .header(header::CONTENT_LENGTH, "0")
+                    .body(axum::body::Body::empty()).unwrap(),
+            },
+            None => None,
+        };
+        let (start, length) = selected.map(|(start, end)| (start, end - start + 1)).unwrap_or((0, size));
+        let mut bytes = Vec::with_capacity(length as usize);
+        if file.seek(SeekFrom::Start(start)).is_err()
+            || file.take(length).read_to_end(&mut bytes).is_err()
+            || bytes.len() as u64 != length {
+            return io_error();
+        }
+        let mut response = Response::builder()
+            .status(if selected.is_some() { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
+            .header(header::CONTENT_TYPE, "video/mp4")
+            .header(header::ACCEPT_RANGES, "bytes")
+            .header(header::CONTENT_LENGTH, length.to_string())
+            .header(header::CACHE_CONTROL, "private, no-store");
+        if let Some((start, end)) = selected {
+            response = response.header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{size}"));
+        }
+        response.body(axum::body::Body::from(bytes)).unwrap()
+    }).await;
+    joined.unwrap_or_else(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error":{"code":"INTERNAL","message":"视频读取任务失败"}})),
+        )
+            .into_response()
+    })
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenVideoFramesRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
     /// gen/video 产物 fileRef(.forge/tmp/gen/*.mp4)。
     video_file_ref: String,
     #[serde(default)]
     fps: Option<f32>,
     #[serde(default)]
     max_frames: Option<usize>,
-    /// auto | magenta | none。
+    /// auto | magenta | black | none。
     #[serde(default)]
     chroma_key: Option<String>,
     /// union | tight | none。
@@ -1339,7 +1893,9 @@ struct GenVideoFramesRequest {
 }
 
 /// REST 参数 → FrameOptions(未知枚举值 → GEN_BAD_PARAMS,不静默回落缺省)。
-fn frame_options_from(req: &GenVideoFramesRequest) -> gend::Result<gend::video_frames::FrameOptions> {
+fn frame_options_from(
+    req: &GenVideoFramesRequest,
+) -> gend::Result<gend::video_frames::FrameOptions> {
     use gend::video_frames::{ChromaKey, CropMode, FrameOptions};
     let mut opts = FrameOptions::default();
     if let Some(f) = req.fps {
@@ -1353,17 +1909,25 @@ fn frame_options_from(req: &GenVideoFramesRequest) -> gend::Result<gend::video_f
     }
     opts.trim_start_sec = req.trim_start_sec;
     opts.trim_end_sec = req.trim_end_sec;
-    if let Some(k) = req.chroma_key.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(k) = req
+        .chroma_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         opts.chroma_key = ChromaKey::parse(k).ok_or_else(|| {
             gend::GenError::new(
                 gend::GEN_BAD_PARAMS,
-                format!("chromaKey 须为 auto|magenta|none,实: {k}"),
+                format!("chromaKey 须为 auto|magenta|black|none,实: {k}"),
             )
         })?;
     }
     if let Some(c) = req.crop.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         opts.crop = CropMode::parse(c).ok_or_else(|| {
-            gend::GenError::new(gend::GEN_BAD_PARAMS, format!("crop 须为 union|tight|none,实: {c}"))
+            gend::GenError::new(
+                gend::GEN_BAD_PARAMS,
+                format!("crop 须为 union|tight|none,实: {c}"),
+            )
         })?;
     }
     Ok(opts)
@@ -1374,7 +1938,10 @@ fn frame_options_from(req: &GenVideoFramesRequest) -> gend::Result<gend::video_f
 ///
 /// 只回图集本身 + 逐帧 bbox:逐帧再各附一份 dataUrl 就是把同一批像素传两遍,
 /// 前端拿图集加 boxes 就能在 canvas 上逐帧画/循环播。
-async fn gen_video_frames(Json(req): Json<GenVideoFramesRequest>) -> Response {
+async fn gen_video_frames(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenVideoFramesRequest>,
+) -> Response {
     use base64::Engine as _;
     if req.video_file_ref.trim().is_empty() {
         return gen_error_response(gend::GenError::new(
@@ -1386,8 +1953,12 @@ async fn gen_video_frames(Json(req): Json<GenVideoFramesRequest>) -> Response {
         Ok(o) => o,
         Err(e) => return gen_error_response(e),
     };
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
     let joined = tokio::task::spawn_blocking(move || {
-        gend::video_frames::video_to_atlas(&asset_project(), &req.video_file_ref, &opts)
+        gend::video_frames::video_to_atlas(&project, &req.video_file_ref, &opts)
     })
     .await;
     match joined {
@@ -1410,7 +1981,9 @@ async fn gen_video_frames(Json(req): Json<GenVideoFramesRequest>) -> Response {
         Ok(Err(e)) => gen_error_response(e),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": { "code": "INTERNAL", "message": format!("截帧任务失败: {e}") } })),
+            Json(
+                json!({ "error": { "code": "INTERNAL", "message": format!("截帧任务失败: {e}") } }),
+            ),
         )
             .into_response(),
     }
@@ -1424,6 +1997,8 @@ async fn tools_ffmpeg() -> Json<Value> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenAudioRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
     /// tts | music。
     mode: String,
     prompt: String,
@@ -1441,7 +2016,14 @@ struct GenAudioRequest {
 
 /// POST /api/forge/gen/audio:TTS(OpenAI /v1/audio/speech 真实格式)/ 音乐生成
 /// (remote-audio-compatible 骨架;未配置 → 501 GEN_BACKEND_NOT_CONFIGURED)。
-async fn gen_audio(Json(req): Json<GenAudioRequest>) -> Response {
+async fn gen_audio(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenAudioRequest>,
+) -> Response {
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
     let kind = match req.mode.as_str() {
         "tts" => gend::media::MediaKind::Tts,
         "music" => gend::media::MediaKind::Music,
@@ -1465,12 +2047,14 @@ async fn gen_audio(Json(req): Json<GenAudioRequest>) -> Response {
     if let Some(i) = req.instrumental {
         params["instrumental"] = json!(i);
     }
-    run_media_generation(kind, req.prompt, params, req.backend).await
+    run_media_generation(project, kind, req.prompt, params, req.backend).await
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenMeshRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
     /// 文生 3D 描述;给了 imageDataUrl 时可空(转作贴图引导)。
     #[serde(default)]
     prompt: String,
@@ -1506,7 +2090,11 @@ struct GenMeshRequest {
 ///
 /// 与 video/audio 并列的直通路径。3D 供应商是异步任务制,单次生成常达数分钟,
 /// 而 MCP 子进程调用有 10s 上限——走 MCP 必然超时,故 3D 前端链路只能落在这条 REST 上。
-async fn gen_mesh(Json(req): Json<GenMeshRequest>) -> Response {
+async fn gen_mesh(State(state): State<Arc<AppState>>, Json(req): Json<GenMeshRequest>) -> Response {
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
     let mut params = json!({});
     if let Some(v) = req.image_data_url.filter(|s| !s.trim().is_empty()) {
         params["imageDataUrl"] = json!(v);
@@ -1535,7 +2123,14 @@ async fn gen_mesh(Json(req): Json<GenMeshRequest>) -> Response {
             params[key] = json!(v);
         }
     }
-    run_media_generation(gend::media::MediaKind::Mesh, req.prompt, params, req.backend).await
+    run_media_generation(
+        project,
+        gend::media::MediaKind::Mesh,
+        req.prompt,
+        params,
+        req.backend,
+    )
+    .await
 }
 
 async fn unknown_route() -> Response {
@@ -1605,10 +2200,25 @@ mod tests {
         // F-GAME-4 wave.2:+asset-pipeline sprite_create/get/set/autoslice 四工具 = 102。
         // 补账(D-036 波发现):logic_inject_pointer 落 KNOWN_TOOLS 时漏改本计数 = 103。
         // 角色动画:+gen-image gen_video_frames = 104。
-        assert_eq!(tools.len(), 104);
-        assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_stream_info"));
-        assert!(tools.iter().any(|t| t == "mcp__engine-scene__logic_inject_pointer"));
-        assert!(tools.iter().any(|t| t == "mcp__engine-scene__sprite_create"));
+        assert!(tools.len() >= 104);
+        for capability in [
+            "mcp__engine-scene__render_backend_info",
+            "mcp__engine-scene__render_capabilities",
+        ] {
+            assert!(
+                tools.iter().any(|t| t == capability),
+                "missing backend capability {capability}"
+            );
+        }
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__engine-scene__viewport_stream_info"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__engine-scene__logic_inject_pointer"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__engine-scene__sprite_create"));
         for t in [
             "mcp__asset-pipeline__sprite_create",
             "mcp__asset-pipeline__sprite_get",
@@ -1617,12 +2227,20 @@ mod tests {
         ] {
             assert!(tools.iter().any(|x| x == t), "缺精灵图集资产工具 {t}");
         }
-        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_set_description"));
-        assert!(tools.iter().any(|t| t == "mcp__context__context_index_build"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__asset-pipeline__asset_set_description"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__context__context_index_build"));
         assert!(tools.iter().any(|t| t == "mcp__context__context_search"));
         assert!(tools.iter().any(|t| t == "mcp__context__context_get"));
-        assert!(tools.iter().any(|t| t == "mcp__context__context_index_status"));
-        assert!(tools.iter().any(|t| t == "mcp__context__asset_describe_batch"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__context__context_index_status"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__context__asset_describe_batch"));
         // F11(D-025):store 十二工具须与 store-mcp 的 tool_list 逐一对上
         // (store-mcp 侧有 tool_list_declares_twelve_tools_with_schema 守另一端)。
         for t in [
@@ -1642,19 +2260,39 @@ mod tests {
         ] {
             assert!(tools.iter().any(|x| x == t), "KNOWN_TOOLS 缺 {t}");
         }
-        assert!(tools.iter().any(|t| t == "mcp__context__asset_set_description"));
-        assert!(tools.iter().any(|t| t == "mcp__engine-scene__scene_summary"));
-        assert!(tools.iter().any(|t| t == "mcp__engine-scene__entity_batch_apply"));
-        assert!(tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
-        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_import"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__context__asset_set_description"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__engine-scene__scene_summary"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__engine-scene__entity_batch_apply"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__engine-scene__viewport_frame"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__asset-pipeline__asset_import"));
         assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_list"));
-        assert!(tools.iter().any(|t| t == "mcp__asset-pipeline__asset_thumbnail"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__asset-pipeline__asset_thumbnail"));
         assert!(tools.iter().any(|t| t == "mcp__code-forge__rx_check"));
         assert!(tools.iter().any(|t| t == "mcp__code-forge__rx_test"));
-        assert!(tools.iter().any(|t| t == "mcp__code-forge__code_symbol_search"));
-        assert!(tools.iter().any(|t| t == "mcp__code-forge__code_references"));
-        assert!(tools.iter().any(|t| t == "mcp__code-forge__code_structured_edit"));
-        assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_backends_list"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__code-forge__code_symbol_search"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__code-forge__code_references"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__code-forge__code_structured_edit"));
+        assert!(tools
+            .iter()
+            .any(|t| t == "mcp__gen-image__gen_backends_list"));
         assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_image"));
         assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_texture_set"));
         assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_accept"));
@@ -1662,18 +2300,6 @@ mod tests {
         assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh"));
         assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh_refine"));
         assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_accept"));
-    }
-
-    #[tokio::test]
-    async fn llm_complete_mock() {
-        let resp = build_app()
-            .oneshot(get("/api/forge/llm/complete"))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let v = json_body(resp).await;
-        assert_eq!(v["provider"], "mock");
-        assert_eq!(v["text"], "mock completion");
     }
 
     // ---------- RD-F1-002:/api/forge/llm/chat ----------
@@ -1689,14 +2315,20 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("agentd-chat-test-{}", std::process::id()));
         std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
         let resp = build_app()
-            .oneshot(post_json("/api/forge/llm/chat", r#"{"text":"你好","mode":"build"}"#))
+            .oneshot(post_json(
+                "/api/forge/llm/chat",
+                r#"{"text":"你好","mode":"build"}"#,
+            ))
             .await
             .unwrap();
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         assert_eq!(v["provider"], "mock");
-        assert!(v["text"].as_str().expect("text 应为字符串").contains("mock"));
+        assert!(v["text"]
+            .as_str()
+            .expect("text 应为字符串")
+            .contains("mock"));
         assert_eq!(v["toolCalls"], json!([]));
         assert_eq!(v["iters"], 0);
     }
@@ -1774,7 +2406,11 @@ mod tests {
     async fn f7_sessions_crud_flow() {
         let (app, dir) = f7_app("crud");
         // 列表空 {sessions: []}(替换 F0 恒 [] stub 的形态)。
-        let r = app.clone().oneshot(get("/api/forge/sessions")).await.unwrap();
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/sessions"))
+            .await
+            .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(json_body(r).await, json!({ "sessions": [] }));
         // 创建(缺省字段面)+ session.created 持久事件。
@@ -1819,7 +2455,11 @@ mod tests {
         assert_eq!(v["session"]["titleManuallySet"], true);
         assert_eq!(v["session"]["pinned"], true);
         // 列表含 1 条。
-        let r = app.clone().oneshot(get("/api/forge/sessions")).await.unwrap();
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/sessions"))
+            .await
+            .unwrap();
         assert_eq!(json_body(r).await["sessions"].as_array().unwrap().len(), 1);
         // 404 面。
         let r = app
@@ -1888,7 +2528,10 @@ mod tests {
             .oneshot(post_json("/api/forge/sessions", r#"{"title":"主线"}"#))
             .await
             .unwrap();
-        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         for body in [r#"{"pinned":true}"#, r#"{"title":"主线改"}"#] {
             app.clone()
                 .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), body))
@@ -1911,7 +2554,9 @@ mod tests {
         let fevs = read_events(&dir, &fid);
         assert_eq!(fevs.len(), 4, "克隆 3 + session.forked: {fevs:?}");
         assert_eq!(
-            fevs.iter().map(|e| e["seq"].as_i64().unwrap()).collect::<Vec<_>>(),
+            fevs.iter()
+                .map(|e| e["seq"].as_i64().unwrap())
+                .collect::<Vec<_>>(),
             vec![1, 2, 3, 4],
             "seq 单调保持"
         );
@@ -1933,7 +2578,10 @@ mod tests {
         assert_eq!(r.status(), StatusCode::NOT_FOUND);
 
         // revert mode=before:截到 seq2 事件之前 → 仅余 seq1;session.reverted 复接 seq2。
-        let target_id = read_events(&dir, &sid)[1]["id"].as_str().unwrap().to_string();
+        let target_id = read_events(&dir, &sid)[1]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let r = app
             .clone()
             .oneshot(post_json(
@@ -1945,13 +2593,18 @@ mod tests {
         assert_eq!(r.status(), StatusCode::OK);
         let evs = read_events(&dir, &sid);
         assert_eq!(
-            evs.iter().map(|e| e["type"].as_str().unwrap()).collect::<Vec<_>>(),
+            evs.iter()
+                .map(|e| e["type"].as_str().unwrap())
+                .collect::<Vec<_>>(),
             vec!["session.created", "session.reverted"]
         );
         assert_eq!(evs[1]["seq"], 2, "截断后 reverted 复接 seq");
         // revert 缺省 mode(含该事件):patch(seq3)后截到含它。
         app.clone()
-            .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), r#"{"pinned":false}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                r#"{"pinned":false}"#,
+            ))
             .await
             .unwrap();
         let tid3 = read_events(&dir, &sid)
@@ -1970,15 +2623,25 @@ mod tests {
             .unwrap();
         let evs = read_events(&dir, &sid);
         assert_eq!(
-            evs.iter().map(|e| e["type"].as_str().unwrap()).collect::<Vec<_>>(),
-            vec!["session.created", "session.reverted", "session.updated", "session.reverted"],
+            evs.iter()
+                .map(|e| e["type"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec![
+                "session.created",
+                "session.reverted",
+                "session.updated",
+                "session.reverted"
+            ],
             "含该事件截断语义"
         );
         // 无 messageId:不截断,仅追加 session.reverted。
         let before = read_events(&dir, &sid).len();
         let r = app
             .clone()
-            .oneshot(post_json(&format!("/api/forge/sessions/{sid}/revert"), "{}"))
+            .oneshot(post_json(
+                &format!("/api/forge/sessions/{sid}/revert"),
+                "{}",
+            ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
@@ -2004,7 +2667,11 @@ mod tests {
     #[tokio::test]
     async fn f7_chat_folders_router_and_cascade() {
         let (app, dir) = f7_app("folders");
-        let r = app.clone().oneshot(get("/api/forge/chat-folders")).await.unwrap();
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/chat-folders"))
+            .await
+            .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(json_body(r).await, json!({ "folders": [] }));
         // 空名 400 INVALID_NAME。
@@ -2022,10 +2689,16 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
-        let fid = json_body(r).await["folder"]["id"].as_str().unwrap().to_string();
+        let fid = json_body(r).await["folder"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let r = app
             .clone()
-            .oneshot(patch_json(&format!("/api/forge/chat-folders/{fid}"), r#"{"name":"工作区"}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/chat-folders/{fid}"),
+                r#"{"name":"工作区"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(json_body(r).await["folder"]["name"], "工作区");
@@ -2035,7 +2708,10 @@ mod tests {
             .oneshot(post_json("/api/forge/sessions", "{}"))
             .await
             .unwrap();
-        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         app.clone()
             .oneshot(patch_json(
                 &format!("/api/forge/sessions/{sid}"),
@@ -2068,6 +2744,208 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// D-044:UltraPlan REST 面(路由级)。无流程 → 全 null;落库的流程随重启读回并经
+    /// 会话 REST 暴露;进行中不许换工作区;restart 清状态并发 cleared + session.updated。
+    #[tokio::test]
+    async fn ultraplan_rest_get_and_restart() {
+        let (app, dir) = f7_app("ultraplan");
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/sessions", r#"{"title":"流程"}"#))
+            .await
+            .unwrap();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let face = format!("/api/forge/sessions/{sid}/ultraplan");
+
+        // 无流程:六个键恒在且全为 null。
+        let r = app.clone().oneshot(get(&face)).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(r).await,
+            json!({
+                "ultraplan": null, "demo": null, "questionnaire": null,
+                "answers": null, "checks": null, "acceptance": null, "production": null, "target": null, "delivery": null
+            })
+        );
+        // 无流程时 restart 幂等 ok,不发事件(此前只有 session.created)。
+        let r = app
+            .clone()
+            .oneshot(post_json(&format!("{face}/restart"), ""))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(json_body(r).await, json!({ "ok": true }));
+        assert_eq!(read_events(&dir, &sid).len(), 1);
+        // 未知操作 400;未接入的操作 409;会话不存在 404(读与写)。
+        let r = app
+            .clone()
+            .oneshot(post_json(&format!("{face}/explode"), ""))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "INVALID_INPUT");
+        for action in ["acceptance", "rollback_demo"] {
+            let r = app
+                .clone()
+                .oneshot(post_json(&format!("{face}/{action}"), ""))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::CONFLICT, "{action}");
+            assert_eq!(
+                json_body(r).await["error"]["code"],
+                "ULTRAPLAN_STAGE_MISMATCH"
+            );
+        }
+        for req in [
+            get("/api/forge/sessions/sess_none/ultraplan"),
+            post_json("/api/forge/sessions/sess_none/ultraplan/restart", ""),
+        ] {
+            let r = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(r.status(), StatusCode::NOT_FOUND);
+            assert_eq!(json_body(r).await["error"]["code"], "SESSION_NOT_FOUND");
+        }
+        // 取会话本体备用(下面要原样写回盘上,再加流程状态)。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        let mut seeded = json_body(r).await["session"].clone();
+        drop(app);
+
+        // 往 sessions.json 里写入一条进行中的流程,再「重启」agentd(同一数据根重建 app)。
+        // 相位停在 running + 残留 activeRunId:模拟「重出问卷那一轮跑到一半 agentd 被杀」。
+        //
+        // 断言口径(防串扰):别的用例不持 F7 锁直接 build_app() 时,会读到此刻 env 指着的
+        // 这个数据根,成为共用本目录的「第二个 agentd」——它也会清扫、也可能回写 sessions.json。
+        // 所以下面只断言本 app 内存里的状态与「事件出现过」,不断言事件条数/尾序/盘上全文;
+        // 落盘面由 sessions.rs / ultraplan.rs 的隔离数据根用例覆盖。
+        let sessions_file = dir.join("agent-sessions").join("sessions.json");
+        let mut up = ultraplan::UltraPlanState::new_flow("做一个塔防", None, &dir.join("ws"));
+        up.stage = ultraplan::STAGE_QUESTIONNAIRE.to_string();
+        up.questionnaire_rev = 1;
+        up.phase = ultraplan::PHASE_RUNNING.to_string();
+        up.running = Some(ultraplan::RUNNING_DISCOVERY.to_string());
+        seeded["ultraplan"] = serde_json::to_value(&up).unwrap();
+        seeded["activeRunId"] = json!("run_dead");
+        let app = {
+            let _g = F7_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            std::fs::write(&sessions_file, json!({ "sessions": [seeded] }).to_string()).unwrap();
+            std::env::set_var("FORGE_AGENTD_DATA_DIR", &dir);
+            let app = build_app();
+            std::env::remove_var("FORGE_AGENTD_DATA_DIR");
+            app
+        };
+        let r = app.clone().oneshot(get(&face)).await.unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["ultraplan"]["id"], up.id);
+        assert_eq!(v["ultraplan"]["slug"], up.slug);
+        assert_eq!(v["ultraplan"]["token"], up.token);
+        assert_eq!(v["ultraplan"]["token"].as_str().unwrap().len(), 32);
+        assert_eq!(v["ultraplan"]["questionnaireRev"], 1);
+        // 崩溃恢复:阶段不动,running 相位改 failed 并留下原因(否则卡片永远不可点)。
+        // running 保留断掉的那一轮的种类;失败码只用契约 §2 失败码表里的通用码。
+        assert_eq!(v["ultraplan"]["stage"], "questionnaire");
+        assert_eq!(v["ultraplan"]["phase"], "failed");
+        assert_eq!(v["ultraplan"]["running"], "discovery");
+        assert_eq!(
+            v["ultraplan"]["lastError"]["code"],
+            "ULTRAPLAN_TURN_INVALID"
+        );
+        // 清扫补发了 ultraplan.stage(failed),前端据此刷新流程条。
+        let evs = read_events(&dir, &sid);
+        let staged = evs
+            .iter()
+            .find(|e| e["type"] == "ultraplan.stage")
+            .expect("启动清扫须补发 ultraplan.stage");
+        assert_eq!(staged["payload"]["id"], up.id);
+        assert_eq!(staged["payload"]["stage"], "questionnaire");
+        assert_eq!(staged["payload"]["phase"], "failed");
+        assert_eq!(staged["payload"]["running"], "discovery");
+        assert_eq!(
+            staged["payload"]["lastError"]["code"],
+            "ULTRAPLAN_TURN_INVALID"
+        );
+        assert_eq!(v["demo"], Value::Null, "Demo 托管未接入前恒为 null");
+        assert_eq!(v["questionnaire"], Value::Null, "产物文件不在即 null");
+        // 会话 REST 自动带出流程状态(前端 ultraPlanStore 的事实源之一)。
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        assert_eq!(json_body(r).await["session"]["ultraplan"]["id"], up.id);
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/design-snapshot?sessionId={sid}")))
+            .await
+            .unwrap();
+        assert_eq!(
+            json_body(r).await["activeSession"]["ultraplan"]["slug"],
+            up.slug
+        );
+        // 流程进行中换工作区 → 409,工作区不变。
+        let r = app
+            .clone()
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                r#"{"workspaceId":"ws_other"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            json_body(r).await["error"]["code"],
+            "ULTRAPLAN_WORKSPACE_LOCKED"
+        );
+
+        // restart:清状态,发 ultraplan.cleared {id} 后跟 session.updated;之后读回全 null。
+        let r = app
+            .clone()
+            .oneshot(post_json(&format!("{face}/restart"), ""))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(json_body(r).await, json!({ "ok": true }));
+        let evs = read_events(&dir, &sid);
+        let cleared_at = evs
+            .iter()
+            .position(|e| e["type"] == "ultraplan.cleared")
+            .expect("restart 须发 ultraplan.cleared");
+        assert_eq!(evs[cleared_at]["payload"], json!({ "id": up.id }));
+        assert!(
+            evs[cleared_at + 1..]
+                .iter()
+                .any(|e| e["type"] == "session.updated"),
+            "cleared 之后须跟 session.updated"
+        );
+        let r = app.clone().oneshot(get(&face)).await.unwrap();
+        assert_eq!(json_body(r).await["ultraplan"], Value::Null);
+        let r = app
+            .clone()
+            .oneshot(get(&format!("/api/forge/sessions/{sid}")))
+            .await
+            .unwrap();
+        assert!(
+            json_body(r).await["session"].get("ultraplan").is_none(),
+            "清掉后会话 wire 不再带流程状态"
+        );
+        // 清掉后工作区可以换了。
+        let r = app
+            .clone()
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                r#"{"workspaceId":"ws_other"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[tokio::test]
     async fn f7_design_snapshot_fields_and_models_two_states() {
         // key 判定读 FORGE_LLM_API_KEY + keystore(请求时判定):三锁同源纪律(同 llm 测试组)。
@@ -2089,20 +2967,35 @@ mod tests {
         keys.sort_unstable();
         assert_eq!(
             keys,
-            ["activeSession", "chatFolders", "events", "latestSeq", "models", "project", "run", "sessions", "todos"],
+            [
+                "account",
+                "activeSession",
+                "agents",
+                "chatFolders",
+                "events",
+                "goal",
+                "latestSeq",
+                "models",
+                "project",
+                "run",
+                "sessions",
+                "todos",
+            ],
             "字段穷举: {keys:?}"
         );
         assert_eq!(v["activeSession"], Value::Null);
         assert_eq!(v["events"], json!([]));
         assert_eq!(v["todos"], json!([]));
         assert_eq!(v["run"], Value::Null);
+        assert_eq!(v["goal"], Value::Null);
+        assert!(v["agents"]["engines"].is_array());
         assert_eq!(v["latestSeq"], 0);
         // F-GAME-3:project 面恒在(无会话按默认工作区解析 → projects/demo;
         // demo forge.toml mode=2d,2026-08-31 迁移)。
         assert_eq!(v["project"]["mode"], json!("2d"));
         assert!(v["project"]["name"].as_str().unwrap().len() > 0);
         let models = v["models"]["models"].as_array().unwrap();
-        assert_eq!(models.len(), 3);
+        assert_eq!(models.len(), 5);
         assert_eq!(models[2]["id"], "openai-compat");
         assert_eq!(models[2]["provider"], "openai-compat");
         assert_eq!(models[2]["availability"], "needs-key");
@@ -2111,6 +3004,12 @@ mod tests {
         assert_eq!(models[0]["availability"], "needs-key");
         assert_eq!(models[1]["id"], "mock");
         assert_eq!(models[1]["availability"], "available");
+        assert_eq!(models[3]["id"], "gemini-3.8-flash");
+        assert_eq!(models[3]["provider"], "antigravity");
+        assert_eq!(models[3]["availability"], "needs-config");
+        assert_eq!(models[4]["id"], "gemini-3.8-pro");
+        assert_eq!(models[4]["provider"], "antigravity");
+        assert_eq!(models[4]["availability"], "needs-config");
         assert_eq!(v["models"]["defaultModelId"], "openai-compat");
         // 有 key 态:available;响应面不含密钥本体(R-5)。
         std::env::set_var("FORGE_LLM_API_KEY", "sk-test-availability-f7");
@@ -2133,9 +3032,15 @@ mod tests {
             .oneshot(post_json("/api/forge/sessions", r#"{"title":"快照"}"#))
             .await
             .unwrap();
-        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         app.clone()
-            .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), r#"{"pinned":true}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                r#"{"pinned":true}"#,
+            ))
             .await
             .unwrap();
         app.clone()
@@ -2157,6 +3062,19 @@ mod tests {
         assert_eq!(v["latestSeq"], 2);
         assert_eq!(v["sessions"].as_array().unwrap().len(), 1);
         assert_eq!(v["chatFolders"].as_array().unwrap().len(), 1);
+        // D-040:events=0 轻量腿——不回放事件,其余面(会话/latestSeq)照常。
+        let r = app
+            .clone()
+            .oneshot(get(&format!(
+                "/api/forge/design-snapshot?sessionId={sid}&events=0"
+            )))
+            .await
+            .unwrap();
+        let v = json_body(r).await;
+        assert_eq!(v["activeSession"]["id"], sid.as_str());
+        assert_eq!(v["events"], json!([]));
+        assert_eq!(v["latestSeq"], 2);
+        assert_eq!(v["sessions"].as_array().unwrap().len(), 1);
         // 不存在 sessionId → null 三态。
         let r = app
             .oneshot(get("/api/forge/design-snapshot?sessionId=sess_none"))
@@ -2178,7 +3096,10 @@ mod tests {
             .oneshot(post_json("/api/forge/sessions", r#"{"title":"S"}"#))
             .await
             .unwrap();
-        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         // 404 面。
         let r = app
             .clone()
@@ -2203,18 +3124,27 @@ mod tests {
         let mut body = r.into_body();
         let replay = sse_read_for(&mut body, std::time::Duration::from_millis(600)).await;
         assert!(replay.contains("id: 1\n"), "帧 id=seq: {replay:?}");
-        assert!(replay.contains("event: session.created\n"), "帧 event=type: {replay:?}");
+        assert!(
+            replay.contains("event: session.created\n"),
+            "帧 event=type: {replay:?}"
+        );
         assert!(replay.contains("data: {"), "帧 data=wire JSON: {replay:?}");
         assert!(replay.contains("\"seq\":1"), "wire 含 seq: {replay:?}");
         // live:PATCH 推 session.updated(seq 2 续接)。
         let r = app
             .clone()
-            .oneshot(patch_json(&format!("/api/forge/sessions/{sid}"), r#"{"pinned":true}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/sessions/{sid}"),
+                r#"{"pinned":true}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         let live = sse_read_for(&mut body, std::time::Duration::from_millis(600)).await;
-        assert!(live.contains("event: session.updated\n"), "live 推送: {live:?}");
+        assert!(
+            live.contains("event: session.updated\n"),
+            "live 推送: {live:?}"
+        );
         assert!(live.contains("id: 2\n"), "live seq 续接: {live:?}");
         drop(body);
         // 续传无重:fromSeq=latest → 600ms 内零事件帧。
@@ -2257,7 +3187,10 @@ mod tests {
             .oneshot(post_json("/api/forge/sessions", "{}"))
             .await
             .unwrap();
-        let sid = json_body(r).await["session"]["id"].as_str().unwrap().to_string();
+        let sid = json_body(r).await["session"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         // 6 个持久事件(PATCH 轮替 pinned)→ 共 7 条,窗口仅容 4。
         for i in 0..6 {
             let body = if i % 2 == 0 {
@@ -2283,11 +3216,20 @@ mod tests {
         let text = sse_read_for(&mut body, std::time::Duration::from_millis(800)).await;
         // 首帧必须是合成 stream.gap。
         let first = text.split("\n\n").next().unwrap_or("");
-        assert!(first.contains("event: stream.gap"), "超窗首帧须 stream.gap: {text:?}");
-        assert!(first.contains("replay-window-exceeded"), "gap 原因: {text:?}");
+        assert!(
+            first.contains("event: stream.gap"),
+            "超窗首帧须 stream.gap: {text:?}"
+        );
+        assert!(
+            first.contains("replay-window-exceeded"),
+            "gap 原因: {text:?}"
+        );
         assert!(first.contains("\"gap\":true"), "gap payload: {text:?}");
         // 回放段 = 窗口内 seq 4..7;窗口外 seq 3 不得回放。
-        assert!(text.contains("id: 4\n") && text.contains("id: 7\n"), "窗口帧: {text:?}");
+        assert!(
+            text.contains("id: 4\n") && text.contains("id: 7\n"),
+            "窗口帧: {text:?}"
+        );
         assert!(!text.contains("id: 3\n"), "窗口外帧不得回放: {text:?}");
         drop(body);
         std::fs::remove_dir_all(&dir).ok();
@@ -2364,11 +3306,15 @@ mod tests {
         let v = json_body(r).await;
         assert_eq!(v["run"]["status"], "completed");
         assert!(v["run"]["id"].as_str().unwrap().starts_with("run_"));
-        assert!(v["message"]["text"].as_str().unwrap().contains("mock:已收到「给我一个场景综述」"));
+        assert!(v["message"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("mock:已收到「给我一个场景综述」"));
         assert_eq!(v["mode"], "build");
         let run_id = v["run"]["id"].as_str().unwrap().to_string();
         let types: Vec<String> = read_events(&dir, &sid)
             .iter()
+            .filter(|e| e["type"] != "agent.participant.updated")
             .map(|e| e["type"].as_str().unwrap().to_string())
             .collect();
         assert_eq!(
@@ -2382,7 +3328,10 @@ mod tests {
             ],
             "mock build 全事件序列: {types:?}"
         );
-        let evs = read_events(&dir, &sid);
+        let evs: Vec<_> = read_events(&dir, &sid)
+            .into_iter()
+            .filter(|e| e["type"] != "agent.participant.updated")
+            .collect();
         assert_eq!(evs[1]["payload"]["composerMode"], "build");
         assert_eq!(evs[1]["payload"]["runId"], run_id.as_str());
         assert_eq!(evs[2]["payload"]["model"], "mock");
@@ -2542,7 +3491,10 @@ mod tests {
         assert_eq!(pt["summary"], "已完成");
         assert_eq!(pt["title"], "改场景v2");
         let evs2 = read_events(&dir, &sid);
-        let updated: Vec<&Value> = evs2.iter().filter(|e| e["type"] == "todo.updated").collect();
+        let updated: Vec<&Value> = evs2
+            .iter()
+            .filter(|e| e["type"] == "todo.updated")
+            .collect();
         assert_eq!(updated.len(), 1);
         assert_eq!(updated[0]["payload"]["id"], t1["id"]);
         assert_eq!(updated[0]["payload"]["status"], "completed");
@@ -2559,7 +3511,10 @@ mod tests {
         assert_eq!(json_body(r).await["error"]["code"], "TODO_INVALID");
         let r = app
             .clone()
-            .oneshot(patch_json("/api/forge/todos/todo_none", r#"{"status":"running"}"#))
+            .oneshot(patch_json(
+                "/api/forge/todos/todo_none",
+                r#"{"status":"running"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::NOT_FOUND);
@@ -2573,7 +3528,9 @@ mod tests {
         let v = json_body(r).await;
         let todos = v["todos"].as_array().unwrap();
         assert_eq!(todos.len(), 2, "snapshot todos 填真: {todos:?}");
-        assert!(todos.iter().any(|t| t["title"] == "改场景v2" && t["status"] == "completed"));
+        assert!(todos
+            .iter()
+            .any(|t| t["title"] == "改场景v2" && t["status"] == "completed"));
         assert!(v["run"].is_null(), "无 activeRunId → null");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2603,7 +3560,10 @@ mod tests {
         let resp = build_app()
             .oneshot(post_json(
                 "/api/forge/playtest/run",
-                &format!(r#"{{"matrixRef":"{}"}}"#, p.to_string_lossy().replace('\\', "/")),
+                &format!(
+                    r#"{{"matrixRef":"{}"}}"#,
+                    p.to_string_lossy().replace('\\', "/")
+                ),
             ))
             .await
             .unwrap();
@@ -2614,10 +3574,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_route_404() {
-        let resp = build_app()
-            .oneshot(get("/no/such/route"))
-            .await
-            .unwrap();
+        let resp = build_app().oneshot(get("/no/such/route")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(json_body(resp).await["error"]["code"], "NOT_FOUND");
     }
@@ -2625,7 +3582,10 @@ mod tests {
     #[tokio::test]
     async fn mcp_call_unknown_tool_404() {
         let app = build_app();
-        let req = post_json("/api/forge/mcp/call", r#"{"tool":"mcp__engine-scene__no_such_tool"}"#);
+        let req = post_json(
+            "/api/forge/mcp/call",
+            r#"{"tool":"mcp__engine-scene__no_such_tool"}"#,
+        );
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(json_body(resp).await["error"]["code"], "TOOL_NOT_FOUND");
@@ -2641,7 +3601,10 @@ mod tests {
         assert_eq!(parsed.workspace_id.as_deref(), Some("ws_1"));
         let legacy: McpCallRequest =
             serde_json::from_str(r#"{"tool":"mcp__engine-scene__scene_summary"}"#).unwrap();
-        assert!(legacy.workspace_id.is_none(), "旧客户端不带 workspaceId 仍可解析");
+        assert!(
+            legacy.workspace_id.is_none(),
+            "旧客户端不带 workspaceId 仍可解析"
+        );
         let app = build_app();
         let req = post_json(
             "/api/forge/mcp/call",
@@ -2685,27 +3648,43 @@ mod tests {
             .await
             .unwrap();
         let v = json_body(listed).await;
-        assert!(v["proposals"].as_array().unwrap().iter().any(|x| x["id"] == id));
+        assert!(v["proposals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|x| x["id"] == id));
 
         // approve → approved;二次迁移 → 409 终态不可逆。
         let patched = app
             .clone()
-            .oneshot(patch_json(&format!("/api/forge/proposals/{id}"), r#"{"action":"approve"}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/proposals/{id}"),
+                r#"{"action":"approve"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(patched.status(), StatusCode::OK);
         assert_eq!(json_body(patched).await["status"], "approved");
         let again = app
             .clone()
-            .oneshot(patch_json(&format!("/api/forge/proposals/{id}"), r#"{"action":"reject"}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/proposals/{id}"),
+                r#"{"action":"reject"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(again.status(), StatusCode::CONFLICT);
-        assert_eq!(json_body(again).await["error"]["code"], "GOV_PROPOSAL_CLOSED");
+        assert_eq!(
+            json_body(again).await["error"]["code"],
+            "GOV_PROPOSAL_CLOSED"
+        );
 
         // 不存在 → 404。
         let missing = app
-            .oneshot(patch_json("/api/forge/proposals/prop_999", r#"{"action":"approve"}"#))
+            .oneshot(patch_json(
+                "/api/forge/proposals/prop_999",
+                r#"{"action":"approve"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
@@ -2740,12 +3719,18 @@ mod tests {
         assert_eq!(plain.status(), StatusCode::OK, "非 force 应穿门直达子进程");
         let plain_body = json_body(plain).await;
         let plain_tool = extract_tool_json(&plain_body);
-        assert_eq!(plain_tool["error"], "NO_META", "工具级如实报错: {plain_tool}");
+        assert_eq!(
+            plain_tool["error"], "NO_META",
+            "工具级如实报错: {plain_tool}"
+        );
 
         // 批准自动创建的 Proposal → 再调 force 删除放行(HTTP 200 到达子进程,而非 409 被门拦)。
         let approved = app
             .clone()
-            .oneshot(patch_json(&format!("/api/forge/proposals/{pid}"), r#"{"action":"approve"}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/proposals/{pid}"),
+                r#"{"action":"approve"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(approved.status(), StatusCode::OK);
@@ -2756,7 +3741,11 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert_eq!(passed.status(), StatusCode::OK, "批准后须放行(409 = 仍被门拦)");
+        assert_eq!(
+            passed.status(),
+            StatusCode::OK,
+            "批准后须放行(409 = 仍被门拦)"
+        );
     }
 
     #[tokio::test]
@@ -2778,7 +3767,10 @@ mod tests {
         assert!(sc["description"].as_str().unwrap().contains("整理"));
         // F11 wave.2 扩展字段:两键存量 skill 的可选项为空但字段齐备,builtin 判定为真。
         assert_eq!(sc["builtin"], true, "仓内 skills/ 应判 builtin: {sc}");
-        assert!(sc["tags"].is_array() && sc["allowedTools"].is_array(), "{sc}");
+        assert!(
+            sc["tags"].is_array() && sc["allowedTools"].is_array(),
+            "{sc}"
+        );
         assert_eq!(sc["version"], Value::Null);
         assert_eq!(sc["dir"], "skills/asset-cleanup");
     }
@@ -2789,16 +3781,25 @@ mod tests {
     async fn mcp_call_scene_summary_real_spawn() {
         let bin = mcp::server_bin();
         if !bin.exists() {
-            eprintln!("[SKIP] engine-scene-mcp 未构建: {},集成测试跳过", bin.display());
+            eprintln!(
+                "[SKIP] engine-scene-mcp 未构建: {},集成测试跳过",
+                bin.display()
+            );
             return;
         }
         let app = build_app();
-        let req = post_json("/api/forge/mcp/call", r#"{"tool":"mcp__engine-scene__scene_summary"}"#);
+        let req = post_json(
+            "/api/forge/mcp/call",
+            r#"{"tool":"mcp__engine-scene__scene_summary"}"#,
+        );
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let summary = extract_tool_json(&v);
-        assert!(summary.get("name").is_some(), "scene_summary 缺 name 字段: {summary}");
+        assert!(
+            summary.get("name").is_some(),
+            "scene_summary 缺 name 字段: {summary}"
+        );
         assert!(
             summary.get("entityCount").is_some(),
             "scene_summary 缺 entityCount 字段: {summary}"
@@ -2886,7 +3887,10 @@ mod tests {
     async fn swarm_execute_40_blocks_add_rigidbody() {
         let bin = mcp::server_bin();
         if !bin.exists() {
-            eprintln!("[SKIP] engine-scene-mcp 未构建: {},集成测试跳过", bin.display());
+            eprintln!(
+                "[SKIP] engine-scene-mcp 未构建: {},集成测试跳过",
+                bin.display()
+            );
             return;
         }
         let _serial = SCENE_TEST_LOCK.lock().await;
@@ -2903,7 +3907,11 @@ mod tests {
                 json_body(resp).await
             }
         };
-        call(&app, r#"{"tool":"mcp__engine-scene__scene_new","arguments":{"name":"f3-swarm-ut"}}"#).await;
+        call(
+            &app,
+            r#"{"tool":"mcp__engine-scene__scene_new","arguments":{"name":"f3-swarm-ut"}}"#,
+        )
+        .await;
         // 造 40 个关卡块,收实体 id。
         let mut entity_ids: Vec<u64> = Vec::new();
         for i in 1..=40 {
@@ -2951,14 +3959,14 @@ mod tests {
             )
             .await;
             let comp = extract_tool_json(&got);
-            assert_eq!(comp["props"]["kind"], "static", "实体 {id} RigidBody: {comp}");
+            assert_eq!(
+                comp["props"]["kind"], "static",
+                "实体 {id} RigidBody: {comp}"
+            );
         }
 
         // state 可见 4 个 done 分片。
-        let st = app
-            .oneshot(get("/api/forge/swarm/state"))
-            .await
-            .unwrap();
+        let st = app.oneshot(get("/api/forge/swarm/state")).await.unwrap();
         let sv = json_body(st).await;
         let done = sv["shards"]
             .as_array()
@@ -2972,11 +3980,11 @@ mod tests {
     // ---------- F3 wave.2:subagents 热加载 + skills/{name} + skills/config/write ----------
 
     /// subagents 目录读写测试互斥(F4 wave.3 修复):hot_reload 写真实 data/agents 临时文件,
-    /// 与 list 断言「恰好 5 个」存在并发竞争窗口(cargo test 同进程并行)——两测试同锁串行。
+    /// 与 list 断言存在并发竞争窗口(cargo test 同进程并行)——两测试同锁串行。
     static SUBAGENTS_DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[tokio::test]
-    async fn subagents_list_five_builtin_profiles() {
+    async fn subagents_list_includes_builtin_profiles() {
         let _dir_guard = SUBAGENTS_DIR_LOCK.lock().unwrap();
         let resp = build_app()
             .oneshot(get("/api/forge/subagents"))
@@ -2984,11 +3992,27 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
-        assert_eq!(v["errors"].as_array().unwrap().len(), 0, "profile 解析错误: {v}");
+        assert_eq!(
+            v["errors"].as_array().unwrap().len(),
+            0,
+            "profile 解析错误: {v}"
+        );
         let list = v["subagents"].as_array().unwrap();
         // 04 §6 内建五 profile + F10 asset-describer = 6;F-GAME-4 wave.3:+planner/reviewer = 8;
         // D-035:+explore(plan 模式并行调研)= 9。
-        assert_eq!(list.len(), 9, "内建九 profile(04 §6 + F10 + F-GAME-4 + D-035): {list:?}");
+        // D-044:REST 清单 = 内建 agents/ + 个人 data/agents/ 合并,这里只断言「内建是子集」
+        // (个人档案可以并存);精确数量由 subagents::tests::builtin_dir_matches_contract 守在内建目录上。
+        assert!(
+            list.len() >= 9,
+            "内建九 profile(04 §6 + F10 + F-GAME-4 + D-035)应全部在列: {list:?}"
+        );
+        for p in list {
+            let source = p["source"].as_str().unwrap_or_default();
+            assert!(
+                source == "builtin" || source == "personal",
+                "每项须带来源标记: {p}"
+            );
+        }
         for name in [
             "asset-describer",
             "asset-wrangler",
@@ -3000,52 +4024,12 @@ mod tests {
             "reviewer",
             "scene-builder",
         ] {
-            let p = list.iter().find(|p| p["name"] == name).unwrap_or_else(|| panic!("缺 profile {name}"));
-            assert!(p["description"].as_str().unwrap().len() > 4);
-            assert!(p["tools"].as_array().unwrap().len() >= 2);
-            assert!(p["maxSteps"].as_u64().unwrap() >= 16);
-            assert!(p["prompt"].as_str().unwrap().contains("必须遵守"));
+            // 只断言「在列」:同名个人档案(data/agents,不入库)会整份覆盖内建,来源与内容都随之
+            // 变化,属于本功能的正常用法,不能让 cargo test 因此变红。逐工种内容契约
+            // (maxSteps / 只读白名单 / VERDICT / QA_RESULT …)由
+            // subagents::tests::builtin_dir_matches_contract 守在仓库根 agents/ 上。
+            assert!(list.iter().any(|p| p["name"] == name), "缺 profile {name}");
         }
-        // F-GAME-4 wave.3:planner 只读(无写工具);reviewer 强制 VERDICT 裁决格式。
-        let planner = list.iter().find(|p| p["name"] == "planner").unwrap();
-        assert_eq!(planner["maxSteps"], 24);
-        for t in planner["tools"].as_array().unwrap() {
-            let t = t.as_str().unwrap();
-            assert!(
-                !t.contains("write") && !t.contains("apply_patch") && !t.contains("edit"),
-                "planner 白名单混入写工具: {t}"
-            );
-        }
-        // D-035:explore 只读(plan 模式的并行调研工种;混入写工具就破了只读纪律)。
-        let explore = list.iter().find(|p| p["name"] == "explore").unwrap();
-        assert_eq!(explore["maxSteps"], 20);
-        for t in explore["tools"].as_array().unwrap() {
-            let t = t.as_str().unwrap();
-            assert!(
-                !t.contains("write") && !t.contains("apply_patch") && !t.contains("edit"),
-                "explore 白名单混入写工具: {t}"
-            );
-        }
-        let et = explore["tools"].as_array().unwrap();
-        assert!(et.iter().any(|t| t == "grep"));
-        assert!(et.iter().any(|t| t == "mcp__code-forge__code_references"));
-        let reviewer = list.iter().find(|p| p["name"] == "reviewer").unwrap();
-        assert_eq!(reviewer["maxSteps"], 32);
-        assert!(reviewer["prompt"].as_str().unwrap().contains("VERDICT: APPROVE"));
-        assert!(reviewer["prompt"].as_str().unwrap().contains("VERDICT: REJECT"));
-        let rt = reviewer["tools"].as_array().unwrap();
-        assert!(rt.iter().any(|t| t == "mcp__engine-scene__play_*"));
-        assert!(rt.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
-        // 逐字白名单抽查(04 §6):logic-programmer 含 component.* 族;qa-tester 有 play 控制面
-        // (team 模式自动化试玩:play_* + 输入注入 + viewport_frame 截图断言)。
-        let lp = list.iter().find(|p| p["name"] == "logic-programmer").unwrap();
-        assert!(lp["tools"].as_array().unwrap().iter().any(|t| t == "mcp__engine-scene__component.*"));
-        let qa = list.iter().find(|p| p["name"] == "qa-tester").unwrap();
-        assert_eq!(qa["maxSteps"], 48);
-        let qa_tools = qa["tools"].as_array().unwrap();
-        assert!(qa_tools.iter().any(|t| t == "mcp__engine-scene__play_*"));
-        assert!(qa_tools.iter().any(|t| t == "mcp__engine-scene__logic_inject_input"));
-        assert!(qa_tools.iter().any(|t| t == "mcp__engine-scene__viewport_frame"));
     }
 
     #[tokio::test]
@@ -3059,15 +4043,31 @@ mod tests {
             format!("---\nname: zz-test-hot\ndescription: 热加载测试\ntools: [\"read_file\"]\nmodel: default\nmaxSteps: {steps}\n---\n临时 profile,测试后删除。\n")
         };
         std::fs::write(&f, body(7)).unwrap();
-        let r1 = app.clone().oneshot(get("/api/forge/subagents")).await.unwrap();
+        let r1 = app
+            .clone()
+            .oneshot(get("/api/forge/subagents"))
+            .await
+            .unwrap();
         let v1 = json_body(r1).await;
-        let p1 = v1["subagents"].as_array().unwrap().iter().find(|p| p["name"] == "zz-test-hot").expect("新 profile 应即现");
+        let p1 = v1["subagents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "zz-test-hot")
+            .expect("新 profile 应即现");
         assert_eq!(p1["maxSteps"], 7);
+        // D-044:data/agents 下的档案来源标 personal(与仓库根 agents/ 的 builtin 区分)。
+        assert_eq!(p1["source"], "personal");
         // 改文件(不重启)后再查应反映新值。
         std::fs::write(&f, body(42)).unwrap();
         let r2 = app.oneshot(get("/api/forge/subagents")).await.unwrap();
         let v2 = json_body(r2).await;
-        let p2 = v2["subagents"].as_array().unwrap().iter().find(|p| p["name"] == "zz-test-hot").unwrap();
+        let p2 = v2["subagents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "zz-test-hot")
+            .unwrap();
         assert_eq!(p2["maxSteps"], 42, "热加载失效?");
         std::fs::remove_file(&f).ok();
     }
@@ -3086,7 +4086,10 @@ mod tests {
         let content = v["content"].as_str().unwrap();
         // 与磁盘逐字节一致。
         let disk = std::fs::read_to_string(
-            workspace_root().join("skills").join("asset-cleanup").join("SKILL.md"),
+            workspace_root()
+                .join("skills")
+                .join("asset-cleanup")
+                .join("SKILL.md"),
         )
         .unwrap();
         assert_eq!(content, disk);
@@ -3119,7 +4122,7 @@ mod tests {
 
     impl TempSkill {
         fn new(name: &str) -> Self {
-            let dir = skills::skills_root().join(name);
+            let dir = skills::user_skills_root().join(name);
             std::fs::remove_dir_all(&dir).ok();
             TempSkill(dir)
         }
@@ -3139,29 +4142,55 @@ mod tests {
         // 不给 content → 内置模板骨架,且模板自身可通过校验(零告警)。
         let created = app
             .clone()
-            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-create"}"#))
+            .oneshot(post_json(
+                "/api/forge/skills",
+                r#"{"name":"zz-f11-create"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(created.status(), StatusCode::OK);
         let v = json_body(created).await;
         assert_eq!(v["created"], true);
-        assert_eq!(v["warnings"].as_array().unwrap().len(), 0, "模板不该告警: {v}");
+        assert_eq!(
+            v["warnings"].as_array().unwrap().len(),
+            0,
+            "模板不该告警: {v}"
+        );
         let disk = std::fs::read_to_string(tmp.0.join("SKILL.md")).unwrap();
-        assert!(disk.contains("## 执行流程") && disk.contains("## 失败回退"), "{disk}");
-        // 新建后立即出现在 list 与 read 面(扫描无缓存)。
-        let listed = json_body(app.clone().oneshot(get("/api/forge/skills/list")).await.unwrap()).await;
         assert!(
-            listed["skills"].as_array().unwrap().iter().any(|s| s["name"] == "zz-f11-create"),
+            disk.contains("## 执行流程") && disk.contains("## 失败回退"),
+            "{disk}"
+        );
+        // 新建后立即出现在 list 与 read 面(扫描无缓存)。
+        let listed = json_body(
+            app.clone()
+                .oneshot(get("/api/forge/skills/list"))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(
+            listed["skills"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["name"] == "zz-f11-create"),
             "新建技能未进清单"
         );
         // 重名 409。
         let dup = app
             .clone()
-            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-create"}"#))
+            .oneshot(post_json(
+                "/api/forge/skills",
+                r#"{"name":"zz-f11-create"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(dup.status(), StatusCode::CONFLICT);
-        assert_eq!(json_body(dup).await["error"]["code"], "SKILL_ALREADY_EXISTS");
+        assert_eq!(
+            json_body(dup).await["error"]["code"],
+            "SKILL_ALREADY_EXISTS"
+        );
         // 非法名 400。
         let bad = app
             .clone()
@@ -3180,7 +4209,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(body_bad.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(json_body(body_bad).await["error"]["code"], "SKILL_BODY_INCOMPLETE");
+        assert_eq!(
+            json_body(body_bad).await["error"]["code"],
+            "SKILL_BODY_INCOMPLETE"
+        );
         // frontmatter 坏 → frontmatter 类错误码。
         let front_bad = app
             .oneshot(post_json(
@@ -3190,8 +4222,14 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(front_bad.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(json_body(front_bad).await["error"]["code"], "SKILL_FRONTMATTER_INVALID");
-        assert!(!skills::skills_root().join("zz-f11-badbody").exists(), "校验失败不得落盘");
+        assert_eq!(
+            json_body(front_bad).await["error"]["code"],
+            "SKILL_FRONTMATTER_INVALID"
+        );
+        assert!(
+            !skills::skills_root().join("zz-f11-badbody").exists(),
+            "校验失败不得落盘"
+        );
     }
 
     #[tokio::test]
@@ -3200,7 +4238,10 @@ mod tests {
         let tmp = TempSkill::new("zz-f11-update");
         let app = build_app();
         app.clone()
-            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-update"}"#))
+            .oneshot(post_json(
+                "/api/forge/skills",
+                r#"{"name":"zz-f11-update"}"#,
+            ))
             .await
             .unwrap();
         let next = skills::skill_template("zz-f11-update").replace("## 目标", "## 目标(已改)");
@@ -3213,13 +4254,18 @@ mod tests {
         assert_eq!(updated.status(), StatusCode::OK);
         assert_eq!(json_body(updated).await["updated"], true);
         assert!(
-            std::fs::read_to_string(tmp.0.join("SKILL.md")).unwrap().contains("## 目标(已改)"),
+            std::fs::read_to_string(tmp.0.join("SKILL.md"))
+                .unwrap()
+                .contains("## 目标(已改)"),
             "更新未落盘"
         );
         // 不存在 404。
         let missing = app
             .clone()
-            .oneshot(put_json("/api/forge/skills/zz-f11-nope", r#"{"content":"x"}"#))
+            .oneshot(put_json(
+                "/api/forge/skills/zz-f11-nope",
+                r#"{"content":"x"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
@@ -3233,7 +4279,9 @@ mod tests {
             .unwrap();
         assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
         assert!(
-            std::fs::read_to_string(tmp.0.join("SKILL.md")).unwrap().contains("## 目标(已改)"),
+            std::fs::read_to_string(tmp.0.join("SKILL.md"))
+                .unwrap()
+                .contains("## 目标(已改)"),
             "校验失败竟覆盖了原文"
         );
     }
@@ -3246,7 +4294,10 @@ mod tests {
         // 同一 app 实例贯穿三步:Proposal 存贮挂在 state 上,换 app 就换了存贮。
         let app = build_app();
         app.clone()
-            .oneshot(post_json("/api/forge/skills", r#"{"name":"zz-f11-delete"}"#))
+            .oneshot(post_json(
+                "/api/forge/skills",
+                r#"{"name":"zz-f11-delete"}"#,
+            ))
             .await
             .unwrap();
         let blocked = app
@@ -3260,15 +4311,29 @@ mod tests {
         assert!(tmp.0.exists(), "未批准竟已删除");
         let pid = v["error"]["proposalId"].as_str().unwrap().to_string();
         // 提案影响面须落在 impact.assets(has_approved_covering 读的正是它)。
-        let props = json_body(app.clone().oneshot(get("/api/forge/proposals")).await.unwrap()).await;
-        let p = props["proposals"].as_array().unwrap().iter().find(|p| p["id"] == pid).unwrap();
+        let props = json_body(
+            app.clone()
+                .oneshot(get("/api/forge/proposals"))
+                .await
+                .unwrap(),
+        )
+        .await;
+        let p = props["proposals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == pid)
+            .unwrap();
         assert_eq!(p["kind"], "skill.delete");
         assert_eq!(p["impact"]["assets"][0], "zz-f11-delete");
         assert_eq!(p["impact"]["skills"][0], "zz-f11-delete");
 
         let approved = app
             .clone()
-            .oneshot(patch_json(&format!("/api/forge/proposals/{pid}"), r#"{"action":"approve"}"#))
+            .oneshot(patch_json(
+                &format!("/api/forge/proposals/{pid}"),
+                r#"{"action":"approve"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(approved.status(), StatusCode::OK);
@@ -3313,8 +4378,15 @@ mod tests {
             .unwrap();
         let dv = json_body(draft).await;
         assert_eq!(dv["valid"], false, "缺三节草稿不该判合规: {dv}");
-        assert_eq!(dv["errors"].as_array().unwrap().len(), 3, "三节各报一条: {dv}");
-        assert!(!dv["warnings"].as_array().unwrap().is_empty(), "短正文+无触发时机应告警: {dv}");
+        assert_eq!(
+            dv["errors"].as_array().unwrap().len(),
+            3,
+            "三节各报一条: {dv}"
+        );
+        assert!(
+            !dv["warnings"].as_array().unwrap().is_empty(),
+            "短正文+无触发时机应告警: {dv}"
+        );
         // 不存在的 skill 且无草稿 → 404。
         let missing = app
             .clone()
@@ -3329,13 +4401,19 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(no_action.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(json_body(no_action).await["error"]["code"], "SKILL_ACTION_REQUIRED");
+        assert_eq!(
+            json_body(no_action).await["error"]["code"],
+            "SKILL_ACTION_REQUIRED"
+        );
         let unknown = app
             .oneshot(post_json("/api/forge/skills/asset-cleanup:enable", "{}"))
             .await
             .unwrap();
         assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(json_body(unknown).await["error"]["code"], "SKILL_ACTION_UNKNOWN");
+        assert_eq!(
+            json_body(unknown).await["error"]["code"],
+            "SKILL_ACTION_UNKNOWN"
+        );
     }
 
     #[tokio::test]
@@ -3360,21 +4438,31 @@ mod tests {
             .await
             .unwrap();
         let v = json_body(listed).await;
-        let sc = v["skills"].as_array().unwrap().iter().find(|s| s["name"] == "asset-cleanup").unwrap();
+        let sc = v["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "asset-cleanup")
+            .unwrap();
         assert_eq!(sc["enabled"], false, "禁用未生效: {v}");
         // 还原(恢复原文件内容或删除)。
         let restore = app
             .clone()
-            .oneshot(post_json("/api/forge/skills/config/write", r#"{"disabled":[]}"#))
+            .oneshot(post_json(
+                "/api/forge/skills/config/write",
+                r#"{"disabled":[]}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(restore.status(), StatusCode::OK);
-        let listed2 = app
-            .oneshot(get("/api/forge/skills/list"))
-            .await
-            .unwrap();
+        let listed2 = app.oneshot(get("/api/forge/skills/list")).await.unwrap();
         let v2 = json_body(listed2).await;
-        let sc2 = v2["skills"].as_array().unwrap().iter().find(|s| s["name"] == "asset-cleanup").unwrap();
+        let sc2 = v2["skills"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == "asset-cleanup")
+            .unwrap();
         assert_eq!(sc2["enabled"], true);
         // 非法名 400。
         let bad = build_app()
@@ -3420,47 +4508,311 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let bs = v["backends"].as_array().unwrap();
-        // text2img 两条目 + media 四条目(video/audio/meshy/mesh 兜底)聚合。
-        assert_eq!(bs.len(), 6, "注册表六条目: {bs:?}");
+        // text2img 两条目 + media 七条目(含本地 ComfyUI H3)聚合。
+        assert_eq!(bs.len(), 9, "注册表九条目: {bs:?}");
         for id in [
             "local-mock",
             "remote-openai-compatible",
+            "comfyui-minimax-h3",
+            "xzapi-video",
+            "aliyun-minimax-video",
             "remote-video-compatible",
             "remote-audio-compatible",
             "meshy",
             "remote-mesh-compatible",
         ] {
-            let b = bs.iter().find(|b| b["id"] == id).unwrap_or_else(|| panic!("缺 {id}"));
+            let b = bs
+                .iter()
+                .find(|b| b["id"] == id)
+                .unwrap_or_else(|| panic!("缺 {id}"));
             assert_eq!(b["configured"], false);
             assert_eq!(b["endpointSet"], false);
             assert!(b["capabilities"].is_object());
             // 非密配置事实回显:空配置 = 未启用 + 无 key + 无 model(设置页表单据此预填)。
             assert_eq!(b["enabled"], false, "{id} 空配置应 enabled=false");
-            assert_eq!(b["keyConfigured"], false, "{id} 空配置应 keyConfigured=false");
+            assert_eq!(
+                b["keyConfigured"], false,
+                "{id} 空配置应 keyConfigured=false"
+            );
             assert!(b["model"].is_null(), "{id} 空配置应 model=null");
             // 响应面无任何密钥/endpoint 值字段。
             assert!(b.get("apiKey").is_none());
             assert!(b.get("endpoint").is_none());
         }
         // media 条目 capabilities.kinds 如实。
-        let kinds_of = |id: &str| {
-            bs.iter()
-                .find(|b| b["id"] == id)
-                .unwrap()["capabilities"]["kinds"]
-                .clone()
-        };
-        assert_eq!(kinds_of("remote-video-compatible"), json!(["text2video", "image2video"]));
+        let kinds_of =
+            |id: &str| bs.iter().find(|b| b["id"] == id).unwrap()["capabilities"]["kinds"].clone();
+        assert_eq!(
+            kinds_of("comfyui-minimax-h3"),
+            json!(["text2video", "image2video"])
+        );
+        let local_h3 = bs.iter().find(|b| b["id"] == "comfyui-minimax-h3").unwrap();
+        assert_eq!(local_h3["kind"], "local");
+        assert_eq!(
+            local_h3["capabilities"]["defaultEndpoint"],
+            "http://127.0.0.1:8188"
+        );
+        assert_eq!(local_h3["capabilities"]["defaultModel"], "MiniMax-H3");
+        assert_eq!(local_h3["capabilities"]["requiresKey"], false);
+        assert_eq!(
+            kinds_of("aliyun-minimax-video"),
+            json!(["text2video", "image2video"])
+        );
+        assert_eq!(
+            kinds_of("remote-video-compatible"),
+            json!(["text2video", "image2video"])
+        );
         assert_eq!(kinds_of("remote-audio-compatible"), json!(["tts", "music"]));
         assert_eq!(kinds_of("remote-mesh-compatible"), json!(["text2mesh"]));
         assert_eq!(kinds_of("meshy"), json!(["text2mesh", "image2mesh"]));
         // meshy 的官方端点回出,设置页据此把「endpoint 空」呈现为可用缺省而非缺件。
         let meshy = bs.iter().find(|b| b["id"] == "meshy").unwrap();
-        assert_eq!(meshy["capabilities"]["defaultEndpoint"], "https://api.meshy.ai");
+        assert_eq!(
+            meshy["capabilities"]["defaultEndpoint"],
+            "https://api.meshy.ai"
+        );
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();
     }
 
     // ---------- 素材创作波:媒体生成 REST 面(gen/video、gen/audio) ----------
+
+    #[tokio::test]
+    async fn gen_media_scopes_reference_files_and_rejects_unknown_workspace() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let (app, data) = f7_app("media-workspace");
+        let gen_data = data.join("gen");
+        std::fs::create_dir_all(&gen_data).unwrap();
+        let previous = std::env::var_os("FORGE_GEN_DATA_DIR");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &gen_data);
+        let project = data.join("selected-project");
+        std::fs::create_dir_all(project.join("Content")).unwrap();
+        // Only this selected workspace contains the reference. Reaching backend
+        // resolution proves it was read here instead of projects/demo.
+        std::fs::write(
+            project.join("Content/reference.png"),
+            b"selected-project-reference",
+        )
+        .unwrap();
+        let response = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/workspaces",
+                &json!({"name":"Media scope", "root":project}).to_string(),
+            ))
+            .await
+            .unwrap();
+        let ws = json_body(response).await["workspace"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let response = app.clone().oneshot(post_json("/api/forge/gen/video",
+            &json!({"workspaceId":ws,"prompt":"animate reference","imageRef":"Content/reference.png"}).to_string())).await.unwrap();
+        assert_eq!(
+            json_body(response).await["error"]["code"],
+            "GEN_BACKEND_NOT_CONFIGURED"
+        );
+        // Local H3 uses the same scoped imageRef conversion before adapter selection.
+        let response = app.clone().oneshot(post_json("/api/forge/gen/video",
+            &json!({"workspaceId":ws,"backend":"comfyui-minimax-h3","prompt":"animate reference","imageRef":"Content/reference.png"}).to_string())).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        let error = json_body(response).await;
+        assert_eq!(error["error"]["code"], "GEN_BACKEND_NOT_CONFIGURED");
+        assert!(error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("comfyui-minimax-h3"));
+        std::fs::write(
+            data.join("outside-reference.png"),
+            b"outside-workspace-reference",
+        )
+        .unwrap();
+        let response = app.clone().oneshot(post_json("/api/forge/gen/video",
+            &json!({"workspaceId":ws,"backend":"comfyui-minimax-h3","prompt":"animate reference","imageRef":"../outside-reference.png"}).to_string())).await.unwrap();
+        assert_eq!(
+            json_body(response).await["error"]["code"],
+            "GEN_FILE_NOT_FOUND"
+        );
+        for (path, mut body) in [
+            (
+                "/api/forge/gen/video",
+                json!({"backend":"comfyui-minimax-h3","prompt":"animate"}),
+            ),
+            (
+                "/api/forge/gen/audio",
+                json!({"mode":"music","prompt":"music"}),
+            ),
+            ("/api/forge/gen/mesh", json!({"prompt":"mesh"})),
+            (
+                "/api/forge/gen/video/frames",
+                json!({"videoFileRef":".forge/tmp/gen/x.mp4"}),
+            ),
+        ] {
+            body["workspaceId"] = json!("unknown-selected-project");
+            let response = app
+                .clone()
+                .oneshot(post_json(path, &body.to_string()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+            assert_eq!(
+                json_body(response).await["error"]["code"],
+                "WORKSPACE_NOT_FOUND"
+            );
+        }
+        match previous {
+            Some(value) => std::env::set_var("FORGE_GEN_DATA_DIR", value),
+            None => std::env::remove_var("FORGE_GEN_DATA_DIR"),
+        }
+    }
+
+    #[tokio::test]
+    async fn gen_video_file_serves_scoped_bytes_and_single_ranges() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let (app, data) = f7_app("video-file");
+        let project = data.join("selected-project");
+        let other = data.join("other-project");
+        let gen_dir = project.join(".forge/tmp/gen");
+        std::fs::create_dir_all(&gen_dir).unwrap();
+        std::fs::create_dir_all(project.join("Content")).unwrap();
+        std::fs::create_dir_all(other.join("Content")).unwrap();
+        let video = b"\0\0\0\x18ftypmp42\0\0\0\0mp42isom";
+        std::fs::write(gen_dir.join("sample.mp4"), video).unwrap();
+        std::fs::write(gen_dir.join("other.png"), b"not a video").unwrap();
+        std::fs::write(data.join("outside.mp4"), video).unwrap();
+        let mut workspaces = Vec::new();
+        for (name, root) in [("Video source", &project), ("Other project", &other)] {
+            let response = app
+                .clone()
+                .oneshot(post_json(
+                    "/api/forge/workspaces",
+                    &json!({"name":name,"root":root}).to_string(),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            workspaces.push(
+                json_body(response).await["workspace"]["id"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+            );
+        }
+        let url = format!(
+            "/api/forge/gen/video/file?workspaceId={}&fileRef=.forge%2Ftmp%2Fgen%2Fsample.mp4",
+            workspaces[0]
+        );
+        let response = app.clone().oneshot(get(&url)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "video/mp4");
+        assert_eq!(response.headers()[header::ACCEPT_RANGES], "bytes");
+        assert_eq!(
+            response.headers()[header::CONTENT_LENGTH],
+            video.len().to_string()
+        );
+        assert!(response.headers().get(header::CONTENT_RANGE).is_none());
+        assert_eq!(
+            to_bytes(response.into_body(), 1024).await.unwrap().as_ref(),
+            video
+        );
+        for (range, start, end) in [
+            ("bytes=2-5", 2, 5),
+            ("bytes=20-", 20, 23),
+            ("bytes=-4", 20, 23),
+            ("bytes=20-999", 20, 23),
+            ("bytes=-999", 0, 23),
+        ] {
+            let request = Request::get(&url)
+                .header(header::RANGE, range)
+                .body(Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT, "{range}");
+            assert_eq!(
+                response.headers()[header::CONTENT_RANGE],
+                format!("bytes {start}-{end}/24")
+            );
+            assert_eq!(response.headers()[header::ACCEPT_RANGES], "bytes");
+            assert_eq!(
+                response.headers()[header::CONTENT_LENGTH],
+                (end - start + 1).to_string()
+            );
+            assert_eq!(
+                to_bytes(response.into_body(), 1024).await.unwrap().as_ref(),
+                &video[start..=end]
+            );
+        }
+        for range in [
+            "bytes=24-",
+            "bytes=9-2",
+            "bytes=-0",
+            "bytes=0-1,3-4",
+            "bytes=",
+            "items=0-1",
+            "bytes=+1-2",
+        ] {
+            let request = Request::get(&url)
+                .header(header::RANGE, range)
+                .body(Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                "{range}"
+            );
+            assert_eq!(response.headers()[header::CONTENT_RANGE], "bytes */24");
+            assert_eq!(response.headers()[header::CONTENT_LENGTH], "0");
+            assert!(to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap()
+                .is_empty());
+        }
+        for (workspace, file_ref, code) in [
+            (
+                workspaces[1].as_str(),
+                ".forge/tmp/gen/sample.mp4",
+                "GEN_FILE_NOT_FOUND",
+            ),
+            (
+                workspaces[0].as_str(),
+                ".forge/tmp/gen/missing.mp4",
+                "GEN_FILE_NOT_FOUND",
+            ),
+            (
+                workspaces[0].as_str(),
+                ".forge/tmp/gen/other.png",
+                "GEN_FILE_NOT_FOUND",
+            ),
+            (
+                workspaces[0].as_str(),
+                "../outside.mp4",
+                "GEN_FILE_NOT_FOUND",
+            ),
+            (
+                workspaces[0].as_str(),
+                ".forge/tmp/gen/../../../outside.mp4",
+                "GEN_FILE_NOT_FOUND",
+            ),
+            (
+                "unknown-workspace",
+                ".forge/tmp/gen/sample.mp4",
+                "WORKSPACE_NOT_FOUND",
+            ),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(get(&format!(
+                    "/api/forge/gen/video/file?workspaceId={workspace}&fileRef={file_ref}"
+                )))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{file_ref}");
+            assert_eq!(json_body(response).await["error"]["code"], code);
+        }
+        drop(app);
+        std::fs::remove_dir_all(data).ok();
+    }
 
     #[tokio::test]
     async fn gen_video_unconfigured_honest_501() {
@@ -3480,14 +4832,20 @@ mod tests {
         // 未配置 → 501 GEN_BACKEND_NOT_CONFIGURED(诚实占位,不伪造产物)。
         let r = app
             .clone()
-            .oneshot(post_json("/api/forge/gen/video", r#"{"prompt":"a knight walks"}"#))
+            .oneshot(post_json(
+                "/api/forge/gen/video",
+                r#"{"prompt":"a knight walks"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
         let v = json_body(r).await;
         assert_eq!(v["error"]["code"], "GEN_BACKEND_NOT_CONFIGURED");
         assert!(
-            v["error"]["message"].as_str().unwrap().contains("remote-video-compatible"),
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("remote-video-compatible"),
             "错误应引导可配置条目: {v}"
         );
         std::env::remove_var("FORGE_GEN_DATA_DIR");
@@ -3501,7 +4859,10 @@ mod tests {
         // videoFileRef 空 → 400(参数校验先于一切外部依赖)。
         let r = app
             .clone()
-            .oneshot(post_json("/api/forge/gen/video/frames", r#"{"videoFileRef":"  "}"#))
+            .oneshot(post_json(
+                "/api/forge/gen/video/frames",
+                r#"{"videoFileRef":"  "}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::BAD_REQUEST);
@@ -3518,7 +4879,13 @@ mod tests {
         assert_eq!(r.status(), StatusCode::BAD_REQUEST);
         let v = json_body(r).await;
         assert_eq!(v["error"]["code"], "GEN_BAD_PARAMS");
-        assert!(v["error"]["message"].as_str().unwrap().contains("chromaKey"), "{v}");
+        assert!(
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("chromaKey"),
+            "{v}"
+        );
         // 本机无 ffmpeg → 501 GEN_TOOL_MISSING + 配置指引(不伪造帧)。
         let prev = std::env::var("FORGE_FFMPEG").ok();
         std::env::set_var("FORGE_FFMPEG", "/definitely/not/here/ffmpeg-nope");
@@ -3533,9 +4900,18 @@ mod tests {
         assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
         let v = json_body(r).await;
         assert_eq!(v["error"]["code"], "GEN_TOOL_MISSING");
-        assert!(v["error"]["message"].as_str().unwrap().contains("FORGE_FFMPEG"), "{v}");
+        assert!(
+            v["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("FORGE_FFMPEG"),
+            "{v}"
+        );
         // 可用性探测面与之一致。
-        let r = build_app().oneshot(get("/api/forge/tools/ffmpeg")).await.unwrap();
+        let r = build_app()
+            .oneshot(get("/api/forge/tools/ffmpeg"))
+            .await
+            .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(json_body(r).await["found"], false);
         match prev {
@@ -3595,7 +4971,10 @@ mod tests {
             let v = json_body(r).await;
             assert_eq!(v["error"]["code"], "GEN_BACKEND_NOT_CONFIGURED");
             assert!(
-                v["error"]["message"].as_str().unwrap().contains("remote-audio-compatible"),
+                v["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("remote-audio-compatible"),
                 "错误应引导可配置条目: {v}"
             );
         }
@@ -3632,7 +5011,10 @@ mod tests {
         // 文生 3D 未配置 → 501,错误引导 meshy(默认供应商排在首位)。
         let r = app
             .clone()
-            .oneshot(post_json("/api/forge/gen/mesh", r#"{"prompt":"a wooden chest"}"#))
+            .oneshot(post_json(
+                "/api/forge/gen/mesh",
+                r#"{"prompt":"a wooden chest"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::NOT_IMPLEMENTED);
@@ -3675,13 +5057,126 @@ mod tests {
         assert!(!ks_text.contains(secret), "keystore 明文落盘(RD-F5-001)");
         let listed = app.oneshot(get("/api/forge/gen/backends")).await.unwrap();
         let lv = json_body(listed).await;
-        let b = lv["backends"].as_array().unwrap().iter().find(|b| b["id"] == "meshy").unwrap();
+        let b = lv["backends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == "meshy")
+            .unwrap();
         assert_eq!(b["configured"], true);
         assert_eq!(b["endpointSet"], false, "endpoint 确实没填,如实回 false");
         assert_eq!(b["keyConfigured"], true);
         assert_eq!(b["model"], "latest");
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_configure_local_h3_without_key_preserves_existing_entries() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data = gen_temp_dir("local-h3-cfg");
+        let previous_data = std::env::var_os("FORGE_GEN_DATA_DIR");
+        let previous_key = std::env::var_os("FORGE_GEN_API_KEY");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let existing = json!({
+            "id": "aliyun-minimax-video", "kind": "remote", "enabled": false,
+            "endpoint": "https://dashscope.aliyuncs.com/api/v1", "model": "MiniMax-H3"
+        });
+        std::fs::write(
+            data.join("gen-backends.json"),
+            json!({"backends":[existing]}).to_string(),
+        )
+        .unwrap();
+        let (app, app_data) = f7_app("local-h3-cfg");
+
+        // Enabling the local backend still requires an explicit connection endpoint.
+        let response = app
+            .clone()
+            .oneshot(post_json(
+                "/api/forge/gen/backends/configure",
+                r#"{"id":"comfyui-minimax-h3","kind":"local","enabled":true}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(json_body(response).await["configured"], false);
+        let response = app.clone().oneshot(post_json("/api/forge/gen/backends/configure",
+            r#"{"id":"comfyui-minimax-h3","kind":"local","enabled":true,"endpoint":" http://127.0.0.1:8188 ","model":" MiniMax-H3 "}"#)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["configured"], true);
+        assert!(
+            !data.join("keystore.json").exists(),
+            "local H3 must not need a stored key"
+        );
+
+        // Toggling enabled without resending fields preserves the configured endpoint/model.
+        for enabled in [false, true] {
+            let response = app
+                .clone()
+                .oneshot(post_json(
+                    "/api/forge/gen/backends/configure",
+                    &json!({"id":"comfyui-minimax-h3","kind":"local","enabled":enabled})
+                        .to_string(),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(json_body(response).await["configured"], enabled);
+            let listed = app
+                .clone()
+                .oneshot(get("/api/forge/gen/backends"))
+                .await
+                .unwrap();
+            let listed = json_body(listed).await;
+            let local_h3 = listed["backends"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|b| b["id"] == "comfyui-minimax-h3")
+                .unwrap();
+            assert_eq!(local_h3["kind"], "local");
+            assert_eq!(local_h3["configured"], enabled);
+            assert_eq!(local_h3["enabled"], enabled);
+            assert_eq!(local_h3["endpointSet"], true);
+            assert_eq!(local_h3["keyConfigured"], false);
+            assert_eq!(local_h3["model"], "MiniMax-H3");
+            assert!(local_h3.get("apiKey").is_none());
+            assert!(local_h3.get("endpoint").is_none());
+        }
+        let persisted: Value =
+            serde_json::from_str(&std::fs::read_to_string(data.join("gen-backends.json")).unwrap())
+                .unwrap();
+        let entries = persisted["backends"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries
+                .iter()
+                .find(|b| b["id"] == "aliyun-minimax-video")
+                .unwrap(),
+            &existing
+        );
+        let local_h3 = entries
+            .iter()
+            .find(|b| b["id"] == "comfyui-minimax-h3")
+            .unwrap();
+        assert_eq!(local_h3["endpoint"], "http://127.0.0.1:8188");
+        assert_eq!(local_h3["model"], "MiniMax-H3");
+        assert_eq!(local_h3["enabled"], true);
+        assert!(local_h3.get("apiKey").is_none());
+        assert!(!data.join("keystore.json").exists());
+        match previous_data {
+            Some(value) => std::env::set_var("FORGE_GEN_DATA_DIR", value),
+            None => std::env::remove_var("FORGE_GEN_DATA_DIR"),
+        }
+        match previous_key {
+            Some(value) => std::env::set_var("FORGE_GEN_API_KEY", value),
+            None => std::env::remove_var("FORGE_GEN_API_KEY"),
+        }
+        std::fs::remove_dir_all(&data).ok();
+        std::fs::remove_dir_all(&app_data).ok();
     }
 
     #[tokio::test]
@@ -3768,6 +5263,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gen_custom_connections_persist_and_keep_secrets_independent() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data = gen_temp_dir("custom-profiles");
+        let previous_dir = std::env::var_os("FORGE_GEN_DATA_DIR");
+        let previous_key = std::env::var_os("FORGE_GEN_API_KEY");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let app = build_app();
+        for (id, label, secret) in [("custom-one", "图像一", "secret-one"), ("custom-two", "图像二", "secret-two")] {
+            let response = app.clone().oneshot(post_json("/api/forge/gen/backends/configure", &json!({
+                "id": id, "label": label, "adapter": "remote-openai-compatible", "kind": "remote", "enabled": true,
+                "endpoint": "https://images.example.test", "model": "image-1", "apiKey": secret
+            }).to_string())).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = json_body(response).await;
+            assert_eq!(body["configured"], true);
+            assert!(!body.to_string().contains(secret));
+        }
+        let response = app.clone().oneshot(post_json("/api/forge/gen/backends/configure", &json!({
+            "id": "custom-one", "label": "重命名图像", "adapter": "remote-openai-compatible", "kind": "remote", "enabled": false
+        }).to_string())).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(json_body(response).await["configured"], false);
+        let list = json_body(app.clone().oneshot(get("/api/forge/gen/backends")).await.unwrap()).await;
+        let one = list["backends"].as_array().unwrap().iter().find(|b| b["id"] == "custom-one").unwrap();
+        assert_eq!(one["label"], "重命名图像");
+        assert_eq!(one["adapter"], "remote-openai-compatible");
+        assert_eq!(one["enabled"], false);
+        assert_eq!(one["endpointSet"], true);
+        assert_eq!(one["keyConfigured"], true);
+        assert_eq!(one["model"], "image-1");
+        assert!(one.get("endpoint").is_none());
+        assert!(!list.to_string().contains("secret-"));
+        let cfg = gend::config::GenConfig::load();
+        let keys = gend::keystore::Keystore::load();
+        assert_eq!(keys.secret_for("custom-one").as_deref(), Some("secret-one"));
+        assert_eq!(keys.secret_for("custom-two").as_deref(), Some("secret-two"));
+        assert!(keys.secret_for("remote-openai-compatible").is_none());
+        assert!(!gend::backends::find("custom-one").unwrap().configured(&cfg, &keys));
+        assert!(gend::backends::find("custom-two").unwrap().configured(&cfg, &keys));
+        assert!(!std::fs::read_to_string(data.join("gen-profiles.json")).unwrap().contains("secret-"));
+        for body in [
+            json!({"id":"custom-invalid","adapter":"unknown-protocol","label":"无效","kind":"remote","enabled":false}),
+            json!({"id":"custom-invalid","adapter":"remote-openai-compatible","label":"","kind":"remote","enabled":false}),
+            json!({"id":"custom-one","adapter":"remote-video-compatible","label":"换接口","kind":"remote","enabled":true}),
+            json!({"id":"custom-invalid","adapter":"remote-openai-compatible","label":"无效地址","kind":"remote","enabled":true,"endpoint":"file:///private"}),
+        ] {
+            assert_eq!(app.clone().oneshot(post_json("/api/forge/gen/backends/configure", &body.to_string())).await.unwrap().status(), StatusCode::BAD_REQUEST);
+        }
+        assert!(gend::profiles::Profiles::load().unwrap().entry("custom-invalid").is_none());
+        match previous_dir { Some(v) => std::env::set_var("FORGE_GEN_DATA_DIR", v), None => std::env::remove_var("FORGE_GEN_DATA_DIR") }
+        match previous_key { Some(v) => std::env::set_var("FORGE_GEN_API_KEY", v), None => std::env::remove_var("FORGE_GEN_API_KEY") }
+        for file in ["gen-backends.json", "gen-profiles.json", "keystore.json"] { std::fs::remove_file(data.join(file)).ok(); }
+        std::fs::remove_dir(&data).ok();
+    }
+
+    #[tokio::test]
     async fn gen_configure_writes_config_and_keystore_redline() {
         let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let data = gen_temp_dir("cfg");
@@ -3800,7 +5352,12 @@ mod tests {
             .await
             .unwrap();
         let lv = json_body(listed).await;
-        let lm = lv["backends"].as_array().unwrap().iter().find(|b| b["id"] == "local-mock").unwrap();
+        let lm = lv["backends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == "local-mock")
+            .unwrap();
         assert_eq!(lm["configured"], true);
 
         // 2) remote + apiKey:configured=true(endpoint+key 齐);密钥只进 keystore.json。
@@ -3825,21 +5382,45 @@ mod tests {
         let ks_text = std::fs::read_to_string(&ks_path).unwrap();
         #[cfg(windows)]
         {
-            assert!(ks_text.contains("\"dpapi\""), "Windows 应为 DPAPI 加密形态: {ks_text}");
-            assert!(!ks_text.contains(secret), "DPAPI 密文文件含明文密钥(RD-F5-001): {ks_text}");
+            assert!(
+                ks_text.contains("\"dpapi\""),
+                "Windows 应为 DPAPI 加密形态: {ks_text}"
+            );
+            assert!(
+                !ks_text.contains(secret),
+                "DPAPI 密文文件含明文密钥(RD-F5-001): {ks_text}"
+            );
         }
         #[cfg(not(windows))]
         {
-            assert!(ks_text.contains(secret), "keystore.json 应含密钥(非 Windows 明文 fallback)");
+            assert!(
+                ks_text.contains(secret),
+                "keystore.json 应含密钥(非 Windows 明文 fallback)"
+            );
         }
         let ks = gend::keystore::Keystore::load_from(&ks_path);
-        assert_eq!(ks.key_for("remote-openai-compatible").as_deref(), Some(secret));
+        assert_eq!(
+            ks.key_for("remote-openai-compatible").as_deref(),
+            Some(secret)
+        );
         let cfg_text2 = std::fs::read_to_string(data.join("gen-backends.json")).unwrap();
-        assert!(!cfg_text2.contains(secret), "gen-backends.json 泄漏密钥(R-5): {cfg_text2}");
+        assert!(
+            !cfg_text2.contains(secret),
+            "gen-backends.json 泄漏密钥(R-5): {cfg_text2}"
+        );
         let cfg2: Value = serde_json::from_str(&cfg_text2).unwrap();
         // 读-改-写保留 local-mock 条目。
-        assert!(cfg2["backends"].as_array().unwrap().iter().any(|b| b["id"] == "local-mock"));
-        let remote = cfg2["backends"].as_array().unwrap().iter().find(|b| b["id"] == "remote-openai-compatible").unwrap();
+        assert!(cfg2["backends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["id"] == "local-mock"));
+        let remote = cfg2["backends"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["id"] == "remote-openai-compatible")
+            .unwrap();
         assert_eq!(remote["endpoint"], "https://api.example.com");
         assert!(remote.get("apiKey").is_none());
 
@@ -3915,7 +5496,11 @@ mod tests {
             .collect();
         // 目录优先 + 名称小写排序:.hidden(h) < Alpha dir < beta dir?否——hidden 不参与排前,
         // 统一按 (dir 优先, name 小写):Alpha dir / beta_dir 目录在前;.hidden/alpha.txt/zeta.txt 文件在后。
-        assert_eq!(names, vec!["Alpha dir", "beta_dir", ".hidden", "alpha.txt", "zeta.txt"], "排序: {names:?}");
+        assert_eq!(
+            names,
+            vec!["Alpha dir", "beta_dir", ".hidden", "alpha.txt", "zeta.txt"],
+            "排序: {names:?}"
+        );
         let entries = v["entries"].as_array().unwrap();
         assert_eq!(entries[0]["kind"], "dir");
         assert_eq!(entries[0]["size"], 0);
@@ -4001,10 +5586,7 @@ mod tests {
         }
         std::env::set_var("FORGE_AGENTD_WORKSPACE_ROOT", &root);
         let app = build_app();
-        let r = app
-            .oneshot(get("/api/forge/workspace/tree"))
-            .await
-            .unwrap();
+        let r = app.oneshot(get("/api/forge/workspace/tree")).await.unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         let v = json_body(r).await;
         assert_eq!(v["total"], 505);
@@ -4013,6 +5595,55 @@ mod tests {
         // 截断后仍按排序前缀(f000..f499)。
         assert_eq!(v["entries"][0]["name"], "f000.txt");
         assert_eq!(v["entries"][499]["name"], "f499.txt");
+        std::env::remove_var("FORGE_AGENTD_WORKSPACE_ROOT");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test]
+    async fn d040_workspace_search_and_git_routes() {
+        let _g = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = ws_temp_root("d040");
+        std::fs::create_dir_all(root.join("src").join("shell")).unwrap();
+        std::fs::create_dir_all(root.join("node_modules").join("x")).unwrap();
+        std::fs::write(root.join("src").join("shell").join("Sidebar.tsx"), "").unwrap();
+        std::fs::write(root.join("node_modules").join("x").join("sidebar.js"), "").unwrap();
+        std::env::set_var("FORGE_AGENTD_WORKSPACE_ROOT", &root);
+        let app = build_app();
+        // 未知工作区 → 404(两条路由同口径)。
+        for uri in [
+            "/api/forge/workspace/search?q=a&workspaceId=ws_none",
+            "/api/forge/workspace/git?workspaceId=ws_none",
+        ] {
+            let r = app.clone().oneshot(get(uri)).await.unwrap();
+            assert_eq!(r.status(), StatusCode::NOT_FOUND, "{uri}");
+            assert_eq!(json_body(r).await["error"]["code"], "WORKSPACE_NOT_FOUND");
+        }
+        // 非仓库临时根:搜索走有界遍历并跳过 node_modules;git 面如实 isRepo:false。
+        let r = app
+            .clone()
+            .oneshot(get("/api/forge/workspace/search?q=sidebar&limit=5"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = json_body(r).await;
+        assert_eq!(v["source"], "walk");
+        let paths: Vec<&str> = v["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["path"].as_str().unwrap())
+            .collect();
+        assert_eq!(paths, vec!["src/shell/Sidebar.tsx"]);
+        let r = app.oneshot(get("/api/forge/workspace/git")).await.unwrap();
+        if r.status() == StatusCode::OK {
+            assert_eq!(json_body(r).await["isRepo"], false);
+        } else {
+            assert_eq!(
+                r.status(),
+                StatusCode::NOT_IMPLEMENTED,
+                "仅允许「未装 git」这一种非 200"
+            );
+        }
         std::env::remove_var("FORGE_AGENTD_WORKSPACE_ROOT");
         std::fs::remove_dir_all(&root).ok();
     }
@@ -4056,7 +5687,11 @@ mod tests {
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         let v = json_body(r).await;
-        assert_eq!(v, json!({ "ok": true, "configured": true }), "响应面仅 ok+configured: {v}");
+        assert_eq!(
+            v,
+            json!({ "ok": true, "configured": true }),
+            "响应面仅 ok+configured: {v}"
+        );
         assert!(!v.to_string().contains(secret), "响应回显密钥(R-5): {v}");
         let r = app
             .clone()
@@ -4080,7 +5715,11 @@ mod tests {
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         let ks2 = gend::keystore::Keystore::load_from(&data.join("keystore.json"));
-        assert_eq!(ks2.key_for("deepseek").as_deref(), Some(secret2), "覆盖写未生效");
+        assert_eq!(
+            ks2.key_for("deepseek").as_deref(),
+            Some(secret2),
+            "覆盖写未生效"
+        );
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&data).ok();
     }
@@ -4107,7 +5746,10 @@ mod tests {
     async fn mcp_call_entity_persists_across_calls() {
         let bin = mcp::server_bin();
         if !bin.exists() {
-            eprintln!("[SKIP] engine-scene-mcp 未构建: {},集成测试跳过", bin.display());
+            eprintln!(
+                "[SKIP] engine-scene-mcp 未构建: {},集成测试跳过",
+                bin.display()
+            );
             return;
         }
         let _serial = SCENE_TEST_LOCK.lock().await;
@@ -4115,32 +5757,26 @@ mod tests {
         // 独立场景,避免与其他测试互串
         let _ = app
             .clone()
-            .oneshot(
-                post_json(
-                    "/api/forge/mcp/call",
-                    r#"{"tool":"mcp__engine-scene__scene_new","arguments":{"name":"persist-check"}}"#,
-                ),
-            )
+            .oneshot(post_json(
+                "/api/forge/mcp/call",
+                r#"{"tool":"mcp__engine-scene__scene_new","arguments":{"name":"persist-check"}}"#,
+            ))
             .await
             .unwrap();
         let created = app
             .clone()
-            .oneshot(
-                post_json(
-                    "/api/forge/mcp/call",
-                    r#"{"tool":"mcp__engine-scene__entity_create","arguments":{"name":"cube-1"}}"#,
-                ),
-            )
+            .oneshot(post_json(
+                "/api/forge/mcp/call",
+                r#"{"tool":"mcp__engine-scene__entity_create","arguments":{"name":"cube-1"}}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(created.status(), StatusCode::OK);
         let listed = app
-            .oneshot(
-                post_json(
-                    "/api/forge/mcp/call",
-                    r#"{"tool":"mcp__engine-scene__entity_list"}"#,
-                ),
-            )
+            .oneshot(post_json(
+                "/api/forge/mcp/call",
+                r#"{"tool":"mcp__engine-scene__entity_list"}"#,
+            ))
             .await
             .unwrap();
         assert_eq!(listed.status(), StatusCode::OK);

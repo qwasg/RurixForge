@@ -1,0 +1,299 @@
+{
+  "nativeAtlas": "Content/UI/v6/terrain/terrain.png",
+  "nativeMetadata": "Content/UI/v6/terrain/terrain.json",
+  "atlas": "/games/code-sentinels/terrain-v6/terrain.png",
+  "metadata": "/games/code-sentinels/terrain-v6/terrain.json",
+  "keysByTerrainId": {
+    "0": "grass",
+    "1": "rock",
+    "2": "water",
+    "3": "road",
+    "4": "highland",
+    "5": "ore",
+    "6": "coal"
+  },
+  "framesByTerrainId": {
+    "0": 0,
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 7,
+    "5": 5,
+    "6": 6
+  },
+  "textures": {
+    "grass": {
+      "frame": 0,
+      "image": "/games/code-sentinels/terrain-v6/grass.png",
+      "nativeTexture": "Content/UI/v6/terrain/grass.png",
+      "sha256": "2afacfe6380ab6e321f04e194ebdd73e8631252c01615f14f8bdf6b0ea772b58",
+      "sourceRect": [
+        0,
+        512,
+        512,
+        512
+      ],
+      "sourceKey": "grass",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "variantMode": "exact-source-subtile"
+    },
+    "dirt": {
+      "frame": 1,
+      "image": "/games/code-sentinels/terrain-v6/dirt.png",
+      "nativeTexture": "Content/UI/v6/terrain/dirt.png",
+      "sha256": "c5e8ddbe0151a014aa930457b188b0e571c93c66d5d9e127d4422d26a277d3a2",
+      "sourceRect": [
+        1024,
+        0,
+        512,
+        512
+      ],
+      "sourceKey": "dirt",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "variantMode": "exact-source-subtile"
+    },
+    "rock": {
+      "frame": 2,
+      "image": "/games/code-sentinels/terrain-v6/rock.png",
+      "nativeTexture": "Content/UI/v6/terrain/rock.png",
+      "sha256": "367d64d852b17144e6a769e4663a27a4d0301bae0094c8ca1e3cd40f598b5e08",
+      "sourceRect": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceKey": "rock",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "variantMode": "exact-source-subtile"
+    },
+    "water": {
+      "frame": 3,
+      "image": "/games/code-sentinels/terrain-v6/water.png",
+      "nativeTexture": "Content/UI/v6/terrain/water.png",
+      "sha256": "6a234f67ce4d0887219ba3b4823b0dcc51ae69439404841205a644d54249833a",
+      "sourceRect": [
+        512,
+        0,
+        512,
+        512
+      ],
+      "sourceKey": "water",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "variantMode": "exact-source-subtile"
+    },
+    "road": {
+      "frame": 4,
+      "image": "/games/code-sentinels/terrain-v6/road.png",
+      "nativeTexture": "Content/UI/v6/terrain/road.png",
+      "sha256": "5fd4fdf5613dad806aadf0561f395768ebfb69fdc37d9f2c4b742615b6adb37e",
+      "sourceRect": [
+        512,
+        512,
+        512,
+        512
+      ],
+      "sourceKey": "road",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "variantMode": "exact-source-subtile"
+    },
+    "ore": {
+      "frame": 5,
+      "image": "/games/code-sentinels/terrain-v6/ore.png",
+      "nativeTexture": "Content/UI/v6/terrain/ore.png",
+      "sha256": "1ce81aa0cf2944deebda3971d898f02f1dfa5a344d833bfea5ce6b267076bcb3",
+      "sourceRect": [
+        1024,
+        512,
+        512,
+        512
+      ],
+      "sourceKey": "ore",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "variantMode": "exact-source-subtile"
+    },
+    "coal": {
+      "frame": 6,
+      "image": "/games/code-sentinels/terrain-v6/coal.png",
+      "nativeTexture": "Content/UI/v6/terrain/coal.png",
+      "sha256": "367d64d852b17144e6a769e4663a27a4d0301bae0094c8ca1e3cd40f598b5e08",
+      "sourceRect": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceKey": "rock",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        0.52,
+        0.5,
+        0.48,
+        1.0
+      ],
+      "variantMode": "native-material-tint"
+    },
+    "highland": {
+      "frame": 7,
+      "image": "/games/code-sentinels/terrain-v6/highland.png",
+      "nativeTexture": "Content/UI/v6/terrain/highland.png",
+      "sha256": "2afacfe6380ab6e321f04e194ebdd73e8631252c01615f14f8bdf6b0ea772b58",
+      "sourceRect": [
+        0,
+        512,
+        512,
+        512
+      ],
+      "sourceKey": "grass",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.08,
+        1.04,
+        0.91,
+        1.0
+      ],
+      "variantMode": "native-material-tint"
+    },
+    "soil": {
+      "frame": 8,
+      "image": "/games/code-sentinels/terrain-v6/soil.png",
+      "nativeTexture": "Content/UI/v6/terrain/soil.png",
+      "sha256": "c5e8ddbe0151a014aa930457b188b0e571c93c66d5d9e127d4422d26a277d3a2",
+      "sourceRect": [
+        1024,
+        0,
+        512,
+        512
+      ],
+      "sourceKey": "dirt",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        1.12,
+        0.92,
+        0.75,
+        1.0
+      ],
+      "variantMode": "native-material-tint"
+    },
+    "bedrock": {
+      "frame": 9,
+      "image": "/games/code-sentinels/terrain-v6/bedrock.png",
+      "nativeTexture": "Content/UI/v6/terrain/bedrock.png",
+      "sha256": "367d64d852b17144e6a769e4663a27a4d0301bae0094c8ca1e3cd40f598b5e08",
+      "sourceRect": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "sourceKey": "rock",
+      "bitmapPixelsUnmodified": true,
+      "materialTint": [
+        0.7,
+        0.72,
+        0.75,
+        1.0
+      ],
+      "variantMode": "native-material-tint"
+    }
+  },
+  "underground": {
+    "unexcavatedSoil": "soil",
+    "rock": "bedrock",
+    "excavatedFloor": "dirt",
+    "aquifer": "water"
+  },
+  "waterUvAnimation": {
+    "enabled": true,
+    "method": "repeat UV scrolling of the actual water texture within its bbox",
+    "cycleSeconds": 8,
+    "offsetPerCycle": [
+      1,
+      0
+    ],
+    "mixSecondaryFlow": false
+  },
+  "nativeProjection": "UVmapped isometric2:1 ground quad; one instanced texture pass, not one drawcall per cell",
+  "ready": true,
+  "tintsByTerrainId": {
+    "0": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "1": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "2": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "3": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "4": [
+      1.08,
+      1.04,
+      0.91,
+      1.0
+    ],
+    "5": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "6": [
+      0.52,
+      0.5,
+      0.48,
+      1.0
+    ]
+  },
+  "variantMethod": "Unmodified existing texture + native material tint, no offline bitmap color rewriting"
+}

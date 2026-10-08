@@ -1,0 +1,191 @@
+{
+ "name": "gi",
+ "doc": "SDFGI: sunlit floor + red back wall + green side wall, ambient off; 240 warm frames (rurix ignores Environment)",
+ "project": "models",
+ "entities": [
+  {
+   "name": "floor",
+   "translation": [
+    0.0,
+    -1.0,
+    -1.0
+   ],
+   "rotation": [
+    -0.7071067811865476,
+    0.0,
+    0.0,
+    0.7071067811865476
+   ],
+   "scale": [
+    6.0,
+    6.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wall",
+   "translation": [
+    0.0,
+    1.0,
+    -3.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    6.0,
+    4.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/red.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "side",
+   "translation": [
+    -3.0,
+    1.0,
+    -1.0
+   ],
+   "rotation": [
+    0.0,
+    0.7071067811865476,
+    0.0,
+    0.7071067811865476
+   ],
+   "scale": [
+    6.0,
+    4.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/green.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "sun",
+   "translation": [
+    0.0,
+    3.0,
+    0.0
+   ],
+   "rotation": [
+    -0.29552020666133955,
+    0.0,
+    0.0,
+    0.955336489125606
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "Light",
+     "enabled": true,
+     "props": {
+      "kind": "directional",
+      "color": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "intensity": 2.0,
+      "castShadow": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "env",
+   "translation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "Environment",
+     "enabled": true,
+     "props": {
+      "ambientSource": "disabled",
+      "reflectionSource": "disabled",
+      "sdfgiEnabled": true,
+      "sdfgiEnergy": 2.0
+     }
+    }
+   ]
+  }
+ ],
+ "camera": {
+  "target": [
+   0.0,
+   -0.5,
+   -2.0
+  ],
+  "yaw": 0.0,
+  "pitch": 25.0,
+  "dist": 6.0,
+  "fovY": 50.0,
+  "ortho": false
+ },
+ "width": 640,
+ "height": 360,
+ "probes": [
+  [
+   320,
+   300
+  ],
+  [
+   320,
+   120
+  ],
+  [
+   120,
+   200
+  ]
+ ],
+ "probeLabels": [
+  "floor",
+  "wall",
+  "side"
+ ],
+ "warmFrames": 240
+}

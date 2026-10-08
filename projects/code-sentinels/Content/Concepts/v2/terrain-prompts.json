@@ -1,0 +1,13 @@
+{
+  "tool": "built-in image_gen",
+  "terrain": [
+    {
+      "key": "open-battlefield",
+      "prompt": "Production 2D game terrain background for an open science-fiction RTS/tower defense battlefield, StarCraft-like readable tactical scale with military vehicle-game terrain textures. Wide sixteen-to-nine composition, STRICT perfectly overhead top-down orthographic view, no horizon, no isometric perspective. A broad subdued blue-grey rocky grassland surface with muted sage grass, fine gravel, weathered cracks, dusty wheel traces, small scattered pebbles. This is a traversable background, keep the entire central ninety percent OPEN FLAT GROUND with no large obstacles, no cliffs, no water, no big rocks, no roads, no bridge, no units; gameplay obstacles and rivers will be separate layers. At the far left edge around the vertical center is a subtle small flush-to-ground dark metal launch apron occupying at most15% width and25% height, seamlessly blended into the terrain. Along extreme outermost edges only, small dense muted conifer shrubs and weathered natural edges give atmosphere. Premium richly hand-painted detailed but low contrast sci-fi strategy-game terrain so small colorful units remain readable. Fill frame completely. No black void, no vignette, no grids, no text, no numbers, no UI, no icons, no characters. Clear cool daylight with soft diffuse lighting and minimal shadows."
+    },
+    {
+      "key": "terrain-tiles",
+      "prompt": "A production game terrain TILESET as one single rectangular sheet, exact3 columns by2 rows uniform grid, SIX square seamless terrain texture tiles touching edge to edge, NO visible grid lines or labels. All tiles overhead orthographic top-down, no perspective. Row1 column1: dark slate jagged rocky barrier terrain with tightly packed dark grey angular rocks; row1 column2: deep blue-teal water ripples; row1 column3: weathered military asphalt road surface with very subtle dusty tread wear and no lane markings. Row2 column1: mossy elevated plateau texture with green-grey rocky grass surface; row2 column2: horizontally oriented sci-fi metal bridge floor with reinforced parallel steel beams and subtle amber edge stripes; row2 column3: fractured corrupted soil with restrained glowing magenta crystalline cracks in dark dirt. Every tile fills its full square to the edges with no frame or gap. Consistent fine hand-painted tactical RTS art, premium StarCraft-like texture detail, restrained medium-dark colors suited to small battlefield grid tiles. Flat seamless texture samples only: no character, no text, no symbols, no writing, no captions, no icons, no drop shadows. Output3:2 wide rectangle."
+    }
+  ]
+}

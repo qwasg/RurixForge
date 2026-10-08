@@ -187,8 +187,8 @@ describe('openViewportStream:通道生命周期', () => {
     expect(seen.status).toEqual(['play_running']);
     expect(seen.errors).toEqual(['DEV_ENV_DEGRADE: x']);
 
-    h.sendInput('left', -1);
-    h.sendPointer('click', 0.25, 0.75);
+    expect(h.sendInput('left', -1)).toBe(true);
+    expect(h.sendPointer('click', 0.25, 0.75)).toBe(true);
     h.setSelected(5);
     h.resize(640, 360);
     h.sendCamera({ yaw: 10 });
@@ -204,9 +204,10 @@ describe('openViewportStream:通道生命周期', () => {
 
     h.close();
     expect(ws.readyState).toBe(3);
+    expect(h.up).toBe(false);
   });
 
-  it('断流退避:三连败 onChannel(false);恢复后重发 subscribe 并 onChannel(true)', async () => {
+  it('断线立即不可用；退避重连恢复订阅，不重放断线期间的购买指令', async () => {
     stubStreamInfo();
     const channel: boolean[] = [];
     const h = openViewportStream({
@@ -219,9 +220,16 @@ describe('openViewportStream:通道生命周期', () => {
     // 第 1 连:成功后被服务端断开 → 失败 1
     MockWebSocket.instances[0].emitOpen();
     expect(channel).toEqual([true]);
+    expect(h.sendInput('cs', 1021)).toBe(true);
     MockWebSocket.instances[0].emitClose();
-    // 退避 500ms → 第 2 连失败;1000ms → 第 3 连失败 → 三连败降通道
+    expect(h.up).toBe(false);
+    expect(channel).toEqual([true, false]);
+    expect(h.sendInput('cs', 1061)).toBe(false);
+    expect(h.sendPointer('click', 0.5, 0.5)).toBe(false);
+    // 退避 500ms → 第 2 连失败;1000ms → 第 3 连失败；重复失败不重复通知。
     await vi.advanceTimersByTimeAsync(500);
+    expect(h.up).toBe(false);
+    expect(h.sendInput('cs', 1101)).toBe(false);
     MockWebSocket.instances[1].emitClose();
     await vi.advanceTimersByTimeAsync(1000);
     MockWebSocket.instances[2].emitClose();
@@ -230,8 +238,53 @@ describe('openViewportStream:通道生命周期', () => {
     await vi.advanceTimersByTimeAsync(2000);
     const ws4 = MockWebSocket.instances[3];
     ws4.emitOpen();
+    expect(h.up).toBe(true);
     expect(channel).toEqual([true, false, true]);
-    expect(JSON.parse(ws4.sent[0]).type).toBe('subscribe');
+    expect(ws4.sent.map((s) => JSON.parse(s).type)).toEqual(['subscribe']);
+    expect(h.sendInput('cs', 1061)).toBe(true);
+    expect(ws4.sent.map((s) => JSON.parse(s)).filter((v) => v.type === 'input'))
+      .toEqual([{ type: 'input', action: 'cs', value: 1061 }]);
+    h.close();
+  });
+
+  it('socket 已进入 CLOSING、close 事件尚未派发时也不声称指令已发送', async () => {
+    stubStreamInfo();
+    const channel: boolean[] = [];
+    const h = openViewportStream({ width: 100, height: 100, onFrame: () => {},
+      onChannel: (up) => channel.push(up) });
+    await vi.advanceTimersByTimeAsync(0);
+    const ws = MockWebSocket.instances[0];
+    expect(h.sendInput('cs', 1021)).toBe(false);
+    ws.emitOpen();
+    ws.readyState = 2;
+    expect(h.up).toBe(false);
+    expect(h.sendInput('cs', 1021)).toBe(false);
+    expect(channel).toEqual([true, false]);
+    expect(ws.sent.map((s) => JSON.parse(s).type)).toEqual(['subscribe']);
+    ws.emitClose();
+    await vi.advanceTimersByTimeAsync(500);
+    MockWebSocket.instances[1].emitOpen();
+    expect(h.up).toBe(true);
+    h.close();
+  });
+
+  it('send 抛错时返回未发送并断开重连，不抛出或自动重试购买命令', async () => {
+    stubStreamInfo();
+    const channel: boolean[] = [];
+    const h = openViewportStream({ width: 100, height: 100, onFrame: () => {},
+      onChannel: (up) => channel.push(up) });
+    await vi.advanceTimersByTimeAsync(0);
+    const ws = MockWebSocket.instances[0];
+    ws.emitOpen();
+    vi.spyOn(ws, 'send').mockImplementationOnce(() => { throw new Error('socket unavailable'); });
+    expect(h.sendInput('cs', 1021)).toBe(false);
+    expect(h.up).toBe(false);
+    expect(channel).toEqual([true, false]);
+    await vi.advanceTimersByTimeAsync(500);
+    const reconnected = MockWebSocket.instances[1];
+    reconnected.emitOpen();
+    expect(reconnected.sent.map((s) => JSON.parse(s).type)).toEqual(['subscribe']);
+    expect(h.sendInput('cs', 1021)).toBe(true);
     h.close();
   });
 

@@ -1,0 +1,514 @@
+{
+  "id": "resource-extractor-land",
+  "image": "resource-extractor-land.png",
+  "width": 2066,
+  "height": 1034,
+  "frames": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "boxes": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "frameCount": 32,
+  "fps": 16,
+  "loop": false,
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frameSize": [
+    256,
+    256
+  ],
+  "crop": "none",
+  "chromaKey": "magenta",
+  "alphaMode": "straight",
+  "chromaProcessing": "per-frame flat-corner estimate, exterior-connected color key, foreground structure protected",
+  "variableBackgroundPalette": true,
+  "edgeFeather": {
+    "widthPixels": 6,
+    "frameSize": 256,
+    "innerPixelsUnchanged": 244,
+    "algorithm": "alpha-only smoothstep"
+  },
+  "sourceDerivedGarbageMatte": {
+    "enabled": false,
+    "purpose": null
+  },
+  "sourceDerivedInnerMatte": {
+    "enabled": false,
+    "purpose": "preserve fixed machine panels when provider background hue overlaps original paint"
+  },
+  "sourceFrameCount": 124,
+  "sourceFps": 24.0,
+  "sourceDurationSec": 5.17,
+  "selectedSourceFrames": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    32,
+    36,
+    40,
+    44,
+    48,
+    52,
+    56,
+    60,
+    63,
+    67,
+    71,
+    75,
+    79,
+    83,
+    87,
+    91,
+    95,
+    99,
+    103,
+    107,
+    111,
+    115,
+    119,
+    123
+  ],
+  "uniqueFrames": 32,
+  "sourceSize": [
+    384,
+    384
+  ],
+  "sourceCropBox": [
+    0,
+    0,
+    384,
+    384
+  ],
+  "sourceActionWindowSec": [
+    0,
+    5.125
+  ],
+  "minimumSourceMarginsLTRB": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "clippedSourceFrames": 45,
+  "referenceGeometry": {
+    "canvas": [
+      1024,
+      1024
+    ],
+    "originalAlphaBbox": [
+      0,
+      23,
+      1192,
+      1221
+    ],
+    "fittedSize": [
+      653,
+      656
+    ],
+    "groundTopLeft": [
+      185,
+      184
+    ],
+    "groundBaseY": 840,
+    "airOffsetY": -85
+  },
+  "provenance": {
+    "method": "image-to-video-extracted-frames",
+    "model": "MiniMax-H3-Base FL2VA INT8 + Turbo8",
+    "taskId": "2a87b4ca-53e9-5fa5-b25b-65e55ebcfc44",
+    "video": "SourceMedia/buildings-v5/resource-extractor-land.mp4",
+    "videoSha256": "971fb84c5532c2bbcc4cb59c859682c71cc05807f8c244f5cc283f3b86909b5b",
+    "sourceImage": "Content/UI/v4/art/resource-extractor.png",
+    "request": "pipeline/v5/jobs/resource-extractor-land/request.json"
+  }
+}

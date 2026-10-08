@@ -1,11 +1,13 @@
 [workspace]
 members = [
+  "crates/forge-shader",
   "crates/forge-scene",
   "crates/forge-logic",
   "crates/forge-util",
   "crates/forge-index",
   "crates/forge-store",
   "crates/engine-host",
+  "crates/godot-host",
   "crates/forge-agentd",
   "crates/assetd",
   "crates/gend",
@@ -16,9 +18,11 @@ members = [
   "crates/mcp/gen-image-mcp",
   "crates/mcp/gen-model-mcp",
   "crates/mcp/store-mcp",
+  "crates/mcp/blender-bridge-mcp",
   "crates/viewport-presenter",
 ]
 resolver = "2"
+exclude = ["projects/code-sentinels/native-v6"]
 
 [workspace.package]
 version = "0.1.0"
@@ -66,3 +70,12 @@ windows = { version = "=0.61.3", features = [
 # rurix-physics = { path = "H:/rurix/src/rurix-physics" }
 # rurix-rt = { path = "H:/rurix/src/rurix-rt" }
 # soft-raster = { path = "H:/rurix/src/soft-raster" }
+
+# Reproducible alpha/additive RasterPass patch, based on the pinned upstream
+# revision above. See vendor/rurix/FORGE_BLEND_PATCH.md; no machine-local path.
+[patch."https://github.com/qwasg/Rurix"]
+rurix-rt = { path = "vendor/rurix/src/rurix-rt" }
+
+# The V6 fixed-step simulation is a path dependency of the desktop renderer.
+[profile.dev.package.sentinels-v6]
+opt-level = 3

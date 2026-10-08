@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
+  Boxes,
   ChevronDown,
   ChevronRight,
   Folder,
   FolderPlus,
+  History,
+  MessagesSquare,
   Pin,
   PinOff,
   Search,
@@ -15,26 +18,23 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useOverlayStore } from '@/lib/overlayStore';
+import { isUnread, useSessionSeen } from '@/lib/sessionSeen';
 import { useSessionStore, type ForgeSession } from '@/lib/sessionStore';
+import { KEYS } from '@/lib/shortcuts';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { displayRoot, useWorkspaceStore } from '@/lib/workspaceStore';
-import { IBtn, Kbd, PaneToggleBtn, SecHead, StatusDot } from './primitives';
+import AccountCard from './AccountCard';
+import { IBtn, Kbd, PaneToggleBtn, SecHead } from './primitives';
 import WorkspacePicker from './WorkspacePicker';
 
 /**
- * F7 wave.3 会话侧栏(参考 ui/sidebar.rs,真实数据 = sessionStore):
- * 30px 搜索框(本地过滤标题/id);New Agent 行(POST /sessions 并选中);
- * PINNED 区;CHAT FOLDERS(内联建文件夹/组头折叠/组内 12 条上限 + More(N)/收起;
- * 无文件夹时单一「会话」组);会话行 = 6×6 状态点(activeRunId→accent 脉冲,否则 idle 灰)
- * + 标题(12.4px 截断)+ 相对时间(mono 10px)+ hover pin/移入文件夹/trash 三钮
- * + 双击内联重命名(PATCH title);底部工作区选择器(WorkspacePicker)+ 用户卡
- * (占位「本地用户」+ 齿轮开设置)。
- *
- * 2026-08-25 用户拍板:WORKSPACES 区块由会话列上方搬到用户卡上方,收起态只留一条触发条,
- * 工作区行/新建表单随之迁入 WorkspacePicker 面板(会话按 activeWorkspaceId 过滤的逻辑不变)。
- *
- * 差异留痕:参考的 workspace 分组依赖 workspaceRoot 字段(本仓会话模型未落地),
- * 本波仅 chat-folders 分组 + 单一「会话」组,workspace 分组缺失如实留档。
+ * 会话侧栏(真实数据 = sessionStore;D-040 参考 Codex 线程栏重排):
+ * 头 = 搜索框(按 / 聚焦,Shell 全局监听)+ 折叠钮同一行;New Agent / 资产商店 / Skill 管理三行导航;
+ * 身 = PINNED + 文件夹组 + 会话组:选「全部会话」时未归档会话按工作区分组(Codex 的项目 → 线程),
+ * 选定工作区时单列「最近」;组内 12 条上限 + More(N)。文件夹组头双击重命名。
+ * 会话行:空闲不挂点,运行中 = 动态状态点,后台跑出新结果 = 未读点(lib/sessionSeen);
+ * 标题 + 相对时间 + hover pin/移入文件夹/trash + 双击内联重命名。
+ * 脚 = 工作区选择器(WorkspacePicker)+ 账户卡(AccountCard,真实用户名 / Codex 套餐)+ 齿轮。
  */
 
 const GROUP_VISIBLE_LIMIT = 12;
@@ -52,7 +52,23 @@ export function relativeTime(iso: string | undefined): string {
   return `${Math.floor(secs / (86400 * 7))}w`;
 }
 
-function SessionRow({ s, indented }: { s: ForgeSession; indented?: boolean }) {
+/** 行首状态位(固定 8px 宽,空闲留空以对齐标题):运行中涟漪点 / 未读实心点。 */
+function RowIndicator({ running, unread }: { running: boolean; unread: boolean }) {
+  if (running) {
+    return (
+      <span data-testid="session-running" title="运行中" className="relative flex h-2 w-2 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-acc opacity-60 motion-reduce:animate-none" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-acc" />
+      </span>
+    );
+  }
+  if (unread) {
+    return <span data-testid="session-unread" title="有新结果" className="h-[7px] w-[7px] shrink-0 rounded-full bg-acc" />;
+  }
+  return <span className="w-2 shrink-0" />;
+}
+
+function SessionRow({ s, indented, unread }: { s: ForgeSession; indented?: boolean; unread: boolean }) {
   const activeSessionId = useSessionStore((st) => st.activeSessionId);
   const select = useSessionStore((st) => st.select);
   const rename = useSessionStore((st) => st.rename);
@@ -85,6 +101,7 @@ function SessionRow({ s, indented }: { s: ForgeSession; indented?: boolean }) {
       tabIndex={0}
       title={title}
       data-testid={`session-row-${s.id}`}
+      data-unread={unread ? '1' : undefined}
       onClick={() => select(s.id)}
       onDoubleClick={() => {
         setDraft(s.title);
@@ -94,12 +111,12 @@ function SessionRow({ s, indented }: { s: ForgeSession; indented?: boolean }) {
         if (e.key === 'Enter') select(s.id);
       }}
       className={cn(
-        'group/sess relative mx-1 flex min-h-[32px] items-center gap-1.5 rounded-md py-1 pl-3 pr-1.5',
-        indented && 'pl-7',
+        'group/sess relative mx-1 flex min-h-[30px] items-center gap-2 rounded-md py-1 pl-2.5 pr-1.5',
+        indented && 'pl-6',
         isSel ? 'bg-shell-active' : 'hover:bg-shell-hover',
       )}
     >
-      <StatusDot color={running ? 'var(--dot-running)' : 'var(--dot-idle)'} pulse={running} />
+      <RowIndicator running={running} unread={unread} />
       {renaming ? (
         <input
           autoFocus
@@ -119,13 +136,23 @@ function SessionRow({ s, indented }: { s: ForgeSession; indented?: boolean }) {
         />
       ) : (
         <>
-          <span className="min-w-0 flex-1 truncate text-[12.4px] text-fg">{title}</span>
-          <span className="shrink-0 font-code text-[10px] text-fg-4">{relativeTime(s.updatedAt)}</span>
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate text-[12.4px]',
+              isSel || unread ? 'text-fg' : 'text-fg-2',
+              unread && 'font-semibold',
+            )}
+          >
+            {title}
+          </span>
+          <span className="shrink-0 font-code text-[10px] text-fg-4 group-hover/sess:hidden">
+            {relativeTime(s.updatedAt)}
+          </span>
         </>
       )}
-      {/* hover 三钮:pin / 移入文件夹 / trash */}
+      {/* hover 三钮:pin / 移入文件夹 / trash(与相对时间同位互换,行宽不跳) */}
       {!renaming && (
-        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/sess:opacity-100">
+        <span className="hidden shrink-0 items-center gap-0.5 group-hover/sess:flex">
           <button
             type="button"
             title={s.pinned ? '取消置顶' : '置顶'}
@@ -198,25 +225,127 @@ function SessionRow({ s, indented }: { s: ForgeSession; indented?: boolean }) {
   );
 }
 
+type GroupKind = 'folder' | 'workspace' | 'recent';
+
 interface Group {
   key: string;
   label: string;
+  kind: GroupKind;
   folderId: string | null;
   sessions: ForgeSession[];
+  /** 组头悬停说明(工作区组 = 根路径)。 */
+  title?: string;
+}
+
+const GROUP_ICON: Record<GroupKind, typeof Folder> = {
+  folder: Folder,
+  workspace: Boxes,
+  recent: History,
+};
+
+function latest(list: ForgeSession[]): number {
+  return list.reduce((m, s) => Math.max(m, Date.parse(s.updatedAt) || 0), 0);
+}
+
+function GroupHeader({
+  g,
+  collapsed,
+  onToggle,
+}: {
+  g: Group;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const removeFolder = useSessionStore((st) => st.removeFolder);
+  const renameFolder = useSessionStore((st) => st.renameFolder);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(g.label);
+  const Icon = GROUP_ICON[g.kind];
+
+  const commit = () => {
+    setRenaming(false);
+    if (g.folderId && draft.trim() !== '' && draft.trim() !== g.label) void renameFolder(g.folderId, draft);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      title={g.folderId ? `${g.label}(双击重命名)` : g.title}
+      data-testid={`session-group-${g.key}`}
+      onClick={() => {
+        if (!renaming) onToggle();
+      }}
+      onDoubleClick={() => {
+        if (!g.folderId) return;
+        setDraft(g.label);
+        setRenaming(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !renaming) onToggle();
+      }}
+      className="group/ws mx-1 flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2"
+    >
+      {collapsed ? (
+        <ChevronRight size={11} className="shrink-0 text-fg-4" />
+      ) : (
+        <ChevronDown size={11} className="shrink-0 text-fg-4" />
+      )}
+      <Icon size={12} className="shrink-0" />
+      {renaming ? (
+        <input
+          autoFocus
+          value={draft}
+          data-testid={`folder-rename-${g.folderId}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+          className="min-w-0 flex-1 rounded border border-acc-ring bg-shell-panel px-1 py-px text-[12px] text-fg outline-none"
+        />
+      ) : (
+        <span className="min-w-0 flex-1 truncate font-medium">{g.label}</span>
+      )}
+      {!renaming && (
+        <span className="shrink-0 font-code text-[10px] text-fg-4 group-hover/ws:hidden">{g.sessions.length}</span>
+      )}
+      {g.folderId && !renaming && (
+        <button
+          type="button"
+          title="删除文件夹"
+          aria-label="删除文件夹"
+          onClick={(e) => {
+            e.stopPropagation();
+            void removeFolder(g.folderId as string);
+          }}
+          className="hidden h-5 w-5 items-center justify-center rounded text-fg-3 hover:bg-danger-bg group-hover/ws:flex"
+        >
+          <Trash2 size={10} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function Sidebar() {
   const sessions = useSessionStore((st) => st.sessions);
   const folders = useSessionStore((st) => st.folders);
   const offline = useSessionStore((st) => st.offline);
+  const activeSessionId = useSessionStore((st) => st.activeSessionId);
   const create = useSessionStore((st) => st.create);
   const createFolder = useSessionStore((st) => st.createFolder);
-  const removeFolder = useSessionStore((st) => st.removeFolder);
   const workspaces = useWorkspaceStore((st) => st.workspaces);
   const activeWorkspaceId = useWorkspaceStore((st) => st.activeWorkspaceId);
   const openSettings = useOverlayStore((st) => st.open);
   const openTab = useWorkbenchStore((st) => st.openTab);
   const activeTabId = useWorkbenchStore((st) => st.activeTabId);
+  const seen = useSessionSeen((st) => st.seen);
+  const observe = useSessionSeen((st) => st.observe);
+  const markSeen = useSessionSeen((st) => st.markSeen);
 
   const [query, setQuery] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -224,22 +353,32 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [showAll, setShowAll] = useState<ReadonlySet<string>>(new Set());
 
+  // 已读基线:新出现的会话以当时的 updatedAt 为基线;正在看的会话随更新持续标已读
+  useEffect(() => {
+    observe(sessions);
+  }, [observe, sessions]);
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  useEffect(() => {
+    if (activeSession) markSeen(activeSession);
+    // updatedAt 前进(当前会话出新结果)也算已读
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession?.id, activeSession?.updatedAt, markSeen]);
+
   const workspaceFilter = (workspaceId?: string | null) =>
     activeWorkspaceId === null || workspaceId === activeWorkspaceId;
 
   const visibleFolders = useMemo(
     () => folders.filter((f) => workspaceFilter(f.workspaceId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [folders, activeWorkspaceId],
   );
 
+  const q = query.trim().toLowerCase();
+  const matches = (s: ForgeSession) =>
+    q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+
   const groups = useMemo<Group[]>(() => {
-    const q = query.trim().toLowerCase();
-    const matched = sessions.filter(
-      (s) =>
-        workspaceFilter(s.workspaceId) &&
-        !s.pinned &&
-        (q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)),
-    );
+    const matched = sessions.filter((s) => workspaceFilter(s.workspaceId) && !s.pinned && matches(s));
     const folderIds = new Set(visibleFolders.map((f) => f.id));
     const byFolder = new Map<string, ForgeSession[]>();
     const unfiled: ForgeSession[] = [];
@@ -255,32 +394,54 @@ export default function Sidebar() {
     const out: Group[] = visibleFolders.map((f) => ({
       key: `folder:${f.id}`,
       label: f.name,
+      kind: 'folder',
       folderId: f.id,
       sessions: byFolder.get(f.id) ?? [],
     }));
-    out.push({ key: 'plain', label: '会话', folderId: null, sessions: unfiled });
-    return out;
-  }, [sessions, visibleFolders, query, activeWorkspaceId]);
-
-  const pinned = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return sessions.filter(
-      (s) =>
-        workspaceFilter(s.workspaceId) &&
-        s.pinned &&
-        (q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)),
-    );
-  }, [sessions, query, activeWorkspaceId]);
-
-  const toggleCollapsed = (key: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+    if (activeWorkspaceId !== null) {
+      out.push({ key: 'plain', label: '最近', kind: 'recent', folderId: null, sessions: unfiled });
+      return out;
+    }
+    // 全部会话:按工作区分组,组按最近活动排序;未绑定(或绑定的工作区已删)的会话落在默认根执行,归「默认工作区」
+    const known = new Map(workspaces.map((w) => [w.id, w] as const));
+    const byWs = new Map<string, ForgeSession[]>();
+    const loose: ForgeSession[] = [];
+    for (const s of unfiled) {
+      if (s.workspaceId && known.has(s.workspaceId)) {
+        const arr = byWs.get(s.workspaceId) ?? [];
+        arr.push(s);
+        byWs.set(s.workspaceId, arr);
+      } else {
+        loose.push(s);
+      }
+    }
+    const wsGroups: Group[] = [...byWs.entries()].map(([id, list]) => {
+      const w = known.get(id);
+      return {
+        key: `ws:${id}`,
+        label: w?.name ?? id,
+        kind: 'workspace',
+        folderId: null,
+        sessions: list,
+        title: w ? displayRoot(w.root) : undefined,
+      };
     });
-  const toggleShowAll = (key: string) =>
-    setShowAll((prev) => {
+    if (loose.length > 0) {
+      wsGroups.push({ key: 'ws:none', label: '默认工作区', kind: 'workspace', folderId: null, sessions: loose });
+    }
+    wsGroups.sort((a, b) => latest(b.sessions) - latest(a.sessions));
+    return [...out, ...wsGroups];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, visibleFolders, workspaces, q, activeWorkspaceId]);
+
+  const pinned = useMemo(
+    () => sessions.filter((s) => workspaceFilter(s.workspaceId) && s.pinned && matches(s)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessions, q, activeWorkspaceId],
+  );
+
+  const toggleIn = (setter: typeof setCollapsed, key: string) =>
+    setter((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -295,34 +456,43 @@ export default function Sidebar() {
     void createFolder(name);
   };
 
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
   const empty = pinned.length === 0 && groups.every((g) => g.sessions.length === 0);
+  const unreadOf = (s: ForgeSession) => isUnread(s, seen[s.id], activeSessionId);
+
+  const navRow = (active: boolean) =>
+    cn(
+      'flex h-7 items-center gap-2 rounded-md px-2 text-left text-[12.4px] text-fg-2 transition-colors hover:bg-shell-hover hover:text-fg',
+      active && 'bg-shell-active text-fg',
+    );
 
   return (
     <div data-testid="sidebar" className="flex h-full min-h-0 flex-col bg-shell-sidebar">
-      {/* head:搜索 + New Agent */}
-      <div className="flex shrink-0 flex-col gap-1.5 p-2.5">
-        <div className="flex h-[30px] min-h-[30px] items-center gap-1.5 rounded-md border border-edge bg-shell-panel px-2 py-0.5">
-          <Search size={12} className="shrink-0 text-fg-3" />
-          <input
-            value={query}
-            data-testid="sidebar-search"
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索会话…"
-            className="h-full min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-4"
-          />
-          <Kbd label="/" />
+      {/* 头:搜索(/ 聚焦)+ 折叠钮同一行;下挂三行导航 */}
+      <div className="flex shrink-0 flex-col gap-1 p-2.5 pb-2">
+        <div className="mb-1 flex items-center gap-1">
+          <div className="flex h-[30px] min-w-0 flex-1 items-center gap-1.5 rounded-md border border-edge bg-shell-panel px-2 focus-within:border-acc-ring">
+            <Search size={12} className="shrink-0 text-fg-3" />
+            <input
+              value={query}
+              data-testid="sidebar-search"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setQuery('');
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="搜索会话…"
+              className="h-full min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-4"
+            />
+            <Kbd label={KEYS.focusSessionSearch} />
+          </div>
+          <PaneToggleBtn kind="sessions" className="h-[30px] w-7" />
         </div>
-        <PaneToggleBtn kind="sessions" className="h-7 w-7" />
-        <button
-          type="button"
-          data-testid="sidebar-new-agent"
-          onClick={() => void create()}
-          className="flex h-7 items-center gap-2 rounded-md px-2 text-left text-[12.4px] text-fg-2 transition-colors hover:bg-shell-hover"
-        >
-          <Sparkles size={13} className="shrink-0 text-fg-3" />
+        <button type="button" data-testid="sidebar-new-agent" onClick={() => void create()} className={navRow(false)}>
+          <Sparkles size={13} className="shrink-0 text-acc" />
           <span className="min-w-0 flex-1">New Agent</span>
-          <Kbd label="Ctrl+Shift+N" />
+          <Kbd label={KEYS.newSession} />
         </button>
         {/*
           F11(D-025):两个大类入口。不新增常驻面板(I-3 七区冻结),点击开 workbench tab
@@ -332,10 +502,7 @@ export default function Sidebar() {
           type="button"
           data-testid="sidebar-asset-store"
           onClick={() => openTab('store')}
-          className={cn(
-            'flex h-7 items-center gap-2 rounded-md px-2 text-left text-[12.4px] text-fg-2 transition-colors hover:bg-shell-hover',
-            activeTabId === 'store' && 'bg-shell-active',
-          )}
+          className={navRow(activeTabId === 'store')}
         >
           <Store size={13} className="shrink-0 text-fg-3" />
           <span className="min-w-0 flex-1">资产商店</span>
@@ -344,17 +511,14 @@ export default function Sidebar() {
           type="button"
           data-testid="sidebar-skills"
           onClick={() => openTab('skills')}
-          className={cn(
-            'flex h-7 items-center gap-2 rounded-md px-2 text-left text-[12.4px] text-fg-2 transition-colors hover:bg-shell-hover',
-            activeTabId === 'skills' && 'bg-shell-active',
-          )}
+          className={navRow(activeTabId === 'skills')}
         >
           <BookOpen size={13} className="shrink-0 text-fg-3" />
           <span className="min-w-0 flex-1">Skill 管理</span>
         </button>
       </div>
 
-      {/* body */}
+      {/* 身 */}
       <div className="min-h-0 flex-1 overflow-y-auto pb-1">
         {offline && (
           <div className="mx-3 mb-2.5 rounded-lg border border-edge bg-shell-panel p-2 text-[11px] text-fg-3">
@@ -363,19 +527,21 @@ export default function Sidebar() {
         )}
 
         {empty && !offline && (
-          <p className="p-3.5 text-[12px] text-fg-4">暂无会话，可点击「New Agent」创建。</p>
+          <p className="p-3.5 text-[12px] text-fg-4">
+            {q !== '' ? '没有匹配的会话。' : '暂无会话，可点击「New Agent」创建。'}
+          </p>
         )}
 
         {pinned.length > 0 && (
           <>
             <SecHead icon={<Pin size={10} />} label="PINNED" />
             {pinned.map((s) => (
-              <SessionRow key={s.id} s={s} />
+              <SessionRow key={s.id} s={s} unread={unreadOf(s)} />
             ))}
           </>
         )}
 
-        <SecHead icon={<Folder size={10} />} label="CHAT FOLDERS">
+        <SecHead icon={<MessagesSquare size={10} />} label="会话">
           <span className="ml-auto flex items-center gap-0.5">
             <button
               type="button"
@@ -411,11 +577,7 @@ export default function Sidebar() {
               placeholder="文件夹名…"
               className="min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-4"
             />
-            <button
-              type="button"
-              onClick={submitFolder}
-              className="shrink-0 text-[11px] text-acc"
-            >
+            <button type="button" onClick={submitFolder} className="shrink-0 text-[11px] text-acc">
               创建
             </button>
           </div>
@@ -428,46 +590,16 @@ export default function Sidebar() {
           const visible = all || overflow <= 0 ? g.sessions : g.sessions.slice(0, GROUP_VISIBLE_LIMIT);
           return (
             <div key={g.key} className="flex flex-col">
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => toggleCollapsed(g.key)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') toggleCollapsed(g.key);
-                }}
-                className="group/ws mx-1 flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] text-fg-2 transition-colors hover:bg-shell-hover"
-              >
-                {isCollapsed ? (
-                  <ChevronRight size={11} className="shrink-0 text-fg-4" />
-                ) : (
-                  <ChevronDown size={11} className="shrink-0 text-fg-4" />
-                )}
-                <Folder size={13} className="shrink-0 text-fg-3" />
-                <span className="min-w-0 flex-1 truncate">{g.label}</span>
-                {g.folderId && (
-                  <button
-                    type="button"
-                    title="删除文件夹"
-                    aria-label="删除文件夹"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void removeFolder(g.folderId as string);
-                    }}
-                    className="flex h-5 w-5 items-center justify-center rounded text-fg-3 opacity-0 transition-opacity hover:bg-danger-bg group-hover/ws:opacity-100"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                )}
-              </div>
+              <GroupHeader g={g} collapsed={isCollapsed} onToggle={() => toggleIn(setCollapsed, g.key)} />
               {!isCollapsed && (
                 <>
                   {visible.map((s) => (
-                    <SessionRow key={s.id} s={s} indented />
+                    <SessionRow key={s.id} s={s} indented unread={unreadOf(s)} />
                   ))}
                   {overflow > 0 && (
                     <button
                       type="button"
-                      onClick={() => toggleShowAll(g.key)}
+                      onClick={() => toggleIn(setShowAll, g.key)}
                       className="mx-2.5 my-0.5 ml-[22px] flex items-center gap-[5px] rounded-md px-2 py-[3px] text-left text-[11px] text-fg-3 transition-colors hover:bg-shell-hover"
                     >
                       {all ? <ChevronDown size={11} /> : <ChevronDown size={11} className="rotate-180" />}
@@ -481,23 +613,12 @@ export default function Sidebar() {
         })}
       </div>
 
-      {/* 工作区选择器:贴在用户卡上方,展开时把自己顶上去、面板落在空隙里 */}
+      {/* 工作区选择器:贴在账户卡上方,展开时把自己顶上去、面板落在空隙里 */}
       <WorkspacePicker />
 
-      {/* foot:用户卡(占位)+ 设置齿轮 */}
-      <div className="flex shrink-0 items-center gap-2 border-t border-edge p-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-acc text-[12px] text-fg-inv">
-          本
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate text-[12px] text-fg">{activeWorkspace?.name ?? '我的空间'}</span>
-          <span
-            title={activeWorkspace ? displayRoot(activeWorkspace.root) : undefined}
-            className="truncate text-[10.5px] text-fg-4"
-          >
-            {activeWorkspace ? displayRoot(activeWorkspace.root) : '本地用户'}
-          </span>
-        </span>
+      {/* 脚:账户卡(真实用户名 / Codex 套餐,点开账户菜单)+ 设置齿轮 */}
+      <div className="flex shrink-0 items-center gap-1 border-t border-edge p-2">
+        <AccountCard />
         <IBtn title="设置" testId="sidebar-settings" onClick={() => openSettings('settings')}>
           <Settings size={13} />
         </IBtn>

@@ -1,0 +1,40 @@
+{
+  "model": "o4-mini",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Plan a trip to Kyoto."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "name": "search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          }
+        }
+      },
+      "strict": false
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "name": "search"
+  },
+  "parallel_tool_calls": false,
+  "reasoning": {
+    "effort": "high",
+    "summary": "auto"
+  },
+  "stream": false
+}

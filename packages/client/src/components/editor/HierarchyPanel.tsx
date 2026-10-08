@@ -42,8 +42,37 @@ function persistCollapsePref(p: Record<EntityCategory, boolean>): void {
   }
 }
 
-function HierarchyRow({ entity }: { entity: EntityData }) {
+export function entityParent(entity: EntityData): number | null {
+  const value = entity.components.find((c) => c.enabled && c.type === 'Parent')?.props.entity;
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+}
+
+/** Stable parent-first order; malformed cycles remain visible rather than hanging the UI. */
+export function hierarchyRows(entities: EntityData[], collapsed: Set<number> = new Set()): Array<{ entity: EntityData; depth: number; hasChildren: boolean }> {
+  const ids = new Set(entities.map((e) => e.id));
+  const children = new Map<number, EntityData[]>();
+  for (const e of entities) {
+    const parent = entityParent(e);
+    if (parent !== null && parent !== e.id && ids.has(parent)) children.set(parent, [...(children.get(parent) ?? []), e]);
+  }
+  const seen = new Set<number>();
+  const out: Array<{ entity: EntityData; depth: number; hasChildren: boolean }> = [];
+  const visit = (e: EntityData, depth: number, hidden: boolean) => {
+    if (seen.has(e.id)) return;
+    seen.add(e.id);
+    const kids = children.get(e.id) ?? [];
+    if (!hidden) out.push({ entity: e, depth, hasChildren: kids.length > 0 });
+    for (const child of kids) visit(child, Math.min(depth + 1, 64), hidden || collapsed.has(e.id));
+  };
+  for (const e of entities) if (!ids.has(entityParent(e) ?? -1) || entityParent(e) === e.id) visit(e, 0, false);
+  for (const e of entities) if (!seen.has(e.id)) visit(e, 0, false);
+  return out;
+}
+
+function HierarchyRow({ entity, depth = 0, expanded = true, hasChildren = false, onToggle }: { entity: EntityData; depth?: number; expanded?: boolean; hasChildren?: boolean; onToggle?: () => void }) {
   const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const entities = useEditorStore((s) => s.entities);
   const selectEntity = useEditorStore((s) => s.selectEntity);
   const renameEntity = useEditorStore((s) => s.renameEntity);
   const destroyEntity = useEditorStore((s) => s.destroyEntity);
@@ -66,7 +95,9 @@ function HierarchyRow({ entity }: { entity: EntityData }) {
       title={entity.name}
       data-testid={`hierarchy-row-${entity.id}`}
       data-category={cat}
-      onClick={() => selectEntity(entity.id)}
+      data-depth={depth}
+      style={{ paddingLeft: 8 + depth * 12 }}
+      onClick={(e) => selectEntity(entity.id, e.ctrlKey || e.metaKey)}
       onDoubleClick={() => {
         setDraft(entity.name);
         setEditing(true);
@@ -76,9 +107,14 @@ function HierarchyRow({ entity }: { entity: EntityData }) {
       }}
       className={cn(
         'group/entity flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-[3px] text-sm text-fg-2 transition-colors hover:bg-shell-hover',
-        selectedId === entity.id && 'bg-acc-bg text-fg shadow-[inset_2px_0_0_0_var(--accent)]',
+        (selectedId === entity.id || selectedIds.includes(entity.id)) && 'bg-acc-bg text-fg shadow-[inset_2px_0_0_0_var(--accent)]',
       )}
     >
+      <AnnotationHandle annotations={(selectedIds.includes(entity.id) ? entities.filter((item) => selectedIds.includes(item.id)) : [entity]).map((item) => makeAnnotation(entityReference(item), item.name))} label={entity.name} />
+      {hasChildren && <button type="button" aria-label={`${expanded ? '折叠' : '展开'} ${entity.name}`} aria-expanded={expanded}
+        onClick={(e) => { e.stopPropagation(); onToggle?.(); }} className="shrink-0 text-fg-4">
+        {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+      </button>}
       <CatIcon size={11} className={cn('shrink-0', CATEGORY_META[cat].headerClass)} strokeWidth={1.8} />
       {editing ? (
         <input
@@ -128,6 +164,7 @@ function CategoryGroup({
 }) {
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+  const [closedNodes, setClosedNodes] = useState(new Set<number>());
 
   return (
     <div className="mb-1" data-testid={`hierarchy-group-${category}`}>
@@ -147,8 +184,9 @@ function CategoryGroup({
       </button>
       {!collapsed && (
         <div className="pl-1">
-          {entities.map((e) => (
-            <HierarchyRow key={e.id} entity={e} />
+          {hierarchyRows(entities, closedNodes).map(({ entity, depth, hasChildren }) => (
+            <HierarchyRow key={entity.id} entity={entity} depth={depth} hasChildren={hasChildren} expanded={!closedNodes.has(entity.id)}
+              onToggle={() => setClosedNodes((old) => { const next = new Set(old); if (next.has(entity.id)) next.delete(entity.id); else next.add(entity.id); return next; })} />
           ))}
           {entities.length === 0 && <p className="px-2 py-1 text-2xs text-fg-4">暂无{meta.label}实体</p>}
         </div>
@@ -165,7 +203,17 @@ export default function HierarchyPanel() {
   const [collapsed, setCollapsed] = useState(loadCollapsePref);
 
   const q = filter.trim().toLowerCase();
-  const filtered = q === '' ? entities : entities.filter((e) => e.name.toLowerCase().includes(q));
+  const matches = new Set(entities.filter((e) => e.name.toLowerCase().includes(q)).map((e) => e.id));
+  if (q) for (const e of entities.filter((e) => matches.has(e.id))) {
+    let parent = entityParent(e);
+    const seen = new Set<number>();
+    while (parent !== null && !seen.has(parent)) {
+      seen.add(parent); matches.add(parent);
+      const found = entities.find((item) => item.id === parent);
+      parent = found ? entityParent(found) : null;
+    }
+  }
+  const filtered = q === '' ? entities : entities.filter((e) => matches.has(e.id));
 
   const grouped = CATEGORY_ORDER.reduce(
     (acc, cat) => {
@@ -225,3 +273,5 @@ export default function HierarchyPanel() {
     </section>
   );
 }
+import AnnotationHandle from './AnnotationHandle';
+import { entityReference, makeAnnotation } from '@/lib/editorReferences';

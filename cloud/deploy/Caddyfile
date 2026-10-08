@@ -1,0 +1,8 @@
+# 自动 HTTPS 反代（docker compose --profile https）。SSE 流式响应需要立即刷写。
+{$FORGE_CLOUD_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy forge-cloud:8110 {
+		flush_interval -1
+		header_up X-Real-IP {remote_host}
+	}
+}

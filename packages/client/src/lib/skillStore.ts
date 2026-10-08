@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createSkill, type SkillScope } from './accountApi';
 import { apiDeleteSkill, apiGet, apiPatch, apiPost, apiPut, ForgeApiError } from './forgeApi';
 import { useToastStore } from './toastStore';
 
@@ -74,8 +75,11 @@ interface SkillState {
   setDraft: (text: string) => void;
   save: () => Promise<void>;
   validate: () => Promise<void>;
-  /** 失败时抛出(UI 据此保留内联输入行并就地提示,不吞错)。 */
-  create: (name: string) => Promise<void>;
+  /**
+   * 失败时抛出(UI 据此保留内联输入行并就地提示,不吞错)。
+   * scope(D-041):personal = data/user-skills(随账号同步)/ workspace;省略由 agentd 取 personal。
+   */
+  create: (name: string, scope?: SkillScope) => Promise<void>;
   toggleEnabled: (name: string, enabled: boolean) => Promise<void>;
   requestDelete: (name: string) => void;
   cancelDelete: () => void;
@@ -266,8 +270,8 @@ export const useSkillStore = create<SkillState>((set, get) => ({
     }
   },
 
-  create: async (name) => {
-    await apiPost('/api/forge/skills', { name });
+  create: async (name, scope) => {
+    await createSkill(name, scope);
     await get().load();
     await get().select(name);
     toast('success', `已新建技能 ${name}`);

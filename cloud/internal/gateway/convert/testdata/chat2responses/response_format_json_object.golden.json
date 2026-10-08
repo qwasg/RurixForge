@@ -1,0 +1,21 @@
+{
+  "model": "gpt-5",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Reply in JSON."
+        }
+      ]
+    }
+  ],
+  "stream": false,
+  "text": {
+    "format": {
+      "type": "json_object"
+    }
+  }
+}

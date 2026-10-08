@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Workbench from '@/components/shell/Workbench';
 import { useChatStore } from '@/lib/chatStore';
@@ -6,6 +6,7 @@ import { usePlanStore } from '@/lib/planStore';
 import { useSessionStore } from '@/lib/sessionStore';
 import { clearFileDrafts } from '@/lib/useFileEditor';
 import { planTabId, useWorkbenchStore } from '@/lib/workbenchStore';
+import { normalizeUltraPlanState, useUltraPlanStore } from '@/lib/ultraPlanStore';
 
 /**
  * D-035 Plan 页签:计划文件页(按 path 多开)。
@@ -98,6 +99,7 @@ async function openPlanTab(): Promise<void> {
 }
 
 beforeEach(() => {
+  useUltraPlanStore.getState().reset();
   useWorkbenchStore.setState(initialWorkbench, true);
   useChatStore.setState(initialChat, true);
   useSessionStore.setState({ ...initialSession, activeSessionId: 'sess_1' }, true);
@@ -112,6 +114,31 @@ afterEach(() => {
 });
 
 describe('Plan 页签', () => {
+  it('UltraPlan 计划使用版本化 Team 动作,不显示普通 Build', async () => {
+    const { posts } = stubBackend();
+    useUltraPlanStore.getState().hydrate(normalizeUltraPlanState({
+      id: 'up_plan', stage: 'plan_review', phase: 'waiting', planPath: PLAN_PATH, planRev: 2, renderBackend: 'rurix',
+    }), 'sess_1');
+    render(<Workbench />);
+    await openPlanTab();
+    expect(screen.queryByTestId('plan-start-build')).not.toBeInTheDocument();
+    expect(screen.getByTestId('plan-tab')).toHaveTextContent('游戏后端: rurix');
+    fireEvent.click(screen.getByTestId('plan-tab-ultraplan-start'));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].body).toEqual({ userInput: '', mode: 'team', planPath: PLAN_PATH, ultraplan: { id: 'up_plan', rev: 2, action: 'start_production' } });
+  });
+
+  it('已绑定 UltraPlan 的计划页切到其他会话后不回落普通 Build', async () => {
+    const { posts } = stubBackend();
+    useUltraPlanStore.getState().hydrate(normalizeUltraPlanState({ id: 'up_plan', stage: 'plan_review', phase: 'waiting', planPath: PLAN_PATH, planRev: 1 }), 'sess_1');
+    render(<Workbench />);
+    await openPlanTab();
+    act(() => useSessionStore.setState({ activeSessionId: 'sess_other' }));
+    expect(screen.queryByTestId('plan-start-build')).not.toBeInTheDocument();
+    expect(screen.getByTestId('plan-tab-ultraplan-start')).toBeDisabled();
+    expect(screen.getByTestId('plan-tab-ultraplan-note')).toHaveTextContent('属于另一个会话');
+    expect(posts).toHaveLength(0);
+  });
   it('渲染 front matter 名称/概述与正文,待办清单来自文件', async () => {
     stubBackend();
     render(<Workbench />);
@@ -137,6 +164,147 @@ describe('Plan 页签', () => {
     await openPlanTab();
     expect(screen.getByTestId('plan-progress')).toHaveTextContent('1/2');
     expect(screen.getByTestId('plan-todo-wave-config').querySelector('.line-through')).not.toBeNull();
+  });
+
+  it('文件里的四种状态与旧状态别名有可识别的圆圈,完成进度与状态一致', async () => {
+    stubBackend(`---
+name: 敌人波次系统
+todos:
+- id: pending-task
+  content: 待办任务
+  status: pending
+- id: running-task
+  content: 制作任务
+  status: in_progress
+- id: completed-task
+  content: 完成任务
+  status: done
+- id: failed-task
+  content: 失败任务
+  status: blocked
+---
+
+# 敌人波次系统
+`);
+    render(<Workbench />);
+    await openPlanTab();
+
+    const states = [
+      ['pending-task', '待办', 'pending'],
+      ['running-task', '制作中', 'running'],
+      ['completed-task', '完成', 'completed'],
+      ['failed-task', '失败', 'failed'],
+    ];
+    for (const [id, label, status] of states) {
+      expect(within(screen.getByTestId(`plan-todo-${id}`)).getByRole('img', { name: label }))
+        .toHaveAttribute('data-todo-status', status);
+    }
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('1/4');
+  });
+
+  it('todo 事件实时推进待办 → 制作中 → 完成,失败项重试后更新圆圈与进度', async () => {
+    stubBackend();
+    render(<Workbench />);
+    await openPlanTab();
+    const statusOf = (id: string, label: string) =>
+      within(screen.getByTestId(`plan-todo-${id}`)).getByRole('img', { name: label });
+    let seq = 0;
+    const event = (type: string, payload: Record<string, unknown>) => {
+      seq += 1;
+      act(() => useChatStore.getState().applyEvent({
+        id: `e-status-${seq}`,
+        sessionId: 'sess_1',
+        seq,
+        type,
+        ts: '2026-09-03T10:00:02.000Z',
+        payload,
+      }));
+    };
+
+    expect(statusOf('wave-config', '待办')).toHaveAttribute('data-todo-status', 'pending');
+    event('todo.created', {
+      id: 'todo_wave', title: '执行器里的 WaveConfig 任务', status: 'queued', planTodoId: 'wave-config', source: 'plan',
+    });
+    event('todo.created', {
+      id: 'todo_spawner', title: '执行器里的生成器任务', status: 'failed', planTodoId: 'spawner', source: 'plan',
+    });
+    expect(statusOf('wave-config', '待办')).toHaveAttribute('data-todo-status', 'pending');
+    expect(statusOf('spawner', '失败')).toHaveAttribute('data-todo-status', 'failed');
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('0/2');
+
+    // 更新事件只携带 id/status,仍沿用创建事件的 planTodoId 映射。
+    event('todo.updated', { id: 'todo_wave', status: 'running' });
+    expect(statusOf('wave-config', '制作中')).toHaveAttribute('data-todo-status', 'running');
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('0/2');
+    event('todo.updated', { id: 'todo_wave', status: 'completed' });
+    expect(statusOf('wave-config', '完成')).toHaveAttribute('data-todo-status', 'completed');
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('1/2');
+
+    event('todo.updated', { id: 'todo_spawner', status: 'running' });
+    expect(statusOf('spawner', '制作中')).toHaveAttribute('data-todo-status', 'running');
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('1/2');
+    event('todo.updated', { id: 'todo_spawner', status: 'completed' });
+    expect(statusOf('spawner', '完成')).toHaveAttribute('data-todo-status', 'completed');
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('2/2');
+    expect(screen.getByTestId('plan-todo-wave-config')).toHaveTextContent('新增 WaveConfig 组件');
+    expect(useChatStore.getState().todos).toHaveLength(2);
+  });
+
+  it('UltraPlan 按当前流程与版本绑定实时状态,最新数字修复轮覆盖基础任务', async () => {
+    stubBackend();
+    useUltraPlanStore.getState().hydrate(normalizeUltraPlanState({
+      id: 'up_plan', stage: 'plan_review', phase: 'waiting', planPath: PLAN_PATH, planRev: 2,
+    }), 'sess_1');
+    render(<Workbench />);
+    await openPlanTab();
+    let seq = 0;
+    const event = (type: string, payload: Record<string, unknown>) => {
+      seq += 1;
+      act(() => useChatStore.getState().applyEvent({
+        id: `e-ultra-status-${seq}`,
+        sessionId: 'sess_1',
+        seq,
+        type,
+        ts: '2026-09-03T10:00:02.000Z',
+        payload,
+      }));
+    };
+    const create = (id: string, planTodoId: string, status: string) => event('todo.created', {
+      id, title: '执行器里的 WaveConfig 任务', planTodoId, status, source: 'ultraplan',
+    });
+    const expectWaveStatus = (label: string, progress: string) => {
+      expect(within(screen.getByTestId('plan-todo-wave-config')).getByRole('img', { name: label }))
+        .toBeInTheDocument();
+      expect(screen.getByTestId('plan-progress')).toHaveTextContent(progress);
+    };
+
+    // 相同任务 id 在其他流程或旧版本中完成,不能提前完成当前版本的任务。
+    create('other_flow', 'up_other:2:wave-config', 'completed');
+    expectWaveStatus('待办', '0/2');
+    create('old_revision', 'up_plan:1:wave-config', 'completed');
+    expectWaveStatus('待办', '0/2');
+
+    create('base_wave', 'up_plan:2:wave-config', 'running');
+    expectWaveStatus('制作中', '0/2');
+    event('todo.updated', { id: 'base_wave', status: 'failed' });
+    expectWaveStatus('失败', '0/2');
+    create('repair_10', 'up_plan:2:fix:10:wave-config', 'running');
+    expectWaveStatus('制作中', '0/2');
+
+    // 第 2 轮晚于第 10 轮入库,仍不能覆盖正在执行的第 10 轮。
+    create('repair_2', 'up_plan:2:fix:2:wave-config', 'completed');
+    expectWaveStatus('制作中', '0/2');
+    event('todo.updated', { id: 'base_wave', status: 'completed' });
+    expectWaveStatus('制作中', '0/2');
+    event('todo.updated', { id: 'repair_10', status: 'completed' });
+    expectWaveStatus('完成', '1/2');
+
+    event('todo.updated', { id: 'repair_2', status: 'failed' });
+    expectWaveStatus('完成', '1/2');
+    event('todo.updated', { id: 'old_revision', status: 'failed' });
+    expectWaveStatus('完成', '1/2');
+    event('todo.updated', { id: 'other_flow', status: 'failed' });
+    expectWaveStatus('完成', '1/2');
   });
 
   it('Build:POST ask:execute 带结构化 planPath 与 build 模式(不拼正文前缀)', async () => {

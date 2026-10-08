@@ -1,0 +1,313 @@
+{
+  "version": 1,
+  "id": "V2PublishState",
+  "name": "V2PublishState",
+  "exposedProps": [
+    {
+      "name": "x",
+      "kind": "F32",
+      "default": 0.0
+    },
+    {
+      "name": "y",
+      "kind": "F32",
+      "default": 0.0
+    },
+    {
+      "name": "z",
+      "kind": "F32",
+      "default": 0.0
+    },
+    {
+      "name": "sx",
+      "kind": "F32",
+      "default": 0.0
+    },
+    {
+      "name": "sy",
+      "kind": "F32",
+      "default": 0.0
+    },
+    {
+      "name": "sz",
+      "kind": "F32",
+      "default": 0.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n0",
+      "type": "event.on_update",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {}
+    },
+    {
+      "id": "n1",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_get"
+        },
+        "args": {
+          "ref": "x"
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_get"
+        },
+        "args": {
+          "ref": "y"
+        }
+      }
+    },
+    {
+      "id": "n3",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_get"
+        },
+        "args": {
+          "ref": "z"
+        }
+      }
+    },
+    {
+      "id": "n4",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_get"
+        },
+        "args": {
+          "ref": "sx"
+        }
+      }
+    },
+    {
+      "id": "n5",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_get"
+        },
+        "args": {
+          "ref": "sy"
+        }
+      }
+    },
+    {
+      "id": "n6",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_get"
+        },
+        "args": {
+          "ref": "sz"
+        }
+      }
+    },
+    {
+      "id": "n7",
+      "type": "math.vec3",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "x": {
+          "node": "n1",
+          "pin": "result"
+        },
+        "y": {
+          "node": "n2",
+          "pin": "result"
+        },
+        "z": {
+          "node": "n3",
+          "pin": "result"
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "type": "math.vec3",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "x": {
+          "node": "n4",
+          "pin": "result"
+        },
+        "y": {
+          "node": "n5",
+          "pin": "result"
+        },
+        "z": {
+          "node": "n6",
+          "pin": "result"
+        }
+      }
+    },
+    {
+      "id": "n9",
+      "type": "transform.compose",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "translation": {
+          "node": "n7",
+          "pin": "out"
+        },
+        "scale": {
+          "node": "n8",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "n10",
+      "type": "entity.set_transform",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "entity": {
+          "const": "$self"
+        },
+        "transform": {
+          "node": "n9",
+          "pin": "out"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "n0",
+        "exec"
+      ],
+      "to": [
+        "n1",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n1",
+        "exec"
+      ],
+      "to": [
+        "n2",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n2",
+        "exec"
+      ],
+      "to": [
+        "n3",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n3",
+        "exec"
+      ],
+      "to": [
+        "n4",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n4",
+        "exec"
+      ],
+      "to": [
+        "n5",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n5",
+        "exec"
+      ],
+      "to": [
+        "n6",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n6",
+        "exec"
+      ],
+      "to": [
+        "n10",
+        "exec"
+      ]
+    }
+  ]
+}

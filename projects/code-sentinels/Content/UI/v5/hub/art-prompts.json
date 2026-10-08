@@ -1,0 +1,34 @@
+{
+  "version": 5,
+  "tool": "built-in image_gen",
+  "assets": [
+    {
+      "id": "command-center",
+      "prompt": "Use case: stylized-concept. Asset type: full-screen game lobby background illustration, landscape 16:9. A beautifully painted original futuristic command center for a 2D real-time strategy game about computing infrastructure. Camera from inside a quiet control hall looking out through huge angular panoramic windows onto a lived-in data-center frontier at blue hour: compact server buildings, slender wind turbines on wooded high ground, a river hydro station, distant cooling towers, warm service roads and subtle cyan data cables. In the interior right half, an elegant low holographic terrain table and physical server cabinets, understated ivory metal, charcoal surfaces, amber lamps, restrained cyan indicators. Painterly high-end anime strategy-game environment art, tactile materials, detailed architecture, calm cinematic lighting. The leftmost third is dark low-contrast open interior space for title and menu overlays; the middle window frames the landscape; the right has richest detail. No characters, no UI panels, no lettering, no logos, no franchise assets, no border or watermark. Production-ready polished background; never a screenshot or wireframe.",
+      "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07502-83d0-7c41-b661-b72fbfcfce2e\\exec-43e4ef3f-5a94-45c6-8783-680936927c8f.png",
+      "asset": "Content/UI/v5/hub/command-center.png",
+      "url": "/games/code-sentinels/ui-v5/hub/command-center.png"
+    },
+    {
+      "id": "resource-credits",
+      "prompt": "Use case: stylized-concept. Asset type: ornate resource-card background for a computing-themed strategy game, landscape 3:2. Original premium tactical anime-game illustration of a compact logistics vault: a small stack of brushed gold hexagonal accounting tokens beside precision mineral ingots and an open rugged charcoal supply case on an ivory industrial workbench. Amber reflected light, subtle engraved circuit patterns without legible text, fine mechanical details and clean realistic materials. Objects arranged mostly right of center; left and lower left remain dark charcoal low-contrast breathing room for live numeric UI overlays. Match an ivory/charcoal/amber/cyan command-center art direction. Gold conveys construction credits earned by resource extraction, not real currency. Single cohesive illustration, no collage, no UI, no text, no logos, no watermark.",
+      "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07502-83d0-7c41-b661-b72fbfcfce2e\\exec-8c664d11-1f2f-489d-a92b-2471458ab77c.png",
+      "asset": "Content/UI/v5/hub/resource-credits.png",
+      "url": "/games/code-sentinels/ui-v5/hub/resource-credits.png"
+    },
+    {
+      "id": "resource-power",
+      "prompt": "Use case: stylized-concept. Asset type: ornate resource-card background for a computing-themed real-time strategy game, landscape 3:2. Original premium painted industrial illustration: close view of a compact turbine-generator assembly and amber power conduits inside a clean ivory-and-charcoal energy hall, with soft cyan turbine light and a distant wind-turbine silhouette through a small window. Beautiful mechanical rings, copper windings, ceramic insulation, restrained sparks safely contained in a translucent energy chamber. Rich detail on the right; left and lower left dark quiet negative space for live resource numbers. Sophisticated anime strategy-game environment painting, tactile brushed metal, cinematic contrast, no overexposed lens flare. No UI panels, numbers, lettering, logos, people or watermark.",
+      "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07502-83d0-7c41-b661-b72fbfcfce2e\\exec-b2353335-b5ca-4980-a4be-184f2214689b.png",
+      "asset": "Content/UI/v5/hub/resource-power.png",
+      "url": "/games/code-sentinels/ui-v5/hub/resource-power.png"
+    },
+    {
+      "id": "resource-compute",
+      "prompt": "Use case: stylized-concept. Asset type: ornate resource-card background for a computing-themed real-time strategy game, landscape 3:2. Original premium tactical anime-game illustration of computational capacity: a small immaculate glass server core, translucent layered cyan routing planes and orderly rows of charcoal compute modules inside an ivory metal rack. Tiny cool blue and pale violet activity lights suggest flowing computation; restrained amber service lights tie into a command-center palette. Physical convincing machinery rather than abstract random shapes. Detailed apparatus concentrated right of center, dark low-contrast space at left and bottom left reserved for live numeric UI. Painterly cinematic finish, coherent perspective, crisp fine details, no real GPU product depiction or invented brand, no UI text, logos, characters, numbers or watermark.",
+      "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07502-83d0-7c41-b661-b72fbfcfce2e\\exec-706a66db-26ba-4837-bde7-0b372d5abdbd.png",
+      "asset": "Content/UI/v5/hub/resource-compute.png",
+      "url": "/games/code-sentinels/ui-v5/hub/resource-compute.png"
+    }
+  ]
+}

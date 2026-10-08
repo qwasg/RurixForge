@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { copyText } from '@/lib/clipboard';
+import { editorReference, makeAnnotation, useEditorAnnotationStore } from '@/lib/editorReferences';
 import { isTyping } from '@/lib/keyScope';
 import {
   canAccept,
@@ -47,7 +48,7 @@ import { KIND_ICON } from './StudioPreview';
 /**
  * 素材创作主画布(素材创作波;与 Viewport / NodeGraph / 画板同位第四页签)。
  * 无限画布(useCanvasViewport)上放创作节点卡:大纲 / 地图草稿(LLM 文本)、
- * 原画 / 贴图 / UI(图像生成)、3D模型 / 视频 / 音频(媒体生成,后端预留);
+ * 原画 / 贴图 / UI(图像生成)、3D模型 / 视频 / 音频(媒体生成);
  * 节点间连线 = 引用(上游产物在下游生成时拼进上下文,说明写在线上)。
  * 双击卡片 / 点「打开」下钻进该节点的创作画布(StudioDetailView:产物 + 版本 +
  * 生成输入条),与画板「点击打开子节点」同一分层展现形式。
@@ -115,6 +116,7 @@ export default function StudioBoardView() {
   const edges = useStudioStore((s) => s.edges);
   const openNodeId = useStudioStore((s) => s.openNodeId);
   const selectedNodeId = useStudioStore((s) => s.selectedNodeId);
+  const selectedNodeIds = useStudioStore((s) => s.selectedNodeIds);
   const busyIds = useStudioStore((s) => s.busyIds);
   const addNode = useStudioStore((s) => s.addNode);
   const moveNode = useStudioStore((s) => s.moveNode);
@@ -305,7 +307,7 @@ export default function StudioBoardView() {
 
   const onCanvasPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!isTyping(e.target)) canvasRef.current?.focus(); // 画布拿到焦点,快捷键才生效
-    if (e.button === 0) selectNode(hitStudio(e.target).node);
+    if (e.button === 0) selectNode(hitStudio(e.target).node, e.ctrlKey || e.metaKey);
     vp.onPointerDown(e);
   };
 
@@ -389,6 +391,7 @@ export default function StudioBoardView() {
   // ---- 三套菜单的项(与上面快捷键一一对应) ----
 
   const canvasMenuItems = (world: [number, number]): BoardMenuItem[] => [
+    { key: 'annotate', label: '添加创作画板批注', icon: Sparkles, onSelect: () => useEditorAnnotationStore.getState().add([makeAnnotation(editorReference('studio', { resourceId: 'main' }), '素材创作画板')]) },
     ...STUDIO_PRESETS.map((p, i) => ({
       key: `add-${p.id}`,
       label: `在此新建${p.label}`,
@@ -430,6 +433,7 @@ export default function StudioBoardView() {
         ? { what: '产物文本', value: cur?.text ?? '' }
         : { what: '产物路径', value: cur?.assetPath ?? cur?.fileRef ?? '' };
     return [
+      { key: 'annotate', label: '添加批注到对话', icon: Sparkles, onSelect: () => useEditorAnnotationStore.getState().add([makeAnnotation(editorReference('studio', { resourceId: 'main', selection: { nodeIds: [n.id], versionId: cur?.id } }), n.name)]) },
       {
         key: 'open',
         label: '打开创作画布',
@@ -639,10 +643,10 @@ export default function StudioBoardView() {
                   : p.kind === 'image'
                     ? '图像生成'
                     : p.kind === 'model'
-                      ? '3D 网格生成(后端预留)'
+                      ? 'Blender 制作地图／角色，或远程生成模型'
                       : p.kind === 'video'
-                        ? '视频生成(后端预留)'
-                        : '音频/音乐生成(后端预留)'
+                        ? '文生视频 / 图生视频'
+                        : '音频/音乐生成'
               })`}
               onClick={() => onAddNode(p.id)}
               className={toolBtn}
@@ -740,7 +744,7 @@ export default function StudioBoardView() {
               node={n}
               pos={posOf(n)}
               dragging={drag?.id === n.id}
-              selected={selectedNodeId === n.id}
+              selected={selectedNodeId === n.id || selectedNodeIds.includes(n.id)}
               onDragStart={onDragStart}
               onDragMove={onDragMove}
               onDragEnd={onDragEnd}
@@ -755,7 +759,7 @@ export default function StudioBoardView() {
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <p className="max-w-[480px] px-4 text-center text-xs leading-5 text-fg-4">
               素材创作板为空:点上方按钮放置创作节点——大纲 / 地图草稿(LLM 文本),
-              原画 / 贴图 / UI(图像生成),3D模型 / 视频 / 音频(需在设置页配置生成后端)。
+              原画 / 贴图 / UI(图像生成),3D模型(Blender 制作或远程生成),视频 / 音频(需配置生成后端)。
               双击节点进入它的创作画布:输入描述选模型生成,版本管理,图像与模型可一键入库。
               节点间拖 port 连线 = 上游产物在下游生成时作为参考上下文(如 大纲 → 原画 → 3D模型)。
               <br />

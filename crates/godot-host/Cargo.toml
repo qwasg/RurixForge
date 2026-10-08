@@ -1,0 +1,27 @@
+[package]
+name = "godot-host"
+description = "Forge 引擎宿主的 Godot 4.7.2 渲染后端:GDExtension(cdylib),engine-host 核心跑在 Godot 进程内(02 §5.3、01 §4)"
+version.workspace = true
+edition.workspace = true
+
+# 已定决策 1:官方 Godot 4.7.2 运行时 + godot-rust gdext =0.5.5(api-4-7)。产物 godot_host.dll 放进运行时目录的 bin\(01 D1)。
+[lib]
+name = "godot_host"
+crate-type = ["cdylib"]
+
+[dependencies]
+# 02 §5.2:核心不带 rurix 渲染腿(不拉 rurix-rt / naga)。
+engine-host = { path = "../engine-host", default-features = false }
+godot = { version = "=0.5.5", features = ["api-4-7"] }
+
+# L1 帧通道(01 X1):在 Godot 的 ID3D12Device / 主队列上录制拷贝;与 engine-host 同一份 windows 特性集。
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+
+# 集成测试(tests\):拉起运行时,经 JSON-RPC / WS 取帧。全部是工作区里已有的包。
+[dev-dependencies]
+assetd = { path = "../assetd" }
+serde_json.workspace = true
+base64 = "0.22"
+sha2 = "0.10"
+tungstenite = "0.24"

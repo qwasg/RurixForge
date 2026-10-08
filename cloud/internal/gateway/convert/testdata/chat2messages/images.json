@@ -1,0 +1,14 @@
+{
+  "options": {"model": "claude-sonnet-4-5", "defaultMaxTokens": 2048},
+  "request": {
+    "model": "forge-claude",
+    "messages": [
+      {"role": "user", "content": [
+        {"type": "text", "text": "Compare these."},
+        {"type": "image_url", "image_url": {"url": "data:image/JPEG;base64,/9j/4AAQSkZJRg=="}},
+        {"type": "image_url", "image_url": {"url": "https://example.com/dog.png", "detail": "low"}},
+        {"type": "text", "text": ""}
+      ]}
+    ]
+  }
+}

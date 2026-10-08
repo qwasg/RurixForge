@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Activity, ChevronDown, ChevronRight, Logs, ScrollText, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useChatStore, type ForgeEventWire } from '@/lib/chatStore';
+import { useSessionStore } from '@/lib/sessionStore';
 import { useWorkbenchStore, type BottomTab } from '@/lib/workbenchStore';
 
 /**
@@ -13,7 +14,7 @@ import { useWorkbenchStore, type BottomTab } from '@/lib/workbenchStore';
  * - Agent Logs:最近 120 条原始事件可折叠树(#seq + type,展开 pretty JSON 前 40 行);
  * - Output:事件派生文本行(时间 + type + 一句话摘要,最近 200 条);
  * - Metrics:本地派生卡(Total tokens[chatStore usage 累计] / Tool calls[消息时间线计数] /
- *   Sessions[todo 完成数/总数] / Run 状态)。
+ *   Todos[当前会话待办 完成/总数] / Sessions[会话总数,标注运行中个数] / Run 状态)。
  *
  * 差异留痕:参考还有 Problems/Terminal tab——本仓无诊断面/无 PTY,不落(RD-F7-002),
  * 不加占位空 tab(诚实);maximize 钮参考为空操作,不落。
@@ -140,6 +141,8 @@ function MetricsView() {
   const messages = useChatStore((st) => st.messages);
   const todos = useChatStore((st) => st.todos);
   const activeRunId = useChatStore((st) => st.activeRunId);
+  const sessionCount = useSessionStore((st) => st.sessions.length);
+  const runningSessions = useSessionStore((st) => st.sessions.filter((s) => s.activeRunId != null).length);
 
   // Tool calls = 消息时间线工具块计数(含成功/失败/进行中,如实口径)
   const toolCalls = useMemo(
@@ -165,7 +168,12 @@ function MetricsView() {
     <div className="flex gap-2 p-2.5" data-testid="metrics-cards">
       {card('Total tokens', String(tokens.total), 'metric-tokens')}
       {card('Tool calls', String(toolCalls), 'metric-toolcalls')}
-      {card('Sessions', `${done}/${todos.length}`, 'metric-sessions')}
+      {card('Todos', `${done}/${todos.length}`, 'metric-todos')}
+      {card(
+        runningSessions > 0 ? `Sessions · ${runningSessions} 运行中` : 'Sessions',
+        String(sessionCount),
+        'metric-sessions',
+      )}
       {card('Run 状态', activeRunId ? 'running' : 'idle', 'metric-run')}
     </div>
   );

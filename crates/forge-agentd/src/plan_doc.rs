@@ -76,7 +76,10 @@ pub fn slugify(name: &str) -> String {
             continue;
         }
         let is_sep = ch.is_whitespace()
-            || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '.');
+            || matches!(
+                ch,
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '.'
+            );
         if is_sep {
             if !out.is_empty() && !prev_dash {
                 out.push('-');
@@ -116,7 +119,37 @@ pub fn is_plan_path(rel: &str) -> bool {
         && tail.ends_with(PLAN_EXT)
         && !tail.contains('/')
         && !tail.contains("..")
+        && !tail.contains([':', '\0'])
         && tail.len() > PLAN_EXT.len()
+}
+
+/// Reject links and Windows reparse points before reading or creating a plan.
+/// The workspace itself may be a user-selected linked checkout; descendants may not escape it.
+pub fn confined_path(ws_root: &Path, rel: &str) -> Result<PathBuf, String> {
+    if !is_plan_path(rel) {
+        return Err("非法计划文件路径".into());
+    }
+    let mut path = ws_root.to_path_buf();
+    for part in rel.split(['/', '\\']) {
+        path.push(part);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) => {
+                #[cfg(windows)]
+                let reparse = {
+                    use std::os::windows::fs::MetadataExt;
+                    meta.file_attributes() & 0x400 != 0
+                };
+                #[cfg(not(windows))]
+                let reparse = false;
+                if meta.file_type().is_symlink() || reparse {
+                    return Err(format!("计划路径不能经过链接: {}", path.display()));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("检查计划路径失败: {e}")),
+        }
+    }
+    Ok(path)
 }
 
 /// 工作区相对路径 → 绝对路径(仅在 `is_plan_path` 通过后调用)。
@@ -213,14 +246,25 @@ pub struct WriteOutcome {
 
 /// 原子写:同目录 tmp + rename(半截文件不可见;与 sessions/todos 同纪律)。
 fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let mut tmp = path.as_os_str().to_os_string();
-    tmp.push(".tmp");
+    tmp.push(format!(".{}.tmp", crate::events::new_id("plan")));
     let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path)
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)?;
+    file.write_all(text.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    let result = std::fs::rename(&tmp, path);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// 写入计划文件。`existing_rel` = 会话已有的计划路径(有则原地迭代,保住页签与文件身份)。
@@ -240,7 +284,7 @@ pub fn write_plan(
         Some(r) => r.to_string(),
         None => plan_rel_path(&slugify(&name)),
     };
-    let abs = abs_path(ws_root, &rel);
+    let abs = confined_path(ws_root, &rel)?;
     let created = !abs.exists();
     let front = PlanFront {
         name,
@@ -259,10 +303,13 @@ pub fn write_plan(
 /// 读取并解析计划文件(Build 入口与 plan 模式迭代注入共用)。
 pub fn load(ws_root: &Path, rel: &str) -> Result<PlanDoc, String> {
     if !is_plan_path(rel) {
-        return Err(format!("planPath 须为 {PLAN_DIR}/<名>{PLAN_EXT} 形态(实: {rel})"));
+        return Err(format!(
+            "planPath 须为 {PLAN_DIR}/<名>{PLAN_EXT} 形态(实: {rel})"
+        ));
     }
-    let abs = abs_path(ws_root, rel);
-    let text = std::fs::read_to_string(&abs).map_err(|e| format!("计划文件读取失败({rel}): {e}"))?;
+    let abs = confined_path(ws_root, rel)?;
+    let text =
+        std::fs::read_to_string(&abs).map_err(|e| format!("计划文件读取失败({rel}): {e}"))?;
     parse(&text)
 }
 
@@ -388,6 +435,8 @@ mod tests {
         assert!(!is_plan_path(".forge/plans/.plan.md"), "空名不认");
         assert!(!is_plan_path("plans/x.plan.md"));
         assert!(!is_plan_path("/etc/x.plan.md"));
+        assert!(!is_plan_path(".forge/plans/x:stream.plan.md"));
+        assert!(confined_path(std::path::Path::new("."), "../../x.plan.md").is_err());
     }
 
     #[test]
@@ -395,7 +444,10 @@ mod tests {
         let front = PlanFront {
             name: "敌人波次系统".into(),
             overview: "一句话概述".into(),
-            todos: vec![todo("wave-config", "新增 WaveConfig 组件"), todo("spawner", "写生成器")],
+            todos: vec![
+                todo("wave-config", "新增 WaveConfig 组件"),
+                todo("spawner", "写生成器"),
+            ],
         };
         let text = render(&front, "# 标题\n\n## 现状\n正文");
         assert!(text.starts_with("---\n"));
@@ -420,7 +472,9 @@ mod tests {
     fn parse_reports_broken_front_matter() {
         assert!(parse("no front matter").unwrap_err().contains("起始"));
         assert!(parse("---\nname: x\n").unwrap_err().contains("结束"));
-        assert!(parse("---\noverview: x\n---\nbody").unwrap_err().contains("name"));
+        assert!(parse("---\noverview: x\n---\nbody")
+            .unwrap_err()
+            .contains("name"));
     }
 
     #[test]
@@ -448,10 +502,22 @@ mod tests {
             crate::events::new_id("t")
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let first = write_plan(&dir, None, "波次系统", "概述", "正文", vec![todo("a", "甲")]).unwrap();
+        let first = write_plan(
+            &dir,
+            None,
+            "波次系统",
+            "概述",
+            "正文",
+            vec![todo("a", "甲")],
+        )
+        .unwrap();
         assert_eq!(first.rel_path, ".forge/plans/波次系统.plan.md");
         assert!(first.created);
-        assert!(dir.join(".forge").join("plans").join("波次系统.plan.md").is_file());
+        assert!(dir
+            .join(".forge")
+            .join("plans")
+            .join("波次系统.plan.md")
+            .is_file());
         // 迭代:带 existing 路径 → 原地覆盖(名字变了也不换文件,页签身份稳定)。
         let second = write_plan(
             &dir,

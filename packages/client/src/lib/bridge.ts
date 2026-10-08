@@ -3,11 +3,21 @@
  * 独立 web SPA 下本地定义,切断对 preload 的依赖(去 Electron 耦合)。
  */
 export interface ForgeAPI {
+  auth?: { openExternal: (channel: 'codex' | 'antigravity' | 'kimi' | 'glm', url: string) => Promise<void> };
+  /** Opens only the documented Codex new-task deep link in the native app. */
+  codex?: { openTask: (url: string) => Promise<void> };
   win: {
     minimize: () => void;
     toggleMaximize: () => void;
     close: () => void;
     onMaximizedChanged: (cb: (maximized: boolean) => void) => () => void;
+    /**
+     * 窗口外框形态:overlay = 系统绘制三钮(Windows/Linux titleBarOverlay);
+     * inset = macOS 红绿灯;缺省 = 旧桌面壳,由 TitleBar 自绘三钮。
+     */
+    chrome?: 'overlay' | 'inset';
+    /** overlay 形态下把标题栏底色/符号色同步给系统三钮(#RRGGBB)。 */
+    setOverlayTheme?: (theme: { color: string; symbolColor: string }) => void;
   };
   /** F1 wave.2 G-F1-9:视口 bounds 上报(desktop preload 提供;web/测试环境缺省) */
   viewport?: {
@@ -17,6 +27,9 @@ export interface ForgeAPI {
       w: number;
       h: number;
       dpr: number;
+      streamW?: number;
+      streamH?: number;
+      workspaceId?: string | null;
       visible: boolean;
     }) => void;
   };
@@ -24,8 +37,8 @@ export interface ForgeAPI {
   assets?: {
     /** 系统文件对话框选源文件(多选),返回绝对路径;取消 → [] */
     pickImport?: () => Promise<string[]>;
-    /** 在系统文件管理器中显示(Content 相对路径) */
-    showInFolder?: (rel: string) => void;
+    /** 在系统文件管理器中显示(Content 相对路径;workspaceRoot = 当前工作区根,缺省按默认项目) */
+    showInFolder?: (rel: string, workspaceRoot?: string) => void;
   };
   /** 工作区选择器桌面能力(desktop preload 提供;web 端缺省,入口如实禁用) */
   workspace?: {
@@ -33,6 +46,8 @@ export interface ForgeAPI {
     pickFolder?: () => Promise<string | null>;
   };
   platform: string;
+  /** 桌面端运行时版本(关于页展示;web 端缺省)。 */
+  versions?: { electron?: string; chrome?: string; node?: string };
 }
 
 declare global {

@@ -105,6 +105,7 @@ pub struct GraphInstance {
     exec_adj: BTreeMap<(String, String), Vec<String>>,
     /// 动作节点输出暂存(RD-F4-004:call_function result;key = "{nodeId}.{pin}")。
     node_outputs: BTreeMap<String, Value>,
+    native_bindings: BTreeMap<String, Result<Vec<crate::callruntime::NativeBinding>, String>>,
 }
 
 impl GraphInstance {
@@ -124,6 +125,12 @@ impl GraphInstance {
                 .or_default()
                 .push(e.to[0].clone());
         }
+        let native_bindings = doc.nodes.iter().filter(|n|n.ntype=="call.native_frame").map(|n|{
+            let bindings=match n.inputs.get("bindings") {
+                Some(ValueSource::Const{konst})=>serde_json::from_value(konst.clone()).map_err(|e|format!("invalid native bindings: {e}")),
+                _=>Err("native bindings must be a constant array".into()),
+            };(n.id.clone(),bindings)
+        }).collect();
         GraphInstance {
             doc,
             props,
@@ -133,6 +140,7 @@ impl GraphInstance {
             timers: BTreeMap::new(),
             exec_adj,
             node_outputs: BTreeMap::new(),
+            native_bindings,
         }
     }
 
@@ -567,6 +575,18 @@ fn eval_pure(
     let ntype = node.ntype.as_str();
     let nid = node.id.clone();
     match ntype {
+        "math.vec3" => json!([
+            as_f64(&eval_pin(inst, eid, &nid, "x", ev, scene, log)),
+            as_f64(&eval_pin(inst, eid, &nid, "y", ev, scene, log)),
+            as_f64(&eval_pin(inst, eid, &nid, "z", ev, scene, log))
+        ]),
+        "transform.compose" => {
+            let translation = eval_pin(inst, eid, &nid, "translation", ev, scene, log);
+            let scale = eval_pin(inst, eid, &nid, "scale", ev, scene, log);
+            json!({"translation": parse_vec3(&translation).unwrap_or([0.0; 3]),
+                "scale": parse_vec3(&scale).unwrap_or([1.0; 3]),
+                "rotation": [0.0, 0.0, 0.0, 1.0]})
+        }
         "entity.has_tag" => {
             let entity_v = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
             let tv = eval_pin(inst, eid, &nid, "tag", ev, scene, log);
@@ -622,13 +642,43 @@ fn exec_node(
         ));
         return;
     }
-    let Some(node) = inst.doc.nodes.iter().find(|n| n.id == node_id).cloned() else {
+    let Some((node_type,nid)) = inst.doc.nodes.iter().find(|n| n.id == node_id)
+        .map(|n|(n.ntype.clone(),n.id.clone())) else {
         return;
     };
-    let ntype = node.ntype.as_str();
-    let nid = node.id.clone();
+    let ntype = node_type.as_str();
     let next_exec = |inst: &GraphInstance| inst.exec_targets(&nid, "exec");
     let nexts: Vec<String> = match ntype {
+        "call.native_frame" => {
+            let module=as_string(&eval_pin(inst,eid,&nid,"module",ev,scene,log));
+            let function=as_string(&eval_pin(inst,eid,&nid,"fn",ev,scene,log));
+            let dt=as_f64(&eval_pin(inst,eid,&nid,"dt",ev,scene,log))as f32;
+            let parameter=as_string(&eval_pin(inst,eid,&nid,"animatorParam",ev,scene,log));
+            let result=match(inst.native_bindings.get(&nid),call_rt.as_mut()){
+                (Some(Ok(bindings)),Some(rt))=>rt.invoke_frame(&module,&function,dt,bindings).map_err(|e|e.to_string()),
+                (Some(Err(error)),_)=>Err(error.clone()),
+                _=>Err("native frame runtime or bindings not configured".into()),
+            };
+            match result {
+                Ok(updates)=>{
+                    let indices:std::collections::HashMap<u64,usize>=scene.entities.iter().enumerate().map(|(i,e)|(e.id,i)).collect();
+                    for update in &updates {
+                        if let Some(&index)=indices.get(&update.entity_id){
+                            let entity=&mut scene.entities[index];
+                            entity.transform.translation=update.translation;entity.transform.scale=update.scale;
+                            if update.frame>=0 {
+                                let current=entity.component("Sprite").and_then(|s|s.props.get("frame")).and_then(Value::as_f64);
+                                if current!=Some(update.frame as f64){anim.push(AnimCommand::SetFrame{entity:update.entity_id,index:update.frame as usize});}
+                            }
+                            if update.animator_bool>=0&&!parameter.is_empty(){anim.push(AnimCommand::SetBool{entity:update.entity_id,param:parameter.clone(),value:update.animator_bool!=0});}
+                        }
+                    }
+                    log.push(("logic.native_frame".into(),json!({"entityId":eid,"graphId":inst.graph_id(),"module":module,"updates":updates.len()})));
+                }
+                Err(reason)=>log.push(("logic.call_error".into(),json!({"entityId":eid,"graphId":inst.graph_id(),"module":module,"fn":function,"reason":reason}))),
+            }
+            next_exec(inst)
+        }
         "flow.branch" => {
             let c = eval_pin(inst, eid, &nid, "condition", ev, scene, log);
             let pin = if c.as_bool().unwrap_or(false) { "then" } else { "else" };
@@ -1002,7 +1052,7 @@ mod tests {
     const DT: f32 = 1.0 / 60.0;
 
     fn entity(id: u64, name: &str, translation: [f32; 3], components: Vec<Component>) -> Entity {
-        Entity {
+        Entity { entity_guid: None,
             id,
             name: name.into(),
             transform: Transform { translation, ..Transform::default() },
@@ -1287,6 +1337,27 @@ mod tests {
         assert_eq!(rt.debug_var(1, "x"), Some(json!(3.0)));
         let ll = log.iter().find(|(n, _)| n == "logic.log").expect("debug.log 须出现");
         assert_eq!(ll.1["message"], json!(3.0), "var.get 读出 1+2=3");
+    }
+
+    #[test]
+    fn runtime_input_vector_composes_a_transform_without_losing_scale() {
+        let mut scene = Scene::new("dynamic-transform");
+        scene.entities = vec![entity(1, "actor", [0.; 3], vec![])];
+        let g = doc(json!({"version":1,"id":"move","name":"move","nodes":[
+            {"id":"input","type":"event.on_input","pos":[0,0]},
+            {"id":"v","type":"math.vec3","pos":[1,0],"inputs":{
+                "x":{"node":"input","pin":"value"},"y":{"const":2.0},"z":{"const":0.0}}},
+            {"id":"t","type":"transform.compose","pos":[2,0],"inputs":{
+                "translation":{"node":"v","pin":"out"},"scale":{"const":[2.0,3.0,1.0]}}},
+            {"id":"set","type":"entity.set_transform","pos":[3,0],"inputs":{
+                "entity":{"const":"$self"},"transform":{"node":"t","pin":"out"}}}
+        ],"edges":[{"from":["input","exec"],"to":["set","exec"]}]}));
+        let mut rt=LogicRuntime::new(); let mut log=Vec::new();
+        rt.load(1,g,&json!({}),&mut scene,&mut log);
+        rt.frame(&mut scene,DT,vec![("move".into(),7.5)],vec![],&mut log);
+        assert_eq!(scene.entity(1).unwrap().transform.translation,[7.5,2.,0.]);
+        assert_eq!(scene.entity(1).unwrap().transform.scale,[2.,3.,1.]);
+        assert!(!log.iter().any(|(kind,_)|kind=="logic.unsupported"));
     }
 
     /// 热重载:on_start 重发 + 黑板重置 + props 覆盖生效。

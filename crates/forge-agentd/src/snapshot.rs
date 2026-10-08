@@ -22,13 +22,17 @@ use crate::AppState;
 pub struct SnapshotQuery {
     #[serde(default)]
     pub(crate) session_id: Option<String>,
+    /// D-040:`events=0`(或 false)跳过事件回放——状态栏 5s 轮询只要模型/待办/项目面,
+    /// 长会话的全量事件动辄上百 KB;latestSeq 照常给出。
+    #[serde(default)]
+    pub(crate) events: Option<String>,
 }
 
 /// models 面(F8 wave.2 抽出纯函数:availability 实测同源 + openai-compat 条目,便于确定单测)。
 /// 模型规格波:条目本体改由 modelspec::CATALOG 生成(带 Thinking/Effort/Context 能力面),
 /// 本函数只负责把「实测才知道」的两项注入——availability(密钥/配置齐否)与 openai-compat 的
 /// 动态 label(已配 = 模型名,未配如实标注)。R-5 不变:只回布尔语义,密钥不出。
-fn models_json() -> Value {
+pub(crate) fn models_json(cloud: &crate::cloud::CloudService) -> Value {
     let deepseek_availability = if llm::deepseek_key_available() {
         "available"
     } else {
@@ -47,19 +51,45 @@ fn models_json() -> Value {
     } else {
         oai.model.clone()
     };
-    let models: Vec<Value> = modelspec::CATALOG
+    let ag_availability = crate::antigravity::availability();
+    let ag_oauth = crate::antigravity_oauth::ready();
+    let dev_mock = crate::cloud::dev_mock_enabled();
+    let logged_in = cloud.is_logged_in();
+    let mut models: Vec<Value> = modelspec::CATALOG
         .iter()
+        .filter(|c| c.id != "mock" || dev_mock)
+        .filter(|c| c.provider != "antigravity" || !ag_oauth)
         .map(|c| match c.id {
             "deepseek-chat" => modelspec::card_json(c, deepseek_availability, c.label),
-            llm::OPENAI_COMPAT_MODEL_ID => {
-                modelspec::card_json(c, oai_availability, &oai_label)
+            llm::OPENAI_COMPAT_MODEL_ID => modelspec::card_json(c, oai_availability, &oai_label),
+            _ if c.provider == "antigravity" => {
+                modelspec::card_json(c, ag_availability, c.label)
             }
+            _ if matches!(c.provider, "kimi" | "glm") => modelspec::card_json(c,
+                if crate::channels::ready(c.provider) { "available" } else { "needs-config" },
+                &crate::channels::model_label(c.provider)),
             _ => modelspec::card_json(c, "available", c.label),
         })
         .collect();
+    for model in crate::antigravity_oauth::models() {
+        models.push(json!({"id":model["id"],"label":model["label"],"provider":"antigravity","availability":"available","group":"Google AI","supportsThinking":false,"effortOptions":[],"contextOptions":[],"defaultEffort":null,"defaultContext":null}));
+    }
+    models.extend(crate::cloud::snapshot_cards(
+        cloud.last_catalog().as_ref(),
+        logged_in,
+    ));
+    let default_model_id = if logged_in {
+        cloud
+            .catalog_cached()
+            .or_else(|| cloud.last_catalog())
+            .map(|c| format!("cloud:{}", c.default_model))
+            .unwrap_or_else(|| modelspec::DEFAULT_MODEL_ID.to_string())
+    } else {
+        modelspec::DEFAULT_MODEL_ID.to_string()
+    };
     json!({
         "models": models,
-        "defaultModelId": modelspec::DEFAULT_MODEL_ID,
+        "defaultModelId": default_model_id,
     })
 }
 
@@ -69,6 +99,7 @@ pub async fn design_snapshot(
     Query(q): Query<SnapshotQuery>,
 ) -> Json<Value> {
     let sessions = state.sessions.list();
+    let with_events = !matches!(q.events.as_deref().map(str::trim), Some("0" | "false"));
     let active = q
         .session_id
         .map(|s| s.trim().to_string())
@@ -76,12 +107,16 @@ pub async fn design_snapshot(
         .and_then(|sid| state.sessions.get(&sid));
     let (events, latest_seq) = match &active {
         Some(s) => (
-            state
-                .events
-                .persisted(&s.id)
-                .iter()
-                .map(|e| e.to_wire())
-                .collect::<Vec<Value>>(),
+            if with_events {
+                state
+                    .events
+                    .persisted(&s.id)
+                    .iter()
+                    .map(|e| e.to_wire())
+                    .collect::<Vec<Value>>()
+            } else {
+                Vec::new()
+            },
             state.events.latest_seq(&s.id),
         ),
         None => (Vec::new(), 0),
@@ -115,7 +150,8 @@ pub async fn design_snapshot(
             "root": sp.project_root.to_string_lossy(),
         })
     };
-    let mut models = models_json();
+    state.cloud.refresh_catalog_soon();
+    let mut models = models_json(&state.cloud);
     if let Some(arr) = models.get_mut("models").and_then(Value::as_array_mut) {
         arr.extend(state.codex.model_cards());
     }
@@ -125,7 +161,10 @@ pub async fn design_snapshot(
         .map(|g| {
             crate::goals::goal_json(
                 &g,
-                active.as_ref().map(|s| s.agent_engine.as_str()).unwrap_or("local"),
+                active
+                    .as_ref()
+                    .map(|s| s.agent_engine.as_str())
+                    .unwrap_or("local"),
             )
         })
         .unwrap_or(Value::Null);
@@ -141,6 +180,7 @@ pub async fn design_snapshot(
         "project": project,
         "agents": state.codex.agents_json(),
         "goal": goal,
+        "account": state.cloud.account_summary(),
     }))
 }
 
@@ -162,9 +202,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
         // 未配置腿:第三条目 needs-key + 如实 label;deepseek/mock 条目位置不变(主线测试索引 [0] 纪律)。
-        let v = models_json();
+        std::env::set_var("FORGE_AGENT_DEV_MOCK", "1");
+        let v = models_json(&crate::cloud::CloudService::new());
         let arr = v["models"].as_array().unwrap();
-        assert_eq!(arr.len(), 3);
+        assert_eq!(arr.len(), 5);
         assert_eq!(arr[0]["id"], "deepseek-chat");
         assert_eq!(arr[0]["availability"], "needs-key");
         assert_eq!(arr[1]["id"], "mock");
@@ -172,6 +213,12 @@ mod tests {
         assert_eq!(arr[2]["provider"], "openai-compat");
         assert_eq!(arr[2]["availability"], "needs-key");
         assert_eq!(arr[2]["label"], "openai-compatible(未配置)");
+        assert_eq!(arr[3]["id"], "gemini-3.8-flash");
+        assert_eq!(arr[3]["provider"], "antigravity");
+        assert_eq!(arr[3]["availability"], "needs-config");
+        assert_eq!(arr[4]["id"], "gemini-3.8-pro");
+        assert_eq!(arr[4]["provider"], "antigravity");
+        assert_eq!(arr[4]["availability"], "needs-config");
         // 规格能力面随条目下发(client ModelPicker 的三个子菜单全靠它驱动):
         // deepseek 收不到 reasoning_effort → effortOptions 空 + 单档窗口;
         // openai-compat 是自配渠道 → 五档 effort + 多档窗口。
@@ -181,6 +228,8 @@ mod tests {
         assert_eq!(arr[1]["supportsThinking"], false);
         assert_eq!(arr[2]["effortOptions"].as_array().unwrap().len(), 5);
         assert!(arr[2]["contextOptions"].as_array().unwrap().len() > 1);
+        assert_eq!(arr[3]["supportsThinking"], true);
+        assert_eq!(arr[3]["effortOptions"].as_array().unwrap().len(), 5);
         assert_eq!(v["defaultModelId"], "openai-compat");
         // 配齐腿:config JSON + keystore → available + label=model 名;全文无 key 子串。
         std::fs::write(
@@ -190,13 +239,55 @@ mod tests {
         .unwrap();
         let secret = "sk-test-oai-REDLINE-snapshot";
         gend::keystore::set_key("openai-compat", secret).unwrap();
-        let v2 = models_json();
+        let v2 = models_json(&crate::cloud::CloudService::new());
         let arr2 = v2["models"].as_array().unwrap();
         assert_eq!(arr2[2]["availability"], "available");
         assert_eq!(arr2[2]["label"], "qwen2.5-7b");
         assert!(!v2.to_string().contains(secret), "models 面泄漏密钥(R-5)");
         assert!(!v2.to_string().contains("sk-"), "models 面含 sk- 串(R-5)");
         std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::env::remove_var("FORGE_AGENT_DEV_MOCK");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Antigravity 渠道可用性注入与 Redline R-5 密钥不出
+    #[test]
+    fn models_antigravity_availability_propagation() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("FORGE_LLM_API_KEY");
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        std::env::remove_var("FORGE_ANTIGRAVITY_API_KEY");
+        let dir = std::env::temp_dir().join(format!(
+            "agentd-snap-ag-{}-{}",
+            std::process::id(),
+            crate::events::new_id("t")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("FORGE_GEN_DATA_DIR", &dir);
+        crate::antigravity::clear_probe_cache();
+
+        // 1. 未配置态 -> needs-config
+        let v1 = models_json(&crate::cloud::CloudService::new());
+        let arr1 = v1["models"].as_array().unwrap();
+        let flash1 = arr1.iter().find(|m| m["id"] == "gemini-3.8-flash").unwrap();
+        assert_eq!(flash1["availability"], "needs-config");
+
+        // 2. 配置齐备态 -> available (R-5: 密钥永不进入 snapshot)
+        let secret = "sk-antigravity-snapshot-secret-998877";
+        std::fs::write(
+            dir.join("llm-antigravity.json"),
+            r#"{"baseUrl":"https://proxy.example.com","model":"gemini-3.8-flash","enabled":true}"#,
+        ).unwrap();
+        gend::keystore::set_key("antigravity", secret).unwrap();
+
+        let v2 = models_json(&crate::cloud::CloudService::new());
+        let arr2 = v2["models"].as_array().unwrap();
+        let flash2 = arr2.iter().find(|m| m["id"] == "gemini-3.8-flash").unwrap();
+        assert_eq!(flash2["availability"], "available");
+        assert!(!v2.to_string().contains(secret), "models snapshot 泄露密钥 (R-5 违规)");
+
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&dir).ok();
+        crate::antigravity::clear_probe_cache();
     }
 }

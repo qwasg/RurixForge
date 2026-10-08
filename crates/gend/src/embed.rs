@@ -93,13 +93,65 @@ pub fn embedding_status() -> EmbeddingStatus {
     }
 }
 
-/// 三联解析:全齐 → Some(RemoteEmbedder);任一缺 → None(调用方显式 NOT_CONFIGURED)。
+/// 三联解析:自配渠道全齐 → Some(RemoteEmbedder);未配齐 → 回落云账号 embedding
+/// ([resolve_cloud_embedder]);两者皆无 → None(调用方显式 NOT_CONFIGURED)。
 pub fn resolve_embedder() -> Option<RemoteEmbedder> {
     let file = load_embedding_file();
+    if !file.base_url.is_empty() && !file.model.is_empty() {
+        if let Some(key) = embedding_key() {
+            return Some(RemoteEmbedder {
+                base_url: file.base_url,
+                model: file.model,
+                key,
+            });
+        }
+    }
+    resolve_cloud_embedder()
+}
+
+/// 云账号 embedding 描述文件名(非密;forge-agentd 登录云账号且模型目录里有 embedding
+/// 模型时写入 data 目录,登出即删)。MCP 子进程与 agentd 共用同一 data 目录,每次解析现读,
+/// 登录/登出无需重启子进程即生效。
+pub const CLOUD_EMBEDDING_FILE: &str = "cloud-embedding.json";
+/// forge-agentd 云模式设备 Key 的 keystore 条目 id(经 secret_for 读,不受 FORGE_GEN_API_KEY 覆盖)。
+pub const CLOUD_DEVICE_KEY_ID: &str = "cloud:device-key";
+
+/// 云账号 embedding 描述:请求 `{base_url}/v1/embeddings`,Key 走 keystore[CLOUD_DEVICE_KEY_ID]。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CloudEmbeddingFile {
+    pub base_url: String,
+    pub model: String,
+}
+
+/// 写云账号 embedding 描述(tmp + rename)。
+pub fn save_cloud_embedding_in(dir: &std::path::Path, file: &CloudEmbeddingFile) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(CLOUD_EMBEDDING_FILE);
+    let text = serde_json::to_string_pretty(file)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, &path)
+}
+
+/// 删云账号 embedding 描述(文件不存在不算错)。
+pub fn clear_cloud_embedding_in(dir: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_file(dir.join(CLOUD_EMBEDDING_FILE)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// 云账号 embedding:描述文件齐全且 keystore 有设备 Key → Some。
+pub fn resolve_cloud_embedder() -> Option<RemoteEmbedder> {
+    let text = std::fs::read_to_string(data_dir().join(CLOUD_EMBEDDING_FILE)).ok()?;
+    let file: CloudEmbeddingFile = serde_json::from_str(&text).ok()?;
     if file.base_url.is_empty() || file.model.is_empty() {
         return None;
     }
-    embedding_key().map(|key| RemoteEmbedder {
+    let key = crate::keystore::Keystore::load().secret_for(CLOUD_DEVICE_KEY_ID)?;
+    Some(RemoteEmbedder {
         base_url: file.base_url,
         model: file.model,
         key,
@@ -275,6 +327,39 @@ mod tests {
         // Debug 脱敏。
         let dbg = format!("{e:?}");
         assert!(!dbg.contains(secret), "Debug 泄漏密钥: {dbg}");
+    }
+
+    #[test]
+    fn cloud_embedding_is_fallback_only() {
+        let _g = env_lock();
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let guard = DirGuard::new("cloud");
+        assert!(resolve_embedder().is_none());
+        save_cloud_embedding_in(
+            &guard.dir,
+            &CloudEmbeddingFile {
+                base_url: "http://127.0.0.1:8110".into(),
+                model: "text-embedding-3-small".into(),
+            },
+        )
+        .unwrap();
+        assert!(resolve_embedder().is_none(), "无设备 Key 不得回落云账号");
+        crate::keystore::set_key(CLOUD_DEVICE_KEY_ID, "sk-rf-cloud-device").unwrap();
+        let e = resolve_embedder().expect("云账号回落应生效");
+        assert_eq!(e.base_url, "http://127.0.0.1:8110");
+        assert_eq!(e.model, "text-embedding-3-small");
+        // 自配渠道配齐后优先于云账号。
+        save_embedding_file(&EmbeddingFile {
+            base_url: "http://127.0.0.1:9300".into(),
+            model: "bge-m3".into(),
+        })
+        .unwrap();
+        crate::keystore::set_key(EMBEDDING_KEYSTORE_ID, "sk-byo").unwrap();
+        assert_eq!(resolve_embedder().unwrap().model, "bge-m3");
+        std::fs::remove_file(guard.dir.join("llm-embedding.json")).unwrap();
+        clear_cloud_embedding_in(&guard.dir).unwrap();
+        clear_cloud_embedding_in(&guard.dir).unwrap();
+        assert!(resolve_embedder().is_none(), "描述删除后回落失效");
     }
 
     #[test]

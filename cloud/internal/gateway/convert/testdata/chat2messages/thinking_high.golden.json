@@ -1,0 +1,35 @@
+{
+  "model": "claude-opus-4-1",
+  "max_tokens": 20480,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Prove it."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "calc",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "expr": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "auto"
+  },
+  "thinking": {
+    "type": "enabled",
+    "budget_tokens": 16384
+  }
+}

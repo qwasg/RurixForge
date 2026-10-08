@@ -1,0 +1,34 @@
+{
+  "id": "vscode",
+  "category": "turret",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "frameSize": [
+    384,
+    384
+  ],
+  "pivot": [
+    0.5,
+    0.7
+  ],
+  "sourceModel": "Content/Models/v6/vscode.blend",
+  "glb": "Content/Models/v6/vscode.glb",
+  "method": "Blender Cycles CPU render from authored 3D geometry",
+  "samples": 12,
+  "camera": "orthographic 30-degree isometric",
+  "status": "rendered-needs-review",
+  "softwareBrand": {
+    "reference": "Content/Models/v6/branding/vscode.png",
+    "sha256": "7ac29e00cd66e549acc2ea6a99a813f92cb23a6d165293be6959845670f0c5a4",
+    "source": "Previously verified Microsoft official branding bundle",
+    "bitmapModified": false
+  }
+}

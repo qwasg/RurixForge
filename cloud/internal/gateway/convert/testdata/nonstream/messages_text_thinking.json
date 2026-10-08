@@ -1,0 +1,14 @@
+{
+  "id": "msg_ns1",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-5",
+  "content": [
+    {"type": "thinking", "thinking": "Reasoning here.", "signature": "sig"},
+    {"type": "redacted_thinking", "data": "xyz"},
+    {"type": "text", "text": "Final answer."}
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 30, "cache_creation_input_tokens": 10, "cache_read_input_tokens": 60, "output_tokens": 25}
+}

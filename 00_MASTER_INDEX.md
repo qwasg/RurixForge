@@ -60,7 +60,7 @@
 | `Component` | 挂接在 Entity 上的能力单元(渲染/物理/灯光/脚本…),注册表驱动序列化与 Inspector(`09 §3`) |
 | `Prefab` | 可复用 Entity 模板 `.rxprefab`,支持实例覆盖与回写(`09 §5`) |
 | `PIE` | Play-In-Editor,编辑器内运行当前场景(`03 §5.4`) |
-| `composer 模式` | 会话执行模式:build / plan / debug / ask / multitask(`04 §3`) |
+| `composer 模式` | 会话执行模式:build / plan / debug / ask / multitask / team / ultraplan / design(`04 §3`、E-04-008) |
 | `swarm` | agent 集群:协调器 + 节点注册 + 分片派工(`04 §5`) |
 | `skill` | `skills/<name>/SKILL.md` 形式的可复用操作规程,agent 按需读取(`06` 全篇) |
 | `Proposal` | agent 发起的需人类确认的变更单(破坏性/外部可见操作),`12 §3` |

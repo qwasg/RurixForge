@@ -1,0 +1,22 @@
+{
+  "id": "wind-power",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 16,
+  "fps": 16,
+  "loop": true,
+  "sourceModel": "Content/Models/v6/wind-power-work-v2.blend",
+  "method": "actual Blender animated geometry and equipment emission; CPU Cycles render",
+  "mechanismAnimated": true,
+  "emissionAnimated": true,
+  "closureRender": "separate actual render at full360-degree phase; not packed as extra frame",
+  "duplicateFramePadding": false
+}

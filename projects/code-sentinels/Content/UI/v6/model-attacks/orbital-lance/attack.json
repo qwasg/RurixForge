@@ -1,0 +1,36 @@
+{
+  "id": "orbital-lance",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 12,
+  "fps": 18,
+  "loop": false,
+  "sourceModel": "Content/Models/v6/orbital-lance-attack.blend",
+  "method": "Actual Blender barrel recoil / launcher and emitter mechanism motion / energized physical material, CPU render",
+  "recoilingMeshes": [],
+  "actuatedMeshes": [
+    "phased emitter arm",
+    "emitter crystal",
+    "phased emitter arm.001",
+    "emitter crystal.001",
+    "phased emitter arm.002",
+    "emitter crystal.002",
+    "phased emitter arm.003",
+    "emitter crystal.003",
+    "phased emitter arm.004",
+    "emitter crystal.004",
+    "phased emitter arm.005",
+    "emitter crystal.005"
+  ],
+  "emissiveMaterials": 3,
+  "wholeImageRotation": false,
+  "projectileAndImpact": "External separately verified true-video VFX and actual native ballistic entities"
+}

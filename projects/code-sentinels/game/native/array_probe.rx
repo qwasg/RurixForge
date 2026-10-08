@@ -1,0 +1,10 @@
+fn main() {}
+static mut HP: [f32; 10] = [0.0; 10];
+#[export(c)]
+pub fn probe(value: f32) -> f32 {
+    unsafe {
+       let i = value as i32;
+       HP[i] = HP[i] + 1.0;
+       return HP[i];
+    }
+}

@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "texture": "5f75c7b8-484d-5d52-8a3b-c4bfcefc9bc4",
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frames": {
+    "frame_0": {
+      "bbox": [
+        0,
+        0,
+        64,
+        64
+      ]
+    },
+    "frame_1": {
+      "bbox": [
+        64,
+        0,
+        64,
+        64
+      ]
+    },
+    "frame_2": {
+      "bbox": [
+        128,
+        0,
+        64,
+        64
+      ]
+    },
+    "frame_3": {
+      "bbox": [
+        192,
+        0,
+        64,
+        64
+      ]
+    }
+  },
+  "clips": {
+    "idle": {
+      "frames": [
+        "frame_0",
+        "frame_1",
+        "frame_2",
+        "frame_3"
+      ],
+      "fps": 1,
+      "loop": true
+    }
+  }
+}

@@ -1,0 +1,233 @@
+{
+ "name": "fog",
+ "doc": "Environment exponential fog: five white cards at z = 0 / -6 / -12 / -24 / -48 (ortho camera, rurix ignores Environment)",
+ "project": "models",
+ "entities": [
+  {
+   "name": "c0",
+   "translation": [
+    -2.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.8,
+    0.8,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "c1",
+   "translation": [
+    -1.0,
+    0.0,
+    -6.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.8,
+    0.8,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "c2",
+   "translation": [
+    0.0,
+    0.0,
+    -12.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.8,
+    0.8,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "c3",
+   "translation": [
+    1.0,
+    0.0,
+    -24.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.8,
+    0.8,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "c4",
+   "translation": [
+    2.0,
+    0.0,
+    -48.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.8,
+    0.8,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "env",
+   "translation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "Environment",
+     "enabled": true,
+     "props": {
+      "ambientSource": "color",
+      "ambientColor": [
+       0.6,
+       0.6,
+       0.6,
+       1.0
+      ],
+      "reflectionSource": "disabled",
+      "fogEnabled": true,
+      "fogDensity": 0.04,
+      "fogLightColor": [
+       0.4,
+       0.6,
+       0.9,
+       1.0
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "camera": {
+  "target": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0,
+  "pitch": 0.0,
+  "dist": 10.0,
+  "ortho": true,
+  "orthoSize": 1.5
+ },
+ "width": 640,
+ "height": 360,
+ "probes": [
+  [
+   80,
+   180
+  ],
+  [
+   200,
+   180
+  ],
+  [
+   320,
+   180
+  ],
+  [
+   440,
+   180
+  ],
+  [
+   560,
+   180
+  ]
+ ],
+ "probeLabels": [
+  "z0",
+  "z-6",
+  "z-12",
+  "z-24",
+  "z-48"
+ ]
+}

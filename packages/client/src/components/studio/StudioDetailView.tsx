@@ -151,6 +151,7 @@ function VersionCard({
           <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-fg-3">
             {version.backendId}
           </span>
+          <AnnotationHandle reference={editorReference('studio', { resourceId: 'main', selection: { nodeIds: [node.id], versionId: version.id } })} label={`${node.name} · ${version.id}`} />
           {isCurrent && (
             <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-acc">
               <Check size={9} strokeWidth={2} />
@@ -873,7 +874,7 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
                       {preset.kind === 'image'
                         ? '在下方输入画面描述,选模型与尺寸后生成'
                         : preset.kind === 'model'
-                          ? '在下方输入模型描述后生成(需配置 3D 生成后端)'
+                          ? node.params.creationMethod === 'blender' ? '在下方描述需求，通过 Codex 在 Blender 中制作模型与模板' : '描述模型后选择 Blender 制作或远程生成'
                           : preset.kind === 'video'
                             ? '在下方输入视频描述后生成(需配置视频生成后端)'
                             : '输入要朗读的文字或切到音乐生成(需配置音频生成后端)'}
@@ -923,7 +924,7 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
         {/* 底部悬浮生成输入条 */}
         <div
           data-studio-composer
-          className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center"
+          className={cn('pointer-events-none absolute inset-x-0 z-20 flex justify-center', node.params.creationMethod === 'blender' ? 'bottom-12 top-2 items-end' : 'bottom-3')}
         >
           <StudioComposer node={node} />
         </div>
@@ -935,3 +936,5 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
     </div>
   );
 }
+import AnnotationHandle from '../editor/AnnotationHandle';
+import { editorReference } from '@/lib/editorReferences';

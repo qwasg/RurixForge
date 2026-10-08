@@ -1,0 +1,14 @@
+{
+  "options": {"model": "claude-haiku-4-5", "defaultMaxTokens": 4000},
+  "request": {
+    "model": "forge-haiku",
+    "messages": [
+      {"role": "system", "content": "sys"},
+      {"role": "assistant", "content": "Earlier answer."},
+      {"role": "user", "content": "First question"},
+      {"role": "user", "content": [{"type": "text", "text": "Second part"}]},
+      {"role": "assistant", "content": [{"type": "text", "text": "Part A. "}, {"type": "text", "text": "Part B."}]},
+      {"role": "assistant", "content": "More."}
+    ]
+  }
+}

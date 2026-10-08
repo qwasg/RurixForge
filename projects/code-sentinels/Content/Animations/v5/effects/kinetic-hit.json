@@ -1,0 +1,512 @@
+{
+  "id": "kinetic-hit",
+  "image": "kinetic-hit.png",
+  "width": 2066,
+  "height": 1034,
+  "frames": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "boxes": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "frameCount": 32,
+  "fps": 32,
+  "loop": false,
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frameSize": [
+    256,
+    256
+  ],
+  "crop": "none",
+  "chromaKey": "black",
+  "alphaMode": "straight",
+  "effectUnionFit": null,
+  "emissionGain": 2.0,
+  "fadeOutFrames": 4,
+  "chromaProcessing": "per-frame flat-corner estimate, exterior-connected color key, foreground structure protected",
+  "variableBackgroundPalette": false,
+  "edgeFeather": {
+    "widthPixels": 6,
+    "frameSize": 256,
+    "innerPixelsUnchanged": 244,
+    "algorithm": "alpha-only smoothstep"
+  },
+  "sourceDerivedGarbageMatte": {
+    "enabled": false,
+    "purpose": null
+  },
+  "sourceDerivedInnerMatte": {
+    "enabled": false,
+    "purpose": "preserve fixed machine panels when provider background hue overlaps original paint"
+  },
+  "sourceFrameCount": 124,
+  "sourceFps": 24.0,
+  "sourceDurationSec": 5.17,
+  "selectedSourceFrames": [
+    0,
+    3,
+    7,
+    10,
+    14,
+    17,
+    20,
+    24,
+    27,
+    30,
+    34,
+    37,
+    41,
+    44,
+    47,
+    51,
+    54,
+    58,
+    61,
+    64,
+    68,
+    71,
+    75,
+    78,
+    81,
+    85,
+    88,
+    91,
+    95,
+    98,
+    102,
+    105
+  ],
+  "uniqueFrames": 32,
+  "sourceSize": [
+    384,
+    384
+  ],
+  "sourceCropBox": [
+    0,
+    0,
+    384,
+    384
+  ],
+  "sourceActionWindowSec": [
+    0,
+    4.375
+  ],
+  "minimumSourceMarginsLTRB": [
+    41,
+    48,
+    41,
+    23
+  ],
+  "clippedSourceFrames": 0,
+  "referenceGeometry": {
+    "canvas": [
+      1024,
+      1024
+    ],
+    "maxEffectSpan": 0.66,
+    "safeMargin": 0.16
+  },
+  "provenance": {
+    "method": "image-to-video-extracted-frames",
+    "model": "MiniMax-H3-Base FL2VA INT8 + Turbo8",
+    "taskId": "725374c0-1482-58aa-9229-1b4933a73529",
+    "video": "SourceMedia/effects-v5/kinetic-hit.mp4",
+    "videoSha256": "087f07e933e7b8fce26d6efa48bbb055bcf25f22229161bceeef244d5c73c754",
+    "sourceImage": "Content/UI/v5/vfx-references/kinetic-hit.png",
+    "request": "pipeline/v5/jobs/kinetic-hit/request.json"
+  },
+  "clips": {
+    "oneshot": {
+      "start": 0,
+      "endExclusive": 32,
+      "fps": 32,
+      "loop": false
+    }
+  },
+  "recommendedBlend": "additive"
+}

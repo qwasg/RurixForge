@@ -1,7 +1,8 @@
 //! 运行时原生工具：待办 + 工作区读写/补丁 + task 委派。
 
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::agent::{NewTodo, PatchTodoRequest, TodoStore};
 use crate::engine::is_native_tool;
@@ -21,9 +22,10 @@ pub fn dispatch_native(
     args: &Value,
 ) -> (bool, String) {
     match name {
-        "todo_write" | "write_todos" | "plan_write" => {
-            (true, handle_todo_write(events, todos, session_id, run_id, args))
-        }
+        "todo_write" | "write_todos" | "plan_write" => (
+            true,
+            handle_todo_write(events, todos, session_id, run_id, args, None),
+        ),
         "todo_update" => handle_todo_update(events, todos, args),
         "read_file" => read_file(ws_root, args),
         "list_dir" => list_dir(ws_root, args),
@@ -42,13 +44,51 @@ pub fn dispatch_native(
         ),
         // D-035:create_plan 要写会话 activePlanPath,拿不到 SessionStore,故由 agent.rs
         // 父执行闭包接管(同 task 形态)。走到这里说明是子代理路径 —— 计划只归父代理落。
-        crate::engine::CREATE_PLAN_TOOL => (
-            false,
-            "create_plan 只能由主代理在 plan 模式下调用".into(),
-        ),
+        crate::engine::CREATE_PLAN_TOOL => {
+            (false, "create_plan 只能由主代理在 plan 模式下调用".into())
+        }
         other => (false, format!("未知原生工具: {other}")),
     }
 }
+
+/// The caller, never model JSON, supplies the workflow ownership of new tasks.
+/// Keep the ordinary dispatcher source-neutral for backwards compatibility.
+pub fn dispatch_native_scoped(
+    ws_root: &Path,
+    events: &EventBus,
+    todos: &TodoStore,
+    session_id: &str,
+    run_id: &str,
+    name: &str,
+    args: &Value,
+    source: &str,
+) -> (bool, String) {
+    if source.trim().is_empty() {
+        return (false, "trusted todo source required".into());
+    }
+    if matches!(name, "todo_write" | "write_todos" | "plan_write") {
+        return (
+            true,
+            handle_todo_write(events, todos, session_id, run_id, args, Some(source)),
+        );
+    }
+    if name == "todo_update" {
+        let id = args["id"].as_str().unwrap_or_default();
+        if !todos
+            .list_by_session(session_id)
+            .iter()
+            .any(|t| t.id == id && t.source == source)
+        {
+            return (
+                false,
+                "TODO_OUTSIDE_FLOW: 不能修改其他会话或流程的任务".into(),
+            );
+        }
+    }
+    dispatch_native(ws_root, events, todos, session_id, run_id, name, args)
+}
+
+static SCOPED_TODO_LOCK: Mutex<()> = Mutex::new(());
 
 fn handle_todo_write(
     events: &EventBus,
@@ -56,7 +96,9 @@ fn handle_todo_write(
     session_id: &str,
     run_id: &str,
     args: &Value,
+    source: Option<&str>,
 ) -> String {
+    let _source_guard = source.map(|_| SCOPED_TODO_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
     let mut n = 0usize;
     let mut ids: Vec<String> = Vec::new();
     if let Some(items) = args.get("todos").and_then(|v| v.as_array()) {
@@ -70,6 +112,36 @@ fn handle_todo_write(
                 continue;
             }
             let s = |k: &str| item.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            let plan_id = source
+                .and_then(|_| s("planTodoId").or_else(|| s("id")))
+                .filter(|s| !s.trim().is_empty());
+            if let Some(source) = source {
+                if let Some(existing) = todos.list_by_session(session_id).into_iter().find(|todo| {
+                    todo.source == source
+                        && (todo.title == title
+                            || plan_id
+                                .as_ref()
+                                .is_some_and(|id| todo.plan_todo_id.as_ref() == Some(id)))
+                }) {
+                    if existing.status == "failed" || existing.status == "cancelled" {
+                        if let Ok(updated) = todos.patch(
+                            &existing.id,
+                            &PatchTodoRequest {
+                                status: Some("queued".into()),
+                                ..Default::default()
+                            },
+                        ) {
+                            events.emit(
+                                EventDraft::new(session_id, "todo.updated", "todo")
+                                    .payload(serde_json::to_value(updated).unwrap()),
+                            );
+                        }
+                    }
+                    ids.push(format!("- {} :: {} (reused)", existing.id, existing.title));
+                    n += 1;
+                    continue;
+                }
+            }
             // F-GAME-4 wave.3:Plan DAG 可选字段(stage/deps/role/prompt/verify)落入 TodoItem。
             let deps: Vec<String> = item
                 .get("deps")
@@ -92,12 +164,14 @@ fn handle_todo_write(
                     role: s("role"),
                     prompt: s("prompt"),
                     verify: s("verify"),
+                    source: source.map(str::to_string),
+                    plan_todo_id: plan_id,
                     ..Default::default()
                 },
             ) {
                 Ok(todo) => {
-                    events.emit(
-                        EventDraft::new(session_id, "todo.created", "todo").payload(json!({
+                    events.emit(EventDraft::new(session_id, "todo.created", "todo").payload(
+                        json!({
                             "id": todo.id,
                             "title": todo.title,
                             "kind": todo.kind,
@@ -109,8 +183,8 @@ fn handle_todo_write(
                             "prompt": todo.prompt,
                             "verify": todo.verify,
                             "runId": run_id,
-                        })),
-                    );
+                        }),
+                    ));
                     ids.push(format!("- {} :: {}", todo.id, todo.title));
                     n += 1;
                 }
@@ -137,9 +211,15 @@ fn handle_todo_update(events: &EventBus, todos: &TodoStore, args: &Value) -> (bo
                 s.to_string()
             }
         }),
-        title: args.get("title").and_then(|v| v.as_str()).map(str::to_string),
+        title: args
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
         description: None,
-        summary: args.get("summary").and_then(|v| v.as_str()).map(str::to_string),
+        summary: args
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     };
     match todos.patch(id, &req) {
         Ok(todo) => {
@@ -191,29 +271,116 @@ fn confine_existing(ws_root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(canon)
 }
 
-/// 写路径：已存在则 confine；不存在则 confine 父目录后拼接文件名。
+fn reject_reparse(path: &Path) -> Result<(), String> {
+    for ancestor in path.ancestors() {
+        match std::fs::symlink_metadata(ancestor) {
+            Ok(metadata) => {
+                #[cfg(windows)]
+                let reparse = {
+                    use std::os::windows::fs::MetadataExt;
+                    metadata.file_attributes() & 0x400 != 0
+                };
+                #[cfg(not(windows))]
+                let reparse = false;
+                if metadata.file_type().is_symlink() || reparse {
+                    return Err("PATH_REPARSE_POINT: 写路径不可经过符号链接或重解析点".into());
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(())
+}
+
+/// Validate the nearest existing ancestor BEFORE creating anything. Each new
+/// parent is created individually and rechecked; never follow junctions/links.
 fn confine_write(ws_root: &Path, rel: &str) -> Result<PathBuf, String> {
+    reject_reparse(ws_root)?;
     let root = ws_root
         .canonicalize()
         .map_err(|_| "WORKSPACE_ROOT_UNREADABLE".to_string())?;
-    let rel = rel.trim().trim_start_matches(['/', '\\']);
+    let rel = rel.trim();
     if rel.is_empty() {
         return Err("path required".into());
     }
-    let candidate = root.join(rel);
-    if candidate.exists() {
-        return confine_existing(ws_root, rel);
-    }
-    let parent = candidate.parent().ok_or("PATH_OUTSIDE_ROOT")?;
-    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    let parent_canon = parent
-        .canonicalize()
-        .map_err(|_| "PATH_NOT_FOUND".to_string())?;
-    if !parent_canon.starts_with(&root) {
+    let supplied = Path::new(rel);
+    if rel.split(['/', '\\']).any(|s| s == "..")
+        || supplied
+            .components()
+            .any(|part| matches!(part, Component::ParentDir))
+        || (!supplied.is_absolute()
+            && supplied
+                .components()
+                .any(|part| matches!(part, Component::Prefix(_) | Component::RootDir)))
+    {
         return Err("PATH_OUTSIDE_ROOT".into());
     }
+    let candidate = if supplied.is_absolute() {
+        supplied.to_path_buf()
+    } else {
+        root.join(supplied)
+    };
+    for part in candidate.components() {
+        if let Component::Normal(part) = part {
+            let name = part.to_string_lossy();
+            let stem = name
+                .split('.')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_uppercase();
+            let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+                || ["COM", "LPT"].iter().any(|prefix| {
+                    stem.strip_prefix(prefix).is_some_and(|suffix| {
+                        suffix.len() == 1 && matches!(suffix.as_bytes()[0], b'1'..=b'9')
+                    })
+                });
+            if name.contains(':') || name.ends_with(['.', ' ']) || device {
+                return Err("PATH_INVALID_COMPONENT".into());
+            }
+        }
+    }
+    reject_reparse(&candidate)?;
+    let parent = candidate.parent().ok_or("PATH_OUTSIDE_ROOT")?;
+    let mut existing = parent;
+    let mut missing = Vec::new();
+    while !existing.exists() {
+        missing.push(
+            existing
+                .file_name()
+                .ok_or("PATH_OUTSIDE_ROOT")?
+                .to_os_string(),
+        );
+        existing = existing.parent().ok_or("PATH_OUTSIDE_ROOT")?;
+    }
+    let mut confined = existing.canonicalize().map_err(|e| e.to_string())?;
+    if !confined.starts_with(&root) || !confined.is_dir() {
+        return Err("PATH_OUTSIDE_ROOT".into());
+    }
+    for name in missing.into_iter().rev() {
+        let next = confined.join(name);
+        match std::fs::create_dir(&next) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.to_string()),
+        }
+        reject_reparse(&next)?;
+        confined = next.canonicalize().map_err(|e| e.to_string())?;
+        if !confined.starts_with(&root) || !confined.is_dir() {
+            return Err("PATH_OUTSIDE_ROOT".into());
+        }
+    }
     let name = candidate.file_name().ok_or("PATH_OUTSIDE_ROOT")?;
-    Ok(parent_canon.join(name))
+    let file = confined.join(name);
+    reject_reparse(&file)?;
+    if file.exists() {
+        let actual = file.canonicalize().map_err(|e| e.to_string())?;
+        if !actual.starts_with(&root) {
+            return Err("PATH_OUTSIDE_ROOT".into());
+        }
+        return Ok(actual);
+    }
+    Ok(file)
 }
 
 fn rel_display(ws_root: &Path, abs: &Path) -> String {
@@ -357,7 +524,11 @@ fn glob_match(pattern: &str, rel: &str) -> bool {
             return t.is_empty();
         }
         if p.len() >= 2 && p[0] == '*' && p[1] == '*' {
-            let rest = if p.len() > 2 && p[2] == '/' { &p[3..] } else { &p[2..] };
+            let rest = if p.len() > 2 && p[2] == '/' {
+                &p[3..]
+            } else {
+                &p[2..]
+            };
             if rec(rest, t) {
                 return true;
             }
@@ -434,7 +605,14 @@ fn grep_files(ws_root: &Path, args: &Value) -> (bool, String) {
             }
         }
     }
-    (true, if lines.is_empty() { format!("no matches for {query}") } else { lines.join("\n") })
+    (
+        true,
+        if lines.is_empty() {
+            format!("no matches for {query}")
+        } else {
+            lines.join("\n")
+        },
+    )
 }
 
 fn write_file(ws_root: &Path, args: &Value) -> (bool, String) {
@@ -510,9 +688,18 @@ fn str_replace_edit(ws_root: &Path, args: &Value) -> (bool, String) {
 
 #[derive(Debug)]
 enum FileOp {
-    Add { path: String, content: String },
-    Delete { path: String },
-    Update { path: String, find: Vec<String>, replace: Vec<String> },
+    Add {
+        path: String,
+        content: String,
+    },
+    Delete {
+        path: String,
+    },
+    Update {
+        path: String,
+        find: Vec<String>,
+        replace: Vec<String>,
+    },
 }
 
 fn parse_patch(text: &str) -> Result<Vec<FileOp>, String> {
@@ -648,7 +835,11 @@ fn apply_patch(ws_root: &Path, args: &Value) -> (bool, String) {
                 }
                 Err(e) => return (false, e),
             },
-            FileOp::Update { path, find, replace } => {
+            FileOp::Update {
+                path,
+                find,
+                replace,
+            } => {
                 let p = match confine_existing(ws_root, &path) {
                     Ok(p) => p,
                     Err(e) => return (false, e),
@@ -711,11 +902,14 @@ mod tests {
             let (ok, t) = read_file(&root, &json!({ "path": "a.txt" }));
             assert!(ok);
             assert_eq!(t, "hello");
-            let (ok, msg) = str_replace_edit(&root, &json!({
-                "path": "a.txt",
-                "old_string": "hello",
-                "new_string": "world"
-            }));
+            let (ok, msg) = str_replace_edit(
+                &root,
+                &json!({
+                    "path": "a.txt",
+                    "old_string": "hello",
+                    "new_string": "world"
+                }),
+            );
             assert!(ok, "{msg}");
             let (ok, t) = read_file(&root, &json!({ "path": "a.txt" }));
             assert!(ok && t == "world");
@@ -726,10 +920,150 @@ mod tests {
     }
 
     #[test]
+    fn write_rejects_escape_before_creating_any_directories() {
+        with_root(|dir| {
+            let root = dir.join("workspace");
+            std::fs::create_dir(&root).unwrap();
+            let outside = dir.join("outside");
+            for rel in [
+                "../outside/nested/file.txt".to_string(),
+                outside
+                    .join("nested/file.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+            ] {
+                assert!(confine_write(&root, &rel).is_err());
+                assert!(
+                    !outside.exists(),
+                    "rejected write must have no external side effects"
+                );
+            }
+            assert!(confine_write(&root, "CON/file.txt").is_err());
+            let target = confine_write(&root, "safe/deep/file.txt").unwrap();
+            assert!(target.parent().unwrap().is_dir());
+            assert!(target.starts_with(root.canonicalize().unwrap()));
+        });
+    }
+
+    #[test]
+    fn write_rejects_directory_links_before_creating_children() {
+        with_root(|dir| {
+            let root = dir.join("workspace");
+            let outside = dir.join("outside");
+            std::fs::create_dir(&root).unwrap();
+            std::fs::create_dir(&outside).unwrap();
+            let link = root.join("linked");
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let output = std::process::Command::new("cmd")
+                    .args(["/C", "mklink", "/J"])
+                    .arg(&link)
+                    .arg(&outside)
+                    .creation_flags(0x08000000)
+                    .output()
+                    .unwrap();
+                assert!(output.status.success(), "junction fixture: {:?}", output);
+            }
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(confine_write(&root, "linked/new/file.txt")
+                .unwrap_err()
+                .contains("PATH_REPARSE_POINT"));
+            assert!(!outside.join("new").exists());
+            // Remove only the link itself before the fixture's normal directory cleanup.
+            #[cfg(windows)]
+            std::fs::remove_dir(&link).unwrap();
+            #[cfg(unix)]
+            std::fs::remove_file(&link).unwrap();
+        });
+    }
+
+    #[test]
+    fn scoped_todos_are_idempotent_and_ignore_untrusted_source() {
+        with_root(|root| {
+            let events = EventBus::new(root.join("events"), 32);
+            let todos = TodoStore::load(root.join("todos.json"));
+            let args = json!({"source":"forged", "todos":[{"title":"Build core", "id":"core", "source":"forged", "stage":"build", "role":"scene-builder", "prompt":"Build"}]});
+            for _ in 0..2 {
+                assert!(
+                    dispatch_native_scoped(
+                        root,
+                        &events,
+                        &todos,
+                        "s",
+                        "r",
+                        "todo_write",
+                        &args,
+                        "ultraplan:one"
+                    )
+                    .0
+                );
+            }
+            let first = todos.list_by_session("s");
+            assert_eq!(first.len(), 1);
+            assert_eq!(first[0].source, "ultraplan:one");
+            assert_eq!(first[0].plan_todo_id.as_deref(), Some("core"));
+            let id = &first[0].id;
+            let update = json!({"id":id,"status":"completed"});
+            assert!(
+                !dispatch_native_scoped(
+                    root,
+                    &events,
+                    &todos,
+                    "s",
+                    "r",
+                    "todo_update",
+                    &update,
+                    "ultraplan:other"
+                )
+                .0
+            );
+            assert!(
+                dispatch_native_scoped(
+                    root,
+                    &events,
+                    &todos,
+                    "s",
+                    "r",
+                    "todo_update",
+                    &update,
+                    "ultraplan:one"
+                )
+                .0
+            );
+            assert!(
+                dispatch_native_scoped(
+                    root,
+                    &events,
+                    &todos,
+                    "s",
+                    "r",
+                    "todo_write",
+                    &args,
+                    "ultraplan:one"
+                )
+                .0
+            );
+            assert_eq!(
+                todos.list_by_session("s")[0].status,
+                "completed",
+                "idempotency must not rerun completed tasks"
+            );
+            assert!(dispatch_native(root, &events, &todos, "s", "r", "todo_write", &args).0);
+            let all = todos.list_by_session("s");
+            assert_eq!(all.len(), 2);
+            assert_eq!(all[1].source, "user");
+            assert_eq!(all[1].plan_todo_id, None);
+        });
+    }
+
+    #[test]
     fn apply_patch_add_and_grep() {
         with_root(|dir| {
             let root = dir.canonicalize().unwrap();
-            let patch = "*** Begin Patch\n*** Add File: notes/hi.txt\n+alpha\n+beta\n*** End Patch\n";
+            let patch =
+                "*** Begin Patch\n*** Add File: notes/hi.txt\n+alpha\n+beta\n*** End Patch\n";
             let (ok, msg) = apply_patch(&root, &json!({ "patch": patch }));
             assert!(ok, "{msg}");
             let (ok, t) = read_file(&root, &json!({ "path": "notes/hi.txt" }));
@@ -750,8 +1084,10 @@ mod tests {
     fn read_file_line_window_is_optional_and_clamped() {
         with_root(|dir| {
             let root = dir.canonicalize().unwrap();
-            let (ok, msg) =
-                write_file(&root, &json!({ "path": "n.txt", "content": "l1\nl2\nl3\nl4\nl5" }));
+            let (ok, msg) = write_file(
+                &root,
+                &json!({ "path": "n.txt", "content": "l1\nl2\nl3\nl4\nl5" }),
+            );
             assert!(ok, "{msg}");
             let (ok, all) = read_file(&root, &json!({ "path": "n.txt" }));
             assert!(ok && all == "l1\nl2\nl3\nl4\nl5", "缺省应全文原样: {all}");

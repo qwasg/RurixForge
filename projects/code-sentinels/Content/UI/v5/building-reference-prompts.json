@@ -1,0 +1,71 @@
+{
+  "version": 5,
+  "tool": "built-in image_gen",
+  "purpose": "Static complete compiler turret references for subsequent real image-to-video construct, idle and destroy sequences.",
+  "assets": [
+    {
+      "key": "vscode-turret",
+      "nativeBuildingId": 11,
+      "title": "VS Code 精准炮台",
+      "references": [
+        {
+          "path": "D:\\RurixForge\\projects\\code-sentinels\\Content\\Textures\\vscode.png",
+          "role": "Official software logo appearance"
+        },
+        {
+          "path": "D:\\RurixForge\\projects\\code-sentinels\\Content\\UI\\v4\\art\\data-center.png",
+          "role": "V4 building style and camera only"
+        }
+      ],
+      "generationPrompt": "Use case: stylized-concept. Generate a NEW complete mechanical defense turret building sprite for an original 2D RTS videogame. Reference image 1 is the EXACT official software logo to preserve faithfully as a small inset enamel badge on the front armor plate; reproduce its shape and colors without inventing a replacement logo. Reference image 2 is ONLY the V4 industrial rendering style, material palette and camera reference: do not copy its data-center structure. Camera fixed orthographic steep 65-degree overhead 3/4 view. Crisp detailed miniature industrial game art, ivory armor #F2F0E9, charcoal steel #101316, restrained amber service details, matching source rendering. SQUARE 1:1 CANVAS, centered full object, the entire turret and full foundation fit inside central 68% width and height, at least 16% truly transparent margin on ALL four sides. ACTUALLY TRANSPARENT RGBA BACKGROUND, no ground, scenery, gradient, checkerboard, external shadows or glow. No people, no animation sequence, no border, no UI. No lettering except logo already supplied. Subject: VS CODE PRECISION FIXED TURRET. Sturdy low octagonal fixed foundation bolted to base, a rotating dark turret head carrying ONE long precise rectangular railgun barrel pointing toward lower-left of image, ivory angular armor panels with rich VS Code blue side plates and cyan aiming aperture, compact exposed heat sink behind the gun, two short blue power conduits. Entire barrel contained within central safe area. Exact blue ribbon VS Code logo from image 1 visibly inset on flat front base armor; do not replace or reinterpret it. This is a grounded stationary defense building, no legs or wheels.",
+      "editSteps": [
+        {
+          "prompt": "Use case: background-extraction. Remove the entire patterned background from this image, leaving only the exact complete turret. Preserve all turret parts, colours, shape, view angle and software badge unchanged. Output a real RGBA cutout with transparent alpha outside the turret. Center the complete turret at 68 percent of a square canvas with a transparent margin of 16 percent on all sides. Background: transparent.",
+          "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-45a48144-8b93-4f79-87c0-91f5943774dc.png"
+        },
+        {
+          "prompt": "Extract the turret from this picture. Remove all background completely. Keep the turret exactly the same, including the blue VS Code badge. Output the turret alone as a transparent PNG with an actual alpha channel. Background transparent.",
+          "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-2ff02723-f487-4018-aba8-66ae3c5a4fb0.png"
+        }
+      ],
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-d2f8a2dd-efdc-4e42-80ae-40163e5b2267.png",
+      "reference": "Content/UI/v5/building-references/vscode-turret.png",
+      "web": "/games/code-sentinels/ui-v5/building-references/vscode-turret.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "framing": "Generated source preserves full silhouette; media preparation alpha-crops and fits to 64 percent for 18 percent safety margin before actual I2V.",
+      "notes": "No character artwork changed. Supplied official software mark is inset on the stationary front armor badge."
+    },
+    {
+      "key": "pycharm-turret",
+      "nativeBuildingId": 12,
+      "title": "PyCharm 矩阵炮台",
+      "references": [
+        {
+          "path": "D:\\RurixForge\\projects\\code-sentinels\\Content\\Textures\\pycharm.png",
+          "role": "Official software logo appearance"
+        },
+        {
+          "path": "D:\\RurixForge\\projects\\code-sentinels\\Content\\UI\\v4\\art\\data-center.png",
+          "role": "V4 building style and camera only"
+        }
+      ],
+      "generationPrompt": "Use case: stylized-concept. Generate a NEW complete mechanical defense turret building sprite for an original 2D RTS videogame. Reference image 1 is the EXACT official software logo to preserve faithfully as a small inset enamel badge on the front armor plate; reproduce its shape and colors without inventing a replacement logo. Reference image 2 is ONLY the V4 industrial rendering style, material palette and camera reference: do not copy its data-center structure. Camera fixed orthographic steep 65-degree overhead 3/4 view. Crisp detailed miniature industrial game art, ivory armor #F2F0E9, charcoal steel #101316, restrained amber service details, matching source rendering. SQUARE 1:1 CANVAS, centered full object, the entire turret and full foundation fit inside central 68% width and height, at least 16% truly transparent margin on ALL four sides. ACTUALLY TRANSPARENT RGBA BACKGROUND, no ground, scenery, gradient, checkerboard, external shadows or glow. No people, no animation sequence, no border, no UI. No lettering except logo already supplied. Subject: PYCHARM MATRIX FIXED TURRET. Sturdy low square fixed foundation bolted to base, a compact pivoting turret head with FOUR short parallel rectangular pulse-gun barrels in a 2-by-2 matrix pointing toward lower-left of image, ivory angular armor with emerald and lime green panels, mint-green barrel apertures, compact dark server heat sink at rear and thick protected green conduits. Entire barrels within safe area. Exact PyCharm official badge from image 1 on a flat front base armor plate: retain its multicolor green-cyan-yellow shape, black square, white PC and white underscore unchanged. A grounded stationary defense building, no legs or wheels.",
+      "editSteps": [
+        {
+          "prompt": "Use case: background-extraction. Remove the entire patterned background from this image, leaving only the exact complete turret. Preserve all turret parts, colours, shape, view angle and software badge unchanged. Output a real RGBA cutout with transparent alpha outside the turret. Center the complete turret at 68 percent of a square canvas with a transparent margin of 16 percent on all sides. Background: transparent.",
+          "source": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-42b7994e-757c-4f23-b3e4-1839de544476.png"
+        }
+      ],
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-9859bbbd-7181-493f-8e14-1262a6a3f8e4.png",
+      "reference": "Content/UI/v5/building-references/pycharm-turret.png",
+      "web": "/games/code-sentinels/ui-v5/building-references/pycharm-turret.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "framing": "Generated source preserves full silhouette; media preparation alpha-crops and fits to 64 percent for 18 percent safety margin before actual I2V.",
+      "notes": "No character artwork changed. Supplied official software mark is inset on the stationary front armor badge."
+    }
+  ]
+}

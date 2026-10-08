@@ -1,0 +1,18 @@
+{
+  "guid": "44deae06-7f37-50be-ad28-2606722db7f1",
+  "type": "texture",
+  "importer": "png",
+  "provenance": {
+    "origin": "gen-video",
+    "detail": {
+      "backend": "aliyun-minimax-video",
+      "sourceImage": "Content/Concepts/gpt-dragon-v2.png",
+      "taskId": "f35fadac-a33e-4390-ac27-7279bd5694d8",
+      "videoSha256": "b8e0a6ccc94f59ce5be7f2089bbb4b4319f32f8a76c9b8979b7171be0e9daf35",
+      "method": "image-to-video-extracted-frames",
+      "videoFileRef": "SourceMedia/gpt.mp4",
+      "temporaryVideoFileRef": ".forge/tmp/gen/gen-1788671545120-172160536089940166-0.mp4"
+    }
+  },
+  "build_state": "current"
+}

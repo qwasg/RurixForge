@@ -57,6 +57,9 @@ export function extractAssetRefs(entity: EntityData): EntityAssetRef[] {
   const refs: EntityAssetRef[] = [];
   for (const c of entity.components) {
     if (!c.enabled) continue;
+    if (c.type === 'ModelRenderer' && typeof c.props.model === 'string' && c.props.model) {
+      refs.push({ key: `model:${c.props.model}`, label: '3D 模型', path: c.props.model, kind: 'mesh' });
+    }
     if (c.type === 'MeshRenderer') {
       const mesh = c.props.mesh;
       if (typeof mesh === 'string' && mesh.trim() !== '') {

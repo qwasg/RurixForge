@@ -173,7 +173,9 @@ impl Dx {
                 BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
                 BufferCount: 2,
                 SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-                Scaling: DXGI_SCALING_NONE,
+                // 共享 buffer 按推流尺寸(CSS px)建,子窗口按设备像素铺满视口面板:dpr ≠ 1 时两者不同,
+                // NONE 会 1:1 只占左上角(其余黑),必须拉伸。
+                Scaling: DXGI_SCALING_STRETCH,
                 ..Default::default()
             };
             let sc = self
@@ -336,9 +338,12 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
     let (style, ex) = if parent.0.is_null() {
         (WS_OVERLAPPEDWINDOW | WS_VISIBLE, WS_EX_APPWINDOW)
     } else {
-        // 子窗口嵌入 Electron 视口区:TRANSPARENT = 命中测试穿透到父窗 web 内容
-        // (点选/环绕/滚轮交互不被原生层吞掉);NOACTIVATE = 永不抢键盘焦点。
-        (WS_CHILD | WS_VISIBLE, WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+        // 子窗口嵌入 Electron 视口区,必须压在 Chromium 自己的子窗口之上才看得见(z 序见呈现循环)。
+        // WS_DISABLED:禁用的子窗口不收鼠标,输入交给父窗(Electron 顶层 → Chromium 按坐标分给网页),
+        // 点选/环绕/滚轮才不被原生层吞掉;WS_EX_TRANSPARENT 只影响兄弟窗口的绘制顺序,跨进程并不穿透命中测试。
+        // 不带 WS_VISIBLE:首帧呈现之后再显示,免得 bind 后、首帧前在视口上盖一块黑(推流按需出帧,空闲时可能很久没帧)。
+        // NOACTIVATE = 永不抢键盘焦点。
+        (WS_CHILD | WS_DISABLED, WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
     };
     let hwnd = unsafe {
         // SAFETY: class 已注册;parent 为调用方持有的有效顶层窗口(或 null 独立窗口)。
@@ -381,6 +386,10 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
     }
     let _ = ready.send(Ok(()));
 
+    // 子窗口模式:首帧之前隐藏,之后显示并维持在兄弟窗口最上面;独立窗口(--selftest)一律照旧。
+    let is_child = !parent.0.is_null();
+    let mut shown = !is_child;
+    let mut tick: u32 = 0;
     let mut msg = MSG::default();
     'outer: loop {
         // 命令队列优先
@@ -399,11 +408,20 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
                             eprintln!("[presenter] swapchain 重建失败: {e}");
                             break 'outer;
                         }
+                        if is_child && shown {
+                            // 新 swapchain 在首帧前是黑的:先藏起来,让下面的网页画布顶着,首帧到了再显示
+                            unsafe {
+                                // SAFETY: hwnd 为本线程窗口。
+                                let _ = ShowWindow(hwnd, SW_HIDE);
+                            }
+                            shown = false;
+                        }
                     }
                 }
                 Cmd::Move { x, y, w, h } => unsafe {
-                    // SAFETY: hwnd 为本线程窗口。
-                    let _ = SetWindowPos(hwnd, None, x, y, w as i32, h as i32, SWP_NOZORDER | SWP_NOACTIVATE);
+                    // SAFETY: hwnd 为本线程窗口。子窗口顺带提到兄弟窗口最上面(HWND_TOP,不激活)。
+                    let (after, flags) = if is_child { (Some(HWND_TOP), SWP_NOACTIVATE) } else { (None, SWP_NOZORDER | SWP_NOACTIVATE) };
+                    let _ = SetWindowPos(hwnd, after, x, y, w as i32, h as i32, flags);
                 },
                 Cmd::Close => break 'outer,
             }
@@ -422,11 +440,31 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
             match dx.present_latest() {
                 Ok(Some(_)) => {
                     presented_counter().0.fetch_add(1, Ordering::SeqCst);
+                    if !shown {
+                        // 首帧已进 swapchain:显示并提到兄弟窗口最上面(都不激活)
+                        unsafe {
+                            // SAFETY: hwnd 为本线程窗口。
+                            let _ = ShowWindow(hwnd, SW_SHOWNA);
+                            let _ = SetWindowPos(hwnd, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        }
+                        shown = true;
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => {
                     eprintln!("[presenter] present 失败: {e}");
                     break 'outer;
+                }
+            }
+        }
+        // z 序维护:Chromium 调整自己的子窗口(改尺寸、重建 GPU 输出窗口)时会把它们重新压到 presenter 上面。
+        // 约每 256 ms 查一次,上方还有兄弟窗口就把自己提回最上(不激活)。
+        tick = tick.wrapping_add(1);
+        if is_child && shown && tick.is_multiple_of(32) {
+            unsafe {
+                // SAFETY: hwnd 为本线程窗口;GW_HWNDPREV 取 z 序紧挨在上方的兄弟窗口,没有时返回 Err。
+                if GetWindow(hwnd, GW_HWNDPREV).is_ok_and(|h| !h.0.is_null()) {
+                    let _ = SetWindowPos(hwnd, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 }
             }
         }

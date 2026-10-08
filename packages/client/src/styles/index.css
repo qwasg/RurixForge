@@ -46,7 +46,109 @@
 }
 
 @layer components {
-  /* 主页首屏氛围底:accent 微光(上方)+ 淡网格(径向渐隐),全走主题变量,双主题自适应 */
+  .composer-glass {
+    background: color-mix(in srgb, var(--bg-panel) 86%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(0.7);
+    backdrop-filter: blur(16px) saturate(0.7);
+    box-shadow: 0 2px 5px rgb(0 0 0 / 0.025), inset 0 1px 0 rgb(255 255 255 / 0.55);
+    transition: border-radius 180ms ease, border-color 180ms ease, background 220ms ease, box-shadow 220ms ease;
+  }
+  .composer-glass:focus-within {
+    border-color: var(--line-strong);
+    background: color-mix(in srgb, var(--bg-panel) 76%, transparent);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.065), 0 1px 4px rgb(0 0 0 / 0.025), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  }
+  [data-theme='dark'] .composer-glass {
+    box-shadow: 0 2px 5px rgb(0 0 0 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.055);
+  }
+  [data-theme='dark'] .composer-glass:focus-within {
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.09);
+  }
+  [data-theme='dark'] .forge-logo { filter: brightness(0) invert(1); }
+  .agent-switcher-indicator {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    left: 0;
+    z-index: -1;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.055);
+    transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), width 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .agent-switcher-plan { animation: forge-pop-in 180ms ease both; }
+  .home-recommendation-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .home-recommendation {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg-panel);
+    text-align: left;
+    box-shadow: 0 2px 5px rgb(0 0 0 / 0.025);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
+  }
+  .home-recommendation:hover {
+    transform: translateY(-3px);
+    border-color: var(--line-strong);
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.07);
+  }
+  .home-recommendation:focus-visible { outline: 2px solid var(--text-3); outline-offset: 3px; }
+  .home-recommendation-art {
+    position: relative;
+    height: 116px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: #f2f0eb;
+  }
+  .home-recommendation-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .home-recommendation:hover img { transform: scale(1.035); }
+  .home-recommendation-mode {
+    position: absolute;
+    left: 10px;
+    bottom: 9px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid rgb(255 255 255 / 0.65);
+    border-radius: 999px;
+    padding: 3px 7px;
+    background: rgb(255 255 255 / 0.72);
+    color: #444542;
+    font-size: 9px;
+    line-height: 12px;
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+  .home-recommendation-arrow { opacity: 0.35; transition: transform 200ms ease, opacity 200ms ease; }
+  .home-recommendation:hover .home-recommendation-arrow { transform: translate(1px, -1px); opacity: 1; }
+  .home-recommendation-skeleton { height: 192px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-sunk); }
+  @media (max-width: 760px) {
+    .home-recommendation-grid { grid-template-columns: 1fr; gap: 8px; }
+    .home-recommendation { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; }
+    .home-recommendation-art { height: 90px; }
+    .home-recommendation-skeleton { height: 90px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .composer-glass, .agent-switcher-indicator, .home-recommendation, .home-recommendation-art img, .home-recommendation-arrow { transition: none; }
+    .agent-switcher-plan { animation: none; }
+    .home-recommendation:hover, .home-recommendation:hover img, .home-recommendation:hover .home-recommendation-arrow { transform: none; }
+  }
+  /* 氛围底:accent 微光(上方)+ 淡网格(径向渐隐),全走主题变量,双主题自适应。
+     2026-10-07 主页首屏撤下(蓝色系预设下整片泛蓝、网格显杂),现仅登录门品牌面板使用 */
   .home-ambient {
     @apply pointer-events-none absolute inset-0 overflow-hidden;
   }
@@ -77,6 +179,16 @@
     opacity: 0.55;
     -webkit-mask-image: radial-gradient(ellipse 75% 62% at 50% 30%, black 0%, transparent 74%);
     mask-image: radial-gradient(ellipse 75% 62% at 50% 30%, black 0%, transparent 74%);
+  }
+  /* 可读性波(2026-10-07):中文在 Windows 回落微软雅黑,只有 300/400/700 三档——正文偏细,
+     font-medium(500)也落回 400。亮色主题给 IDE 界面文字补 0.2px 描边(视觉约 400→480;
+     描边色缺省 currentColor,透明字/渐变字不受影响)。暗色浅字本就显粗,不加;
+     代码面(编辑器/终端/代码块)保持字体原样。挂在 Shell 与登录门根节点,游戏页不受影响。 */
+  [data-theme='light'] .forge-legible {
+    -webkit-text-stroke-width: 0.2px;
+  }
+  .forge-legible :is(.cm-editor, .xterm, pre, code, kbd) {
+    -webkit-text-stroke-width: 0;
   }
   /* 首屏入场:上浮淡入,错峰 delay 由内联 style 给;reduce-motion 禁动 */
   @keyframes forge-rise {
@@ -115,6 +227,62 @@
   @media (prefers-reduced-motion: reduce) {
     .forge-pop-in {
       animation: none;
+    }
+  }
+  /* D-046 品牌标(ForgeMark)动效:mask 斜向渐变沿 logo 主斜带方向(143deg,左上→右下)推进。
+     reveal = 入场擦出(只播一次);shimmer = 忙碌时暗带循环扫过(语义同文字扫光 .forge-shimmer)。
+     mask-size 300%:position 100% 时元素落在渐变尾段(全透明/全实),0% 时落在首段。 */
+  @keyframes forge-mark-sweep {
+    from {
+      -webkit-mask-position: 100% 100%;
+      mask-position: 100% 100%;
+    }
+    to {
+      -webkit-mask-position: 0% 0%;
+      mask-position: 0% 0%;
+    }
+  }
+  .forge-mark-reveal,
+  .forge-mark-shimmer {
+    -webkit-mask-size: 300% 300%;
+    mask-size: 300% 300%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+  .forge-mark-reveal {
+    -webkit-mask-image: linear-gradient(143deg, #000 40%, transparent 60%);
+    mask-image: linear-gradient(143deg, #000 40%, transparent 60%);
+    animation: forge-mark-sweep 1s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+  }
+  .forge-mark-shimmer {
+    -webkit-mask-image: linear-gradient(143deg, #000 38%, rgba(0, 0, 0, 0.3) 50%, #000 62%);
+    mask-image: linear-gradient(143deg, #000 38%, rgba(0, 0, 0, 0.3) 50%, #000 62%);
+    animation: forge-mark-sweep 1.3s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .forge-mark-reveal,
+    .forge-mark-shimmer {
+      -webkit-mask-image: none;
+      mask-image: none;
+      animation: none;
+    }
+  }
+  /* 折面头像(D-046):沿 logo 主斜带角度把圆分成两面(53deg 渐变 → 分界线约 53° 斜下),
+     底 = 文字色、字 = 反色,与 .btn-primary 一样亮暗自适应 */
+  .forge-fold-avatar {
+    background: linear-gradient(
+      53deg,
+      var(--text) 0 54%,
+      color-mix(in srgb, var(--text) 84%, var(--bg)) 54% 100%
+    );
+    color: var(--text-inv);
+  }
+  /* 登录门窄屏(无品牌面板)时右上角让出系统三钮(overlay 形态,算式同 TitleBar OVERLAY_INSET) */
+  @media (max-width: 1023px) {
+    .auth-overlay-safe {
+      padding-right: calc(
+        100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + 12px
+      );
     }
   }
   /* 子代理状态粒子(components/chat/SubagentParticles.tsx):
@@ -297,6 +465,35 @@
     background: var(--accent);
     border: 1px solid var(--accent);
   }
+  /* 对话代码块静态高亮 token(lib/codeHighlight.ts;色值随主题走 --code-* 变量) */
+  .tok-keyword {
+    color: var(--code-keyword);
+  }
+  .tok-string {
+    color: var(--code-string);
+  }
+  .tok-comment {
+    color: var(--code-comment);
+    font-style: italic;
+  }
+  .tok-number {
+    color: var(--code-number);
+  }
+  .tok-func {
+    color: var(--code-func);
+  }
+  .tok-type {
+    color: var(--code-type);
+  }
+  .tok-prop {
+    color: var(--code-prop);
+  }
+  .tok-punct {
+    color: var(--code-punct);
+  }
+  .tok-meta {
+    color: var(--code-meta);
+  }
   /* 主按钮(UI 融合波:反色自适应主题——亮=近黑底白字,暗=浅底深字) */
   .btn-primary {
     @apply inline-flex items-center gap-1.5 rounded-full bg-fg px-3.5 py-1.5 text-xs font-medium text-shell-bg transition-opacity hover:opacity-90;
@@ -313,4 +510,48 @@
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border border-edge bg-shell-panel px-2.5 py-1 text-xs text-fg-3 transition-colors hover:bg-shell-hover;
   }
+}
+/* Aligned overview cards above a full-width activity calendar. */
+.account-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.account-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: stretch;
+  min-width: 0;
+}
+.account-columns [data-testid$='-card'] { min-width: 0; border-radius: 8px; }
+.account-overview > [data-testid$='-card'] > div { padding-inline: 24px; }
+.account-overview [data-testid='account-profile-card'] > div:first-child,
+.account-overview [data-testid='account-balance-card'] > div:first-child {
+  min-height: 96px;
+  border-radius: 8px 8px 0 0;
+  align-items: center;
+}
+.account-overview [data-testid='account-balance-card'] > div:last-child {
+  flex: 1;
+  justify-content: center;
+  padding-block: 20px;
+}
+.account-overview [data-testid='account-redeem-input'] { width: auto !important; flex: 1; min-width: 0; }
+.account-columns [data-testid='account-usage-card'] > div:first-child { padding: 18px 24px; }
+.account-columns [data-testid='usage-summary'] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 24px;
+  padding: 24px;
+}
+@media (max-width: 1100px) {
+  .account-overview { grid-template-columns: minmax(0, 1fr); }
+  .account-columns [data-testid='usage-summary'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .account-overview > [data-testid$='-card'] > div,
+  .account-columns [data-testid='usage-summary'] { padding-inline: 16px; }
+  .account-columns [data-testid='account-usage-card'] > div:first-child { padding-inline: 16px; }
+  .account-columns [data-testid='usage-summary'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

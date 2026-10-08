@@ -233,6 +233,7 @@ function FeatureNode({ node, feature, pos, onLinkStart, onLinkMove, onLinkEnd }:
       >
         {feature.type}
       </span>
+      <AnnotationHandle reference={editorReference('blueprint', { resourceId: 'main', selection: { nodeIds: [node.id], featureIds: [feature.id] } })} label={`${node.name}.${feature.type}`} />
       {editing ? (
         <input
           autoFocus
@@ -348,7 +349,8 @@ export default function BoardNodeCard({
   const assetPickerOpen = useDesignBoardStore(
     (s) => s.panel?.kind === 'asset-picker' && s.panel.node === node.id,
   );
-  const selected = useDesignBoardStore((s) => s.selectedNodeId === node.id);
+  const selectedIds = useDesignBoardStore((s) => s.selectedNodeIds);
+  const selected = useDesignBoardStore((s) => s.selectedNodeId === node.id || s.selectedNodeIds.includes(node.id));
   const tone = TONE_META[kind.tone];
   const Icon = kindIcon(kind);
   const [nameDraft, setNameDraft] = useState(node.name);
@@ -413,6 +415,7 @@ export default function BoardNodeCard({
       >
         <div className={cn('rounded-t-md', tone.bar)} style={{ height: BAR_H }} />
         <div className="flex items-center gap-1 px-1.5" style={{ height: TITLE_H }}>
+          <AnnotationHandle reference={editorReference('blueprint', { resourceId: 'main', selection: { nodeIds: selectedIds.includes(node.id) ? selectedIds : [node.id] } })} label={node.name} />
           <Icon size={11} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
           {editingName ? (
             <input
@@ -627,3 +630,5 @@ export default function BoardNodeCard({
     </>
   );
 }
+import AnnotationHandle from './AnnotationHandle';
+import { editorReference } from '@/lib/editorReferences';

@@ -1,0 +1,26 @@
+guid: 92ec88a8-4dcf-422c-94db-57578530f081
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T11:54:38Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b45b-ef62-7300-98fb-7a024082d7c9
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b45b-ef62-7300-98fb-7a024082d7c9/output/preview.png?Expires=1789991671&Signature=in1k8mqVBwvbpeIafL217nRtNJ25BadCl4N~FAKBrza5df7JYlUcodeyXLLfwIbBi-MdGNEcuzLN4uxj2AVZzsJ6ln3dfbhSynbdigc8H6-sx3CNQcZVxA~f9oEuvqce8RwPTAJAaJNvUcS-cpIEIRvGsCNdF8hpuIiv9SpTNvrlssFecglQT29JuiWPLJbnflNT33le7ZXKJD2KUS5Bt9sI0MoLKX3K7gwaRyCCS7Jh-UuyB~9Rhu5MBSJP8e~GiilMe7tocHgbN8OtL6d~cFBKvwT0UcdnFcN00x7STZbfeIXeBL4UqROpUPVQTskrue7P24DpG3GBKytfQQ1~Yw__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: 'Tier-1 energy pulse turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor, energy weapon made of two split pale titanium accelerator rails with three glowing blue magnetic coil rings and a glowing teal energy core, amber sensor dome. Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.'
+build_state: current

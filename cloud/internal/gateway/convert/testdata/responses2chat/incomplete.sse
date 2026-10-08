@@ -1,0 +1,7 @@
+data: {"type":"response.created","response":{"id":"resp_inc1","status":"in_progress"}}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_i","type":"message","role":"assistant","content":[]}}
+
+data: {"type":"response.output_text.delta","item_id":"msg_i","output_index":0,"content_index":0,"delta":"This answer is cut"}
+
+data: {"type":"response.incomplete","response":{"id":"resp_inc1","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"id":"msg_i","type":"message","role":"assistant","content":[{"type":"output_text","text":"This answer is cut"}]}],"usage":{"input_tokens":10,"output_tokens":16,"total_tokens":26}}}

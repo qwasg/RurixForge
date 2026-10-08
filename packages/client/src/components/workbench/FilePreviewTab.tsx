@@ -2,6 +2,11 @@ import { ChevronRight, X } from 'lucide-react';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { useFileEditor } from '@/lib/useFileEditor';
 import CodeEditor from './CodeEditor';
+import { useState } from 'react';
+import type { EditorSelection } from '@forge/protocol';
+import AnnotationHandle from '../editor/AnnotationHandle';
+import { editorReference, makeAnnotation } from '@/lib/editorReferences';
+import { publishEditorSelection } from '@/lib/editorSelection';
 
 /**
  * 工作区文件编辑器 tab(F8 只读预览 → F9 CodeMirror 6 可编辑)。
@@ -38,6 +43,7 @@ export default function FilePreviewTab({ path, tabId }: { path: string; tabId: s
   const cancelCloseTab = useWorkbenchStore((st) => st.cancelCloseTab);
   const closeConfirm = useWorkbenchStore((st) => st.pendingCloseTabId === tabId);
   const ed = useFileEditor(path, tabId);
+  const [selection, setSelection] = useState<{ range: NonNullable<EditorSelection['range']>; text: string } | null>(null);
 
   const name = ed.data?.name ?? path.replace(/\\/g, '/').split('/').pop() ?? path;
   const crumbs = pathSegments(path);
@@ -69,6 +75,8 @@ export default function FilePreviewTab({ path, tabId }: { path: string; tabId: s
             );
           })}
         </nav>
+        <AnnotationHandle label={selection?.text ? `${name}:${selection.range.startLine}-${selection.range.endLine}` : name}
+          annotations={[makeAnnotation(editorReference('source', { path, revision: ed.data?.modifiedAt, selection: selection?.text ? { range: selection.range, ...(ed.dirty ? { excerpt: selection.text, dirty: true } : {}) } : undefined }), selection?.text ? `${name}:${selection.range.startLine}-${selection.range.endLine}` : name)]} />
         {ed.data !== null && ed.saveState === 'dirty' && (
           <button
             type="button"
@@ -167,6 +175,7 @@ export default function FilePreviewTab({ path, tabId }: { path: string; tabId: s
             path={path}
             initialDoc={ed.initialDoc}
             onDocChanged={ed.onDocChanged}
+            onSelectionChanged={(range, text) => { setSelection({ range, text }); publishEditorSelection([editorReference('source', { path, revision: ed.data?.modifiedAt, selection: { range } })]); }}
             onSave={() => void ed.save()}
             data-testid="ws-preview-content"
             className="h-full min-h-0 font-code text-[13px]"

@@ -1,0 +1,3255 @@
+{
+  "schemaVersion": 2,
+  "version": 6,
+  "generatedBy": "builtin-imagegen + actual local MiniMax-H3 + Blender CPU bake",
+  "characterAnimationState": "ready",
+  "characters": {
+    "gemini": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/gemini.png",
+      "atlas": "/games/code-sentinels/characters-v6/gemini.png",
+      "metadata": "/games/code-sentinels/characters-v6/gemini.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/v6/gemini-community.png",
+      "referenceSheet": "Content/UI/v6/character-sheets/gemini-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/gemini.png",
+      "nativeMetadata": "Content/Animations/v6/characters/gemini.json",
+      "portraitReady": true,
+      "identityAdaptation": "Source character preserved from larcgpt published Main card. Unseen back/clothing/shoes are conservative V6 game adaptations, not asserted as original internet canon.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "frameCount": 512,
+      "atlasSha256": "eb1376d9028045c15f9ee1a5f5fa21311e70598c9fe937df2cc4f860cd507744",
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": true
+    },
+    "claude": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/claude.png",
+      "atlas": "/games/code-sentinels/characters-v6/claude.png",
+      "metadata": "/games/code-sentinels/characters-v6/claude.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/v6/claude-community.png",
+      "referenceSheet": "Content/UI/v6/character-sheets/claude-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/claude.png",
+      "nativeMetadata": "Content/Animations/v6/characters/claude.json",
+      "portraitReady": true,
+      "identityAdaptation": "Source character preserved from larcgpt published Main card. Unseen back/clothing/shoes are conservative V6 game adaptations, not asserted as original internet canon.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "frameCount": 512,
+      "atlasSha256": "5920b547d8dffa4aaf051f12233edd19c5d84a6a344e04cd01a53ac32ea211db",
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": true
+    },
+    "kimi": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/kimi.png",
+      "atlas": "/games/code-sentinels/characters-v6/kimi.png",
+      "metadata": "/games/code-sentinels/characters-v6/kimi.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/v6/kimi-community.png",
+      "referenceSheet": "Content/UI/v6/character-sheets/kimi-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/kimi.png",
+      "nativeMetadata": "Content/Animations/v6/characters/kimi.json",
+      "portraitReady": true,
+      "identityAdaptation": "Source character preserved from larcgpt published Main card. Unseen back/clothing/shoes are conservative V6 game adaptations, not asserted as original internet canon.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "frameCount": 512,
+      "atlasSha256": "86e29aa14b687e72aa349ccf241c2ecc27602b0080f5b2a42f6b7be35ff9b95e",
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": false
+    },
+    "minimax": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/minimax.png",
+      "atlas": "/games/code-sentinels/characters-v6/minimax.png",
+      "metadata": "/games/code-sentinels/characters-v6/minimax.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/v6/minimax-community.png",
+      "referenceSheet": "Content/UI/v6/character-sheets/minimax-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/minimax.png",
+      "nativeMetadata": "Content/Animations/v6/characters/minimax.json",
+      "portraitReady": true,
+      "identityAdaptation": "Source character preserved from larcgpt published Main card. Unseen back/clothing/shoes are conservative V6 game adaptations, not asserted as original internet canon.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "frameCount": 512,
+      "atlasSha256": "c04a1f5b5331fd25b79309641a0a13be46ab38df0766c6c9a54d35f2ba6346ef",
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": true
+    },
+    "glm": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/glm.png",
+      "atlas": "/games/code-sentinels/characters-v6/glm.png",
+      "metadata": "/games/code-sentinels/characters-v6/glm.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/v6/glm-community.png",
+      "referenceSheet": "Content/UI/v6/character-sheets/glm-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/glm.png",
+      "nativeMetadata": "Content/Animations/v6/characters/glm.json",
+      "portraitReady": true,
+      "identityAdaptation": "Source character preserved from larcgpt published Main card. Unseen back/clothing/shoes are conservative V6 game adaptations, not asserted as original internet canon.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "frameCount": 512,
+      "atlasSha256": "8dc3b846daa0ab043039ee0514e7f919764233a646b9e77bf5b41389b67f0264",
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": true
+    },
+    "deepseek": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/deepseek.png",
+      "atlas": "/games/code-sentinels/characters-v6/deepseek.png",
+      "metadata": "/games/code-sentinels/characters-v6/deepseek.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/deepseek-whalechan-overview.webp",
+      "referenceSheet": "Content/UI/v6/character-sheets/deepseek-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/deepseek.png",
+      "nativeMetadata": "Content/Animations/v6/characters/deepseek.json",
+      "portraitReady": true,
+      "identityAdaptation": "Front/side/back clothing and whale tail have verified community overview; chibi game proportions and orthographic camera adapted.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "frameCount": 512,
+      "atlasSha256": "419f1899f03107381a47c40146beb45409cf0891fd62a4ec157da698d2320b44",
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": true
+    },
+    "gpt": {
+      "portrait": "/games/code-sentinels/ui-v6/operators/gpt.png",
+      "atlas": "/games/code-sentinels/characters-v6/gpt.png",
+      "metadata": "/games/code-sentinels/characters-v6/gpt.json",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "actions": [
+        "idle",
+        "walk",
+        "attack",
+        "cast",
+        "hit",
+        "death"
+      ],
+      "pivot": [
+        0.5,
+        0.88
+      ],
+      "frameSize": [
+        256,
+        256
+      ],
+      "ready": true,
+      "sourceReference": "references/gpt-dragon-jpethan.png",
+      "referenceSheet": "Content/UI/v6/character-sheets/gpt-directions.png",
+      "nativeAtlas": "Content/Animations/v6/characters/gpt.png",
+      "nativeMetadata": "Content/Animations/v6/characters/gpt.json",
+      "portraitReady": true,
+      "identityAdaptation": "Original verified source is upper-body only. White/lavender skirt and boots, fullbody proportions and unseen rear clothing are explicitly a V6 game adaptation; no claim they existed in source video. No new tail added.",
+      "directionConvention": {
+        "labels": "screen directions on the isometric map",
+        "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+        "mapping": [
+          {
+            "index": 0,
+            "label": "s",
+            "worldDelta": [
+              1,
+              1
+            ],
+            "screenDelta": [
+              0.0,
+              0.5
+            ],
+            "blenderYawDegrees": -135
+          },
+          {
+            "index": 1,
+            "label": "sw",
+            "worldDelta": [
+              0,
+              1
+            ],
+            "screenDelta": [
+              -0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -180
+          },
+          {
+            "index": 2,
+            "label": "w",
+            "worldDelta": [
+              -1,
+              1
+            ],
+            "screenDelta": [
+              -1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -225
+          },
+          {
+            "index": 3,
+            "label": "nw",
+            "worldDelta": [
+              -1,
+              0
+            ],
+            "screenDelta": [
+              -0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -270
+          },
+          {
+            "index": 4,
+            "label": "n",
+            "worldDelta": [
+              -1,
+              -1
+            ],
+            "screenDelta": [
+              0.0,
+              -0.5
+            ],
+            "blenderYawDegrees": -315
+          },
+          {
+            "index": 5,
+            "label": "ne",
+            "worldDelta": [
+              0,
+              -1
+            ],
+            "screenDelta": [
+              0.5,
+              -0.25
+            ],
+            "blenderYawDegrees": -360
+          },
+          {
+            "index": 6,
+            "label": "e",
+            "worldDelta": [
+              1,
+              -1
+            ],
+            "screenDelta": [
+              1.0,
+              0.0
+            ],
+            "blenderYawDegrees": -405
+          },
+          {
+            "index": 7,
+            "label": "se",
+            "worldDelta": [
+              1,
+              0
+            ],
+            "screenDelta": [
+              0.5,
+              0.25
+            ],
+            "blenderYawDegrees": -450
+          }
+        ],
+        "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+        "zeroMovement": "retain previous direction",
+        "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+      },
+      "qualityStatus": "asset-verified-density-and-raw-source-boundaries",
+      "pendingSourceRepairs": [],
+      "frameCount": 512,
+      "atlasSha256": "4c1184fc7fd358e4c9ac1523febd1041fc1c4a7b18275fe6daef58940bad63ed",
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308,
+      "variableFrameSize": true
+    }
+  },
+  "ui": {
+    "gemini": {
+      "file": "operators/gemini.png",
+      "sha256": "1b7d2dc96a596e3254acf2c0f97cb7774753f6d727a54e06443306a29637094b",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "claude": {
+      "file": "operators/claude.png",
+      "sha256": "b8d5c08bcf81d39fdaec66d9a4cb9208090e99582164f0eca1a419b8c982039f",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "kimi": {
+      "file": "operators/kimi.png",
+      "sha256": "e595c834c4237364f52637d40ac09be22457644e390c744b985e12dbbeb67273",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "minimax": {
+      "file": "operators/minimax.png",
+      "sha256": "37515105c322890669863f499319fe584d210318406006cb5e7101b015ae245f",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "glm": {
+      "file": "operators/glm.png",
+      "sha256": "8036dbf6560f9b18dc619eace50e80926b41ca4ca484c8f17954a315020d2a32",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "deepseek": {
+      "file": "operators/deepseek.png",
+      "sha256": "2a55eabf4dd4dbc4c5732b2838049aea04a226e1bc494fb4c0f893da6bbb343b",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "gpt": {
+      "file": "operators/gpt.png",
+      "sha256": "86a4b30ae2b7d790aa6ce665f60b7a6be5fe2ddc27b6d5aa4c8448b8915615a8",
+      "purpose": "UI portrait only; not animation fallback"
+    },
+    "hub": {
+      "file": "hub/command-center.png",
+      "sha256": "a925519e80f7269234b4cd74aebcf707286582f57197e531f421f80bbd46f7a8"
+    }
+  },
+  "models": {
+    "aa-turret": {
+      "atlas": "/games/code-sentinels/units-v6/aa-turret.png",
+      "metadata": "/games/code-sentinels/units-v6/aa-turret.json",
+      "nativeAtlas": "Content/Animations/v6/units/aa-turret.png",
+      "nativeMetadata": "Content/Animations/v6/units/aa-turret.json",
+      "image": "/games/code-sentinels/ui-v6/units/aa-turret.png",
+      "sourceModel": "Content/Models/v6/aa-turret.blend",
+      "glb": "Content/Models/v6/aa-turret.glb",
+      "sha256": "7796ca720ad7a4428721aa8c39458e9832041eaaa9a68d7692e324e5d39d94af"
+    },
+    "aegis-array": {
+      "atlas": "/games/code-sentinels/units-v6/aegis-array.png",
+      "metadata": "/games/code-sentinels/units-v6/aegis-array.json",
+      "nativeAtlas": "Content/Animations/v6/units/aegis-array.png",
+      "nativeMetadata": "Content/Animations/v6/units/aegis-array.json",
+      "image": "/games/code-sentinels/ui-v6/units/aegis-array.png",
+      "sourceModel": "Content/Models/v6/aegis-array.blend",
+      "glb": "Content/Models/v6/aegis-array.glb",
+      "sha256": "a1cae0bc21638ecf30c21203a5ddf1e189260dd1a42017a439062f242a771ff4"
+    },
+    "aerospace-fighter": {
+      "atlas": "/games/code-sentinels/units-v6/aerospace-fighter.png",
+      "metadata": "/games/code-sentinels/units-v6/aerospace-fighter.json",
+      "nativeAtlas": "Content/Animations/v6/units/aerospace-fighter.png",
+      "nativeMetadata": "Content/Animations/v6/units/aerospace-fighter.json",
+      "image": "/games/code-sentinels/ui-v6/units/aerospace-fighter.png",
+      "sourceModel": "Content/Models/v6/aerospace-fighter.blend",
+      "glb": "Content/Models/v6/aerospace-fighter.glb",
+      "sha256": "1b98dd6c5fc904e8b52f4782efb384f5148398e36c1f108424e25a6ad63c2276"
+    },
+    "airfield": {
+      "atlas": "/games/code-sentinels/buildings-v6/airfield.png",
+      "metadata": "/games/code-sentinels/buildings-v6/airfield.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/airfield.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/airfield.json",
+      "image": "/games/code-sentinels/ui-v6/units/airfield.png",
+      "sourceModel": "Content/Models/v6/airfield.blend",
+      "glb": "Content/Models/v6/airfield.glb",
+      "sha256": "f544716db692b1a72d350a9108523bfb2e8bb471995e445973f3bf2f029aca86",
+      "aliasOf": "airfield"
+    },
+    "ammunition-workshop": {
+      "atlas": "/games/code-sentinels/buildings-v6/ammunition-workshop.png",
+      "metadata": "/games/code-sentinels/buildings-v6/ammunition-workshop.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/ammunition-workshop.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/ammunition-workshop.json",
+      "image": "/games/code-sentinels/ui-v6/units/ammunition-workshop.png",
+      "sourceModel": "Content/Models/v6/ammunition-workshop.blend",
+      "glb": "Content/Models/v6/ammunition-workshop.glb",
+      "sha256": "a98e3ab275d551e3554a88d31efff8f7ebd1ae8aa2153d8f542e7f532ddaf281",
+      "aliasOf": "ammunition-workshop"
+    },
+    "anti-air": {
+      "atlas": "/games/code-sentinels/units-v6/anti-air.png",
+      "metadata": "/games/code-sentinels/units-v6/anti-air.json",
+      "nativeAtlas": "Content/Animations/v6/units/anti-air.png",
+      "nativeMetadata": "Content/Animations/v6/units/anti-air.json",
+      "image": "/games/code-sentinels/ui-v6/units/anti-air.png",
+      "sourceModel": "Content/Models/v6/anti-air.blend",
+      "glb": "Content/Models/v6/anti-air.glb",
+      "sha256": "c277036279d88a07e8ac5cd219d438dc99e03970acb13f65a8167141a27c0c2e"
+    },
+    "artillery": {
+      "atlas": "/games/code-sentinels/units-v6/artillery.png",
+      "metadata": "/games/code-sentinels/units-v6/artillery.json",
+      "nativeAtlas": "Content/Animations/v6/units/artillery.png",
+      "nativeMetadata": "Content/Animations/v6/units/artillery.json",
+      "image": "/games/code-sentinels/ui-v6/units/artillery.png",
+      "sourceModel": "Content/Models/v6/artillery.blend",
+      "glb": "Content/Models/v6/artillery.glb",
+      "sha256": "d8499d0f0dca480a0ffe63b702f3fe5460b4679ed656804b53479626475ed237",
+      "aliasOf": "artillery"
+    },
+    "autocannon": {
+      "atlas": "/games/code-sentinels/units-v6/autocannon.png",
+      "metadata": "/games/code-sentinels/units-v6/autocannon.json",
+      "nativeAtlas": "Content/Animations/v6/units/autocannon.png",
+      "nativeMetadata": "Content/Animations/v6/units/autocannon.json",
+      "image": "/games/code-sentinels/ui-v6/units/autocannon.png",
+      "sourceModel": "Content/Models/v6/autocannon.blend",
+      "glb": "Content/Models/v6/autocannon.glb",
+      "sha256": "cc9b1b948237de028150f81ec1dfd4ffa39a3778d8efb3d1528da1d2ec22425a"
+    },
+    "breach-tank": {
+      "atlas": "/games/code-sentinels/units-v6/breach-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/breach-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/breach-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/breach-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/breach-tank.png",
+      "sourceModel": "Content/Models/v6/breach-tank.blend",
+      "glb": "Content/Models/v6/breach-tank.glb",
+      "sha256": "d8499d0f0dca480a0ffe63b702f3fe5460b4679ed656804b53479626475ed237"
+    },
+    "bridge": {
+      "atlas": "/games/code-sentinels/buildings-v6/bridge.png",
+      "metadata": "/games/code-sentinels/buildings-v6/bridge.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/bridge.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/bridge.json",
+      "image": "/games/code-sentinels/ui-v6/units/bridge.png",
+      "sourceModel": "Content/Models/v6/bridge.blend",
+      "glb": "Content/Models/v6/bridge.glb",
+      "sha256": "4b2bc1483bbf41a59a8d8095fea872e395a7c5aeb9db35f1c36ddc7a8bcb6f28"
+    },
+    "cargo-aircraft": {
+      "atlas": "/games/code-sentinels/units-v6/cargo-aircraft.png",
+      "metadata": "/games/code-sentinels/units-v6/cargo-aircraft.json",
+      "nativeAtlas": "Content/Animations/v6/units/cargo-aircraft.png",
+      "nativeMetadata": "Content/Animations/v6/units/cargo-aircraft.json",
+      "image": "/games/code-sentinels/ui-v6/units/cargo-aircraft.png",
+      "sourceModel": "Content/Models/v6/cargo-aircraft.blend",
+      "glb": "Content/Models/v6/cargo-aircraft.glb",
+      "sha256": "2eb3e1ffd1852d7943033392ff22bcf14104c14064211947bf193e56bcac0df8"
+    },
+    "cargo-truck": {
+      "atlas": "/games/code-sentinels/units-v6/cargo-truck.png",
+      "metadata": "/games/code-sentinels/units-v6/cargo-truck.json",
+      "nativeAtlas": "Content/Animations/v6/units/cargo-truck.png",
+      "nativeMetadata": "Content/Animations/v6/units/cargo-truck.json",
+      "image": "/games/code-sentinels/ui-v6/units/cargo-truck.png",
+      "sourceModel": "Content/Models/v6/cargo-truck.blend",
+      "glb": "Content/Models/v6/cargo-truck.glb",
+      "sha256": "622c5aedb37269927d62ebb393d31e4f52284f1cb1993ad03c27abd10f212faa"
+    },
+    "coal-node": {
+      "atlas": "/games/code-sentinels/buildings-v6/coal-node.png",
+      "metadata": "/games/code-sentinels/buildings-v6/coal-node.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/coal-node.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/coal-node.json",
+      "image": "/games/code-sentinels/ui-v6/units/coal-node.png",
+      "sourceModel": "Content/Models/v6/coal-node.blend",
+      "glb": "Content/Models/v6/coal-node.glb",
+      "sha256": "e62069853890a25c61273ea9e18de75380a8ef5f9af586a3a84a87d5b213cf2a"
+    },
+    "coal-power": {
+      "atlas": "/games/code-sentinels/buildings-v6/coal-power.png",
+      "metadata": "/games/code-sentinels/buildings-v6/coal-power.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/coal-power.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/coal-power.json",
+      "image": "/games/code-sentinels/ui-v6/units/coal-power.png",
+      "sourceModel": "Content/Models/v6/coal-power.blend",
+      "glb": "Content/Models/v6/coal-power.glb",
+      "sha256": "15e656e74284bf424e36e53e8c3d72686f394585d67c053174cdd104631c4aaf",
+      "aliasOf": "coal-power"
+    },
+    "column": {
+      "atlas": "/games/code-sentinels/buildings-v6/column.png",
+      "metadata": "/games/code-sentinels/buildings-v6/column.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/column.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/column.json",
+      "image": "/games/code-sentinels/ui-v6/units/column.png",
+      "sourceModel": "Content/Models/v6/column.blend",
+      "glb": "Content/Models/v6/column.glb",
+      "sha256": "0cf65c5f6e9fdcdcd49e12b248d6cf5621387825f5dae0a186361d1c37ef38fc"
+    },
+    "command-core": {
+      "atlas": "/games/code-sentinels/buildings-v6/command-core.png",
+      "metadata": "/games/code-sentinels/buildings-v6/command-core.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/command-core.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/command-core.json",
+      "image": "/games/code-sentinels/ui-v6/units/command-core.png",
+      "sourceModel": "Content/Models/v6/command-core.blend",
+      "glb": "Content/Models/v6/command-core.glb",
+      "sha256": "aff439166cd25471b08ff1706c15f470736e3625618559e6e14c8ada2cf1ce6a"
+    },
+    "cuda-wall": {
+      "atlas": "/games/code-sentinels/buildings-v6/cuda-wall.png",
+      "metadata": "/games/code-sentinels/buildings-v6/cuda-wall.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/cuda-wall.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/cuda-wall.json",
+      "image": "/games/code-sentinels/ui-v6/units/cuda-wall.png",
+      "sourceModel": "Content/Models/v6/cuda-wall.blend",
+      "glb": "Content/Models/v6/cuda-wall.glb",
+      "sha256": "12eadd2263d28a1a446829c685b72d8edb95b7295a9e87ebde62a55f0c045535"
+    },
+    "depot": {
+      "atlas": "/games/code-sentinels/buildings-v6/depot.png",
+      "metadata": "/games/code-sentinels/buildings-v6/depot.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/depot.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/depot.json",
+      "image": "/games/code-sentinels/ui-v6/units/depot.png",
+      "sourceModel": "Content/Models/v6/depot.blend",
+      "glb": "Content/Models/v6/depot.glb",
+      "sha256": "79723c898d951b9bfcd3974bd07f274a246470f22ae4d679f142ce45684c032d",
+      "aliasOf": "depot"
+    },
+    "distributed-array": {
+      "atlas": "/games/code-sentinels/units-v6/distributed-array.png",
+      "metadata": "/games/code-sentinels/units-v6/distributed-array.json",
+      "nativeAtlas": "Content/Animations/v6/units/distributed-array.png",
+      "nativeMetadata": "Content/Animations/v6/units/distributed-array.json",
+      "image": "/games/code-sentinels/ui-v6/units/distributed-array.png",
+      "sourceModel": "Content/Models/v6/distributed-array.blend",
+      "glb": "Content/Models/v6/distributed-array.glb",
+      "sha256": "68597dc34662f4836dda61ede6c4b154eb5f43b6cbd0ed185de22d683e73ae5f"
+    },
+    "door": {
+      "atlas": "/games/code-sentinels/buildings-v6/door.png",
+      "metadata": "/games/code-sentinels/buildings-v6/door.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/door.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/door.json",
+      "image": "/games/code-sentinels/ui-v6/units/door.png",
+      "sourceModel": "Content/Models/v6/door.blend",
+      "glb": "Content/Models/v6/door.glb",
+      "sha256": "2fc46896e4ba0985f9c0c5245efd72dfe2c4f11271d3fd53c7bd8d1a7dee5fb2"
+    },
+    "drainage-pump": {
+      "atlas": "/games/code-sentinels/buildings-v6/drainage-pump.png",
+      "metadata": "/games/code-sentinels/buildings-v6/drainage-pump.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/drainage-pump.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/drainage-pump.json",
+      "image": "/games/code-sentinels/ui-v6/units/drainage-pump.png",
+      "sourceModel": "Content/Models/v6/drainage-pump.blend",
+      "glb": "Content/Models/v6/drainage-pump.glb",
+      "sha256": "a3c77596b315873641515f07df8ae4157eecdd47ddfd986736f3ec9acf2d4b01"
+    },
+    "drilling-rig": {
+      "atlas": "/games/code-sentinels/buildings-v6/drilling-rig.png",
+      "metadata": "/games/code-sentinels/buildings-v6/drilling-rig.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/drilling-rig.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/drilling-rig.json",
+      "image": "/games/code-sentinels/ui-v6/units/drilling-rig.png",
+      "sourceModel": "Content/Models/v6/drilling-rig.blend",
+      "glb": "Content/Models/v6/drilling-rig.glb",
+      "sha256": "437896af488edd80a46f70aa69852e7316dd8b8559bb2c367b14e04fe66bde09"
+    },
+    "elevator": {
+      "atlas": "/games/code-sentinels/buildings-v6/elevator.png",
+      "metadata": "/games/code-sentinels/buildings-v6/elevator.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/elevator.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/elevator.json",
+      "image": "/games/code-sentinels/ui-v6/units/elevator.png",
+      "sourceModel": "Content/Models/v6/elevator.blend",
+      "glb": "Content/Models/v6/elevator.glb",
+      "sha256": "447b1c4fb580d0d3f3f737c9259366620243d1681d7c4b8fc2c5a84d2149d0a3"
+    },
+    "energy-defense": {
+      "atlas": "/games/code-sentinels/buildings-v6/energy-defense.png",
+      "metadata": "/games/code-sentinels/buildings-v6/energy-defense.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/energy-defense.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/energy-defense.json",
+      "image": "/games/code-sentinels/ui-v6/units/energy-defense.png",
+      "sourceModel": "Content/Models/v6/energy-defense.blend",
+      "glb": "Content/Models/v6/energy-defense.glb",
+      "sha256": "fc456e37eddde7ce565ad8ea97aa083257f0f3861ceb96c8f7b858acfd5df2d8",
+      "aliasOf": "energy-defense"
+    },
+    "engineer-drone": {
+      "atlas": "/games/code-sentinels/units-v6/engineer-drone.png",
+      "metadata": "/games/code-sentinels/units-v6/engineer-drone.json",
+      "nativeAtlas": "Content/Animations/v6/units/engineer-drone.png",
+      "nativeMetadata": "Content/Animations/v6/units/engineer-drone.json",
+      "image": "/games/code-sentinels/ui-v6/units/engineer-drone.png",
+      "sourceModel": "Content/Models/v6/engineer-drone.blend",
+      "glb": "Content/Models/v6/engineer-drone.glb",
+      "sha256": "be8e3c4e3399031206e9abe20d52a1d925be15d7ab9dc307245b95ea96400036"
+    },
+    "extractor": {
+      "atlas": "/games/code-sentinels/buildings-v6/extractor.png",
+      "metadata": "/games/code-sentinels/buildings-v6/extractor.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/extractor.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/extractor.json",
+      "image": "/games/code-sentinels/ui-v6/units/extractor.png",
+      "sourceModel": "Content/Models/v6/extractor.blend",
+      "glb": "Content/Models/v6/extractor.glb",
+      "sha256": "6df3c73d3bbd2f3f25986ba92ebe232aa7e59098e1057629febc5b91562b8f84",
+      "aliasOf": "extractor"
+    },
+    "factory": {
+      "atlas": "/games/code-sentinels/buildings-v6/factory.png",
+      "metadata": "/games/code-sentinels/buildings-v6/factory.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/factory.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/factory.json",
+      "image": "/games/code-sentinels/ui-v6/units/factory.png",
+      "sourceModel": "Content/Models/v6/factory.blend",
+      "glb": "Content/Models/v6/factory.glb",
+      "sha256": "195549a231b832be53116ce6ab907518b69785b90993beaf5fe4f20eff3e503e",
+      "aliasOf": "factory"
+    },
+    "fighter": {
+      "atlas": "/games/code-sentinels/units-v6/fighter.png",
+      "metadata": "/games/code-sentinels/units-v6/fighter.json",
+      "nativeAtlas": "Content/Animations/v6/units/fighter.png",
+      "nativeMetadata": "Content/Animations/v6/units/fighter.json",
+      "image": "/games/code-sentinels/ui-v6/units/fighter.png",
+      "sourceModel": "Content/Models/v6/fighter.blend",
+      "glb": "Content/Models/v6/fighter.glb",
+      "sha256": "e44443cfbbe1216ddbce8027d92c0661d14409d3b9a3716c35032bfe74e7e1fd"
+    },
+    "fire-control": {
+      "atlas": "/games/code-sentinels/buildings-v6/fire-control.png",
+      "metadata": "/games/code-sentinels/buildings-v6/fire-control.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/fire-control.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/fire-control.json",
+      "image": "/games/code-sentinels/ui-v6/units/fire-control.png",
+      "sourceModel": "Content/Models/v6/fire-control.blend",
+      "glb": "Content/Models/v6/fire-control.glb",
+      "sha256": "62c71d8c466793f08c3b4733e08756b06c9a96790274ee2acdf9fb05bd8414ff",
+      "aliasOf": "fire-control"
+    },
+    "floor": {
+      "atlas": "/games/code-sentinels/buildings-v6/floor.png",
+      "metadata": "/games/code-sentinels/buildings-v6/floor.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/floor.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/floor.json",
+      "image": "/games/code-sentinels/ui-v6/units/floor.png",
+      "sourceModel": "Content/Models/v6/floor.blend",
+      "glb": "Content/Models/v6/floor.glb",
+      "sha256": "f6f502f3cc02c6345717270f96b6ea779fed62d2697135fa69d4732b5f9b3f49"
+    },
+    "fortress-tank": {
+      "atlas": "/games/code-sentinels/units-v6/fortress-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/fortress-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/fortress-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/fortress-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/fortress-tank.png",
+      "sourceModel": "Content/Models/v6/fortress-tank.blend",
+      "glb": "Content/Models/v6/fortress-tank.glb",
+      "sha256": "bc783aa96d1e4f4a61b16010a95c5436c9005db032709d9e21e92e49b3dd19ab"
+    },
+    "foundation": {
+      "atlas": "/games/code-sentinels/buildings-v6/foundation.png",
+      "metadata": "/games/code-sentinels/buildings-v6/foundation.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/foundation.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/foundation.json",
+      "image": "/games/code-sentinels/ui-v6/units/foundation.png",
+      "sourceModel": "Content/Models/v6/foundation.blend",
+      "glb": "Content/Models/v6/foundation.glb",
+      "sha256": "4c3e424fd1c0d0808d2741ae71aba8b290f039daaa059b0969fced2a83dc8ee4"
+    },
+    "generator": {
+      "atlas": "/games/code-sentinels/buildings-v6/generator.png",
+      "metadata": "/games/code-sentinels/buildings-v6/generator.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/generator.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/generator.json",
+      "image": "/games/code-sentinels/ui-v6/units/generator.png",
+      "sourceModel": "Content/Models/v6/generator.blend",
+      "glb": "Content/Models/v6/generator.glb",
+      "sha256": "67492331bb1ac82568c8cb90f6325b537a9637bdb2434d6c519536c1fe21a5c1"
+    },
+    "hydro-power": {
+      "atlas": "/games/code-sentinels/buildings-v6/hydro-power.png",
+      "metadata": "/games/code-sentinels/buildings-v6/hydro-power.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/hydro-power.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/hydro-power.json",
+      "image": "/games/code-sentinels/ui-v6/units/hydro-power.png",
+      "sourceModel": "Content/Models/v6/hydro-power.blend",
+      "glb": "Content/Models/v6/hydro-power.glb",
+      "sha256": "647f6b37e436da9441c0fa9505a16b8480a116cbff59fc9f51b6c3796d55e4b4",
+      "aliasOf": "hydro-power"
+    },
+    "interceptor": {
+      "atlas": "/games/code-sentinels/units-v6/interceptor.png",
+      "metadata": "/games/code-sentinels/units-v6/interceptor.json",
+      "nativeAtlas": "Content/Animations/v6/units/interceptor.png",
+      "nativeMetadata": "Content/Animations/v6/units/interceptor.json",
+      "image": "/games/code-sentinels/ui-v6/units/interceptor.png",
+      "sourceModel": "Content/Models/v6/interceptor.blend",
+      "glb": "Content/Models/v6/interceptor.glb",
+      "sha256": "d5fbdb49177fbaf913284dc82659e6def94d6f9708b2748c7ebbbd96661e4870"
+    },
+    "laser-tank": {
+      "atlas": "/games/code-sentinels/units-v6/laser-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/laser-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/laser-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/laser-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/laser-tank.png",
+      "sourceModel": "Content/Models/v6/laser-tank.blend",
+      "glb": "Content/Models/v6/laser-tank.glb",
+      "sha256": "52c79d299809d3e388db628deb29aae53794a33d3c7199b33d6237d19f7c2935"
+    },
+    "launchpad": {
+      "atlas": "/games/code-sentinels/buildings-v6/launchpad.png",
+      "metadata": "/games/code-sentinels/buildings-v6/launchpad.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/launchpad.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/launchpad.json",
+      "image": "/games/code-sentinels/ui-v6/units/launchpad.png",
+      "sourceModel": "Content/Models/v6/launchpad.blend",
+      "glb": "Content/Models/v6/launchpad.glb",
+      "sha256": "664e61817b95e58b20b44fda3d7e8f0c082211e8d630a59aeeab3c45ba6dcc29",
+      "aliasOf": "launchpad"
+    },
+    "light-tank": {
+      "atlas": "/games/code-sentinels/units-v6/light-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/light-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/light-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/light-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/light-tank.png",
+      "sourceModel": "Content/Models/v6/light-tank.blend",
+      "glb": "Content/Models/v6/light-tank.glb",
+      "sha256": "29f2c024a15886907c45b87f444f3f0a24fe480e8bec2c533ddcaddc7d442de3"
+    },
+    "logistics-belt": {
+      "atlas": "/games/code-sentinels/buildings-v6/logistics-belt.png",
+      "metadata": "/games/code-sentinels/buildings-v6/logistics-belt.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/logistics-belt.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/logistics-belt.json",
+      "image": "/games/code-sentinels/ui-v6/units/logistics-belt.png",
+      "sourceModel": "Content/Models/v6/logistics-belt.blend",
+      "glb": "Content/Models/v6/logistics-belt.glb",
+      "sha256": "2424c246bb70ec598ddd31075c97fd0e193b92fcf795f2649891c1bb437ee74a"
+    },
+    "loiter-drone": {
+      "atlas": "/games/code-sentinels/units-v6/loiter-drone.png",
+      "metadata": "/games/code-sentinels/units-v6/loiter-drone.json",
+      "nativeAtlas": "Content/Animations/v6/units/loiter-drone.png",
+      "nativeMetadata": "Content/Animations/v6/units/loiter-drone.json",
+      "image": "/games/code-sentinels/ui-v6/units/loiter-drone.png",
+      "sourceModel": "Content/Models/v6/loiter-drone.blend",
+      "glb": "Content/Models/v6/loiter-drone.glb",
+      "sha256": "95db6cd8ef95af5433fdc9ae523f859033a9a10de8991df84d0692f47319d133"
+    },
+    "micro-drone": {
+      "atlas": "/games/code-sentinels/units-v6/micro-drone.png",
+      "metadata": "/games/code-sentinels/units-v6/micro-drone.json",
+      "nativeAtlas": "Content/Animations/v6/units/micro-drone.png",
+      "nativeMetadata": "Content/Animations/v6/units/micro-drone.json",
+      "image": "/games/code-sentinels/ui-v6/units/micro-drone.png",
+      "sourceModel": "Content/Models/v6/micro-drone.blend",
+      "glb": "Content/Models/v6/micro-drone.glb",
+      "sha256": "6480622889639e4971eaa007680e7d4241309b8af60387743d15d83efaf0ab04"
+    },
+    "missile-silo": {
+      "atlas": "/games/code-sentinels/buildings-v6/missile-silo.png",
+      "metadata": "/games/code-sentinels/buildings-v6/missile-silo.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/missile-silo.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/missile-silo.json",
+      "image": "/games/code-sentinels/ui-v6/units/missile-silo.png",
+      "sourceModel": "Content/Models/v6/missile-silo.blend",
+      "glb": "Content/Models/v6/missile-silo.glb",
+      "sha256": "fea822879c00c127e2f796aca8afecef1987962bbb2e869f465bc74b87b6128b",
+      "aliasOf": "missile-silo"
+    },
+    "missile-truck": {
+      "atlas": "/games/code-sentinels/units-v6/missile-truck.png",
+      "metadata": "/games/code-sentinels/units-v6/missile-truck.json",
+      "nativeAtlas": "Content/Animations/v6/units/missile-truck.png",
+      "nativeMetadata": "Content/Animations/v6/units/missile-truck.json",
+      "image": "/games/code-sentinels/ui-v6/units/missile-truck.png",
+      "sourceModel": "Content/Models/v6/missile-truck.blend",
+      "glb": "Content/Models/v6/missile-truck.glb",
+      "sha256": "99d25634dc06f33040a14bdc790efd830c1d63e43922a47f400de982ca7d0acf",
+      "aliasOf": "missile-truck"
+    },
+    "mobile-relay": {
+      "atlas": "/games/code-sentinels/buildings-v6/mobile-relay.png",
+      "metadata": "/games/code-sentinels/buildings-v6/mobile-relay.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/mobile-relay.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/mobile-relay.json",
+      "image": "/games/code-sentinels/ui-v6/units/mobile-relay.png",
+      "sourceModel": "Content/Models/v6/mobile-relay.blend",
+      "glb": "Content/Models/v6/mobile-relay.glb",
+      "sha256": "b4df8cdc52180c551fcf66824ea9eb23970cc049246e316174596421382fbc8e",
+      "aliasOf": "mobile-relay"
+    },
+    "modular-workshop": {
+      "atlas": "/games/code-sentinels/buildings-v6/modular-workshop.png",
+      "metadata": "/games/code-sentinels/buildings-v6/modular-workshop.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/modular-workshop.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/modular-workshop.json",
+      "image": "/games/code-sentinels/ui-v6/units/modular-workshop.png",
+      "sourceModel": "Content/Models/v6/modular-workshop.blend",
+      "glb": "Content/Models/v6/modular-workshop.glb",
+      "sha256": "831b08ea4dba46228624121de3aab39f40cc0975bc3ae1fc36b9fd8928fc5f47",
+      "aliasOf": "modular-workshop"
+    },
+    "mortar": {
+      "atlas": "/games/code-sentinels/units-v6/mortar.png",
+      "metadata": "/games/code-sentinels/units-v6/mortar.json",
+      "nativeAtlas": "Content/Animations/v6/units/mortar.png",
+      "nativeMetadata": "Content/Animations/v6/units/mortar.json",
+      "image": "/games/code-sentinels/ui-v6/units/mortar.png",
+      "sourceModel": "Content/Models/v6/mortar.blend",
+      "glb": "Content/Models/v6/mortar.glb",
+      "sha256": "e0b87b0a422fddef002c1da79aa75e5a532a7bc07dc2246a0bf1354da150e1e7"
+    },
+    "network-defense": {
+      "atlas": "/games/code-sentinels/buildings-v6/network-defense.png",
+      "metadata": "/games/code-sentinels/buildings-v6/network-defense.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/network-defense.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/network-defense.json",
+      "image": "/games/code-sentinels/ui-v6/units/network-defense.png",
+      "sourceModel": "Content/Models/v6/network-defense.blend",
+      "glb": "Content/Models/v6/network-defense.glb",
+      "sha256": "4fd9ed7e283190cbddd32874abc57793b45eb5abcacd60ec687ba7d7aa0248c0",
+      "aliasOf": "network-defense"
+    },
+    "nuclear-power": {
+      "atlas": "/games/code-sentinels/buildings-v6/nuclear-power.png",
+      "metadata": "/games/code-sentinels/buildings-v6/nuclear-power.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/nuclear-power.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/nuclear-power.json",
+      "image": "/games/code-sentinels/ui-v6/units/nuclear-power.png",
+      "sourceModel": "Content/Models/v6/nuclear-power.blend",
+      "glb": "Content/Models/v6/nuclear-power.glb",
+      "sha256": "29848032755c0191dda9b4c636b712860f449f5384b8c47c15bbc9c6bd0493a9",
+      "aliasOf": "nuclear-power"
+    },
+    "orbital-control": {
+      "atlas": "/games/code-sentinels/buildings-v6/orbital-control.png",
+      "metadata": "/games/code-sentinels/buildings-v6/orbital-control.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/orbital-control.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/orbital-control.json",
+      "image": "/games/code-sentinels/ui-v6/units/orbital-control.png",
+      "sourceModel": "Content/Models/v6/orbital-control.blend",
+      "glb": "Content/Models/v6/orbital-control.glb",
+      "sha256": "93015cdbb8434554c6a2703f3683350553db47eb28c11b5a336691cefd35188f",
+      "aliasOf": "orbital-control"
+    },
+    "orbital-lance": {
+      "atlas": "/games/code-sentinels/units-v6/orbital-lance.png",
+      "metadata": "/games/code-sentinels/units-v6/orbital-lance.json",
+      "nativeAtlas": "Content/Animations/v6/units/orbital-lance.png",
+      "nativeMetadata": "Content/Animations/v6/units/orbital-lance.json",
+      "image": "/games/code-sentinels/ui-v6/units/orbital-lance.png",
+      "sourceModel": "Content/Models/v6/orbital-lance.blend",
+      "glb": "Content/Models/v6/orbital-lance.glb",
+      "sha256": "70ac3287a978dd0a6748f503d0384f8f629253537098f71e745dd633d73ec0f9"
+    },
+    "ore-node": {
+      "atlas": "/games/code-sentinels/buildings-v6/ore-node.png",
+      "metadata": "/games/code-sentinels/buildings-v6/ore-node.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/ore-node.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/ore-node.json",
+      "image": "/games/code-sentinels/ui-v6/units/ore-node.png",
+      "sourceModel": "Content/Models/v6/ore-node.blend",
+      "glb": "Content/Models/v6/ore-node.glb",
+      "sha256": "6efc8baf4e3ae13fdd9070c5899d85426b7b5f17e83b5aa40f06e667a2adde20"
+    },
+    "particle-cannon": {
+      "atlas": "/games/code-sentinels/units-v6/particle-cannon.png",
+      "metadata": "/games/code-sentinels/units-v6/particle-cannon.json",
+      "nativeAtlas": "Content/Animations/v6/units/particle-cannon.png",
+      "nativeMetadata": "Content/Animations/v6/units/particle-cannon.json",
+      "image": "/games/code-sentinels/ui-v6/units/particle-cannon.png",
+      "sourceModel": "Content/Models/v6/particle-cannon.blend",
+      "glb": "Content/Models/v6/particle-cannon.glb",
+      "sha256": "903780f7fe5d12580ec890cda0dad8bd73a63ab6eba2fb94b44f98ffa241bd85",
+      "aliasOf": "particle-cannon"
+    },
+    "particle-foundry": {
+      "atlas": "/games/code-sentinels/buildings-v6/particle-foundry.png",
+      "metadata": "/games/code-sentinels/buildings-v6/particle-foundry.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/particle-foundry.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/particle-foundry.json",
+      "image": "/games/code-sentinels/ui-v6/units/particle-foundry.png",
+      "sourceModel": "Content/Models/v6/particle-foundry.blend",
+      "glb": "Content/Models/v6/particle-foundry.glb",
+      "sha256": "e52f0e69e1af9cea13f869b61e25e1ae87e2f586031deddd8a7267416007a132",
+      "aliasOf": "particle-foundry"
+    },
+    "physical-wall": {
+      "atlas": "/games/code-sentinels/buildings-v6/physical-wall.png",
+      "metadata": "/games/code-sentinels/buildings-v6/physical-wall.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/physical-wall.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/physical-wall.json",
+      "image": "/games/code-sentinels/ui-v6/units/physical-wall.png",
+      "sourceModel": "Content/Models/v6/physical-wall.blend",
+      "glb": "Content/Models/v6/physical-wall.glb",
+      "sha256": "8e71e8b0cf84f231e57439fdebfbd853d81500ed7ebeba629cd8e7623447bc55"
+    },
+    "plasma-cannon": {
+      "atlas": "/games/code-sentinels/units-v6/plasma-cannon.png",
+      "metadata": "/games/code-sentinels/units-v6/plasma-cannon.json",
+      "nativeAtlas": "Content/Animations/v6/units/plasma-cannon.png",
+      "nativeMetadata": "Content/Animations/v6/units/plasma-cannon.json",
+      "image": "/games/code-sentinels/ui-v6/units/plasma-cannon.png",
+      "sourceModel": "Content/Models/v6/plasma-cannon.blend",
+      "glb": "Content/Models/v6/plasma-cannon.glb",
+      "sha256": "891adeeff8d5fd91203af15b28f3613e8e29d99461060ba180c63f01ca0e711a"
+    },
+    "plugin-algorithm-attack": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-algorithm-attack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-algorithm-attack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-algorithm-attack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-algorithm-attack.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-algorithm-attack.png",
+      "sourceModel": "Content/Models/v6/plugin-algorithm-attack.blend",
+      "glb": "Content/Models/v6/plugin-algorithm-attack.glb",
+      "sha256": "bdf8e719737294fc8ac4d00a9f2adbc4e94436337d59d598673167118cd957ab"
+    },
+    "plugin-algorithm-core": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-algorithm-core.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-algorithm-core.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-algorithm-core.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-algorithm-core.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-algorithm-core.png",
+      "sourceModel": "Content/Models/v6/plugin-algorithm-core.blend",
+      "glb": "Content/Models/v6/plugin-algorithm-core.glb",
+      "sha256": "ff8c77e197dd7f585d8c69699e4e6b76b320f05912f0a13b4f54c24201871c23"
+    },
+    "plugin-algorithm-support": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-algorithm-support.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-algorithm-support.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-algorithm-support.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-algorithm-support.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-algorithm-support.png",
+      "sourceModel": "Content/Models/v6/plugin-algorithm-support.blend",
+      "glb": "Content/Models/v6/plugin-algorithm-support.glb",
+      "sha256": "79c012b88db1fe817202edfcac8f5bb130f5de80c85fab1eee655dc75574c119"
+    },
+    "plugin-lightweight-attack": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-lightweight-attack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-lightweight-attack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-lightweight-attack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-lightweight-attack.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-lightweight-attack.png",
+      "sourceModel": "Content/Models/v6/plugin-lightweight-attack.blend",
+      "glb": "Content/Models/v6/plugin-lightweight-attack.glb",
+      "sha256": "51892757551d0bad0bc0beb9472d138da356e3313602c001ca3cd0ec3459c582"
+    },
+    "plugin-lightweight-core": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-lightweight-core.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-lightweight-core.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-lightweight-core.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-lightweight-core.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-lightweight-core.png",
+      "sourceModel": "Content/Models/v6/plugin-lightweight-core.blend",
+      "glb": "Content/Models/v6/plugin-lightweight-core.glb",
+      "sha256": "1193052ac7c6855b6e49c1785ac38a084fb503c7e87619c0cf3aea7d5bde7abb"
+    },
+    "plugin-lightweight-support": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-lightweight-support.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-lightweight-support.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-lightweight-support.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-lightweight-support.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-lightweight-support.png",
+      "sourceModel": "Content/Models/v6/plugin-lightweight-support.blend",
+      "glb": "Content/Models/v6/plugin-lightweight-support.glb",
+      "sha256": "5ccde0ff73a7b415f55e1a95a6046f20d8c39e6ca59eca366884aa1328001144"
+    },
+    "plugin-science-attack": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-science-attack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-science-attack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-science-attack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-science-attack.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-science-attack.png",
+      "sourceModel": "Content/Models/v6/plugin-science-attack.blend",
+      "glb": "Content/Models/v6/plugin-science-attack.glb",
+      "sha256": "ad0f8b359cc3f089fe3d291cf0ba440f7393e60aef2a7335b97ba4aef663585e"
+    },
+    "plugin-science-core": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-science-core.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-science-core.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-science-core.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-science-core.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-science-core.png",
+      "sourceModel": "Content/Models/v6/plugin-science-core.blend",
+      "glb": "Content/Models/v6/plugin-science-core.glb",
+      "sha256": "90d074842e212e9cf9e0e4c1bcbf9ade915e75c6426a11e7f875b61b5bdc8506"
+    },
+    "plugin-science-support": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-science-support.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-science-support.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-science-support.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-science-support.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-science-support.png",
+      "sourceModel": "Content/Models/v6/plugin-science-support.blend",
+      "glb": "Content/Models/v6/plugin-science-support.glb",
+      "sha256": "bffb125a386d027e8aeaca6b0b97875ca5eb1dd4d78eb847b8262797acfbf5f5"
+    },
+    "plugin-security-attack": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-security-attack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-security-attack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-security-attack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-security-attack.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-security-attack.png",
+      "sourceModel": "Content/Models/v6/plugin-security-attack.blend",
+      "glb": "Content/Models/v6/plugin-security-attack.glb",
+      "sha256": "43447bd63e531667d9fe93cec9caa6ddd80f793e8299aa87a199504274796f4b"
+    },
+    "plugin-security-core": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-security-core.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-security-core.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-security-core.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-security-core.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-security-core.png",
+      "sourceModel": "Content/Models/v6/plugin-security-core.blend",
+      "glb": "Content/Models/v6/plugin-security-core.glb",
+      "sha256": "90d074842e212e9cf9e0e4c1bcbf9ade915e75c6426a11e7f875b61b5bdc8506"
+    },
+    "plugin-security-support": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-security-support.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-security-support.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-security-support.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-security-support.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-security-support.png",
+      "sourceModel": "Content/Models/v6/plugin-security-support.blend",
+      "glb": "Content/Models/v6/plugin-security-support.glb",
+      "sha256": "bffb125a386d027e8aeaca6b0b97875ca5eb1dd4d78eb847b8262797acfbf5f5"
+    },
+    "plugin-speed-attack": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-speed-attack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-speed-attack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-speed-attack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-speed-attack.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-speed-attack.png",
+      "sourceModel": "Content/Models/v6/plugin-speed-attack.blend",
+      "glb": "Content/Models/v6/plugin-speed-attack.glb",
+      "sha256": "add87295cbce37bf1b2e3fdbeac15e8a2d650bcf1ff8964c8139d7b01dabcc02"
+    },
+    "plugin-speed-core": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-speed-core.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-speed-core.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-speed-core.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-speed-core.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-speed-core.png",
+      "sourceModel": "Content/Models/v6/plugin-speed-core.blend",
+      "glb": "Content/Models/v6/plugin-speed-core.glb",
+      "sha256": "bf6b072e85eb8a1b2da73c17cacfae80ec89b6ce160207299d09c03a4d99ca44"
+    },
+    "plugin-speed-support": {
+      "atlas": "/games/code-sentinels/buildings-v6/plugin-speed-support.png",
+      "metadata": "/games/code-sentinels/buildings-v6/plugin-speed-support.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/plugin-speed-support.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/plugin-speed-support.json",
+      "image": "/games/code-sentinels/ui-v6/units/plugin-speed-support.png",
+      "sourceModel": "Content/Models/v6/plugin-speed-support.blend",
+      "glb": "Content/Models/v6/plugin-speed-support.glb",
+      "sha256": "c6b030c01ce8a87575460b8d62ba527653434502edab1216136250f0a5dda295"
+    },
+    "precision-strike": {
+      "atlas": "/games/code-sentinels/units-v6/precision-strike.png",
+      "metadata": "/games/code-sentinels/units-v6/precision-strike.json",
+      "nativeAtlas": "Content/Animations/v6/units/precision-strike.png",
+      "nativeMetadata": "Content/Animations/v6/units/precision-strike.json",
+      "image": "/games/code-sentinels/ui-v6/units/precision-strike.png",
+      "sourceModel": "Content/Models/v6/precision-strike.blend",
+      "glb": "Content/Models/v6/precision-strike.glb",
+      "sha256": "c277036279d88a07e8ac5cd219d438dc99e03970acb13f65a8167141a27c0c2e"
+    },
+    "pulse-turret": {
+      "atlas": "/games/code-sentinels/units-v6/pulse-turret.png",
+      "metadata": "/games/code-sentinels/units-v6/pulse-turret.json",
+      "nativeAtlas": "Content/Animations/v6/units/pulse-turret.png",
+      "nativeMetadata": "Content/Animations/v6/units/pulse-turret.json",
+      "image": "/games/code-sentinels/ui-v6/units/pulse-turret.png",
+      "sourceModel": "Content/Models/v6/pulse-turret.blend",
+      "glb": "Content/Models/v6/pulse-turret.glb",
+      "sha256": "a61bc68e417edaac764647b4ce48adbc18b2d5b51c8e6fa2cd445a0307720ed0"
+    },
+    "pycharm": {
+      "atlas": "/games/code-sentinels/units-v6/pycharm.png",
+      "metadata": "/games/code-sentinels/units-v6/pycharm.json",
+      "nativeAtlas": "Content/Animations/v6/units/pycharm.png",
+      "nativeMetadata": "Content/Animations/v6/units/pycharm.json",
+      "image": "/games/code-sentinels/ui-v6/units/pycharm.png",
+      "sourceModel": "Content/Models/v6/pycharm.blend",
+      "glb": "Content/Models/v6/pycharm.glb",
+      "sha256": "a0d69b3eed19ba7cbb07a5cb3dd8f110ae49c41c426bec0a540767788c00c64f"
+    },
+    "rack": {
+      "atlas": "/games/code-sentinels/buildings-v6/rack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/rack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/rack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/rack.json",
+      "image": "/games/code-sentinels/ui-v6/units/rack.png",
+      "sourceModel": "Content/Models/v6/rack.blend",
+      "glb": "Content/Models/v6/rack.glb",
+      "sha256": "8c3085aa06ecc2610c2089813e1715a7de61e0f6e3541b727aca4858e1b26a25"
+    },
+    "radar-array": {
+      "atlas": "/games/code-sentinels/buildings-v6/radar-array.png",
+      "metadata": "/games/code-sentinels/buildings-v6/radar-array.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/radar-array.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/radar-array.json",
+      "image": "/games/code-sentinels/ui-v6/units/radar-array.png",
+      "sourceModel": "Content/Models/v6/radar-array.blend",
+      "glb": "Content/Models/v6/radar-array.glb",
+      "sha256": "601a67f9c7cf226b64adc5d8149761e8dc1308ff0125d5b4666d644b29170103"
+    },
+    "rail-tank": {
+      "atlas": "/games/code-sentinels/units-v6/rail-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/rail-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/rail-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/rail-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/rail-tank.png",
+      "sourceModel": "Content/Models/v6/rail-tank.blend",
+      "glb": "Content/Models/v6/rail-tank.glb",
+      "sha256": "6e3d364246a59c1c9bbb954ea0a8eedd83b0977af15f3c6df49ba6bb588d5e59"
+    },
+    "ramp": {
+      "atlas": "/games/code-sentinels/buildings-v6/ramp.png",
+      "metadata": "/games/code-sentinels/buildings-v6/ramp.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/ramp.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/ramp.json",
+      "image": "/games/code-sentinels/ui-v6/units/ramp.png",
+      "sourceModel": "Content/Models/v6/ramp.blend",
+      "glb": "Content/Models/v6/ramp.glb",
+      "sha256": "353d34f78a27e8f1fc01401733f9812010457b62f757f9d9e843a1f1ff3eaf79"
+    },
+    "repair-bay": {
+      "atlas": "/games/code-sentinels/buildings-v6/repair-bay.png",
+      "metadata": "/games/code-sentinels/buildings-v6/repair-bay.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/repair-bay.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/repair-bay.json",
+      "image": "/games/code-sentinels/ui-v6/units/repair-bay.png",
+      "sourceModel": "Content/Models/v6/repair-bay.blend",
+      "glb": "Content/Models/v6/repair-bay.glb",
+      "sha256": "2da40b36898e96147267507b39e2a68b32b552d5c45f5c43425a2ed8714e203b",
+      "aliasOf": "repair-bay"
+    },
+    "research-console": {
+      "atlas": "/games/code-sentinels/buildings-v6/research-console.png",
+      "metadata": "/games/code-sentinels/buildings-v6/research-console.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/research-console.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/research-console.json",
+      "image": "/games/code-sentinels/ui-v6/units/research-console.png",
+      "sourceModel": "Content/Models/v6/research-console.blend",
+      "glb": "Content/Models/v6/research-console.glb",
+      "sha256": "d10a0332afd643e0570701494ad70941137aeec8e119ce9599f937697c37f0aa"
+    },
+    "resource-hauler": {
+      "atlas": "/games/code-sentinels/units-v6/resource-hauler.png",
+      "metadata": "/games/code-sentinels/units-v6/resource-hauler.json",
+      "nativeAtlas": "Content/Animations/v6/units/resource-hauler.png",
+      "nativeMetadata": "Content/Animations/v6/units/resource-hauler.json",
+      "image": "/games/code-sentinels/ui-v6/units/resource-hauler.png",
+      "sourceModel": "Content/Models/v6/resource-hauler.blend",
+      "glb": "Content/Models/v6/resource-hauler.glb",
+      "sha256": "622c5aedb37269927d62ebb393d31e4f52284f1cb1993ad03c27abd10f212faa"
+    },
+    "roof": {
+      "atlas": "/games/code-sentinels/buildings-v6/roof.png",
+      "metadata": "/games/code-sentinels/buildings-v6/roof.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/roof.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/roof.json",
+      "image": "/games/code-sentinels/ui-v6/units/roof.png",
+      "sourceModel": "Content/Models/v6/roof.blend",
+      "glb": "Content/Models/v6/roof.glb",
+      "sha256": "d983b7628f7c65a4cbf79ff153672b2bfb68373f11cd517d2e625d29a2d331c4"
+    },
+    "roof-corner": {
+      "atlas": "/games/code-sentinels/buildings-v6/roof-corner.png",
+      "metadata": "/games/code-sentinels/buildings-v6/roof-corner.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/roof-corner.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/roof-corner.json",
+      "image": "/games/code-sentinels/ui-v6/units/roof-corner.png",
+      "sourceModel": "Content/Models/v6/roof-corner.blend",
+      "glb": "Content/Models/v6/roof-corner.glb",
+      "sha256": "f6f502f3cc02c6345717270f96b6ea779fed62d2697135fa69d4732b5f9b3f49"
+    },
+    "scout-buggy": {
+      "atlas": "/games/code-sentinels/units-v6/scout-buggy.png",
+      "metadata": "/games/code-sentinels/units-v6/scout-buggy.json",
+      "nativeAtlas": "Content/Animations/v6/units/scout-buggy.png",
+      "nativeMetadata": "Content/Animations/v6/units/scout-buggy.json",
+      "image": "/games/code-sentinels/ui-v6/units/scout-buggy.png",
+      "sourceModel": "Content/Models/v6/scout-buggy.blend",
+      "glb": "Content/Models/v6/scout-buggy.glb",
+      "sha256": "d2a064d7da80285db1ada01d2d0d63c3a3a98cb42398025eab4b5d1ad761b6dd"
+    },
+    "secure-switch": {
+      "atlas": "/games/code-sentinels/buildings-v6/secure-switch.png",
+      "metadata": "/games/code-sentinels/buildings-v6/secure-switch.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/secure-switch.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/secure-switch.json",
+      "image": "/games/code-sentinels/ui-v6/units/secure-switch.png",
+      "sourceModel": "Content/Models/v6/secure-switch.blend",
+      "glb": "Content/Models/v6/secure-switch.glb",
+      "sha256": "49957b3b5771925a882259d0314c1f27efa95ef305001b32588eefb31e331f81",
+      "aliasOf": "secure-switch"
+    },
+    "shield-tank": {
+      "atlas": "/games/code-sentinels/units-v6/shield-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/shield-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/shield-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/shield-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/shield-tank.png",
+      "sourceModel": "Content/Models/v6/shield-tank.blend",
+      "glb": "Content/Models/v6/shield-tank.glb",
+      "sha256": "988b93f23f95aab61c804e7d71455c075ca732cf67e5d4ddcf772d36a358aaf8"
+    },
+    "siege-launcher": {
+      "atlas": "/games/code-sentinels/units-v6/siege-launcher.png",
+      "metadata": "/games/code-sentinels/units-v6/siege-launcher.json",
+      "nativeAtlas": "Content/Animations/v6/units/siege-launcher.png",
+      "nativeMetadata": "Content/Animations/v6/units/siege-launcher.json",
+      "image": "/games/code-sentinels/ui-v6/units/siege-launcher.png",
+      "sourceModel": "Content/Models/v6/siege-launcher.blend",
+      "glb": "Content/Models/v6/siege-launcher.glb",
+      "sha256": "c277036279d88a07e8ac5cd219d438dc99e03970acb13f65a8167141a27c0c2e"
+    },
+    "stairs": {
+      "atlas": "/games/code-sentinels/buildings-v6/stairs.png",
+      "metadata": "/games/code-sentinels/buildings-v6/stairs.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/stairs.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/stairs.json",
+      "image": "/games/code-sentinels/ui-v6/units/stairs.png",
+      "sourceModel": "Content/Models/v6/stairs.blend",
+      "glb": "Content/Models/v6/stairs.glb",
+      "sha256": "41def0af2f2f7c6bb0f156a8dea5deae1eabcd1487fd1e004f107acc2f4c40aa"
+    },
+    "stealth-wing": {
+      "atlas": "/games/code-sentinels/units-v6/stealth-wing.png",
+      "metadata": "/games/code-sentinels/units-v6/stealth-wing.json",
+      "nativeAtlas": "Content/Animations/v6/units/stealth-wing.png",
+      "nativeMetadata": "Content/Animations/v6/units/stealth-wing.json",
+      "image": "/games/code-sentinels/ui-v6/units/stealth-wing.png",
+      "sourceModel": "Content/Models/v6/stealth-wing.blend",
+      "glb": "Content/Models/v6/stealth-wing.glb",
+      "sha256": "a7eb8d84378651f00290e7283fdff56ac21a8c8defb5f63ffce4a2901b12bbc8"
+    },
+    "strategic-node": {
+      "atlas": "/games/code-sentinels/buildings-v6/strategic-node.png",
+      "metadata": "/games/code-sentinels/buildings-v6/strategic-node.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/strategic-node.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/strategic-node.json",
+      "image": "/games/code-sentinels/ui-v6/units/strategic-node.png",
+      "sourceModel": "Content/Models/v6/strategic-node.blend",
+      "glb": "Content/Models/v6/strategic-node.glb",
+      "sha256": "515268e97928f02b631fd4e3b4d94ff4c97065a4caa0dd0b0224a2566389d602"
+    },
+    "vscode": {
+      "atlas": "/games/code-sentinels/units-v6/vscode.png",
+      "metadata": "/games/code-sentinels/units-v6/vscode.json",
+      "nativeAtlas": "Content/Animations/v6/units/vscode.png",
+      "nativeMetadata": "Content/Animations/v6/units/vscode.json",
+      "image": "/games/code-sentinels/ui-v6/units/vscode.png",
+      "sourceModel": "Content/Models/v6/vscode.blend",
+      "glb": "Content/Models/v6/vscode.glb",
+      "sha256": "f8ba61d153e9a89c9dbc39dd23901a015e72f945a963ed6833e39a5a203e1d70"
+    },
+    "wall": {
+      "atlas": "/games/code-sentinels/buildings-v6/wall.png",
+      "metadata": "/games/code-sentinels/buildings-v6/wall.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/wall.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/wall.json",
+      "image": "/games/code-sentinels/ui-v6/units/wall.png",
+      "sourceModel": "Content/Models/v6/wall.blend",
+      "glb": "Content/Models/v6/wall.glb",
+      "sha256": "8e71e8b0cf84f231e57439fdebfbd853d81500ed7ebeba629cd8e7623447bc55"
+    },
+    "wind-power": {
+      "atlas": "/games/code-sentinels/buildings-v6/wind-power.png",
+      "metadata": "/games/code-sentinels/buildings-v6/wind-power.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/wind-power.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/wind-power.json",
+      "image": "/games/code-sentinels/ui-v6/units/wind-power.png",
+      "sourceModel": "Content/Models/v6/wind-power.blend",
+      "glb": "Content/Models/v6/wind-power.glb",
+      "sha256": "60c616af8506404e16a25e541d11317c3f637b5b906b66680123cbcddee5b255",
+      "aliasOf": "wind-power"
+    },
+    "window-wall": {
+      "atlas": "/games/code-sentinels/buildings-v6/window-wall.png",
+      "metadata": "/games/code-sentinels/buildings-v6/window-wall.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/window-wall.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/window-wall.json",
+      "image": "/games/code-sentinels/ui-v6/units/window-wall.png",
+      "sourceModel": "Content/Models/v6/window-wall.blend",
+      "glb": "Content/Models/v6/window-wall.glb",
+      "sha256": "e167ba158788379c6ac4bbe112d58ad0cd05e8b728fb3921ddcfa47868a5dd64"
+    },
+    "machinegun": {
+      "atlas": "/games/code-sentinels/units-v6/autocannon.png",
+      "metadata": "/games/code-sentinels/units-v6/autocannon.json",
+      "nativeAtlas": "Content/Animations/v6/units/autocannon.png",
+      "nativeMetadata": "Content/Animations/v6/units/autocannon.json",
+      "image": "/games/code-sentinels/ui-v6/units/autocannon.png",
+      "sourceModel": "Content/Models/v6/autocannon.blend",
+      "glb": "Content/Models/v6/autocannon.glb",
+      "sha256": "cc9b1b948237de028150f81ec1dfd4ffa39a3778d8efb3d1528da1d2ec22425a",
+      "aliasOf": "autocannon"
+    },
+    "light-mortar": {
+      "atlas": "/games/code-sentinels/units-v6/mortar.png",
+      "metadata": "/games/code-sentinels/units-v6/mortar.json",
+      "nativeAtlas": "Content/Animations/v6/units/mortar.png",
+      "nativeMetadata": "Content/Animations/v6/units/mortar.json",
+      "image": "/games/code-sentinels/ui-v6/units/mortar.png",
+      "sourceModel": "Content/Models/v6/mortar.blend",
+      "glb": "Content/Models/v6/mortar.glb",
+      "sha256": "e0b87b0a422fddef002c1da79aa75e5a532a7bc07dc2246a0bf1354da150e1e7",
+      "aliasOf": "mortar"
+    },
+    "scout": {
+      "atlas": "/games/code-sentinels/units-v6/scout-buggy.png",
+      "metadata": "/games/code-sentinels/units-v6/scout-buggy.json",
+      "nativeAtlas": "Content/Animations/v6/units/scout-buggy.png",
+      "nativeMetadata": "Content/Animations/v6/units/scout-buggy.json",
+      "image": "/games/code-sentinels/ui-v6/units/scout-buggy.png",
+      "sourceModel": "Content/Models/v6/scout-buggy.blend",
+      "glb": "Content/Models/v6/scout-buggy.glb",
+      "sha256": "d2a064d7da80285db1ada01d2d0d63c3a3a98cb42398025eab4b5d1ad761b6dd",
+      "aliasOf": "scout-buggy"
+    },
+    "tank": {
+      "atlas": "/games/code-sentinels/units-v6/light-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/light-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/light-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/light-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/light-tank.png",
+      "sourceModel": "Content/Models/v6/light-tank.blend",
+      "glb": "Content/Models/v6/light-tank.glb",
+      "sha256": "29f2c024a15886907c45b87f444f3f0a24fe480e8bec2c533ddcaddc7d442de3",
+      "aliasOf": "light-tank"
+    },
+    "aa-launcher": {
+      "atlas": "/games/code-sentinels/units-v6/aa-turret.png",
+      "metadata": "/games/code-sentinels/units-v6/aa-turret.json",
+      "nativeAtlas": "Content/Animations/v6/units/aa-turret.png",
+      "nativeMetadata": "Content/Animations/v6/units/aa-turret.json",
+      "image": "/games/code-sentinels/ui-v6/units/aa-turret.png",
+      "sourceModel": "Content/Models/v6/aa-turret.blend",
+      "glb": "Content/Models/v6/aa-turret.glb",
+      "sha256": "7796ca720ad7a4428721aa8c39458e9832041eaaa9a68d7692e324e5d39d94af",
+      "aliasOf": "aa-turret"
+    },
+    "breacher": {
+      "atlas": "/games/code-sentinels/units-v6/breach-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/breach-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/breach-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/breach-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/breach-tank.png",
+      "sourceModel": "Content/Models/v6/breach-tank.blend",
+      "glb": "Content/Models/v6/breach-tank.glb",
+      "sha256": "d8499d0f0dca480a0ffe63b702f3fe5460b4679ed656804b53479626475ed237",
+      "aliasOf": "breach-tank"
+    },
+    "attack-aircraft": {
+      "atlas": "/games/code-sentinels/units-v6/fighter.png",
+      "metadata": "/games/code-sentinels/units-v6/fighter.json",
+      "nativeAtlas": "Content/Animations/v6/units/fighter.png",
+      "nativeMetadata": "Content/Animations/v6/units/fighter.json",
+      "image": "/games/code-sentinels/ui-v6/units/fighter.png",
+      "sourceModel": "Content/Models/v6/fighter.blend",
+      "glb": "Content/Models/v6/fighter.glb",
+      "sha256": "e44443cfbbe1216ddbce8027d92c0661d14409d3b9a3716c35032bfe74e7e1fd",
+      "aliasOf": "fighter"
+    },
+    "rail-accelerator": {
+      "atlas": "/games/code-sentinels/units-v6/rail-tank.png",
+      "metadata": "/games/code-sentinels/units-v6/rail-tank.json",
+      "nativeAtlas": "Content/Animations/v6/units/rail-tank.png",
+      "nativeMetadata": "Content/Animations/v6/units/rail-tank.json",
+      "image": "/games/code-sentinels/ui-v6/units/rail-tank.png",
+      "sourceModel": "Content/Models/v6/rail-tank.blend",
+      "glb": "Content/Models/v6/rail-tank.glb",
+      "sha256": "6e3d364246a59c1c9bbb954ea0a8eedd83b0977af15f3c6df49ba6bb588d5e59",
+      "aliasOf": "rail-tank"
+    },
+    "bomber": {
+      "atlas": "/games/code-sentinels/units-v6/stealth-wing.png",
+      "metadata": "/games/code-sentinels/units-v6/stealth-wing.json",
+      "nativeAtlas": "Content/Animations/v6/units/stealth-wing.png",
+      "nativeMetadata": "Content/Animations/v6/units/stealth-wing.json",
+      "image": "/games/code-sentinels/ui-v6/units/stealth-wing.png",
+      "sourceModel": "Content/Models/v6/stealth-wing.blend",
+      "glb": "Content/Models/v6/stealth-wing.glb",
+      "sha256": "a7eb8d84378651f00290e7283fdff56ac21a8c8defb5f63ffce4a2901b12bbc8",
+      "aliasOf": "stealth-wing"
+    },
+    "aerospace": {
+      "atlas": "/games/code-sentinels/units-v6/aerospace-fighter.png",
+      "metadata": "/games/code-sentinels/units-v6/aerospace-fighter.json",
+      "nativeAtlas": "Content/Animations/v6/units/aerospace-fighter.png",
+      "nativeMetadata": "Content/Animations/v6/units/aerospace-fighter.json",
+      "image": "/games/code-sentinels/ui-v6/units/aerospace-fighter.png",
+      "sourceModel": "Content/Models/v6/aerospace-fighter.blend",
+      "glb": "Content/Models/v6/aerospace-fighter.glb",
+      "sha256": "1b98dd6c5fc904e8b52f4782efb384f5148398e36c1f108424e25a6ad63c2276",
+      "aliasOf": "aerospace-fighter"
+    },
+    "orbital-strike": {
+      "atlas": "/games/code-sentinels/units-v6/orbital-lance.png",
+      "metadata": "/games/code-sentinels/units-v6/orbital-lance.json",
+      "nativeAtlas": "Content/Animations/v6/units/orbital-lance.png",
+      "nativeMetadata": "Content/Animations/v6/units/orbital-lance.json",
+      "image": "/games/code-sentinels/ui-v6/units/orbital-lance.png",
+      "sourceModel": "Content/Models/v6/orbital-lance.blend",
+      "glb": "Content/Models/v6/orbital-lance.glb",
+      "sha256": "70ac3287a978dd0a6748f503d0384f8f629253537098f71e745dd633d73ec0f9",
+      "aliasOf": "orbital-lance"
+    },
+    "anti-orbital": {
+      "atlas": "/games/code-sentinels/units-v6/aegis-array.png",
+      "metadata": "/games/code-sentinels/units-v6/aegis-array.json",
+      "nativeAtlas": "Content/Animations/v6/units/aegis-array.png",
+      "nativeMetadata": "Content/Animations/v6/units/aegis-array.json",
+      "image": "/games/code-sentinels/ui-v6/units/aegis-array.png",
+      "sourceModel": "Content/Models/v6/aegis-array.blend",
+      "glb": "Content/Models/v6/aegis-array.glb",
+      "sha256": "a1cae0bc21638ecf30c21203a5ddf1e189260dd1a42017a439062f242a771ff4",
+      "aliasOf": "aegis-array"
+    },
+    "data-center": {
+      "atlas": "/games/code-sentinels/buildings-v6/rack.png",
+      "metadata": "/games/code-sentinels/buildings-v6/rack.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/rack.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/rack.json",
+      "image": "/games/code-sentinels/ui-v6/units/rack.png",
+      "sourceModel": "Content/Models/v6/rack.blend",
+      "glb": "Content/Models/v6/rack.glb",
+      "sha256": "8c3085aa06ecc2610c2089813e1715a7de61e0f6e3541b727aca4858e1b26a25",
+      "aliasOf": "rack"
+    },
+    "research-lab": {
+      "atlas": "/games/code-sentinels/buildings-v6/research-console.png",
+      "metadata": "/games/code-sentinels/buildings-v6/research-console.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/research-console.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/research-console.json",
+      "image": "/games/code-sentinels/ui-v6/units/research-console.png",
+      "sourceModel": "Content/Models/v6/research-console.blend",
+      "glb": "Content/Models/v6/research-console.glb",
+      "sha256": "d10a0332afd643e0570701494ad70941137aeec8e119ce9599f937697c37f0aa",
+      "aliasOf": "research-console"
+    },
+    "ammo-workshop": {
+      "atlas": "/games/code-sentinels/buildings-v6/ammunition-workshop.png",
+      "metadata": "/games/code-sentinels/buildings-v6/ammunition-workshop.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/ammunition-workshop.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/ammunition-workshop.json",
+      "image": "/games/code-sentinels/ui-v6/units/ammunition-workshop.png",
+      "sourceModel": "Content/Models/v6/ammunition-workshop.blend",
+      "glb": "Content/Models/v6/ammunition-workshop.glb",
+      "sha256": "a98e3ab275d551e3554a88d31efff8f7ebd1ae8aa2153d8f542e7f532ddaf281",
+      "aliasOf": "ammunition-workshop"
+    },
+    "aa-control": {
+      "atlas": "/games/code-sentinels/buildings-v6/radar-array.png",
+      "metadata": "/games/code-sentinels/buildings-v6/radar-array.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/radar-array.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/radar-array.json",
+      "image": "/games/code-sentinels/ui-v6/units/radar-array.png",
+      "sourceModel": "Content/Models/v6/radar-array.blend",
+      "glb": "Content/Models/v6/radar-array.glb",
+      "sha256": "601a67f9c7cf226b64adc5d8149761e8dc1308ff0125d5b4666d644b29170103",
+      "aliasOf": "radar-array"
+    },
+    "fast-logistics": {
+      "atlas": "/games/code-sentinels/buildings-v6/logistics-belt.png",
+      "metadata": "/games/code-sentinels/buildings-v6/logistics-belt.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/logistics-belt.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/logistics-belt.json",
+      "image": "/games/code-sentinels/ui-v6/units/logistics-belt.png",
+      "sourceModel": "Content/Models/v6/logistics-belt.blend",
+      "glb": "Content/Models/v6/logistics-belt.glb",
+      "sha256": "2424c246bb70ec598ddd31075c97fd0e193b92fcf795f2649891c1bb437ee74a",
+      "aliasOf": "logistics-belt"
+    },
+    "airstrip": {
+      "atlas": "/games/code-sentinels/buildings-v6/airfield.png",
+      "metadata": "/games/code-sentinels/buildings-v6/airfield.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/airfield.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/airfield.json",
+      "image": "/games/code-sentinels/ui-v6/units/airfield.png",
+      "sourceModel": "Content/Models/v6/airfield.blend",
+      "glb": "Content/Models/v6/airfield.glb",
+      "sha256": "f544716db692b1a72d350a9108523bfb2e8bb471995e445973f3bf2f029aca86",
+      "aliasOf": "airfield"
+    },
+    "drainage": {
+      "atlas": "/games/code-sentinels/buildings-v6/drainage-pump.png",
+      "metadata": "/games/code-sentinels/buildings-v6/drainage-pump.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/drainage-pump.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/drainage-pump.json",
+      "image": "/games/code-sentinels/ui-v6/units/drainage-pump.png",
+      "sourceModel": "Content/Models/v6/drainage-pump.blend",
+      "glb": "Content/Models/v6/drainage-pump.glb",
+      "sha256": "a3c77596b315873641515f07df8ae4157eecdd47ddfd986736f3ec9acf2d4b01",
+      "aliasOf": "drainage-pump"
+    },
+    "drill": {
+      "atlas": "/games/code-sentinels/buildings-v6/drilling-rig.png",
+      "metadata": "/games/code-sentinels/buildings-v6/drilling-rig.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/drilling-rig.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/drilling-rig.json",
+      "image": "/games/code-sentinels/ui-v6/units/drilling-rig.png",
+      "sourceModel": "Content/Models/v6/drilling-rig.blend",
+      "glb": "Content/Models/v6/drilling-rig.glb",
+      "sha256": "437896af488edd80a46f70aa69852e7316dd8b8559bb2c367b14e04fe66bde09",
+      "aliasOf": "drilling-rig"
+    },
+    "anti-air-control": {
+      "atlas": "/games/code-sentinels/buildings-v6/radar-array.png",
+      "metadata": "/games/code-sentinels/buildings-v6/radar-array.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/radar-array.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/radar-array.json",
+      "image": "/games/code-sentinels/ui-v6/units/radar-array.png",
+      "sourceModel": "Content/Models/v6/radar-array.blend",
+      "glb": "Content/Models/v6/radar-array.glb",
+      "sha256": "601a67f9c7cf226b64adc5d8149761e8dc1308ff0125d5b4666d644b29170103",
+      "aliasOf": "radar-array"
+    },
+    "rapid-logistics": {
+      "atlas": "/games/code-sentinels/buildings-v6/logistics-belt.png",
+      "metadata": "/games/code-sentinels/buildings-v6/logistics-belt.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/logistics-belt.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/logistics-belt.json",
+      "image": "/games/code-sentinels/ui-v6/units/logistics-belt.png",
+      "sourceModel": "Content/Models/v6/logistics-belt.blend",
+      "glb": "Content/Models/v6/logistics-belt.glb",
+      "sha256": "2424c246bb70ec598ddd31075c97fd0e193b92fcf795f2649891c1bb437ee74a",
+      "aliasOf": "logistics-belt"
+    },
+    "secure-relay": {
+      "atlas": "/games/code-sentinels/buildings-v6/secure-switch.png",
+      "metadata": "/games/code-sentinels/buildings-v6/secure-switch.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/secure-switch.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/secure-switch.json",
+      "image": "/games/code-sentinels/ui-v6/units/secure-switch.png",
+      "sourceModel": "Content/Models/v6/secure-switch.blend",
+      "glb": "Content/Models/v6/secure-switch.glb",
+      "sha256": "49957b3b5771925a882259d0314c1f27efa95ef305001b32588eefb31e331f81",
+      "aliasOf": "secure-switch"
+    },
+    "targeting-array": {
+      "atlas": "/games/code-sentinels/buildings-v6/fire-control.png",
+      "metadata": "/games/code-sentinels/buildings-v6/fire-control.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/fire-control.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/fire-control.json",
+      "image": "/games/code-sentinels/ui-v6/units/fire-control.png",
+      "sourceModel": "Content/Models/v6/fire-control.blend",
+      "glb": "Content/Models/v6/fire-control.glb",
+      "sha256": "62c71d8c466793f08c3b4733e08756b06c9a96790274ee2acdf9fb05bd8414ff",
+      "aliasOf": "fire-control"
+    },
+    "launch-pad": {
+      "atlas": "/games/code-sentinels/buildings-v6/launchpad.png",
+      "metadata": "/games/code-sentinels/buildings-v6/launchpad.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/launchpad.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/launchpad.json",
+      "image": "/games/code-sentinels/ui-v6/units/launchpad.png",
+      "sourceModel": "Content/Models/v6/launchpad.blend",
+      "glb": "Content/Models/v6/launchpad.glb",
+      "sha256": "664e61817b95e58b20b44fda3d7e8f0c082211e8d630a59aeeab3c45ba6dcc29",
+      "aliasOf": "launchpad"
+    },
+    "drill-workshop": {
+      "atlas": "/games/code-sentinels/buildings-v6/drilling-rig.png",
+      "metadata": "/games/code-sentinels/buildings-v6/drilling-rig.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/drilling-rig.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/drilling-rig.json",
+      "image": "/games/code-sentinels/ui-v6/units/drilling-rig.png",
+      "sourceModel": "Content/Models/v6/drilling-rig.blend",
+      "glb": "Content/Models/v6/drilling-rig.glb",
+      "sha256": "437896af488edd80a46f70aa69852e7316dd8b8559bb2c367b14e04fe66bde09",
+      "aliasOf": "drilling-rig"
+    },
+    "data-synthesis": {
+      "atlas": "/games/code-sentinels/buildings-v6/research-console.png",
+      "metadata": "/games/code-sentinels/buildings-v6/research-console.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/research-console.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/research-console.json",
+      "image": "/games/code-sentinels/ui-v6/units/research-console.png",
+      "sourceModel": "Content/Models/v6/research-console.blend",
+      "glb": "Content/Models/v6/research-console.glb",
+      "sha256": "d10a0332afd643e0570701494ad70941137aeec8e119ce9599f937697c37f0aa",
+      "aliasOf": "research-console"
+    },
+    "wireless-relay": {
+      "atlas": "/games/code-sentinels/buildings-v6/secure-switch.png",
+      "metadata": "/games/code-sentinels/buildings-v6/secure-switch.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/secure-switch.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/secure-switch.json",
+      "image": "/games/code-sentinels/ui-v6/units/secure-switch.png",
+      "sourceModel": "Content/Models/v6/secure-switch.blend",
+      "glb": "Content/Models/v6/secure-switch.glb",
+      "sha256": "49957b3b5771925a882259d0314c1f27efa95ef305001b32588eefb31e331f81",
+      "aliasOf": "secure-switch"
+    },
+    "transport-plane": {
+      "atlas": "/games/code-sentinels/units-v6/cargo-aircraft.png",
+      "metadata": "/games/code-sentinels/units-v6/cargo-aircraft.json",
+      "nativeAtlas": "Content/Animations/v6/units/cargo-aircraft.png",
+      "nativeMetadata": "Content/Animations/v6/units/cargo-aircraft.json",
+      "image": "/games/code-sentinels/ui-v6/units/cargo-aircraft.png",
+      "sourceModel": "Content/Models/v6/cargo-aircraft.blend",
+      "glb": "Content/Models/v6/cargo-aircraft.glb",
+      "sha256": "2eb3e1ffd1852d7943033392ff22bcf14104c14064211947bf193e56bcac0df8",
+      "aliasOf": "cargo-aircraft"
+    },
+    "moat": {
+      "atlas": "/games/code-sentinels/buildings-v6/moat.png",
+      "metadata": "/games/code-sentinels/buildings-v6/moat.json",
+      "nativeAtlas": "Content/Animations/v6/buildings/moat.png",
+      "nativeMetadata": "Content/Animations/v6/buildings/moat.json",
+      "image": "/games/code-sentinels/ui-v6/units/moat.png",
+      "sourceModel": "Content/Models/v6/moat.blend",
+      "glb": "Content/Models/v6/moat.glb",
+      "sha256": "c5de7fce79913833030d7333eae5b2577c0b7420acc1a669dfd1e13882e58b3c"
+    }
+  },
+  "chassisAliases": {
+    "machinegun": "autocannon",
+    "light-mortar": "mortar",
+    "scout": "scout-buggy",
+    "tank": "light-tank",
+    "aa-launcher": "aa-turret",
+    "breacher": "breach-tank",
+    "artillery": "artillery",
+    "attack-aircraft": "fighter",
+    "rail-accelerator": "rail-tank",
+    "particle-cannon": "particle-cannon",
+    "missile-truck": "missile-truck",
+    "bomber": "stealth-wing",
+    "aerospace": "aerospace-fighter",
+    "orbital-strike": "orbital-lance",
+    "anti-orbital": "aegis-array"
+  },
+  "assetRoots": [
+    "Content/UI/v6",
+    "Content/Animations/v6",
+    "Content/Models/v6"
+  ],
+  "webAssetRoots": [
+    "ui-v6",
+    "characters-v6",
+    "units-v6",
+    "buildings-v6",
+    "effects-v6",
+    "terrain-v6"
+  ],
+  "effects": {
+    "collapse-explosion": {
+      "image": "/games/code-sentinels/effects-v6/collapse-explosion.png",
+      "metadata": "/games/code-sentinels/effects-v6/collapse-explosion.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "635285aa98895d6644b4f9cf00eb46e214fe0896bb1980b7d127e331f5e34961"
+    },
+    "heavy-impact": {
+      "image": "/games/code-sentinels/effects-v6/heavy-impact.png",
+      "metadata": "/games/code-sentinels/effects-v6/heavy-impact.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "ae5f70f400f1e684b49d1736a4d74541cfa56a98dd5b13db801cc26845c6b0d6"
+    },
+    "kinetic-hit": {
+      "image": "/games/code-sentinels/effects-v6/kinetic-hit.png",
+      "metadata": "/games/code-sentinels/effects-v6/kinetic-hit.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "bf8eff646d93791a1f15c697173a20b810822a8a5386031d5c744f73f16b3fde"
+    },
+    "plasma-hit": {
+      "image": "/games/code-sentinels/effects-v6/plasma-hit.png",
+      "metadata": "/games/code-sentinels/effects-v6/plasma-hit.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "0e4711ba4772ee5c6d60150ae03499b1fcc973fa907e8a4a47055fd5130625e3"
+    },
+    "power-arc": {
+      "image": "/games/code-sentinels/effects-v6/power-arc.png",
+      "metadata": "/games/code-sentinels/effects-v6/power-arc.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "e0aff3345d5f9609973fa77a74f45bd8ca42fa171742828f3d9f50475b3c6dde"
+    },
+    "repair": {
+      "image": "/games/code-sentinels/effects-v6/repair.png",
+      "metadata": "/games/code-sentinels/effects-v6/repair.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "12c14cd761dbfd887589e70c0a5f1317ade495699b0a2d0b9ca15c4301b4f10e"
+    },
+    "shield-hit": {
+      "image": "/games/code-sentinels/effects-v6/shield-hit.png",
+      "metadata": "/games/code-sentinels/effects-v6/shield-hit.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "8d577ff386853bdef76d0764e4ce304a70d7524055aa2268df40dd85ab911926"
+    },
+    "upgrade": {
+      "image": "/games/code-sentinels/effects-v6/upgrade.png",
+      "metadata": "/games/code-sentinels/effects-v6/upgrade.json",
+      "sourceVersion": 5,
+      "method": "preserved genuine verified I2V atlas",
+      "ready": true,
+      "sha256": "2a77d495db065fdb5d46cd921ad9794eeb16fa95968d3ebc73cf090147929083"
+    },
+    "cone-shockwave": {
+      "image": "/games/code-sentinels/effects-v6/cone-shockwave.png",
+      "metadata": "/games/code-sentinels/effects-v6/cone-shockwave.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "6070d5fac046ea01679bd0da2fdff6380c497159cc2f4f1052bcab7df47e2780"
+    },
+    "construction-dust": {
+      "image": "/games/code-sentinels/effects-v6/construction-dust.png",
+      "metadata": "/games/code-sentinels/effects-v6/construction-dust.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "0861a199ab9ac522738de0096fa813f60549e54d6aeb8b2db06a493a6be906c5"
+    },
+    "directional-beam": {
+      "image": "/games/code-sentinels/effects-v6/directional-beam.png",
+      "metadata": "/games/code-sentinels/effects-v6/directional-beam.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "17c70926af7c4ef2429f76f1583f8dc68cfee31409797294cdb92441c2d145a1"
+    },
+    "energy-barrier": {
+      "image": "/games/code-sentinels/effects-v6/energy-barrier.png",
+      "metadata": "/games/code-sentinels/effects-v6/energy-barrier.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "5ac81991cbeced7c5dec0aa89359e230d6d21bc5659aa272b8a25cfd7c5997f4"
+    },
+    "floor-collapse": {
+      "image": "/games/code-sentinels/effects-v6/floor-collapse.png",
+      "metadata": "/games/code-sentinels/effects-v6/floor-collapse.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "1041dc34402a38a5d760db0bef119906ef6121576fa5dae1b498a4902e61a247"
+    },
+    "network-shield": {
+      "image": "/games/code-sentinels/effects-v6/network-shield.png",
+      "metadata": "/games/code-sentinels/effects-v6/network-shield.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "0914652de103b0e0284f587c2316a9198399ca3453aa64324e4f29718e91a21b"
+    },
+    "orbital-strike": {
+      "image": "/games/code-sentinels/effects-v6/orbital-strike.png",
+      "metadata": "/games/code-sentinels/effects-v6/orbital-strike.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "bc8281f1800124dd758a88c6ad1923841515bd67b8542fb9e580e63d630bf54a"
+    },
+    "repair-field": {
+      "image": "/games/code-sentinels/effects-v6/repair-field.png",
+      "metadata": "/games/code-sentinels/effects-v6/repair-field.json",
+      "sourceVersion": 6,
+      "ready": true,
+      "sha256": "626844c93f5e03146eb5987831bc0d38522a65902dbc20f5345f8d9dde195f03"
+    }
+  },
+  "facilityAliases": {
+    "data-center": "rack",
+    "research-lab": "research-console",
+    "ammo-workshop": "ammunition-workshop",
+    "ammunition-workshop": "ammunition-workshop",
+    "airfield": "airfield",
+    "aa-control": "radar-array",
+    "missile-silo": "missile-silo",
+    "fast-logistics": "logistics-belt",
+    "secure-switch": "secure-switch",
+    "fire-control": "fire-control",
+    "particle-foundry": "particle-foundry",
+    "modular-workshop": "modular-workshop",
+    "airstrip": "airfield",
+    "launchpad": "launchpad",
+    "factory": "factory",
+    "depot": "depot",
+    "repair-bay": "repair-bay",
+    "network-defense": "network-defense",
+    "energy-defense": "energy-defense",
+    "orbital-control": "orbital-control",
+    "extractor": "extractor",
+    "wind-power": "wind-power",
+    "hydro-power": "hydro-power",
+    "coal-power": "coal-power",
+    "nuclear-power": "nuclear-power",
+    "mobile-relay": "mobile-relay",
+    "drainage": "drainage-pump",
+    "drill": "drilling-rig",
+    "anti-air-control": "radar-array",
+    "rapid-logistics": "logistics-belt",
+    "secure-relay": "secure-switch",
+    "targeting-array": "fire-control",
+    "launch-pad": "launchpad",
+    "drill-workshop": "drilling-rig",
+    "data-synthesis": "research-console",
+    "wireless-relay": "secure-switch"
+  },
+  "roleModelMap": {
+    "data-center": {
+      "model": "rack",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "research-lab": {
+      "model": "research-console",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "ammo-workshop": {
+      "model": "ammunition-workshop",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "ammunition-workshop": {
+      "model": "ammunition-workshop",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "airfield": {
+      "model": "airfield",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "aa-control": {
+      "model": "radar-array",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "missile-silo": {
+      "model": "missile-silo",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "fast-logistics": {
+      "model": "logistics-belt",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "secure-switch": {
+      "model": "secure-switch",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "fire-control": {
+      "model": "fire-control",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "particle-foundry": {
+      "model": "particle-foundry",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "modular-workshop": {
+      "model": "modular-workshop",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "airstrip": {
+      "model": "airfield",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "launchpad": {
+      "model": "launchpad",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "factory": {
+      "model": "factory",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "depot": {
+      "model": "depot",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "repair-bay": {
+      "model": "repair-bay",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "network-defense": {
+      "model": "network-defense",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "energy-defense": {
+      "model": "energy-defense",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "orbital-control": {
+      "model": "orbital-control",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "extractor": {
+      "model": "extractor",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "wind-power": {
+      "model": "wind-power",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "hydro-power": {
+      "model": "hydro-power",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "coal-power": {
+      "model": "coal-power",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "nuclear-power": {
+      "model": "nuclear-power",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "mobile-relay": {
+      "model": "mobile-relay",
+      "representation": "outdoor installation",
+      "ready": true
+    },
+    "drainage": {
+      "model": "drainage-pump",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "drill": {
+      "model": "drilling-rig",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "anti-air-control": {
+      "model": "radar-array",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "rapid-logistics": {
+      "model": "logistics-belt",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "secure-relay": {
+      "model": "secure-switch",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "targeting-array": {
+      "model": "fire-control",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "launch-pad": {
+      "model": "launchpad",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "drill-workshop": {
+      "model": "drilling-rig",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "data-synthesis": {
+      "model": "research-console",
+      "representation": "functional room equipment",
+      "ready": true
+    },
+    "wireless-relay": {
+      "model": "secure-switch",
+      "representation": "functional room equipment",
+      "ready": true
+    }
+  },
+  "directionConvention": {
+    "labels": "screen directions on the isometric map",
+    "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+    "mapping": [
+      {
+        "index": 0,
+        "label": "s",
+        "worldDelta": [
+          1,
+          1
+        ],
+        "screenDelta": [
+          0.0,
+          0.5
+        ],
+        "blenderYawDegrees": -135
+      },
+      {
+        "index": 1,
+        "label": "sw",
+        "worldDelta": [
+          0,
+          1
+        ],
+        "screenDelta": [
+          -0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -180
+      },
+      {
+        "index": 2,
+        "label": "w",
+        "worldDelta": [
+          -1,
+          1
+        ],
+        "screenDelta": [
+          -1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -225
+      },
+      {
+        "index": 3,
+        "label": "nw",
+        "worldDelta": [
+          -1,
+          0
+        ],
+        "screenDelta": [
+          -0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -270
+      },
+      {
+        "index": 4,
+        "label": "n",
+        "worldDelta": [
+          -1,
+          -1
+        ],
+        "screenDelta": [
+          0.0,
+          -0.5
+        ],
+        "blenderYawDegrees": -315
+      },
+      {
+        "index": 5,
+        "label": "ne",
+        "worldDelta": [
+          0,
+          -1
+        ],
+        "screenDelta": [
+          0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -360
+      },
+      {
+        "index": 6,
+        "label": "e",
+        "worldDelta": [
+          1,
+          -1
+        ],
+        "screenDelta": [
+          1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -405
+      },
+      {
+        "index": 7,
+        "label": "se",
+        "worldDelta": [
+          1,
+          0
+        ],
+        "screenDelta": [
+          0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -450
+      }
+    ],
+    "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+    "zeroMovement": "retain previous direction",
+    "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+  },
+  "terrain": {
+    "nativeAtlas": "Content/UI/v6/terrain/terrain.png",
+    "nativeMetadata": "Content/UI/v6/terrain/terrain.json",
+    "atlas": "/games/code-sentinels/terrain-v6/terrain.png",
+    "metadata": "/games/code-sentinels/terrain-v6/terrain.json",
+    "keysByTerrainId": {
+      "0": "grass",
+      "1": "rock",
+      "2": "water",
+      "3": "road",
+      "4": "highland",
+      "5": "ore",
+      "6": "coal"
+    },
+    "framesByTerrainId": {
+      "0": 0,
+      "1": 2,
+      "2": 3,
+      "3": 4,
+      "4": 7,
+      "5": 5,
+      "6": 6
+    },
+    "textures": {
+      "grass": {
+        "frame": 0,
+        "image": "/games/code-sentinels/terrain-v6/grass.png",
+        "nativeTexture": "Content/UI/v6/terrain/grass.png",
+        "sha256": "2afacfe6380ab6e321f04e194ebdd73e8631252c01615f14f8bdf6b0ea772b58",
+        "sourceRect": [
+          0,
+          512,
+          512,
+          512
+        ],
+        "sourceKey": "grass",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "variantMode": "exact-source-subtile"
+      },
+      "dirt": {
+        "frame": 1,
+        "image": "/games/code-sentinels/terrain-v6/dirt.png",
+        "nativeTexture": "Content/UI/v6/terrain/dirt.png",
+        "sha256": "c5e8ddbe0151a014aa930457b188b0e571c93c66d5d9e127d4422d26a277d3a2",
+        "sourceRect": [
+          1024,
+          0,
+          512,
+          512
+        ],
+        "sourceKey": "dirt",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "variantMode": "exact-source-subtile"
+      },
+      "rock": {
+        "frame": 2,
+        "image": "/games/code-sentinels/terrain-v6/rock.png",
+        "nativeTexture": "Content/UI/v6/terrain/rock.png",
+        "sha256": "367d64d852b17144e6a769e4663a27a4d0301bae0094c8ca1e3cd40f598b5e08",
+        "sourceRect": [
+          0,
+          0,
+          512,
+          512
+        ],
+        "sourceKey": "rock",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "variantMode": "exact-source-subtile"
+      },
+      "water": {
+        "frame": 3,
+        "image": "/games/code-sentinels/terrain-v6/water.png",
+        "nativeTexture": "Content/UI/v6/terrain/water.png",
+        "sha256": "6a234f67ce4d0887219ba3b4823b0dcc51ae69439404841205a644d54249833a",
+        "sourceRect": [
+          512,
+          0,
+          512,
+          512
+        ],
+        "sourceKey": "water",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "variantMode": "exact-source-subtile"
+      },
+      "road": {
+        "frame": 4,
+        "image": "/games/code-sentinels/terrain-v6/road.png",
+        "nativeTexture": "Content/UI/v6/terrain/road.png",
+        "sha256": "5fd4fdf5613dad806aadf0561f395768ebfb69fdc37d9f2c4b742615b6adb37e",
+        "sourceRect": [
+          512,
+          512,
+          512,
+          512
+        ],
+        "sourceKey": "road",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "variantMode": "exact-source-subtile"
+      },
+      "ore": {
+        "frame": 5,
+        "image": "/games/code-sentinels/terrain-v6/ore.png",
+        "nativeTexture": "Content/UI/v6/terrain/ore.png",
+        "sha256": "1ce81aa0cf2944deebda3971d898f02f1dfa5a344d833bfea5ce6b267076bcb3",
+        "sourceRect": [
+          1024,
+          512,
+          512,
+          512
+        ],
+        "sourceKey": "ore",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "variantMode": "exact-source-subtile"
+      },
+      "coal": {
+        "frame": 6,
+        "image": "/games/code-sentinels/terrain-v6/coal.png",
+        "nativeTexture": "Content/UI/v6/terrain/coal.png",
+        "sha256": "367d64d852b17144e6a769e4663a27a4d0301bae0094c8ca1e3cd40f598b5e08",
+        "sourceRect": [
+          0,
+          0,
+          512,
+          512
+        ],
+        "sourceKey": "rock",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          0.52,
+          0.5,
+          0.48,
+          1.0
+        ],
+        "variantMode": "native-material-tint"
+      },
+      "highland": {
+        "frame": 7,
+        "image": "/games/code-sentinels/terrain-v6/highland.png",
+        "nativeTexture": "Content/UI/v6/terrain/highland.png",
+        "sha256": "2afacfe6380ab6e321f04e194ebdd73e8631252c01615f14f8bdf6b0ea772b58",
+        "sourceRect": [
+          0,
+          512,
+          512,
+          512
+        ],
+        "sourceKey": "grass",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.08,
+          1.04,
+          0.91,
+          1.0
+        ],
+        "variantMode": "native-material-tint"
+      },
+      "soil": {
+        "frame": 8,
+        "image": "/games/code-sentinels/terrain-v6/soil.png",
+        "nativeTexture": "Content/UI/v6/terrain/soil.png",
+        "sha256": "c5e8ddbe0151a014aa930457b188b0e571c93c66d5d9e127d4422d26a277d3a2",
+        "sourceRect": [
+          1024,
+          0,
+          512,
+          512
+        ],
+        "sourceKey": "dirt",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          1.12,
+          0.92,
+          0.75,
+          1.0
+        ],
+        "variantMode": "native-material-tint"
+      },
+      "bedrock": {
+        "frame": 9,
+        "image": "/games/code-sentinels/terrain-v6/bedrock.png",
+        "nativeTexture": "Content/UI/v6/terrain/bedrock.png",
+        "sha256": "367d64d852b17144e6a769e4663a27a4d0301bae0094c8ca1e3cd40f598b5e08",
+        "sourceRect": [
+          0,
+          0,
+          512,
+          512
+        ],
+        "sourceKey": "rock",
+        "bitmapPixelsUnmodified": true,
+        "materialTint": [
+          0.7,
+          0.72,
+          0.75,
+          1.0
+        ],
+        "variantMode": "native-material-tint"
+      }
+    },
+    "underground": {
+      "unexcavatedSoil": "soil",
+      "rock": "bedrock",
+      "excavatedFloor": "dirt",
+      "aquifer": "water"
+    },
+    "waterUvAnimation": {
+      "enabled": true,
+      "method": "repeat UV scrolling of the actual water texture within its bbox",
+      "cycleSeconds": 8,
+      "offsetPerCycle": [
+        1,
+        0
+      ],
+      "mixSecondaryFlow": false
+    },
+    "nativeProjection": "UVmapped isometric2:1 ground quad; one instanced texture pass, not one drawcall per cell",
+    "ready": true,
+    "tintsByTerrainId": {
+      "0": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "1": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "2": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "3": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "4": [
+        1.08,
+        1.04,
+        0.91,
+        1.0
+      ],
+      "5": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "6": [
+        0.52,
+        0.5,
+        0.48,
+        1.0
+      ]
+    },
+    "variantMethod": "Unmodified existing texture + native material tint, no offline bitmap color rewriting"
+  },
+  "resourceModelMap": {
+    "strategic-node": {
+      "model": "strategic-node",
+      "representation": "neutral capturable uplink equipment",
+      "ready": true
+    },
+    "ore-node": {
+      "model": "ore-node",
+      "representation": "exposed mineral mesh cluster over terrain texture",
+      "ready": true
+    },
+    "coal-node": {
+      "model": "coal-node",
+      "representation": "exposed mineral mesh cluster over terrain texture",
+      "ready": true
+    }
+  },
+  "transportAliases": {
+    "transport-plane": "cargo-aircraft"
+  },
+  "nativeRuntimeFrames": {
+    "schemaVersion": 1,
+    "format": "native-raster-pages-png-v1",
+    "nativeOnly": true,
+    "index": "Content/Animations/v6/runtime-frames/index.json",
+    "indexSha256": "49af14ddc548993ad0944e2b9ca7de0ba5d6529ce20d843fced918e82e1d44a4",
+    "characters": 7,
+    "characterFrames": 3584,
+    "effects": 16,
+    "effectFrames": 704,
+    "verification": "Content/UI/v6/qa/runtime-frame-derivation-verification.json"
+  }
+}

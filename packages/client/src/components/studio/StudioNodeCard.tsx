@@ -68,6 +68,7 @@ export default function StudioNodeCard({
   onLinkEnd,
 }: StudioNodeCardProps) {
   const renameNode = useStudioStore((s) => s.renameNode);
+  const selectedIds = useStudioStore((s) => s.selectedNodeIds);
   const removeNode = useStudioStore((s) => s.removeNode);
   const openNode = useStudioStore((s) => s.openNode);
   const busyIds = useStudioStore((s) => s.busyIds);
@@ -121,6 +122,7 @@ export default function StudioNodeCard({
     >
       <div className={cn('rounded-t-md', tone.bar)} style={{ height: BAR_H }} />
       <div className="flex items-center gap-1 px-1.5" style={{ height: TITLE_H }}>
+        <AnnotationHandle reference={editorReference('studio', { resourceId: 'main', selection: { nodeIds: selectedIds.includes(node.id) ? selectedIds : [node.id], ...(selectedIds.length < 2 ? { versionId: cur?.id } : {}) } })} label={node.name} />
         <Icon size={11} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
         {editingName ? (
           <input
@@ -215,3 +217,5 @@ export default function StudioNodeCard({
     </div>
   );
 }
+import AnnotationHandle from '../editor/AnnotationHandle';
+import { editorReference } from '@/lib/editorReferences';

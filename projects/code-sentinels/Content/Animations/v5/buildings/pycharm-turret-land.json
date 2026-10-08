@@ -1,0 +1,514 @@
+{
+  "id": "pycharm-turret-land",
+  "image": "pycharm-turret-land.png",
+  "width": 2066,
+  "height": 1034,
+  "frames": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "boxes": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "frameCount": 32,
+  "fps": 16,
+  "loop": false,
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frameSize": [
+    256,
+    256
+  ],
+  "crop": "none",
+  "chromaKey": "magenta",
+  "alphaMode": "straight",
+  "chromaProcessing": "per-frame flat-corner estimate, exterior-connected color key, foreground structure protected",
+  "variableBackgroundPalette": true,
+  "edgeFeather": {
+    "widthPixels": 6,
+    "frameSize": 256,
+    "innerPixelsUnchanged": 244,
+    "algorithm": "alpha-only smoothstep"
+  },
+  "sourceDerivedGarbageMatte": {
+    "enabled": false,
+    "purpose": null
+  },
+  "sourceDerivedInnerMatte": {
+    "enabled": false,
+    "purpose": "preserve fixed machine panels when provider background hue overlaps original paint"
+  },
+  "sourceFrameCount": 124,
+  "sourceFps": 24.0,
+  "sourceDurationSec": 5.17,
+  "selectedSourceFrames": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    32,
+    36,
+    40,
+    44,
+    48,
+    52,
+    56,
+    60,
+    63,
+    67,
+    71,
+    75,
+    79,
+    83,
+    87,
+    91,
+    95,
+    99,
+    103,
+    107,
+    111,
+    115,
+    119,
+    123
+  ],
+  "uniqueFrames": 32,
+  "sourceSize": [
+    384,
+    384
+  ],
+  "sourceCropBox": [
+    0,
+    0,
+    384,
+    384
+  ],
+  "sourceActionWindowSec": [
+    0,
+    5.125
+  ],
+  "minimumSourceMarginsLTRB": [
+    42,
+    50,
+    24,
+    80
+  ],
+  "clippedSourceFrames": 0,
+  "referenceGeometry": {
+    "canvas": [
+      1024,
+      1024
+    ],
+    "originalAlphaBbox": [
+      0,
+      57,
+      1199,
+      1254
+    ],
+    "fittedSize": [
+      656,
+      655
+    ],
+    "groundTopLeft": [
+      184,
+      185
+    ],
+    "groundBaseY": 840,
+    "airOffsetY": -85
+  },
+  "provenance": {
+    "method": "image-to-video-extracted-frames",
+    "model": "MiniMax-H3-Base FL2VA INT8 + Turbo8",
+    "taskId": "013acd06-a4e0-599d-b693-40ad7c6ab1e4",
+    "video": "SourceMedia/buildings-v5/pycharm-turret-land.mp4",
+    "videoSha256": "87a26fb5a69d4e2d354469652d25da18bee9fe0b19bc0f848e2ec85d5af8ef85",
+    "sourceImage": "Content/UI/v5/building-references/pycharm-turret.png",
+    "request": "pipeline/v5/jobs/pycharm-turret-land/request.json"
+  }
+}

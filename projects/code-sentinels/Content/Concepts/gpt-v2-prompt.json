@@ -1,0 +1,7 @@
+{
+  "tool": "built-in image_gen",
+  "reference": "Content/Concepts/gpt-dragon.png",
+  "output": "Content/Concepts/gpt-dragon-v2.png",
+  "reason": "Expand blank margins to prevent animated wing tips being cropped",
+  "prompt": "Edit the attached game sprite image. PRESERVE the exact existing white-haired purple-eyed horned GPT dragon-girl character identity, drawing style, costume, earrings, wings and waist-up projection ring. Make only a framing change: SCALE THE ENTIRE FIGURE DOWN to sixty percent of the canvas width, keeping her centered. The widest wing tips must stop at x=20% and x=80%; leave a uniform PURE MAGENTA #FF00FF blank margin of at least 20% of canvas width on BOTH left and right sides, at least 18% above the highest horn, and at least 18% below the projection ring. This is essential because the following video will animate wing flaps without touching or leaving the frame. Do not extend the body or add legs. The same waist-up figure, same closed-mouth smile, same full wings. All surrounding pixels pure magenta with no texture, no shadows, no scene, no text, no added props. Square output. Change only framing and scale."
+}

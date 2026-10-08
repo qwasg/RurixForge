@@ -1,5 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ApiError, CreateSessionRequest, HealthStatus } from '@forge/protocol';
@@ -43,6 +44,18 @@ const MIME: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
 };
+
+/** 本机登录用户名(账户卡/首页问候);无 passwd 条目等环境退回环境变量,再取不到则缺省。 */
+function localUserName(): string | undefined {
+  try {
+    const name = os.userInfo().username.trim();
+    if (name !== '') return name;
+  } catch {
+    // 容器/受限账户下 userInfo 可能抛错
+  }
+  const env = (process.env.USERNAME ?? process.env.USER ?? '').trim();
+  return env === '' ? undefined : env;
+}
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -138,6 +151,8 @@ export const httpPlugin: PluginFn = (ctx) => {
     if (proxy && (await proxy.handle(req, res, pathname))) return;
 
     if (method === 'GET' && pathname === '/api/forge/health') {
+      const userName = localUserName();
+      const agentd = proxy ? await proxy.probeHealth() : undefined;
       sendJson(res, 200, {
         status: 'ok',
         service: 'forge-host',
@@ -145,6 +160,10 @@ export const httpPlugin: PluginFn = (ctx) => {
         port: currentPort,
         uptimeSec: (Date.now() - startedAt) / 1000,
         time: new Date().toISOString(),
+        platform: process.platform,
+        node: process.versions.node,
+        ...(userName ? { user: { name: userName } } : {}),
+        ...(agentd ? { agentd } : {}),
       } satisfies HealthStatus);
       return;
     }
@@ -221,6 +240,10 @@ export const httpPlugin: PluginFn = (ctx) => {
 
   const server = http.createServer((req, res) => {
     setCors(res);
+    // D-044:host 写出的每个响应(静态壳、SPA 回退、自有路由、404/500、OPTIONS、代理)都禁止被任何页面
+    // 框住——UltraPlan 试玩 Demo iframe 自导航回应用源即被拒,浏览器直开无 Electron 守卫时同样生效。
+    // 只加 frame-ancestors,其余 CSP 指令不动;forgeProxy 出口的同名同值头由 writeHead 覆盖,无冲突。
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();

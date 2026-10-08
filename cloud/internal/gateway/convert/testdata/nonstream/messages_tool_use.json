@@ -1,0 +1,13 @@
+{
+  "id": "msg_ns2",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-5",
+  "content": [
+    {"type": "text", "text": "Checking."},
+    {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris", "days": [1, 2]}},
+    {"type": "tool_use", "id": "toolu_2", "name": "get_time", "input": {}}
+  ],
+  "stop_reason": "tool_use",
+  "usage": {"input_tokens": 120, "output_tokens": 45}
+}

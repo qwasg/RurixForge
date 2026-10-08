@@ -1,0 +1,34 @@
+{
+  "id": "pycharm",
+  "category": "turret",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "frameSize": [
+    384,
+    384
+  ],
+  "pivot": [
+    0.5,
+    0.7
+  ],
+  "sourceModel": "Content/Models/v6/pycharm.blend",
+  "glb": "Content/Models/v6/pycharm.glb",
+  "method": "Blender Cycles CPU render from authored 3D geometry",
+  "samples": 12,
+  "camera": "orthographic 30-degree isometric",
+  "status": "rendered-needs-review",
+  "softwareBrand": {
+    "reference": "Content/Models/v6/branding/pycharm.png",
+    "sha256": "05bb66fa22f6c7055e134b1e24f6347ce9dd1e72362187f623d4a8282ec1b911",
+    "source": "Previously verified JetBrains official brand PNG",
+    "bitmapModified": false
+  }
+}

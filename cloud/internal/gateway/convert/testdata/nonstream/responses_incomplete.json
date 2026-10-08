@@ -1,0 +1,9 @@
+{
+  "id": "resp_ns3",
+  "status": "incomplete",
+  "incomplete_details": {"reason": "max_output_tokens"},
+  "output": [
+    {"id": "msg_3", "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Cut short"}]}
+  ],
+  "usage": {"input_tokens": 9, "output_tokens": 4, "total_tokens": 13}
+}

@@ -205,6 +205,8 @@
 
 ## Errata(只追加区)
 
+- **E-05-004(2026-10-06,D-045)——gen-image / asset-pipeline / engine-scene 工具面扩展(as-built)**:①gen-image `gen_image` 增 `aspect`(square|landscape|portrait;横竖版直出 1536×1024 / 1024×1536)、`quality`、`background`;新工具 `gen_edit{prompt, imageRefs[1..4], maskRef?, aspect?, quality?, background?, n?, seed?, backend?}`(img2img;后端不支持 → `GEN_UNSUPPORTED`;sidecar `op:"edit"` 与 `sourceRefs`)。工具数 6→7。②asset-pipeline 新增 `font_list{includeSystem?, query?, cjkOnly?, limit?}`(项目字体含 GUID + 系统字体候选)与 `font_import{sourcePath, destFolder?="Fonts"}`(校验后入库,provenance 记来源与授权提醒)。③engine-scene 新增 `text_create`(实体 + Text 组件 + TRS,形态同 `sprite_create`);`viewport_frame` 增 `camera: editor|scene`(scene = 编辑态也用场景相机)与 `exact: bool`(严格按请求尺寸离屏出帧、不让位推流、不喂共享纹理,`framePath` 回 `exact_offscreen`;可能触发一次会话重建)。rurix 与 Godot 两条取帧路径共用 `rpc::frame_options` 校验:非法值(`camera` 不是 editor|scene、`exact` 不是布尔)→ -32602;`camera:"scene"` 而场景没有启用的 Camera → 域错误,不静默回落编辑器相机。④agentd 侧:`gen_edit / text_create / font_import` 入 `WRITE_TOOLS`;`gen_edit` 超时同 gen_image(360s),`font_list` 40s。
+
 - **E-05-002(2026-09-03,PvZ 可玩化波 / D-037)——engine-scene 工具面加一件 `logic_inject_pointer`**:`{ x, y, action?="click", width?, height? }`,x/y 为归一化视口坐标(0..1,左上原点),play 态限定。宿主按**游戏相机**(PIE 画面 = 场景 Camera 实体;无则编辑器相机)把点反投影到游戏平面(2d 场景 z=0 / 3d 场景 y=0),**同一逻辑帧按序**入队四条 `logic.inject_input`:`<action>_x` / `<action>_y` / `<action>_z`(世界坐标)+ `<action>`(value=1)。图侧用 `var.set(name=<action pin>)` 即可按动作名接住坐标;只认 `<action>` 正值的旧图(breakout/maze/旧 PvZ demo)行为不变。视口 WS 直连通道同契约(`{type:"pointer", action, x, y}`,aspect 取该订阅者流尺寸)。qa-tester / reviewer 子代理白名单同步加入(试玩即可「点格子」而非只会键盘)。engine-scene 工具 45→46(KNOWN_TOOLS 同步)。
 
 | 工具 | 参数 | 返回 | 错误码 |

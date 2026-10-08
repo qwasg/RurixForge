@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="32" viewBox="0 0 256 32" fill="none" role="img" aria-labelledby="diagonal-hazard-strip-title diagonal-hazard-strip-desc"><title id="diagonal-hazard-strip-title">diagonal hazard strip</title><desc id="diagonal-hazard-strip-desc">Original seamless amber hazard stripe. Horizontal repeat; transparent top and bottom margins.</desc>
+<defs><pattern id="dh-stripes" patternUnits="userSpaceOnUse" width="32" height="32"><rect width="32" height="32" fill="#EDB63B"/><path d="M-16 32L16 0M16 32L48 0" stroke="#101316" stroke-width="15"/></pattern></defs>
+<path d="M0 4H256V28H0Z" fill="url(#dh-stripes)"/><path d="M0 1H256M0 31H256" stroke="#F2F0E9" stroke-opacity=".42"/></svg>

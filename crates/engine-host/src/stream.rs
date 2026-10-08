@@ -28,14 +28,15 @@ use serde_json::{json, Value};
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::{Message, WebSocket};
 
+use crate::render::{self, FramePath, FrameRequester, SnapshotParams};
 use crate::rpc::{self, HostState, PlayState};
 
 /// 帧消息头长度(magic4 + frameId4 + w2 + h2 + flags4 + draws4)。
 pub const FRAME_HEADER_LEN: usize = 20;
 /// 推流尺寸上限:与浏览器侧 1280 封顶一致;同时保证遗留 MCP 腿按流尺寸出帧时
 /// base64 JSON 响应(≈4.9MB)仍在 8MB TCP 帧上限内。
-const MAX_W: u32 = 1280;
-const MAX_H: u32 = 720;
+pub(crate) const MAX_W: u32 = 1280;
+pub(crate) const MAX_H: u32 = 720;
 /// 文本消息队列上限(status/error 小消息;溢出丢最旧,绝不堆积内存)。
 const TEXT_QUEUE_CAP: usize = 8;
 /// 空闲轮询粒度:无订阅者 50ms;编辑态 rev 未变 15ms(≈66Hz 检查,开销可忽略)。
@@ -231,6 +232,9 @@ pub fn spawn(state: Arc<Mutex<HostState>>) -> std::io::Result<u16> {
     }
     thread::spawn(move || {
         for conn in listener.incoming() {
+            if crate::core_stopping() {
+                return; // 关停:wake() 的那次连接把 accept 唤醒到这里
+            }
             let Ok(sock) = conn else { continue };
             let state = Arc::clone(&state);
             let reg = Arc::clone(&reg);
@@ -238,6 +242,13 @@ pub fn spawn(state: Arc<Mutex<HostState>>) -> std::io::Result<u16> {
         }
     });
     Ok(port)
+}
+
+/// 关停时唤醒阻塞在 accept 上的推流线程(连一下自己的端口即可;未启动则什么都不做)。
+pub(crate) fn wake() {
+    if let Some(i) = INFO.get() {
+        let _ = TcpStream::connect_timeout(&std::net::SocketAddr::from(([127, 0, 0, 1], i.port)), Duration::from_millis(200));
+    }
 }
 
 /// IO 空转错误(读超时;非连接终结)。
@@ -283,6 +294,7 @@ fn serve_ws(sock: TcpStream, state: &Mutex<HostState>, reg: &Registry) {
                 }
             }
             Ok(Message::Ping(_) | Message::Pong(_)) => continue,
+            Ok(Message::Close(_)) => { let _ = ws.flush(); return; }
             Ok(_) => return,
             Err(_) => return, // 超时未订阅/断连:结束
         }
@@ -328,7 +340,12 @@ fn serve_ws(sock: TcpStream, state: &Mutex<HostState>, reg: &Registry) {
         // 3) 读(5ms 超时;超时即空转回到发送步)。
         match ws.read() {
             Ok(Message::Text(t)) => handle_client_msg(&t, state, reg, sub_id),
-            Ok(Message::Close(_)) => break 'conn,
+            Ok(Message::Close(_)) => {
+                // read() queues tungstenite's close reply. Flush it before
+                // dropping TCP so intentional reconnects complete normally.
+                let _ = ws.flush();
+                break 'conn;
+            }
             Ok(_) => {}
             Err(e) if is_idle(&e) => {}
             Err(_) => break 'conn,
@@ -407,6 +424,59 @@ fn encode_frame(frame_id: u32, f: &crate::viewport::FramePixels, playing: bool) 
     out
 }
 
+/// 推流腿的一帧:rurix 同步出帧(Owned);Pipelined 从 FrameBus 取(Shared,02 §4.5 第 3/4/6 项)。
+enum StreamFrame {
+    Owned(crate::viewport::FramePixels),
+    Shared(Arc<crate::render::bus::FrameOut>),
+}
+
+impl StreamFrame {
+    fn pixels(&self) -> &crate::viewport::FramePixels {
+        match self {
+            StreamFrame::Owned(f) => f,
+            StreamFrame::Shared(o) => &o.pixels,
+        }
+    }
+
+    /// 第 4 项:rurix = 原 feed_share_frame;Pipelined = render::sink::feed_share(L1 帧不再推 fence)。
+    fn feed_share(&self) -> Result<(&'static str, bool), String> {
+        match self {
+            StreamFrame::Owned(f) => rpc::feed_share_frame(f),
+            StreamFrame::Shared(o) => crate::render::sink::feed_share(o),
+        }
+    }
+}
+
+/// 第 3 项 Pipelined 分支:extract → submit(Main, list, None) → 等 seq ≥ 本快照、尺寸等于本订阅且带像素的帧(上限 1 s);
+/// 其他请求者的帧(尺寸不同 / format=none)跳过。超时:首帧前 `RENDER_NOT_READY:`,之后 `RENDER_TIMEOUT:`。
+fn pipelined_frame(
+    p: &dyn crate::render::backend::PipelinedRender,
+    snap: &crate::render::snapshot::RenderSnapshot,
+) -> Result<Arc<crate::render::bus::FrameOut>, String> {
+    use crate::render::bus::Channel;
+    let list = render::pipelined_list(render::backend(), snap)?;
+    p.submit(Channel::Main, list, None)?;
+    let want = (snap.params.width, snap.params.height);
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut after = snap.seq.saturating_sub(1);
+    loop {
+        let remain = deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+        match p.bus(Channel::Main).wait_newer(after, remain) {
+            Some(out) if (out.pixels.width, out.pixels.height) == want && !out.pixels.rgba8.is_empty() => return Ok(out),
+            Some(out) => after = out.seq,
+            None => break,
+        }
+    }
+    Err(if p.ready() {
+        format!("RENDER_TIMEOUT: 推流等帧超时(seq={} {}x{})", snap.seq, want.0, want.1)
+    } else {
+        format!("RENDER_NOT_READY: 渲染后端尚未出首帧(seq={})", snap.seq)
+    })
+}
+
 /// 推流主循环:快照(短锁)→ 锁外渲染 → 喂共享纹理 → 广播;
 /// Running 全速(≤maxFps≤60),编辑态按 scene_rev/cfg_rev 空闲跳帧;
 /// 渲染失败(DEV_ENV_DEGRADE 等)同因去重广播 error 并 1s 限速重试——绝不伪造帧。
@@ -419,7 +489,13 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
     let mut sec_frames = 0u32;
     let mut fps = 0u32;
     let mut last_status = Instant::now();
+    // 后端是进程级单例(I10):出帧形态在循环外取一次。
+    let path = render::backend().path();
     loop {
+        // CoreHandle::shutdown(AcceptMode::Thread)才会置位;rurix bin 从不置位。
+        if crate::core_stopping() {
+            return;
+        }
         let Some(cfg) = reg.primary_cfg() else {
             rendered = None;
             last_err = None;
@@ -431,7 +507,8 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
 
         // ── 快照(短锁):场景克隆 + 相机 + play 态;渲染在锁外执行,
         // 物理线程与输入注入不再被帧通道阻塞(旧轮询腿的头号卡顿源)。──
-        let (scene, cam, play, rev, vp_override) = {
+        // render::snapshot 与原 (scene, cam, play, rev, vp_override) 元组同字段、同时机(02 §4.5 第 2 项)。
+        let snap = {
             let st = rpc::lock(state);
             let rev = st.scene_rev;
             let play = st.play;
@@ -440,38 +517,44 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
                 thread::sleep(Duration::from_millis(IDLE_UNCHANGED_MS));
                 continue;
             }
-            let aspect = cfg.width as f32 / cfg.height.max(1) as f32;
-            let vp = if play != PlayState::Edit {
-                crate::viewport::scene_camera_view_proj(st.active(), aspect)
-            } else {
-                None
+            let params = SnapshotParams { scene_camera: false,
+                width: cfg.width,
+                height: cfg.height,
+                selected: cfg.selected,
+                want_readback: true,
+                want_stats: false, // 推流路径跳过 nonzero 全帧扫描(诊断统计留给遗留腿)
+                requester: FrameRequester::Stream,
             };
-            (st.active().clone(), st.camera, play, rev, vp)
+            let seq = match path {
+                FramePath::Pipelined(p) => p.next_seq(),
+                FramePath::Immediate(_) => 0,
+            };
+            render::snapshot(&st, params, seq)
         };
+        let (play, rev) = (snap.play, snap.scene_rev);
 
-        match crate::viewport::render_scene_frame(
-            &scene,
-            &cam,
-            cfg.selected,
-            cfg.width,
-            cfg.height,
-            true,
-            false, // 推流路径跳过 nonzero 全帧扫描(诊断统计留给遗留腿)
-            vp_override,
-        ) {
-            Ok(f) => {
+        // 第 3 项:Immediate 分支的八个实参与原 render_scene_frame 调用一一相同(snap.input());
+        // Pipelined 分支:extract → submit(Main) → 等 FrameBus 上 seq ≥ 本快照、尺寸等于本订阅的帧。
+        let frame = match path {
+            FramePath::Immediate(r) => r.render(snap.input()).map(StreamFrame::Owned),
+            FramePath::Pipelined(p) => pipelined_frame(p, &snap).map(StreamFrame::Shared),
+        };
+        match frame {
+            Ok(frame) => {
+                let f = frame.pixels();
                 // 共享纹理喂帧(presenter 腿自动获得推流节奏;失败随 status 如实带出)。
-                let share = rpc::feed_share_frame(&f);
+                let share = frame.feed_share();
                 {
                     let mut st = rpc::lock(state);
                     st.frames += 1;
                     st.last_tris = f.triangles;
+                    rpc::flush_text_issues(&mut st);
                     if matches!(share, Ok((_, true))) {
                         st.cpu_uploads += 1;
                     }
                 }
                 let playing = play == PlayState::Running;
-                reg.broadcast_frame(Arc::new(encode_frame(frame_id, &f, playing)));
+                reg.broadcast_frame(Arc::new(encode_frame(frame_id, f, playing)));
                 frame_id = frame_id.wrapping_add(1);
                 rendered = Some((rev, cfg_rev));
                 last_err = None;

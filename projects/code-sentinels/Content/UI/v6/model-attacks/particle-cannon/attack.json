@@ -1,0 +1,36 @@
+{
+  "id": "particle-cannon",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 12,
+  "fps": 18,
+  "loop": false,
+  "sourceModel": "Content/Models/v6/particle-cannon-attack.blend",
+  "method": "Actual Blender barrel recoil / launcher and emitter mechanism motion / energized physical material, CPU render",
+  "recoilingMeshes": [
+    "split accelerator rail",
+    "split accelerator rail.001",
+    "magnetic coil",
+    "magnetic coil.001",
+    "magnetic coil.002",
+    "energy core",
+    "split accelerator rail.002",
+    "split accelerator rail.003",
+    "magnetic coil.003",
+    "magnetic coil.004",
+    "magnetic coil.005",
+    "energy core.001"
+  ],
+  "actuatedMeshes": [],
+  "emissiveMaterials": 3,
+  "wholeImageRotation": false,
+  "projectileAndImpact": "External separately verified true-video VFX and actual native ballistic entities"
+}

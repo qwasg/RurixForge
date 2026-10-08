@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatColumn from '@/components/shell/ChatColumn';
+import { greetingFor } from '@/lib/greeting';
 import { useChatStore, type ChatMsg } from '@/lib/chatStore';
+import { useSystemStore } from '@/lib/systemStore';
 import { HOME_INPUT_MIN } from '@/lib/chatVariant';
 import { useComposerPrefillStore } from '@/lib/composerStore';
 import { useSessionStore, type ForgeSession } from '@/lib/sessionStore';
@@ -18,6 +20,18 @@ const initialChat = useChatStore.getState();
 const initialSessions = useSessionStore.getState();
 const initialWorkbench = useWorkbenchStore.getState();
 const initialPrefill = useComposerPrefillStore.getState();
+const initialSystem = useSystemStore.getState();
+
+const recommendations = (mode = '3d') => ({
+  source: 'agent-capabilities',
+  context: { gameMode: mode, projectName: '测试项目', workspaceId: null, agentEngine: 'local', agentKind: 'coding', permissionMode: 'bypass' },
+  recommendations: [
+    { id: 'greybox', label: '后台搭建推荐', desc: '检查并复用当前项目', draft: mode === '2d' ? '后台推荐：搭建当前 2D 项目的横版关卡' : '后台推荐：搭建当前 3D 项目的灰盒关卡', mode: 'build', image: 'level' },
+    { id: 'plan', label: '后台规划推荐', desc: '按现有资产规划', draft: '后台推荐：先检查现有资产，再制定实施计划', mode: 'plan', image: 'plan' },
+    { id: 'debug', label: '后台诊断推荐', desc: '定位当前项目的画面问题', draft: '后台推荐：检查相机与精灵', mode: 'debug', image: 'debug' },
+  ],
+});
+
 
 function session(id: string): ForgeSession {
   return {
@@ -25,6 +39,7 @@ function session(id: string): ForgeSession {
     title: '',
     status: 'idle',
     agentKind: 'coding',
+    agentEngine: 'local',
     selectedModelId: null,
     thinkingEnabled: false,
     reasoningEffort: null,
@@ -49,8 +64,9 @@ beforeEach(() => {
   useSessionStore.setState(initialSessions, true);
   useWorkbenchStore.setState(initialWorkbench, true);
   useComposerPrefillStore.setState(initialPrefill, true);
+  useSystemStore.setState(initialSystem, true);
   globalThis.localStorage?.clear();
-  vi.stubGlobal('fetch', mockForgeBackend({}, { '/api/forge/skills/list': { skills: [] } }));
+  vi.stubGlobal('fetch', mockForgeBackend({}, { '/api/forge/skills/list': { skills: [] }, '/api/forge/agent/recommendations': recommendations() }));
 });
 
 afterEach(() => {
@@ -102,11 +118,44 @@ describe('<ChatColumn variant="home" /> 首屏', () => {
     expect(shell.style.height).toBe(`${HOME_INPUT_MIN}px`);
   });
 
-  it('起手式 chip → 预填输入框并切模式(不直接发)', () => {
+  it('后台推荐 → 精确预填输入框并切模式(不直接发)', async () => {
     render(<ChatColumn variant="home" />);
-    fireEvent.click(screen.getByTestId('home-quick-plan'));
-    expect(screen.getByTestId('composer-input')).toHaveValue('给我一份从零做出可玩 demo 的分步计划');
+    fireEvent.click(await screen.findByTestId('home-quick-plan'));
+    expect(screen.getByTestId('composer-input')).toHaveValue('后台推荐：先检查现有资产，再制定实施计划');
     expect(screen.getByTestId('composer-mode-chip')).toHaveTextContent('Plan');
+  });
+
+  it('问候与工作区保留，首页状态标签移除；2D 推荐来自后台', async () => {
+    vi.stubGlobal('fetch', mockForgeBackend({}, { '/api/forge/skills/list': { skills: [] }, '/api/forge/agent/recommendations': recommendations('2d') }));
+    useSystemStore.setState({
+      checked: true,
+      online: true,
+      snapshotOk: true,
+      health: { status: 'ok', user: { name: 'wcj' } },
+      catalog: [{ id: 'openai-compat', label: 'openai-compatible(未配置)', provider: 'openai-compat', availability: 'needs-key' }],
+      defaultModelId: 'openai-compat',
+      project: { name: 'Code Sentinels', mode: '2d' },
+    });
+    render(<ChatColumn variant="home" />);
+    const hero = screen.getByTestId('home-hero');
+    expect(hero.textContent).toMatch(/(夜深了|早上好|中午好|下午好|晚上好)，wcj/);
+    expect(hero).toHaveTextContent('今天想搭点什么？');
+    expect(screen.queryByTestId('home-status')).not.toBeInTheDocument();
+    expect(screen.getByTestId('home-workspace-chip')).toHaveTextContent('Code Sentinels');
+    expect(screen.getByTestId('home-workspace-chip')).toHaveTextContent('2D');
+    // 2D 项目:起手式换成横版关卡话术
+    const card = await screen.findByTestId('home-quick-greybox');
+    expect(screen.getByTestId('home-quick-starts')).toHaveAttribute('data-mode', '2d');
+    fireEvent.click(card);
+    expect(screen.getByTestId('composer-input')).toHaveValue('后台推荐：搭建当前 2D 项目的横版关卡');
+  });
+
+  it('greetingFor 时段划分', () => {
+    expect(greetingFor(3)).toBe('夜深了');
+    expect(greetingFor(8)).toBe('早上好');
+    expect(greetingFor(12)).toBe('中午好');
+    expect(greetingFor(15)).toBe('下午好');
+    expect(greetingFor(21)).toBe('晚上好');
   });
 
   it('有消息:hero 收起,消息流铺开', () => {
@@ -170,6 +219,7 @@ describe('<ChatColumn variant="home" /> 无会话直发', () => {
 
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalled());
     expect(create).toHaveBeenCalledWith(undefined, {
+      agentEngine: 'local',
       selectedModelId: 'openai-compat',
       thinkingEnabled: true,
       reasoningEffort: 'max',

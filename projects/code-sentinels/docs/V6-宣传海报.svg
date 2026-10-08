@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1350" viewBox="0 0 2400 1350">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071017"/><stop offset="0.55" stop-color="#0c1820"/><stop offset="1" stop-color="#160f22"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#142633" stop-opacity=".96"/><stop offset="1" stop-color="#0b151d" stop-opacity=".96"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#34e7ff"/><stop offset="1" stop-color="#1a8cff"/></linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#ffd36a"/><stop offset="1" stop-color="#ff833d"/></linearGradient>
+    <filter id="glowC"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="glowA"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M42 0H0V42" fill="none" stroke="#34e7ff" stroke-opacity=".08"/></pattern>
+    <style>
+      .title{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:72px;font-weight:800;letter-spacing:8px;fill:#f3fbff}
+      .subtitle{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:23px;letter-spacing:5px;fill:#87a9b5}
+      .h{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:28px;font-weight:700;fill:#eaf9ff}
+      .body{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:21px;fill:#b8d3da}
+      .small{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:17px;fill:#7e9aa5}
+      .chip{font-family:'Microsoft YaHei','Noto Sans CJK SC',sans-serif;font-size:18px;font-weight:700;fill:#071017}
+      .mono{font-family:Consolas,'Microsoft YaHei',monospace;font-size:17px;letter-spacing:2px;fill:#88a8b1}
+      .line{stroke:#2d5361;stroke-width:2;fill:none}
+    </style>
+  </defs>
+
+  <rect width="2400" height="1350" fill="url(#bg)"/>
+  <rect width="2400" height="1350" fill="url(#grid)"/>
+  <path d="M0 1050L520 710 930 880 1430 560 2400 980V1350H0Z" fill="#071217" opacity=".72"/>
+  <path d="M0 1070L580 760 900 930 1430 610 2400 1030" class="line" opacity=".7"/>
+
+  <!-- Header -->
+  <text x="90" y="112" class="mono">CODE SENTINELS / VERTICAL FRONT / V6 LOCAL COMMAND</text>
+  <text x="86" y="205" class="title">编译防线 V6</text>
+  <text x="92" y="252" class="subtitle">把基地建到地下，把算力送上高层</text>
+  <rect x="1810" y="80" width="220" height="44" rx="22" fill="url(#cyan)"/>
+  <text x="1920" y="109" text-anchor="middle" class="chip">试玩候选</text>
+  <rect x="2045" y="80" width="260" height="44" rx="22" fill="#182b35" stroke="#31535d"/>
+  <text x="2175" y="109" text-anchor="middle" class="small" fill="#d9f7ff">30—45 MIN · SOLO / PVP</text>
+
+  <!-- Left rules panel -->
+  <rect x="84" y="330" width="450" height="710" rx="20" fill="url(#panel)" stroke="#28505d"/>
+  <rect x="84" y="330" width="450" height="8" rx="4" fill="url(#cyan)"/>
+  <text x="120" y="392" class="h">四条资源链</text>
+  <text x="120" y="425" class="small">每一条都必须真实连通、运输、结算</text>
+  <circle cx="135" cy="491" r="22" fill="#ffb33e" filter="url(#glowA)"/><text x="135" y="499" text-anchor="middle" class="chip">¥</text>
+  <text x="180" y="487" class="h">经费</text><text x="180" y="516" class="body">建造、采购、研究、改线</text>
+  <circle cx="135" cy="590" r="22" fill="#ffc24d" filter="url(#glowA)"/><path d="M126 590h18M135 581v18" stroke="#071017" stroke-width="4"/>
+  <text x="180" y="586" class="h">电力</text><text x="180" y="615" class="body">风 / 水 / 煤 / 核 → 电力线</text>
+  <circle cx="135" cy="689" r="22" fill="#31dfff" filter="url(#glowC)"/><path d="M127 683h16M127 692h16" stroke="#071017" stroke-width="4"/>
+  <text x="180" y="685" class="h">算力</text><text x="180" y="714" class="body">数据中心 + GPU → AI / 网络防御</text>
+  <circle cx="135" cy="788" r="22" fill="#d58dff" filter="url(#glowC)"/><path d="M125 788h20M135 778v20" stroke="#071017" stroke-width="4"/>
+  <text x="180" y="784" class="h">科研数据</text><text x="180" y="813" class="body">战略节点争夺 → 高阶科技</text>
+  <path d="M120 862H498" class="line"/>
+  <text x="120" y="910" class="h">关键纪律</text>
+  <text x="120" y="948" class="body">矿石不到仓库，不算收入</text>
+  <text x="120" y="982" class="body">弹药不到前线，单位就停火</text>
+  <text x="120" y="1016" class="body">AI 离网后，只能消耗随身算力</text>
+
+  <!-- Central layered base diagram -->
+  <g transform="translate(590 320)">
+    <text x="0" y="0" class="h">多层基地剖面 · 2:1 等距施工</text>
+    <text x="0" y="33" class="small">拖地基 → 毛坯 → 房间 → 设备 → 网络</text>
+    <path d="M110 590L520 365 1010 560 580 800Z" fill="#0d2630" stroke="#3adcf2" stroke-width="3"/>
+    <path d="M155 505L525 300 965 470 570 695Z" fill="#122d39" stroke="#2d8194" stroke-width="3"/>
+    <path d="M200 420L530 240 920 390 565 590Z" fill="#153a46" stroke="#2d8194" stroke-width="3"/>
+    <path d="M245 335L535 180 875 310 560 490Z" fill="#194754" stroke="#35b9cf" stroke-width="3"/>
+    <path d="M290 250L540 120 830 230 555 390Z" fill="#205867" stroke="#43dff2" stroke-width="3"/>
+    <path d="M335 165L545 60 785 155 550 290Z" fill="#286a7a" stroke="#74efff" stroke-width="3"/>
+    <!-- underground levels -->
+    <path d="M110 590L520 365 1010 560 580 800" fill="none" stroke="#ff72dc" stroke-width="7" stroke-dasharray="15 10" opacity=".7"/>
+    <path d="M155 505L525 300 965 470" fill="none" stroke="#ff72dc" stroke-width="4" opacity=".55"/>
+    <!-- floors labels -->
+    <g class="mono">
+      <text x="50" y="675">B2</text><text x="50" y="595">B1</text><text x="50" y="505">1F</text><text x="50" y="420">2F</text><text x="50" y="335">3F</text><text x="50" y="250">4F</text><text x="50" y="165">5F</text><text x="50" y="80">6F</text>
+    </g>
+    <!-- components -->
+    <rect x="440" y="265" width="175" height="90" rx="12" fill="#0b2028" stroke="#39e9ff" stroke-width="3"/>
+    <text x="527" y="305" text-anchor="middle" class="h">数据中心</text><text x="527" y="333" text-anchor="middle" class="small">GPU / 算力</text>
+    <rect x="655" y="178" width="150" height="80" rx="12" fill="#1c2934" stroke="#ffc24d" stroke-width="3"/>
+    <text x="730" y="213" text-anchor="middle" class="h">研究所</text><text x="730" y="239" text-anchor="middle" class="small">科技分支</text>
+    <path d="M350 90L445 140 550 120 690 185 835 155" fill="none" stroke="#ffad45" stroke-width="8" filter="url(#glowA)"/>
+    <path d="M290 250L440 300 615 310 730 218" fill="none" stroke="#38e9ff" stroke-width="7" filter="url(#glowC)"/>
+    <g fill="#ffd36a" stroke="#5b3418" stroke-width="2"><path d="M300 52l10 21 23 3-17 16 4 23-20-11-21 11 4-23-17-16 23-3z"/><path d="M883 312l10 21 23 3-17 16 4 23-20-11-21 11 4-23-17-16 23-3z"/></g>
+    <text x="730" y="875" class="small">电力线 = 橙色　算力线 = 青色　地下空间 = 紫色虚线</text>
+  </g>
+
+  <!-- Right tech panel -->
+  <rect x="1850" y="330" width="466" height="710" rx="20" fill="url(#panel)" stroke="#28505d"/>
+  <rect x="1850" y="330" width="466" height="8" rx="4" fill="url(#amber)"/>
+  <text x="1884" y="392" class="h">五条科技路线</text>
+  <text x="1884" y="425" class="small">主修与兼修：强项、代价、取舍</text>
+  <g>
+    <rect x="1884" y="468" width="390" height="54" rx="12" fill="#213f4b"/><text x="1910" y="503" class="h" fill="#77eaff">速度</text><text x="2020" y="503" class="body">机动 / 射速 / 快速补给</text>
+    <rect x="1884" y="536" width="390" height="54" rx="12" fill="#243747"/><text x="1910" y="571" class="h" fill="#83d5ff">网安</text><text x="2020" y="571" class="body">拦截 / 抗干扰 / 运输保护</text>
+    <rect x="1884" y="604" width="390" height="54" rx="12" fill="#382e4a"/><text x="1910" y="639" class="h" fill="#c9a7ff">算法</text><text x="2020" y="639" class="body">标记 / 预测 / 贯穿</text>
+    <rect x="1884" y="672" width="390" height="54" rx="12" fill="#49352f"/><text x="1910" y="707" class="h" fill="#ffc36b">科研</text><text x="2020" y="707" class="body">粒子 / 结构破坏 / 轨道</text>
+    <rect x="1884" y="740" width="390" height="54" rx="12" fill="#293a38"/><text x="1910" y="775" class="h" fill="#9de5bf">轻量</text><text x="2020" y="775" class="body">低费 / 便携 / 分散部署</text>
+  </g>
+  <path d="M1884 830H2275" class="line"/>
+  <text x="1884" y="877" class="h">硬杀伤 T1 → T5</text>
+  <text x="1884" y="914" class="body">机枪 · 坦克 · 火炮 · 粒子炮 · 天基打击</text>
+  <text x="1884" y="954" class="body">直射 · 抛物线 · 制导 · 光束 · 延迟区域</text>
+  <text x="1884" y="1000" class="small">每次命中都要面对墙体、楼板、护盾和结构衰减</text>
+
+  <!-- Bottom victory ribbon -->
+  <rect x="84" y="1110" width="2232" height="150" rx="22" fill="#091923" stroke="#2e7280" stroke-width="2"/>
+  <circle cx="145" cy="1185" r="34" fill="url(#amber)" filter="url(#glowA)"/><path d="M145 1163v44M123 1185h44" stroke="#071017" stroke-width="6"/>
+  <text x="210" y="1168" class="h">两条胜利路线</text>
+  <text x="210" y="1205" class="body">摧毁敌方核心　/　18:00 后控制 3 个战略节点中的 2 个并完成 360 秒压制</text>
+  <text x="1820" y="1168" class="mono">BUILD · CONNECT · SUPPLY · BREAK</text>
+  <text x="1820" y="1205" class="small">V6 试玩候选 / 当前规则与资源说明</text>
+  <text x="1200" y="1310" text-anchor="middle" class="small">素材、签名、完整联机与最终性能验收仍按项目状态单独记录 · Code Sentinels V6</text>
+</svg>

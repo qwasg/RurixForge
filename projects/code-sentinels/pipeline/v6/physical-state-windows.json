@@ -1,0 +1,43 @@
+{
+  "kimi-se-physical-states-v3": {
+    "segments": {
+      "idle": [0, 22, 6, true],
+      "walk": [29, 59, 24, true],
+      "hit": [124, 174, 24, false],
+      "death": [179, 226, 32, false]
+    },
+    "notes": "Full actual9.42-second original contact viewed. Clean backdrop, retained front-right identity. Four clear alternating strides actually extend through5 seconds; physical flinch happens at5.3-6.9 and recovers, followed by kneel-and-side-rest at7.75-9.4. These are actual observed event times, superseding the requested prompt times."
+  },
+  "kimi-sw-physical-states-v3": {
+    "segments": {"idle": [168,184,6,true], "walk": [56,90,24,true], "hit": [121,176,24,false], "death": [179,226,32,false]},
+    "notes": "Full actual contact viewed. Front-left identity stays fixed on clean green. Walking happens through5 seconds, flinch then full upright recovery occurs5.3-7.3, followed by an intact prone fall after7.7. Idle uses the quiet upright interval after the reaction."
+  },
+  "kimi-w-physical-states-v3": {
+    "segments": {"idle": [0,22,6,true], "walk": [52,77,24,true], "death": [125,226,32,false]},
+    "notes": "Full actual contact viewed. Left-profile walking is clean and complete. The source reaction flows directly into kneeling without upright recovery, so that reaction is excluded in favor of a separate real hit source. The entire coherent recoil/kneel/prone motion starting from the upright pose at5.2 seconds becomes the death sequence."
+  },
+  "minimax-e-physical-states-v3": {
+    "segments": {"idle": [176,186,6,true], "walk": [49,79,24,true], "hit": [130,178,24,false], "death": [179,226,32,false]},
+    "notes": "Complete RGB source viewed and microphone colors checked against the actual published community source and exact first reference. Strict right profile keeps pink/white dress, dark pink hair and original small microphone. Clear alternating walk, a physical forward flinch and upright recovery by7.3 seconds, then complete low fall after8 seconds. Background remains clean."
+  },
+  "minimax-se-physical-states-v3": {
+    "segments": {"idle": [169,184,6,true], "walk": [52,81,24,true], "hit": [135,179,24,false], "death": [180,226,32,false]},
+    "notes": "Full actual RGB source viewed. Front-right direction, pink singer identity and original microphone remain. Clear alternating-foot cycle; a chin/shoulder recoil around6.1 seconds returns upright around7 seconds, then kneels/falls to an in-bounds prone rest. Idle is the quiet upright recovery interval, not the early stepping phase."
+  },
+  "minimax-ne-physical-states-v3": {
+    "segments": {"idle": [169,185,6,true], "walk": [29,60,24,true], "hit": [132,177,24,false], "death": [179,226,32,false]},
+    "notes": "Complete RGB contact viewed. Rear-right pink singer retains hair/costume/microphone and clean backdrop. A clear stepping cycle precedes a physical forward flinch around5.7 seconds and full upright recovery by7 seconds. Complete side/prone fall begins around8 seconds and remains in bounds. Quiet upright interval supplies idle."
+  },
+  "minimax-w-physical-states-v3": {
+    "segments": {"idle": [168,185,6,true], "walk": [29,60,24,true], "hit": [122,174,24,false], "death": [180,226,32,false]},
+    "notes": "Complete original RGB contact viewed. Left-facing microphone singer takes clear alternating steps, recoils/lowers chin around5.3-6.5 seconds then fully recovers, and falls completely to rest after8 seconds. All body parts remain within the wider capture; no unwanted visual effects or scene planes."
+  },
+  "minimax-sw-physical-states-v3": {
+    "segments": {"idle":[119,134,6,true],"walk":[32,60,24,true],"death":[134,226,32,false]},
+    "notes":"Full raw contact viewed: front-left body walks with a clean green backdrop. Quiet upright interval supplies idle. The later reaction goes directly into kneeling/falling, so it is excluded as a hit and replaced by a separately generated recovering response. The complete physical lowering and prone-rest sequence is retained as death, with every limb and hair end inside the source."
+  },
+  "minimax-nw-physical-states-v4": {
+    "segments": {"idle":[173,184,6,true],"walk":[29,60,24,true],"hit":[135,181,24,false],"death":[184,226,32,false]},
+    "notes":"Complete actual RGB contact of the correction viewed. The original rear-left singer remains against clean constant green, replacing the rejected black scene. She steps clearly, leans back in a physical shoulder reaction, returns upright, then lowers and lies completely down. Original microphone, long hair, outfit and all body extremities remain visible; no source-edge cut is seen."
+  }
+}

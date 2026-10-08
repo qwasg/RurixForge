@@ -1,0 +1,32 @@
+{
+  "id": "resp_col1",
+  "model": "gpt-5-codex",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_c",
+      "type": "reasoning",
+      "summary": []
+    },
+    {
+      "id": "msg_c",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Second"
+        }
+      ]
+    }
+  ],
+  "status": "completed",
+  "usage": {
+    "input_tokens": 11,
+    "input_tokens_details": {
+      "cached_tokens": 1
+    },
+    "output_tokens": 3,
+    "total_tokens": 14
+  }
+}

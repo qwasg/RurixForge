@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * 主题：跟随系统（<html> 无类名，由 prefers-color-scheme 决定），
+ * 或手动 .light / .dark（ThemeProvider 写到 <html>）。暗色变量两处相同，改动需同步。
+ */
+:root {
+  color-scheme: light;
+  --background: 250 250 249;
+  --foreground: 28 25 23;
+  --card: 255 255 255;
+  --muted: 245 245 244;
+  --muted-foreground: 120 113 108;
+  --accent: 240 239 237;
+  --border: 231 229 228;
+  --input: 214 211 209;
+  --ring: 37 99 235;
+  --primary: 28 25 23;
+  --primary-foreground: 250 250 249;
+  --success: 21 128 61;
+  --warning: 180 83 9;
+  --danger: 220 38 38;
+  --info: 37 99 235;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    color-scheme: dark;
+    --background: 12 10 9;
+    --foreground: 245 245 244;
+    --card: 28 25 23;
+    --muted: 41 37 36;
+    --muted-foreground: 168 162 158;
+    --accent: 48 44 42;
+    --border: 52 48 46;
+    --input: 68 64 60;
+    --ring: 96 165 250;
+    --primary: 245 245 244;
+    --primary-foreground: 28 25 23;
+    --success: 74 222 128;
+    --warning: 251 191 36;
+    --danger: 248 113 113;
+    --info: 96 165 250;
+  }
+}
+
+:root.dark {
+  color-scheme: dark;
+  --background: 12 10 9;
+  --foreground: 245 245 244;
+  --card: 28 25 23;
+  --muted: 41 37 36;
+  --muted-foreground: 168 162 158;
+  --accent: 48 44 42;
+  --border: 52 48 46;
+  --input: 68 64 60;
+  --ring: 96 165 250;
+  --primary: 245 245 244;
+  --primary-foreground: 28 25 23;
+  --success: 74 222 128;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --info: 96 165 250;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-sm text-foreground antialiased;
+    font-family: theme('fontFamily.sans');
+  }
+  input[type='number']::-webkit-inner-spin-button {
+    opacity: 0.5;
+  }
+  ::selection {
+    background: rgb(var(--ring) / 0.25);
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

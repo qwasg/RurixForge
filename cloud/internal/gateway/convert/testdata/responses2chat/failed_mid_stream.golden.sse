@@ -1,0 +1,8 @@
+data: {"id":"chatcmpl-resp_fail1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_fail1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"content":"Partial"},"finish_reason":null}]}
+
+data: {"error":{"message":"The model produced invalid content.","type":"upstream_error","code":"server_error"}}
+
+data: [DONE]
+

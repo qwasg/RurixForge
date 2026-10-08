@@ -14,6 +14,8 @@ import {
 } from '@codemirror/view';
 import { langExtensionForPath } from '@/lib/cmLang';
 import { forgeEditorTheme } from '@/lib/cmTheme';
+import { useEditorAnnotationStore } from '@/lib/editorReferences';
+import type { EditorSelection } from '@forge/protocol';
 
 /**
  * F9:CodeMirror 6 代码编辑器(轻量 IDE 面:行号/折叠/查找/括号匹配/undo 栈/Tab 缩进)。
@@ -28,6 +30,8 @@ export default function CodeEditor({
   readOnly = false,
   onDocChanged,
   onSave,
+  onSelectionChanged,
+  revealLine,
   className,
   'data-testid': testId,
 }: {
@@ -37,6 +41,8 @@ export default function CodeEditor({
   readOnly?: boolean;
   onDocChanged?: (doc: string) => void;
   onSave?: () => void;
+  onSelectionChanged?: (range: NonNullable<EditorSelection['range']>, text: string) => void;
+  revealLine?: { line: number; token: number } | null;
   className?: string;
   'data-testid'?: string;
 }) {
@@ -45,6 +51,9 @@ export default function CodeEditor({
   // 回调走 ref:handler 身份变化不重建编辑器(重建会丢 undo 栈与光标)。
   const onDocChangedRef = useRef(onDocChanged);
   const onSaveRef = useRef(onSave);
+  const selectionCallback = useRef(onSelectionChanged);
+  selectionCallback.current = onSelectionChanged;
+  const reveal = useEditorAnnotationStore((s) => s.reveal);
   onDocChangedRef.current = onDocChanged;
   onSaveRef.current = onSave;
   const initialDocRef = useRef(initialDoc);
@@ -94,6 +103,10 @@ export default function CodeEditor({
           langComp.current.of([]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onDocChangedRef.current?.(u.state.doc.toString());
+            if (u.selectionSet || u.docChanged) {
+              const { from, to } = u.state.selection.main;
+              selectionCallback.current?.({ from, to, startLine: u.state.doc.lineAt(from).number, endLine: u.state.doc.lineAt(to).number }, u.state.doc.sliceString(from, to));
+            }
           }),
         ],
       }),
@@ -116,6 +129,22 @@ export default function CodeEditor({
       view.destroy();
     };
   }, [path]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    const range = reveal?.reference.selection?.range;
+    if (!view || reveal?.reference.kind !== 'source' || reveal.reference.path !== path || !range) return;
+    const from = Math.min(view.state.doc.length, range.from), to = Math.min(view.state.doc.length, range.to);
+    view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+    view.focus();
+  }, [reveal, path]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !revealLine) return;
+    const line = view.state.doc.line(Math.max(1, Math.min(view.state.doc.lines, revealLine.line)));
+    view.dispatch({ selection: { anchor: line.from, head: line.to }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+  }, [revealLine, path]);
 
   useEffect(() => {
     viewRef.current?.dispatch({

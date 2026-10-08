@@ -19,10 +19,11 @@ pub fn validate_rxmat(v: &Value) -> Result<()> {
         .as_object()
         .ok_or_else(|| AssetError::new("MATERIAL_INVALID", ".rxmat 须为 JSON 对象"))?;
     match obj.get("version").and_then(Value::as_u64) {
-        Some(1) => {}
-        _ => return Err(AssetError::new("MATERIAL_INVALID", ".rxmat version 须为 1")),
+        Some(1 | 2) => {}
+        _ => return Err(AssetError::new("MATERIAL_INVALID", ".rxmat version 须为 1 或 2")),
     }
-    match obj.get("shader").and_then(Value::as_str) {
+    let shader_key = if obj.get("version").and_then(Value::as_u64) == Some(2) { "shaderGraph" } else { "shader" };
+    match obj.get(shader_key).and_then(Value::as_str) {
         Some(s) if !s.is_empty() => {}
         _ => return Err(AssetError::new("MATERIAL_INVALID", ".rxmat shader 须为非空串")),
     }

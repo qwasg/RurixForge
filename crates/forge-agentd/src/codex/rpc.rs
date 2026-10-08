@@ -11,8 +11,8 @@
 //! 所有映射/审批/中断逻辑都用 [`ScriptedTransport`] 在全内存里跑。
 
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
@@ -105,9 +105,18 @@ impl CodexTransport for StdioTransport {
             cmd.arg(a);
         }
         cmd.arg("app-server");
+        // A personal login must not be routed through a cloud/custom provider.
+        if self.env.iter().any(|(k, v)| k == "FORGE_CODEX_AUTH_SOURCE" && v == "chatgpt") {
+            cmd.arg("-c").arg("model_provider=\"openai\"");
+            cmd.env_remove("OPENAI_API_KEY").env_remove("OPENAI_BASE_URL");
+            cmd.env_remove("FORGE_CLOUD_API_KEY");
+        }
         for (k, v) in &self.env {
+            if k == "FORGE_CODEX_AUTH_SOURCE" { continue; }
             cmd.env(k, v);
         }
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000);
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -178,10 +187,17 @@ pub struct CodexClient {
     pending: Arc<StdMutex<Pending>>,
     subscribers: Arc<StdMutex<Subscribers>>,
     next_id: AtomicI64,
+    /// `initialize` 返回的 app-server 版本。只保留可展示的版本字符串，绝不缓存认证信息。
+    server_version: StdMutex<Option<String>>,
+    handled_server_requests: StdMutex<HashSet<String>>,
     /// 连接世代号。旧连接的读循环发现 EOF 时往往已经有新连接建好了(teardown 会让旧的
     /// transport 侧收摊,而这是异步的),它必须认出「我已经不是当前连接」才不会把
     /// 新连接一起清掉。
     epoch: Arc<AtomicI64>,
+    /// False after a deliberate safety/config retirement. The background watcher
+    /// may reconnect transport failures, but must not revive an explicitly stopped
+    /// client (which could continue an unconfirmed active Goal).
+    auto_restart: AtomicBool,
 }
 
 impl CodexClient {
@@ -193,7 +209,10 @@ impl CodexClient {
             pending: Arc::new(StdMutex::new(HashMap::new())),
             subscribers: Arc::new(StdMutex::new(Vec::new())),
             next_id: AtomicI64::new(0),
+            server_version: StdMutex::new(None),
+            handled_server_requests: StdMutex::new(HashSet::new()),
             epoch: Arc::new(AtomicI64::new(0)),
+            auto_restart: AtomicBool::new(true),
         }
     }
 
@@ -209,6 +228,23 @@ impl CodexClient {
             .is_some()
     }
 
+    /// 最近一次成功握手识别出的 Codex 版本（尚未启动或上游未返回时为 `None`）。
+    pub fn server_version(&self) -> Option<String> {
+        self.server_version
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Reverse requests are broadcast to subscribers. Only the owning lifecycle
+    /// may execute them; unscoped requests still need exactly one rejection.
+    pub fn claim_server_request(&self, id: &Value) -> bool {
+        self.handled_server_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string())
+    }
+
     fn sender(&self) -> Option<mpsc::UnboundedSender<String>> {
         self.outgoing
             .lock()
@@ -218,6 +254,18 @@ impl CodexClient {
 
     /// 确保已连接并完成 `initialize` 握手。连接掉了会在这里自动重建(退避由调用侧节流)。
     pub async fn ensure_started(&self) -> Result<(), CodexError> {
+        self.auto_restart.store(true, Ordering::Release);
+        self.ensure_started_inner().await
+    }
+
+    pub async fn restart_if_allowed(&self) -> Result<(), CodexError> {
+        if !self.auto_restart.load(Ordering::Acquire) {
+            return Err(CodexError::new("codex app-server 自动重启已暂停"));
+        }
+        self.ensure_started_inner().await
+    }
+
+    async fn ensure_started_inner(&self) -> Result<(), CodexError> {
         if self.sender().is_some() {
             return Ok(());
         }
@@ -227,6 +275,10 @@ impl CodexClient {
             return Ok(());
         }
         let Channels { outgoing, incoming } = self.transport.open()?;
+        self.handled_server_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         let epoch = self.epoch.fetch_add(1, Ordering::Relaxed) + 1;
         *self.outgoing.lock().unwrap_or_else(|e| e.into_inner()) = Some(outgoing);
         self.spawn_reader(incoming, epoch);
@@ -241,15 +293,27 @@ impl CodexClient {
     }
 
     async fn handshake(&self) -> Result<(), CodexError> {
-        self.request(
-            "initialize",
-            json!({
-                "clientInfo": { "name": CLIENT_NAME, "version": CLIENT_VERSION },
-                // experimentalApi:goal(thread/goal/*)与 dynamicTools 都在实验面后面。
-                "capabilities": { "experimentalApi": true },
-            }),
-        )
-        .await?;
+        let initialized = self
+            .request(
+                "initialize",
+                json!({
+                    "clientInfo": {
+                        "name": CLIENT_NAME,
+                        "title": "RurixForge",
+                        "version": CLIENT_VERSION
+                    },
+                    // experimentalApi:goal(thread/goal/*)与 dynamicTools 都在实验面后面。
+                    "capabilities": {
+                        "experimentalApi": true,
+                        "mcpServerOpenaiFormElicitation": true
+                    },
+                }),
+            )
+            .await?;
+        *self
+            .server_version
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = version_from_initialize(&initialized);
         self.notify("initialized", json!({}))
     }
 
@@ -287,8 +351,31 @@ impl CodexClient {
         fail_all(&self.pending, &self.subscribers);
     }
 
+    /// Deliberate retirement/safety stop. Explicit foreground use through
+    /// `ensure_started` may enable it again; watcher-only restarts may not.
+    pub fn suspend(&self) {
+        self.auto_restart.store(false, Ordering::Release);
+        self.teardown();
+    }
+
     /// 发请求并等响应。
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, CodexError> {
+        self.request_with_timeout(
+            method,
+            params,
+            std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS),
+        )
+        .await
+    }
+
+    /// 发请求并使用调用点指定的短预算。中止/安全收尾不能被普通 120s RPC
+    /// 预算拖住；本方法仍负责从 pending 表移除超时 id，避免迟到响应泄漏。
+    pub async fn request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        budget: std::time::Duration,
+    ) -> Result<Value, CodexError> {
         let tx = self
             .sender()
             .ok_or_else(|| CodexError::new("codex app-server 未连接"))?;
@@ -298,8 +385,9 @@ impl CodexClient {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id, rx_tx);
+        // app-server 使用 JSON-RPC 的 id/method/result 语义，但线上明确省略 `jsonrpc` 头。
         let line = serde_json::to_string(&json!({
-            "jsonrpc": "2.0", "id": id, "method": method, "params": params
+            "id": id, "method": method, "params": params
         }))
         .map_err(|e| CodexError::new(format!("序列化 {method} 失败: {e}")))?;
         if tx.send(line).is_err() {
@@ -309,7 +397,6 @@ impl CodexClient {
                 .remove(&id);
             return Err(CodexError::new("写 codex app-server 失败(连接已断)"));
         }
-        let budget = std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS);
         match tokio::time::timeout(budget, rx).await {
             Ok(Ok(r)) => r,
             Ok(Err(_)) => Err(CodexError::new(format!("{method} 响应通道被丢弃"))),
@@ -319,7 +406,8 @@ impl CodexClient {
                     .unwrap_or_else(|e| e.into_inner())
                     .remove(&id);
                 Err(CodexError::new(format!(
-                    "{method} 超时({REQUEST_TIMEOUT_SECS}s)"
+                    "{method} 超时({}ms)",
+                    budget.as_millis()
                 )))
             }
         }
@@ -331,7 +419,7 @@ impl CodexClient {
             .sender()
             .ok_or_else(|| CodexError::new("codex app-server 未连接"))?;
         let line = serde_json::to_string(&json!({
-            "jsonrpc": "2.0", "method": method, "params": params
+            "method": method, "params": params
         }))
         .map_err(|e| CodexError::new(format!("序列化 {method} 失败: {e}")))?;
         tx.send(line)
@@ -343,7 +431,7 @@ impl CodexClient {
         let tx = self
             .sender()
             .ok_or_else(|| CodexError::new("codex app-server 未连接"))?;
-        let line = serde_json::to_string(&json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+        let line = serde_json::to_string(&json!({ "id": id, "result": result }))
             .map_err(|e| CodexError::new(format!("序列化响应失败: {e}")))?;
         tx.send(line)
             .map_err(|_| CodexError::new("写 codex app-server 失败(连接已断)"))
@@ -355,8 +443,7 @@ impl CodexClient {
             .sender()
             .ok_or_else(|| CodexError::new("codex app-server 未连接"))?;
         let line = serde_json::to_string(&json!({
-            "jsonrpc": "2.0", "id": id,
-            "error": { "code": code, "message": message }
+            "id": id, "error": { "code": code, "message": message }
         }))
         .map_err(|e| CodexError::new(format!("序列化错误响应失败: {e}")))?;
         tx.send(line)
@@ -373,6 +460,22 @@ impl CodexClient {
             .push(tx);
         rx
     }
+}
+
+fn version_from_initialize(result: &Value) -> Option<String> {
+    if let Some(v) = result
+        .get("version")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+    {
+        return Some(v.to_string());
+    }
+    let user_agent = result.get("userAgent").and_then(Value::as_str)?;
+    user_agent
+        .split(|c: char| c == '/' || c.is_ascii_whitespace() || c == '(' || c == ')')
+        .map(|part| part.trim_matches(|c: char| c == ';' || c == ','))
+        .find(|part| part.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .map(str::to_string)
 }
 
 fn fail_all(pending: &Arc<StdMutex<Pending>>, subscribers: &Arc<StdMutex<Subscribers>>) {
@@ -529,7 +632,10 @@ pub fn scripted_with_handshake(
     f: impl Fn(&str, &Value, &Value) -> Vec<Value> + Send + Sync + 'static,
 ) -> ScriptedTransport {
     ScriptedTransport::new(move |msg| {
-        let method = msg.get("method").and_then(Value::as_str).unwrap_or_default();
+        let method = msg
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let id = msg.get("id").cloned().unwrap_or(Value::Null);
         let params = msg.get("params").cloned().unwrap_or_else(|| json!({}));
         if method == "initialize" {
@@ -549,8 +655,59 @@ pub fn scripted_with_handshake(
 mod tests {
     use super::*;
 
+    #[test]
+    fn reverse_request_ids_can_only_be_claimed_once_per_connection() {
+        let client = CodexClient::new(Arc::new(ScriptedTransport::new(|_| vec![])));
+        assert!(client.claim_server_request(&json!(7)));
+        assert!(!client.claim_server_request(&json!(7)));
+        assert!(client.claim_server_request(&json!("7")));
+        client.handled_server_requests.lock().unwrap().clear();
+        assert!(client.claim_server_request(&json!(7)));
+    }
+
     fn client(t: ScriptedTransport) -> Arc<CodexClient> {
         Arc::new(CodexClient::new(Arc::new(t)))
+    }
+
+    #[tokio::test]
+    async fn wire_omits_jsonrpc_and_handshake_order_and_version_match_protocol() {
+        let seen: Arc<StdMutex<Vec<Value>>> = Arc::new(StdMutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        let c = client(ScriptedTransport::new(move |msg| {
+            assert!(
+                msg.get("jsonrpc").is_none(),
+                "app-server JSONL 不接受 jsonrpc 头: {msg}"
+            );
+            sink.lock().unwrap().push(msg.clone());
+            let method = msg
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let Some(id) = msg.get("id") else {
+                return Vec::new();
+            };
+            match method {
+                "initialize" => vec![json!({
+                    "id": id,
+                    "result": { "userAgent": "codex-cli/0.153.0 (Windows 11)" }
+                })],
+                "thread/read" => vec![json!({ "id": id, "result": {} })],
+                _ => Vec::new(),
+            }
+        }));
+        c.ensure_started().await.unwrap();
+        c.request("thread/read", json!({ "threadId": "th_1" }))
+            .await
+            .unwrap();
+        let methods = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.get("method").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        assert_eq!(methods, ["initialize", "initialized", "thread/read"]);
+        assert_eq!(c.server_version().as_deref(), Some("0.153.0"));
     }
 
     /// 握手 + 请求/响应配对 + 错误响应如实转述。
@@ -590,8 +747,10 @@ mod tests {
 
         assert!(inj.push(json!({ "jsonrpc": "2.0", "method": "item/started",
             "params": { "threadId": "th_a", "item": { "id": "i1" } } })));
-        assert!(inj.push(json!({ "jsonrpc": "2.0", "method": "account/updated",
-            "params": { "planType": "pro" } })));
+        assert!(
+            inj.push(json!({ "jsonrpc": "2.0", "method": "account/updated",
+            "params": { "planType": "pro" } }))
+        );
 
         let got = a.recv().await.expect("订阅者应收到通知");
         assert_eq!(got.method(), "item/started");
@@ -609,11 +768,12 @@ mod tests {
         let seen: Arc<StdMutex<Vec<Value>>> = Arc::new(StdMutex::new(Vec::new()));
         let sink = Arc::clone(&seen);
         let t = ScriptedTransport::new(move |msg| {
-            let method = msg.get("method").and_then(Value::as_str).unwrap_or_default();
+            let method = msg
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if method == "initialize" {
-                return vec![
-                    json!({ "jsonrpc": "2.0", "id": msg["id"].clone(), "result": {} }),
-                ];
+                return vec![json!({ "jsonrpc": "2.0", "id": msg["id"].clone(), "result": {} })];
             }
             if method.is_empty() {
                 sink.lock().unwrap().push(msg.clone());
@@ -640,6 +800,7 @@ mod tests {
         assert_eq!(recorded.len(), 1, "应恰好回一条: {recorded:?}");
         assert_eq!(recorded[0]["id"], 77);
         assert_eq!(recorded[0]["result"]["decision"], "accept");
+        assert!(recorded[0].get("jsonrpc").is_none());
     }
 
     /// 连接断开:等待中的请求如实失败,订阅者看到 EOF,状态归零可重连。

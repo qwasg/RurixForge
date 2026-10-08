@@ -1,0 +1,26 @@
+{
+  "id": "autocannon",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 12,
+  "fps": 18,
+  "loop": false,
+  "sourceModel": "Content/Models/v6/autocannon-attack.blend",
+  "method": "Actual Blender barrel recoil / launcher and emitter mechanism motion / energized physical material, CPU render",
+  "recoilingMeshes": [
+    "main cannon",
+    "muzzle brake"
+  ],
+  "actuatedMeshes": [],
+  "emissiveMaterials": 1,
+  "wholeImageRotation": false,
+  "projectileAndImpact": "External separately verified true-video VFX and actual native ballistic entities"
+}

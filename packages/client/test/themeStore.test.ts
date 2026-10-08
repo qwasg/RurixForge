@@ -17,7 +17,8 @@ import {
 /**
  * F7 wave.3 G-F7-3:派色算法对照参考 appearance.rs apply_palette 固定输入期望值。
  * 期望值手工按参考公式核算(截断语义:rust f32 as u8 → Math.trunc):
- * - text_2/3/4 = mix(fg,bg, 0.42·(1.1-c/2) / 0.62·(1.05-0.35c) / 0.78·(1.02-0.25c))
+ * - text_2/3/4 = mix(fg,bg, 0.33·(1.1-c/2) / 0.46·(1.05-0.35c) / 0.64·(1.02-0.25c))
+ *   (可读性波 2026-10-07:基比由参考 0.42/0.62/0.78 收深,见 themeStore 文件头)
  * - accent_bg alpha 亮 0x14/暗 0x24;ring 亮 0x47/暗 0x6B
  * - translucent:sidebar=sunk+0xCC、float=panel+0xEE;否则实体
  */
@@ -43,9 +44,9 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     expect(t['bg-panel']).toBe('#FAF9F5'); // 亮:panel=bg
     expect(t['bg-input']).toBe('#FAF9F5');
     expect(t['text']).toBe('#2A2724');
-    expect(t['text-2']).toBe('#767470'); // mix(fg,bg,0.42·(1.1-0.225))
-    expect(t['text-3']).toBe('#9D9B97');
-    expect(t['text-4']).toBe('#BDBBB7');
+    expect(t['text-2']).toBe('#666360'); // mix(fg,bg,0.33·(1.1-0.225))
+    expect(t['text-3']).toBe('#7F7D79');
+    expect(t['text-4']).toBe('#A2A09D');
     expect(t['text-inv']).toBe('#FFFFFF'); // 净化波:亮反色文字 → 纯白
     expect(t['accent']).toBe('#C96442');
     expect(t['accent-soft']).toBe('#B85C3C'); // 压暗 0.08
@@ -67,9 +68,9 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     expect(t['bg-sunk']).toBe('#1A1916'); // 压暗 0.06
     expect(t['bg-panel']).toBe('#252421'); // 暗:提亮 0.04
     expect(t['text']).toBe('#ECE8DF');
-    expect(t['text-2']).toBe('#A6A39C'); // mix(fg,bg,0.42·(1.1-0.3))
-    expect(t['text-3']).toBe('#7F7D77');
-    expect(t['text-4']).toBe('#5E5C57');
+    expect(t['text-2']).toBe('#B5B1AA'); // mix(fg,bg,0.33·(1.1-0.3))
+    expect(t['text-3']).toBe('#9B9892');
+    expect(t['text-4']).toBe('#787570');
     expect(t['text-inv']).toBe('#1C1B18'); // 暗:= palette.bg
     expect(t['accent']).toBe('#E2886A');
     expect(t['accent-soft']).toBe('#E69980'); // 提亮 0.15
@@ -98,15 +99,15 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     const base = { accent: '#C96442', background: '#FFFFFF', foreground: '#000000', translucentSidebar: false };
     const c0 = applyPalette({ ...base, contrast: 0 }, false);
     const c100 = applyPalette({ ...base, contrast: 100 }, false);
-    // text_2:t=0.42·1.1=0.462 → #757575;t=0.42·0.6=0.252 → #404040
-    expect(c0['text-2']).toBe('#757575');
-    expect(c100['text-2']).toBe('#404040');
-    // text_3:t=0.62·1.05=0.651 → #A6A6A6;t=0.62·0.7=0.434 → #6E6E6E
-    expect(c0['text-3']).toBe('#A6A6A6');
-    expect(c100['text-3']).toBe('#6E6E6E');
-    // text_4:t=0.78·1.02=0.7956 → #CACACA;t=0.78·0.77=0.6006 → #999999
-    expect(c0['text-4']).toBe('#CACACA');
-    expect(c100['text-4']).toBe('#999999');
+    // text_2:t=0.33·1.1=0.363 → #5C5C5C;t=0.33·0.6=0.198 → #323232
+    expect(c0['text-2']).toBe('#5C5C5C');
+    expect(c100['text-2']).toBe('#323232');
+    // text_3:t=0.46·1.05=0.483 → #7B7B7B;t=0.46·0.7=0.322 → #525252
+    expect(c0['text-3']).toBe('#7B7B7B');
+    expect(c100['text-3']).toBe('#525252');
+    // text_4:t=0.64·1.02=0.6528 → #A6A6A6;t=0.64·0.77=0.4928 → #7D7D7D
+    expect(c0['text-4']).toBe('#A6A6A6');
+    expect(c100['text-4']).toBe('#7D7D7D');
   });
 
   it('translucent_sidebar 双 alpha(0xCC/0xEE)vs 实体', () => {
@@ -132,9 +133,9 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     expect(t['bg-panel']).toBe('#FFFFFF'); // 亮:panel=bg
     expect(t['bg-input']).toBe('#FFFFFF');
     expect(t['text']).toBe('#1B1D21');
-    expect(t['text-2']).toBe('#6A6B6D'); // mix(fg,bg,0.42·(1.1-0.275))
-    expect(t['text-3']).toBe('#949597');
-    expect(t['text-4']).toBe('#B7B8B9');
+    expect(t['text-2']).toBe('#595A5D'); // mix(fg,bg,0.33·(1.1-0.275))
+    expect(t['text-3']).toBe('#747678');
+    expect(t['text-4']).toBe('#9B9C9E');
     expect(t['text-inv']).toBe('#FFFFFF');
     expect(t['accent']).toBe('#C94F12');
     expect(t['accent-soft']).toBe('#B84810'); // 压暗 0.08
@@ -160,9 +161,9 @@ describe('applyPalette 派色对照(参考逐行移植)', () => {
     expect(t['bg-sunk']).toBe('#17181B'); // 压暗 0.06
     expect(t['bg-panel']).toBe('#222326'); // 暗:提亮 0.04
     expect(t['text']).toBe('#E8E9EC');
-    expect(t['text-2']).toBe('#A2A3A6'); // mix(fg,bg,0.42·(1.1-0.3))
-    expect(t['text-3']).toBe('#7C7D80');
-    expect(t['text-4']).toBe('#5B5C5F');
+    expect(t['text-2']).toBe('#B1B2B5'); // mix(fg,bg,0.33·(1.1-0.3))
+    expect(t['text-3']).toBe('#98999C');
+    expect(t['text-4']).toBe('#747578');
     expect(t['text-inv']).toBe('#191A1D');
     expect(t['accent']).toBe('#F47B33');
     expect(t['accent-soft']).toBe('#F58E51'); // 提亮 0.15

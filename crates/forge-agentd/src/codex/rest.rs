@@ -59,15 +59,15 @@ pub async fn status(
 
 /// POST /api/forge/codex/install —— 后台跑 npm 装 codex 与 open-computer-use。
 pub async fn install(State(state): State<Arc<AppState>>) -> Response {
-    match state.codex.start_install() {
+    let session_ids = state.sessions.list().into_iter().map(|s| s.id).collect();
+    match state
+        .codex
+        .start_install(Arc::clone(&state.events), session_ids)
+    {
         Ok(true) => Json(json!({ "ok": true, "started": true })).into_response(),
         // 已经在装了不算错:前端连点两次不该弹错误。
         Ok(false) => Json(json!({ "ok": true, "started": false, "running": true })).into_response(),
-        Err(msg) => err(
-            axum::http::StatusCode::BAD_REQUEST,
-            "NPM_NOT_FOUND",
-            &msg,
-        ),
+        Err(msg) => err(axum::http::StatusCode::BAD_REQUEST, "NPM_NOT_FOUND", &msg),
     }
 }
 
@@ -114,10 +114,19 @@ fn default_login_kind() -> String {
 }
 
 /// POST /api/forge/codex/login —— chatgpt 流返回 `authUrl`,由前端新标签打开。
-pub async fn login(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<LoginRequest>,
-) -> Response {
+pub async fn login(State(state): State<Arc<AppState>>, Json(req): Json<LoginRequest>) -> Response {
+    if !matches!(req.kind.as_str(), "chatgpt" | "deviceCode" | "apiKey") {
+        return err(axum::http::StatusCode::BAD_REQUEST, "LOGIN_KIND_INVALID", "未知登录方式");
+    }
+    if req.kind == "apiKey" && req.api_key.as_deref().map(str::trim).unwrap_or("").is_empty() {
+        return err(axum::http::StatusCode::BAD_REQUEST, "KEY_REQUIRED", "API Key 不可空");
+    }
+    if let Err(message) = super::config::patch(super::config::CodexConfigPatch {
+        auth_source: Some(super::config::AUTH_CHATGPT.to_string()),
+        ..Default::default()
+    }) {
+        return err(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "FORGE_IO", &message);
+    }
     match state.codex.login(&req.kind, req.api_key.as_deref()).await {
         Ok(v) => {
             let mut body = json!({ "ok": true });
@@ -174,14 +183,43 @@ pub struct ModelsQuery {
 }
 
 /// GET /api/forge/codex/models —— 登录后可用的模型清单(带缓存)。
-pub async fn models(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<ModelsQuery>,
-) -> Response {
+pub async fn models(State(state): State<Arc<AppState>>, Query(q): Query<ModelsQuery>) -> Response {
+    if super::config::effective_auth_source(&state.cloud) == super::config::AUTH_CLOUD {
+        let force = q.refresh.unwrap_or(false);
+        if force {
+            if let Err(e) = state.cloud.fetch_catalog(true).await {
+                return err(
+                    axum::http::StatusCode::from_u16(e.status)
+                        .unwrap_or(axum::http::StatusCode::BAD_GATEWAY),
+                    &e.code,
+                    &e.message,
+                );
+            }
+        }
+        let items = cloud_codex_models(&state.cloud);
+        return Json(json!({ "ok": true, "models": items })).into_response();
+    }
     match state.codex.models(q.refresh.unwrap_or(false)).await {
         Ok(items) => Json(json!({ "ok": true, "models": items })).into_response(),
         Err(e) => upstream(&e.0),
     }
+}
+
+fn cloud_codex_models(cloud: &crate::cloud::CloudService) -> Vec<Value> {
+    let Some(catalog) = cloud.catalog_cached() else {
+        return Vec::new();
+    };
+    catalog
+        .responses_models()
+        .map(|m| {
+            json!({
+                "id": format!("codex:{}", m.id),
+                "displayName": m.display_name,
+                "slug": m.id,
+                "model": m.id,
+            })
+        })
+        .collect()
 }
 
 /// GET /api/forge/codex/rate-limits —— 订阅额度窗口用量。
@@ -194,6 +232,39 @@ pub async fn rate_limits(State(state): State<Arc<AppState>>) -> Response {
 
 /// GET /api/forge/codex/account —— 账户态(未登录 = authMode null,不算错误)。
 pub async fn account(State(state): State<Arc<AppState>>) -> Response {
+    if super::config::effective_auth_source(&state.cloud) == super::config::AUTH_CLOUD {
+        if !state.cloud.is_logged_in() {
+            return Json(json!({
+                "ok": true,
+                "authMode": null,
+                "planType": null,
+                "email": null,
+                "rateLimits": null,
+                "lastError": null,
+            }))
+            .into_response();
+        }
+        let user = state.cloud.user_summary().unwrap_or(Value::Null);
+        let plan_name = state
+            .cloud
+            .status_json()
+            .get("subscriptions")
+            .and_then(|s| s.as_array())
+            .and_then(|a| a.first())
+            .and_then(|s| s.get("planName"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| "balance".to_string());
+        return Json(json!({
+            "ok": true,
+            "authMode": "cloud",
+            "planType": plan_name,
+            "email": user.get("email").cloned().unwrap_or(Value::Null),
+            "rateLimits": null,
+            "lastError": null,
+        }))
+        .into_response();
+    }
     match state.codex.refresh_account().await {
         Ok(a) => Json(json!({
             "ok": true,
@@ -201,23 +272,48 @@ pub async fn account(State(state): State<Arc<AppState>>) -> Response {
             "planType": a.plan_type,
             "email": a.email,
             "rateLimits": a.rate_limits,
+            "lastError": a.last_error,
         }))
         .into_response(),
         Err(e) => upstream(&e.0),
     }
 }
 
-/// GET /api/forge/codex/mcp/status —— 会输给 Codex 线程的 MCP 服务表(无 env 值)。
+/// GET /api/forge/codex/mcp/status —— 静态注入表 + 已运行线程的 app-server 实时状态。
 pub async fn mcp_status(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ScopeQuery>,
 ) -> Json<Value> {
-    let ws = q
-        .session_id
-        .as_deref()
-        .and_then(|s| state.sessions.get(s))
-        .and_then(|s| s.workspace_id)
+    let session = q.session_id.as_deref().and_then(|s| state.sessions.get(s));
+    let ws = session
+        .as_ref()
+        .and_then(|s| s.workspace_id.clone())
         .or(q.workspace_id);
     let root = project_root_for(&state, ws.as_deref());
-    Json(super::mcp_config::status_json(&root))
+    let mut body = super::mcp_config::status_json(&root);
+    body["live"] = json!(false);
+
+    let Some(thread_id) = session.and_then(|s| s.codex_thread_id) else {
+        return Json(body);
+    };
+    let Some(client) = state.codex.running_client() else {
+        return Json(body);
+    };
+    match client
+        .request(
+            "mcpServerStatus/list",
+            json!({ "threadId": thread_id, "detail": "toolsAndAuthOnly" }),
+        )
+        .await
+    {
+        Ok(runtime) => {
+            body["live"] = json!(true);
+            body["runtime"] = runtime;
+        }
+        Err(_) => {
+            // 状态页仍可展示静态配置；不把上游错误原文（可能含环境路径）塞进响应。
+            body["runtimeError"] = json!("app-server 未能读取 MCP 实时状态");
+        }
+    }
+    Json(body)
 }

@@ -13,6 +13,7 @@
 #![cfg(windows)]
 
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use windows::core::{Interface, PCWSTR};
@@ -26,6 +27,56 @@ use windows::Win32::System::Threading::*;
 
 /// GENERIC_ALL(0x10000000):CreateSharedHandle 访问掩码。
 const GENERIC_ALL_ACCESS: u32 = 0x1000_0000;
+
+/// 共享 fence 的值序列(每次 open 新建 fence 时归零;每帧 +1,presenter 把它当帧计数)。
+/// Producer(CPU 上传档 / rurix 零拷贝档)与 Godot L1 的 [gmain](经 SharedTarget.fence_value)共用这一个计数器,
+/// 保证任何时候 fence 值单调、不跳号。rurix 下取值序列与原先的 `SharedBuf.fence_value += 1` 逐一相同。
+static FENCE_VALUE: AtomicU64 = AtomicU64::new(0);
+
+/// Godot 后端装进来的 ID3D12Device(02 §4.2 L1 第 1-2 步)。共享 buffer / fence 必须建在消费端(presenter)的
+/// adapter 上:presenter 用 `D3D12CreateDevice(None)`,而 Godot 进程因 NvOptimusEnablement 导出、本进程的缺省卡可能不同。
+/// gpu_writer = 这就是 Godot 渲染用的 device(与消费端同卡)→ [gmain] 可在它的主队列上直写(L1);
+/// 否则是 godot-host 在消费端 adapter 上另建的 device,只给 CPU 上传档用。
+struct GodotDevice {
+    device: ID3D12Device,
+    gpu_writer: bool,
+}
+// SAFETY: ID3D12Device 是自由线程对象(D3D12 规定 device 方法可多线程并发调用)。
+unsafe impl Send for GodotDevice {}
+unsafe impl Sync for GodotDevice {}
+static GODOT_DEVICE: OnceLock<GodotDevice> = OnceLock::new();
+
+/// 安装共享对象用的 ID3D12Device(接管调用方已 AddRef 的一份引用)。必须早于第一次 open;重复安装返回 Err 并释放这份引用。
+pub fn install_device(raw: usize, gpu_writer: bool) -> Result<(), String> {
+    if raw == 0 {
+        return Err("install_device: 空指针".into());
+    }
+    // SAFETY: raw 是调用方 AddRef 过的 ID3D12Device*,所有权随 from_raw 移交;失败路径随 drop Release。
+    let device = unsafe { ID3D12Device::from_raw(raw as *mut c_void) };
+    if slot().lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+        return Err("install_device: Producer 已在缺省 device 上创建".into());
+    }
+    GODOT_DEVICE.set(GodotDevice { device, gpu_writer }).map_err(|_| "install_device: 已安装".to_string())
+}
+
+/// L1 目标(02 §4.2):共享对象建在 Godot device 上时,给出 AddRef 过的 buffer / fence 指针与布局;否则 None。
+pub fn gpu_target() -> Option<crate::render::sink::SharedTarget> {
+    let g = slot().lock().unwrap_or_else(|e| e.into_inner());
+    let p = g.as_ref()?;
+    if !p.on_godot_device {
+        return None;
+    }
+    let s = p.shared.as_ref()?;
+    Some(crate::render::sink::SharedTarget {
+        buffer: s.buffer.clone().into_raw() as usize,
+        fence: s.fence.clone().into_raw() as usize,
+        width: s.width,
+        height: s.height,
+        row_pitch: s.row_pitch as u32,
+        size: s.size,
+        fence_value: &FENCE_VALUE,
+    })
+}
 
 /// 共享体线性布局:行距按 D3D12 `CopyTextureRegion` 的 PLACED_FOOTPRINT 契约
 /// 256B 对齐(`D3D12_TEXTURE_DATA_PITCH_ALIGNMENT`),总字节 = 行距 × 高。
@@ -46,7 +97,6 @@ struct SharedBuf {
     width: u32,
     height: u32,
     fence: ID3D12Fence,
-    fence_value: u64,
     fence_event: HANDLE,
     /// 本进程持有的 buffer NT handle(VK import 用;Drop 关闭)。
     local_buf_handle: HANDLE,
@@ -65,6 +115,7 @@ impl Drop for SharedBuf {
 }
 
 /// VK import 面(buffer 形态)。
+#[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
 pub struct ShareInfo {
     pub handle: u64,
     pub size: u64,
@@ -79,6 +130,8 @@ struct Producer {
     allocator: ID3D12CommandAllocator,
     list: ID3D12GraphicsCommandList,
     shared: Option<SharedBuf>,
+    /// device 是 install_device 装进来的 Godot device(L1 可用)。
+    on_godot_device: bool,
 }
 
 // SAFETY: Producer 持有 D3D12 COM 指针(windows-rs 接口内为 *mut);仅经 SHARE 全局
@@ -98,10 +151,17 @@ impl Producer {
     fn new() -> Result<Self, String> {
         unsafe {
             // SAFETY: 标准 D3D12 初始化序列;错误经 HRESULT 传播,不unwrap。
-            let mut device: Option<ID3D12Device> = None;
-            D3D12CreateDevice(None, D3D_FEATURE_LEVEL_11_0, &mut device)
-                .map_err(|e| format!("D3D12CreateDevice: {e}"))?;
-            let device = device.ok_or("D3D12CreateDevice 返回空")?;
+            // Godot 后端装过 device 时用它(消费端同卡);否则与原先一样取缺省 adapter。
+            let on_godot_device = GODOT_DEVICE.get().is_some_and(|d| d.gpu_writer);
+            let device = match GODOT_DEVICE.get() {
+                Some(d) => d.device.clone(),
+                None => {
+                    let mut device: Option<ID3D12Device> = None;
+                    D3D12CreateDevice(None, D3D_FEATURE_LEVEL_11_0, &mut device)
+                        .map_err(|e| format!("D3D12CreateDevice: {e}"))?;
+                    device.ok_or("D3D12CreateDevice 返回空")?
+                }
+            };
             let queue = device
                 .CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
                     Type: D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -121,6 +181,7 @@ impl Producer {
                 allocator,
                 list,
                 shared: None,
+                on_godot_device,
             })
         }
     }
@@ -237,6 +298,8 @@ impl Producer {
             ok1.map_err(|e| format!("DuplicateHandle(buffer): {e}"))?;
             ok2.map_err(|e| format!("DuplicateHandle(fence): {e}"))?;
 
+            // 新 fence 从 0 起:计数器同步归零(持 SH 锁,[gmain] 此时已 ShareDetach,不会并发取值)。
+            FENCE_VALUE.store(0, Ordering::SeqCst);
             self.shared = Some(SharedBuf {
                 buffer,
                 upload,
@@ -246,7 +309,6 @@ impl Producer {
                 width,
                 height,
                 fence,
-                fence_value: 0,
                 fence_event,
                 local_buf_handle: tex_handle,
             });
@@ -295,8 +357,7 @@ impl Producer {
             let cmd: ID3D12CommandList = self.list.cast().map_err(|e| format!("list cast: {e}"))?;
             self.queue.ExecuteCommandLists(&[Some(cmd)]);
 
-            shared.fence_value += 1;
-            let v = shared.fence_value;
+            let v = FENCE_VALUE.fetch_add(1, Ordering::SeqCst) + 1;
             self.queue
                 .Signal(&shared.fence, v)
                 .map_err(|e| format!("queue.Signal: {e}"))?;
@@ -323,8 +384,7 @@ impl Producer {
         };
         unsafe {
             // SAFETY: fence 存活于 self;Signal 仅入队序号,无资源引用。
-            shared.fence_value += 1;
-            let v = shared.fence_value;
+            let v = FENCE_VALUE.fetch_add(1, Ordering::SeqCst) + 1;
             self.queue
                 .Signal(&shared.fence, v)
                 .map_err(|e| format!("queue.Signal: {e}"))?;
@@ -363,6 +423,7 @@ pub fn open(
 }
 
 /// D3D12 adapter LUID(与 VK physical device LUID 对拍;producer 未初始化 = None)。
+#[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
 pub fn adapter_luid() -> Option<[u8; 8]> {
     let g = slot().lock().unwrap_or_else(|e| e.into_inner());
     let p = g.as_ref()?;
@@ -392,6 +453,7 @@ pub fn is_open() -> bool {
 
 /// VK import 面(buffer 形态)。未打开 = None。handle 生命周期随 SharedBuf
 /// (close/重建即失效),调用方须即取即用。
+#[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
 pub fn vk_import_info() -> Option<ShareInfo> {
     let g = slot().lock().unwrap_or_else(|e| e.into_inner());
     let p = g.as_ref()?;

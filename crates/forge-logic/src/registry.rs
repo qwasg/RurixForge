@@ -76,6 +76,11 @@ const fn out(name: &'static str, ty: PinType) -> PinSpec {
 
 /// 九族首发冻结子集(10 §4.2;事件数据输出按 10 §3.1 负载)。
 pub const REGISTRY: &[NodeSpec] = &[
+    NodeSpec { ntype: "call.native_frame", kind: NodeKind::Action, exec_in: true, exec_out: EXEC,
+        inputs: &[inp("module", PinType::String), inp("fn", PinType::String), inp("dt", PinType::F32), inp("bindings", PinType::Any), opt("animatorParam", PinType::String)], outputs: &[] },
+    // Data constructors keep native script outputs composable in scene graphs.
+    NodeSpec { ntype: "math.vec3", kind: NodeKind::Pure, exec_in: false, exec_out: &[], inputs: &[inp("x", PinType::F32), inp("y", PinType::F32), inp("z", PinType::F32)], outputs: &[out("out", PinType::Vec3)] },
+    NodeSpec { ntype: "transform.compose", kind: NodeKind::Pure, exec_in: false, exec_out: &[], inputs: &[inp("translation", PinType::Vec3), opt("scale", PinType::Vec3)], outputs: &[out("out", PinType::Transform)] },
     // ---- event.*(§3.1 全部事件入口;每图每事件至多一个,validate 强制)----
     NodeSpec { ntype: "event.on_start", kind: NodeKind::Event, exec_in: false, exec_out: EXEC, inputs: &[], outputs: &[] },
     NodeSpec { ntype: "event.on_update", kind: NodeKind::Event, exec_in: false, exec_out: EXEC, inputs: &[], outputs: &[out("dt", PinType::F32)] },
@@ -147,7 +152,7 @@ mod tests {
     #[test]
     fn registry_covers_nine_families_frozen_subset() {
         // 10 §4.2 首发冻结子集 40 + F-GAME-4 加性扩展(sprite 3 + animator 2)= 45。
-        assert_eq!(REGISTRY.len(), 45);
+        assert_eq!(REGISTRY.len(), 48);
         for t in [
             "event.on_start", "event.on_update", "event.on_contact_begin", "event.on_contact_persist",
             "event.on_contact_end", "event.on_trigger_enter", "event.on_trigger_exit", "event.on_input",

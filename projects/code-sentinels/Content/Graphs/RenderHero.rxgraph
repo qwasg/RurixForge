@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "id": "RenderHero",
+  "name": "RenderHero",
+  "exposedProps": [
+    {
+      "name": "visualId",
+      "kind": "F32",
+      "default": 0.0
+    },
+    {
+      "name": "baseScale",
+      "kind": "F32",
+      "default": 1.0
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n0",
+      "type": "event.on_update",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {}
+    },
+    {
+      "id": "n1",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels.rs"
+        },
+        "fn": {
+          "const": "cs_visual_x"
+        },
+        "args": {
+          "ref": "visualId"
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels.rs"
+        },
+        "fn": {
+          "const": "cs_visual_y"
+        },
+        "args": {
+          "ref": "visualId"
+        }
+      }
+    },
+    {
+      "id": "n3",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels.rs"
+        },
+        "fn": {
+          "const": "cs_visual_scale"
+        },
+        "args": {
+          "ref": "visualId"
+        }
+      }
+    },
+    {
+      "id": "n4",
+      "type": "math.vec3",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "x": {
+          "node": "n1",
+          "pin": "result"
+        },
+        "y": {
+          "node": "n2",
+          "pin": "result"
+        },
+        "z": {
+          "const": 0.0
+        }
+      }
+    },
+    {
+      "id": "n5",
+      "type": "math.vec3",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "x": {
+          "node": "n3",
+          "pin": "result"
+        },
+        "y": {
+          "node": "n3",
+          "pin": "result"
+        },
+        "z": {
+          "const": 1.0
+        }
+      }
+    },
+    {
+      "id": "n6",
+      "type": "transform.compose",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "translation": {
+          "node": "n4",
+          "pin": "out"
+        },
+        "scale": {
+          "node": "n5",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "n7",
+      "type": "entity.set_transform",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "entity": {
+          "const": "$self"
+        },
+        "transform": {
+          "node": "n6",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels.rs"
+        },
+        "fn": {
+          "const": "cs_visual_attacking"
+        },
+        "args": {
+          "ref": "visualId"
+        }
+      }
+    },
+    {
+      "id": "n9",
+      "type": "animator.set_bool",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "entity": {
+          "const": "$self"
+        },
+        "param": {
+          "const": "attacking"
+        },
+        "value": {
+          "node": "n8",
+          "pin": "result"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "n0",
+        "exec"
+      ],
+      "to": [
+        "n1",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n1",
+        "exec"
+      ],
+      "to": [
+        "n2",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n2",
+        "exec"
+      ],
+      "to": [
+        "n3",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n3",
+        "exec"
+      ],
+      "to": [
+        "n7",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n7",
+        "exec"
+      ],
+      "to": [
+        "n8",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n8",
+        "exec"
+      ],
+      "to": [
+        "n9",
+        "exec"
+      ]
+    }
+  ]
+}

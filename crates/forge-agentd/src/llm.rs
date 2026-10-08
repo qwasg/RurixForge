@@ -1,7 +1,7 @@
 //! RD-F1-002 真 LLM 工具循环:provider 抽象(mock|deepseek)+ POST /api/forge/llm/chat。
 //! 循环:tools/list 实测拉取五 server schema → OpenAI tools 格式 → DeepSeek chat.completions
 //! (tools, tool_choice=auto)→ tool_calls 逐项进程内 mcp::call_tool → role:tool 回注 →
-//! 终止(无 tool_calls 或 max_iters=16)→ { provider, text, toolCalls[{name,ok,summary}], iters }。
+//! 终止(无 tool_calls 或达到配置的循环上限)→ { provider, text, toolCalls[{name,ok,summary}], iters }。
 //! 密钥红线(R-5):FORGE_LLM_API_KEY env 优先 → gend keystore["deepseek"](key_for 语义,
 //! FORGE_GEN_API_KEY 共享 dev-key 覆盖如实标注);皆无 → provider=mock。密钥只进
 //! Authorization 请求头,永不进日志/事件/工具返回/错误消息。
@@ -36,7 +36,7 @@ const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_MODEL: &str = "deepseek-chat";
 /// 工具循环上限(防失控;耗尽如实标注 truncated)。完整游戏制作一轮需数十次工具
 /// 调用(逐素材生成/导入/建实体/写脚本),16 轮实测不够。
-const MAX_ITERS: usize = 128;
+pub(crate) const DEFAULT_MAX_ITERS: usize = 128;
 /// 回注 LLM 的工具结果截断(控 token);响应记录的 summary 另行 ≤200ch。
 const TOOL_FEEDBACK_MAX: usize = 4000;
 /// 单次 HTTP 请求超时(工具循环多轮,每轮一个请求)。
@@ -56,14 +56,85 @@ const LLM_STEP_HARD_TIMEOUT_SECS: u64 = 1800;
 /// 明确的应用层语义错误(4xx 鉴权/参数/配额)外一律重试。重试幂等:LLM 请求无副作用。
 fn is_transient_llm_error(e: &LlmError) -> bool {
     let s = e.to_string().to_lowercase();
-    !["401", "403", "404", "422", "400", "bad request", "unauthorized",
-      "forbidden", "invalid api key", "invalid request", "insufficient",
-      "quota", "balance", "not found",
-      // 本地确定性错误:渠道未配齐/工具面为空/空白收束——重试不会自愈,必须首轮即败
-      // (否则 10 次退避 ≈13 分钟,「期望显式失败」的调用与单测全被拖死)。
-      "openai_compat_not_configured", "mcp 工具面为空", "empty_completion"]
-        .iter()
-        .any(|k| s.contains(k))
+    ![
+        "401",
+        "402",
+        "403",
+        "404",
+        "422",
+        "400",
+        "bad request",
+        "unauthorized",
+        "forbidden",
+        "invalid api key",
+        "invalid request",
+        "insufficient",
+        "quota",
+        "balance",
+        "not found",
+        // 15 §11.1 计费拦截(402):额度用尽 / 按量付费上限,重试不会自愈。
+        "included_usage_exhausted",
+        "spend_limit_reached",
+        // 本地确定性错误:渠道未配齐/工具面为空/空白收束——重试不会自愈,必须首轮即败
+        // (否则 10 次退避 ≈13 分钟,「期望显式失败」的调用与单测全被拖死)。
+        "openai_compat_not_configured",
+        "antigravity_not_configured",
+        "mcp 工具面为空",
+        "empty_completion",
+        "cloud_login_required",
+        "model_not_configured",
+        "channel_login_required",
+        "channel_not_configured",
+        "authenticationerror",
+    ]
+    .iter()
+    .any(|k| s.contains(k))
+}
+
+pub(crate) const ANTIGRAVITY_NOT_CONFIGURED: &str = "ANTIGRAVITY_NOT_CONFIGURED";
+
+/// agent.failed 事件 `code` 字段(15 §8.5)。
+pub(crate) fn failure_code_from_error(message: &str) -> Option<&'static str> {
+    let upper = message.to_uppercase();
+    if upper.contains("CHANNEL_LOGIN_REQUIRED") { return Some("CHANNEL_LOGIN_REQUIRED"); }
+    if upper.contains("CHANNEL_NOT_CONFIGURED") { return Some("CHANNEL_NOT_CONFIGURED"); }
+    if upper.contains(ANTIGRAVITY_NOT_CONFIGURED) {
+        return Some(ANTIGRAVITY_NOT_CONFIGURED);
+    }
+    if upper.contains(CLOUD_LOGIN_REQUIRED) {
+        return Some(CLOUD_LOGIN_REQUIRED);
+    }
+    if upper.contains("CLOUD_UNAUTHORIZED") {
+        return Some("CLOUD_UNAUTHORIZED");
+    }
+    if upper.contains(CLOUD_MODEL_NOT_CONFIGURED) {
+        return Some(CLOUD_MODEL_NOT_CONFIGURED);
+    }
+    if upper.contains("MODEL_NOT_ALLOWED") {
+        return Some("MODEL_NOT_ALLOWED");
+    }
+    if upper.contains("INCLUDED_USAGE_EXHAUSTED") {
+        return Some("INCLUDED_USAGE_EXHAUSTED");
+    }
+    if upper.contains("SPEND_LIMIT_REACHED") {
+        return Some("SPEND_LIMIT_REACHED");
+    }
+    if upper.contains("INSUFFICIENT_BALANCE") || upper.contains("KEY_QUOTA_EXCEEDED") {
+        return Some("INSUFFICIENT_BALANCE");
+    }
+    if upper.contains("RATE_LIMITED") || upper.contains("RATE_LIMIT") {
+        return Some("RATE_LIMITED");
+    }
+    if upper.contains("NO_AVAILABLE_ACCOUNT") {
+        return Some("NO_AVAILABLE_ACCOUNT");
+    }
+    if upper.contains("UPSTREAM_ERROR") {
+        return Some("UPSTREAM_ERROR");
+    }
+    if upper.contains("CLOUD_UNREACHABLE") {
+        return Some("CLOUD_UNREACHABLE");
+    }
+    None
 }
 
 pub(crate) const SYSTEM_PROMPT: &str = "你是 RurixForge 游戏引擎编辑器的内置助手。\
@@ -102,6 +173,8 @@ pub struct ToolCallRecord {
 pub(crate) enum Provider {
     /// 无密钥:恒绿 seam,不触网不触 MCP。
     Mock,
+    /// Explicit official subscription route; does not fall back to another provider.
+    Official { channel: &'static str },
     /// DeepSeek 官方 API;String 仅用于 Authorization 头组装。
     Deepseek(String),
     /// F8 wave.2:openai-compatible 通用渠道(已配齐 baseUrl+model+key;key 仅用于 Authorization 头)。
@@ -112,24 +185,68 @@ pub(crate) enum Provider {
     },
     /// F8 wave.2:会话显式选 openai-compat 但未配齐 → 显式 NOT_CONFIGURED 分支(不静默回落)。
     OpenAiCompatNotConfigured,
+    /// 15 §8.4:RurixForge 云网关(设备 Key + 粘性会话头)。
+    Cloud {
+        server_url: String,
+        model: String,
+        key: String,
+        session_id: Option<String>,
+    },
+    /// 显式 cloud:<id> 不可用 / 未登录且无 BYO(15 §8.4)。
+    CloudNotConfigured,
+    /// 未登录、无自带密钥、且未开 dev mock(15 §8.4)。
+    CloudLoginRequired,
+    /// Antigravity 订阅反代渠道 (baseUrl+model+key 全齐)
+    Antigravity {
+        base_url: String,
+        model: String,
+        key: String,
+    },
+    /// 会话显式选 Antigravity 但未配齐 → 显式 NOT_CONFIGURED 分支 (首轮即败，不静默回落)
+    AntigravityNotConfigured,
 }
 
-/// Debug 脱敏(R-5):Deepseek/OpenAiCompat 变体永不打印密钥本体。
+/// Debug 脱敏(R-5):Deepseek/OpenAiCompat/Antigravity 变体永不打印密钥本体。
 impl std::fmt::Debug for Provider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Provider::Mock => f.write_str("Mock"),
+            Provider::Official { channel } => f.debug_struct("Official").field("channel", channel).finish(),
             Provider::Deepseek(_) => f.write_str("Deepseek(<redacted>)"),
-            Provider::OpenAiCompat { base_url, model, .. } => f
+            Provider::OpenAiCompat {
+                base_url, model, ..
+            } => f
                 .debug_struct("OpenAiCompat")
                 .field("base_url", base_url)
                 .field("model", model)
                 .field("key", &"<redacted>")
                 .finish(),
             Provider::OpenAiCompatNotConfigured => f.write_str("OpenAiCompatNotConfigured"),
+            Provider::Cloud {
+                server_url, model, ..
+            } => f
+                .debug_struct("Cloud")
+                .field("server_url", server_url)
+                .field("model", model)
+                .field("key", &"<redacted>")
+                .finish(),
+            Provider::CloudNotConfigured => f.write_str("CloudNotConfigured"),
+            Provider::CloudLoginRequired => f.write_str("CloudLoginRequired"),
+            Provider::Antigravity {
+                base_url, model, ..
+            } => f
+                .debug_struct("Antigravity")
+                .field("base_url", base_url)
+                .field("model", model)
+                .field("key", &"<redacted>")
+                .finish(),
+            Provider::AntigravityNotConfigured => f.write_str("AntigravityNotConfigured"),
         }
     }
 }
+
+pub(crate) const CLOUD_LOGIN_REQUIRED: &str = "CLOUD_LOGIN_REQUIRED";
+pub(crate) const CLOUD_MODEL_NOT_CONFIGURED: &str = "MODEL_NOT_CONFIGURED";
 
 /// 密钥面:FORGE_LLM_API_KEY env 优先 → gend keystore["deepseek"]。
 /// keystore.key_for 语义含 FORGE_GEN_API_KEY 共享 dev-key 覆盖(D-RDG-B 如实标注)。
@@ -153,6 +270,11 @@ pub(crate) fn resolve_deepseek_key() -> Option<String> {
 /// 注意 OpenAiCompatNotConfigured 不在此产生——未配齐 = 渠道不存在,按后续优先级回落;
 /// 显式 NOT_CONFIGURED 只由 provider_for_session(会话显式选 openai-compat 未配齐)产生。
 pub(crate) fn resolve_provider() -> Provider {
+    resolve_provider_with_cloud(&crate::cloud::global())
+}
+
+/// 默认渠道决议(可注入 CloudService;单测用内存实例)。
+pub(crate) fn resolve_provider_with_cloud(cloud: &crate::cloud::CloudService) -> Provider {
     if let Some(k) = std::env::var("FORGE_LLM_API_KEY")
         .ok()
         .filter(|v| !v.is_empty())
@@ -160,11 +282,85 @@ pub(crate) fn resolve_provider() -> Provider {
         return Provider::Deepseek(k);
     }
     if let Some((base_url, model, key)) = resolve_openai_compat() {
-        return Provider::OpenAiCompat { base_url, model, key };
+        return Provider::OpenAiCompat {
+            base_url,
+            model,
+            key,
+        };
     }
-    match resolve_deepseek_key() {
-        Some(k) => Provider::Deepseek(k),
-        None => Provider::Mock,
+    if let Some(k) = resolve_deepseek_key() {
+        return Provider::Deepseek(k);
+    }
+    if let Some(p) = resolve_cloud_default(cloud) {
+        return p;
+    }
+    if crate::cloud::dev_mock_enabled() {
+        Provider::Mock
+    } else {
+        Provider::CloudLoginRequired
+    }
+}
+
+/// 已登录 → 云端 defaultModel(须可用且有设备 Key)。
+pub(crate) fn resolve_cloud_default(cloud: &crate::cloud::CloudService) -> Option<Provider> {
+    if !cloud.is_logged_in() {
+        return None;
+    }
+    let key = cloud.device_key()?;
+    let catalog = cloud.catalog_cached()?;
+    let entry = catalog.default_entry()?;
+    if !entry.available {
+        return None;
+    }
+    Some(Provider::Cloud {
+        server_url: cloud.server_url(),
+        model: entry.id.clone(),
+        key,
+        session_id: cloud.current_session_id(),
+    })
+}
+
+/// 会话 id `cloud:<forge-cloud model id>` → provider。
+pub(crate) fn resolve_cloud_model(cloud: &crate::cloud::CloudService, model_id: &str) -> Provider {
+    if !cloud.is_logged_in() {
+        return Provider::CloudLoginRequired;
+    }
+    let Some(key) = cloud.device_key() else {
+        return Provider::CloudLoginRequired;
+    };
+    let Some(catalog) = cloud.catalog_cached() else {
+        return Provider::CloudNotConfigured;
+    };
+    let Some(m) = catalog.find(model_id) else {
+        return Provider::CloudNotConfigured;
+    };
+    if !m.available {
+        return Provider::CloudNotConfigured;
+    }
+    Provider::Cloud {
+        server_url: cloud.server_url(),
+        model: m.id.clone(),
+        key,
+        // 占位:ask 回合会改成聊天会话 id(X-Forge-Session 粘性键,15 §8.4)。
+        session_id: cloud.current_session_id(),
+    }
+}
+
+/// 粘性键是聊天会话,不是设备登录会话。非云渠道原样返回。
+pub(crate) fn bind_chat_session(provider: Provider, chat_session_id: &str) -> Provider {
+    match provider {
+        Provider::Cloud {
+            server_url,
+            model,
+            key,
+            ..
+        } => Provider::Cloud {
+            server_url,
+            model,
+            key,
+            session_id: Some(chat_session_id.to_string()),
+        },
+        other => other,
     }
 }
 
@@ -179,10 +375,7 @@ pub fn to_openai_tools(mcp_tools: &[Value]) -> Vec<Value> {
         .iter()
         .filter_map(|t| {
             let name = t.get("name")?.as_str()?;
-            let mut params = t
-                .get("inputSchema")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
+            let mut params = t.get("inputSchema").cloned().unwrap_or_else(|| json!({}));
             if params.get("type").is_none() {
                 params["type"] = json!("object");
             }
@@ -207,11 +400,12 @@ pub struct RequestSpec {
     pub model: Option<String>,
     /// reasoning_effort 实发值;None = 请求体不含该字段(行为与规格波之前逐字节一致)。
     pub reasoning_effort: Option<String>,
+    pub thinking_enabled: Option<bool>,
 }
 
 /// chat.completions 请求体组装(纯函数,便于「密钥不进 body」扫描测试;F8:model 参数化)。
 /// 规格波:spec.model 覆盖渠道默认模型名;reasoning_effort 仅在有值时出现在 body 里。
-fn build_request_body(
+pub(crate) fn build_request_body(
     model: &str,
     messages: &[Value],
     tools: &[Value],
@@ -226,6 +420,9 @@ fn build_request_body(
     });
     if let Some(effort) = &spec.reasoning_effort {
         body["reasoning_effort"] = json!(effort);
+    }
+    if let Some(enabled) = spec.thinking_enabled {
+        body["thinking_enabled"] = json!(enabled);
     }
     body
 }
@@ -247,37 +444,89 @@ impl std::fmt::Display for LlmError {
     }
 }
 
+/// 网关 OpenAI 风格 `error.code`(小写)→ agent.failed 用的失败码(15 §8.5)。
+fn map_cloud_gateway_code(code: &str) -> Option<&'static str> {
+    match code.to_ascii_lowercase().as_str() {
+        "invalid_api_key" | "user_disabled" => Some("CLOUD_UNAUTHORIZED"),
+        "insufficient_balance" | "key_quota_exceeded" => Some("INSUFFICIENT_BALANCE"),
+        // 15 §11.1:套餐内额度用尽且按量付费关闭 / 本周期按量付费已达上限(402,不重试)。
+        "included_usage_exhausted" => Some("INCLUDED_USAGE_EXHAUSTED"),
+        "spend_limit_reached" => Some("SPEND_LIMIT_REACHED"),
+        "model_not_found" => Some("MODEL_NOT_CONFIGURED"),
+        "model_not_allowed" => Some("MODEL_NOT_ALLOWED"),
+        "rate_limited" | "concurrency_limited" => Some("RATE_LIMITED"),
+        "no_available_account" => Some("NO_AVAILABLE_ACCOUNT"),
+        "upstream_error" => Some("UPSTREAM_ERROR"),
+        _ => None,
+    }
+}
+
+/// 非 2xx 的错误面:状态码 + 正文 message,不含密钥。云端再带上映射后的失败码,
+/// 以及 `retry-after=N`(秒),供步进重试按 Retry-After 等待。
+fn llm_error_http(provider_label: &str, code: u16, response: ureq::Response) -> LlmError {
+    let retry_after = response
+        .header("Retry-After")
+        .and_then(|h| h.trim().parse::<u64>().ok());
+    let parsed = read_body(response)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+    let err_obj = parsed.as_ref().and_then(|v| v.get("error"));
+    let message = err_obj
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .unwrap_or("无详情");
+    let mapped = if provider_label == "cloud" {
+        err_obj
+            .and_then(|e| e.get("code"))
+            .and_then(Value::as_str)
+            .and_then(map_cloud_gateway_code)
+    } else {
+        None
+    };
+    let mut text = match mapped {
+        Some(mapped) => format!("{provider_label} HTTP {code}: {mapped}: {message}"),
+        None => format!("{provider_label} HTTP {code}: {message}"),
+    };
+    if let Some(secs) = retry_after {
+        text.push_str(&format!(" retry-after={secs}"));
+    }
+    LlmError(text)
+}
+
+fn retry_after_backoff(e: &LlmError) -> Option<std::time::Duration> {
+    let rest = e.0.split("retry-after=").nth(1)?;
+    let n: u64 = rest
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()?;
+    Some(std::time::Duration::from_secs(n.clamp(1, 120)))
+}
+
 /// 单次 chat.completions POST 共享核(阻塞,调用方须 spawn_blocking;F8 抽出供双渠道复用)。
 /// 错误消息只带 provider 标签 + HTTP 状态码/传输错误,不回显请求体与头(R-5)。
-fn post_chat_completions(
+pub(crate) fn post_chat_completions(
     url: &str,
     provider_label: &str,
     key: &str,
     body: &Value,
+    extra_headers: &[(&str, &str)],
 ) -> Result<Value, LlmError> {
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
         .build();
-    let resp = agent
+    let mut req = agent
         .post(url)
         .set("Authorization", &format!("Bearer {key}"))
-        .set("Content-Type", "application/json")
-        .send_string(&body.to_string());
+        .set("Content-Type", "application/json");
+    for (k, v) in extra_headers {
+        req = req.set(k, v);
+    }
+    let resp = req.send_string(&body.to_string());
     let resp = match resp {
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => {
-            // 读响应体取 error.message(上行错误面;不含我方密钥)。
-            let detail = read_body(r)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                .and_then(|v| {
-                    v.get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                })
-                .unwrap_or_else(|| "无详情".to_string());
-            return Err(LlmError(format!("{provider_label} HTTP {code}: {detail}")));
+            return Err(llm_error_http(provider_label, code, r));
         }
         Err(ureq::Error::Transport(t)) => {
             return Err(LlmError(format!("{provider_label} 连接失败: {t}")));
@@ -298,7 +547,7 @@ fn chat_completions(
     spec: &RequestSpec,
 ) -> Result<Value, LlmError> {
     let body = build_request_body(DEEPSEEK_MODEL, messages, tools, spec);
-    post_chat_completions(DEEPSEEK_URL, "DeepSeek", key, &body)
+    post_chat_completions(DEEPSEEK_URL, "DeepSeek", key, &body, &[])
 }
 
 /// 单次 openai-compat chat.completions 调用(阻塞,调用方须 spawn_blocking;F8 wave.2)。
@@ -313,7 +562,7 @@ fn chat_completions_openai_compat(
 ) -> Result<Value, LlmError> {
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
     let body = build_request_body(model, messages, tools, spec);
-    post_chat_completions(&url, "openai-compat", key, &body)
+    post_chat_completions(&url, "openai-compat", key, &body, &[])
 }
 
 fn read_body(resp: ureq::Response) -> Result<Vec<u8>, std::io::Error> {
@@ -324,7 +573,7 @@ fn read_body(resp: ureq::Response) -> Result<Vec<u8>, std::io::Error> {
 }
 
 /// SSE stream:true 调用,边读边回传 StreamDelta,再合成非流式 chat.completions JSON 供 parse_step_response。
-fn chat_completions_stream(
+pub(crate) fn chat_completions_stream(
     url: &str,
     provider_label: &str,
     model: &str,
@@ -333,6 +582,7 @@ fn chat_completions_stream(
     tools: &[Value],
     spec: &RequestSpec,
     sink: Option<&StreamSink>,
+    extra_headers: &[(&str, &str)],
 ) -> Result<Value, LlmError> {
     use std::io::{BufRead, BufReader};
     let mut body = build_request_body(model, messages, tools, spec);
@@ -348,28 +598,21 @@ fn chat_completions_stream(
         .timeout_connect(std::time::Duration::from_secs(15))
         .timeout_read(std::time::Duration::from_secs(120))
         .build();
-    let resp = agent
+    let mut req = agent
         .post(url)
         .set("Authorization", &format!("Bearer {key}"))
-        .set("Content-Type", "application/json")
-        .send_string(&body.to_string());
+        .set("Content-Type", "application/json");
+    for (k, v) in extra_headers {
+        req = req.set(k, v);
+    }
+    let resp = req.send_string(&body.to_string());
     let resp = match resp {
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => {
-            let detail = read_body(r)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                .and_then(|v| {
-                    v.get("error")
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                })
-                .unwrap_or_else(|| "无详情".to_string());
             if let Some(s) = sink {
                 s(StreamDelta::Reset);
             }
-            return Err(LlmError(format!("{provider_label} HTTP {code}: {detail}")));
+            return Err(llm_error_http(provider_label, code, r));
         }
         Err(ureq::Error::Transport(t)) => {
             if let Some(s) = sink {
@@ -381,6 +624,7 @@ fn chat_completions_stream(
     let reader = BufReader::new(resp.into_reader());
     let mut content = String::new();
     let mut reasoning = String::new();
+    let mut anthropic_content: Option<Value> = None;
     let mut tool_acc: std::collections::BTreeMap<u32, (String, String, String)> =
         std::collections::BTreeMap::new();
     let mut usage = json!({});
@@ -415,8 +659,9 @@ fn chat_completions_stream(
         let delta = choice.get("delta");
         let message = choice.get("message");
         let part = match (delta, message) {
-            (Some(d), Some(m)) if content_text(d.get("content").unwrap_or(&Value::Null)).is_empty()
-                && content_text(d.get("text").unwrap_or(&Value::Null)).is_empty() =>
+            (Some(d), Some(m))
+                if content_text(d.get("content").unwrap_or(&Value::Null)).is_empty()
+                    && content_text(d.get("text").unwrap_or(&Value::Null)).is_empty() =>
             {
                 m
             }
@@ -432,6 +677,9 @@ fn chat_completions_stream(
             }
         }
         let r = assistant_reasoning(part);
+        if let Some(blocks) = part.get("anthropic_content").filter(|v| v.is_array()) {
+            anthropic_content = Some(blocks.clone());
+        }
         if !r.is_empty() {
             reasoning.push_str(&r);
             if let Some(s) = sink {
@@ -456,16 +704,10 @@ fn chat_completions_stream(
                         entry.0 = id.to_string();
                     }
                 }
-                if let Some(name) = tc
-                    .pointer("/function/name")
-                    .and_then(|x| x.as_str())
-                {
+                if let Some(name) = tc.pointer("/function/name").and_then(|x| x.as_str()) {
                     entry.1.push_str(name);
                 }
-                if let Some(args) = tc
-                    .pointer("/function/arguments")
-                    .and_then(|x| x.as_str())
-                {
+                if let Some(args) = tc.pointer("/function/arguments").and_then(|x| x.as_str()) {
                     entry.2.push_str(args);
                     if let Some(s) = sink {
                         s(StreamDelta::ToolArgs {
@@ -492,6 +734,9 @@ fn chat_completions_stream(
     let mut message = json!({ "role": "assistant", "content": content });
     if !reasoning.is_empty() {
         message["reasoning_content"] = json!(reasoning);
+    }
+    if let Some(blocks) = anthropic_content {
+        message["anthropic_content"] = blocks;
     }
     if !tool_calls.is_empty() {
         message["tool_calls"] = json!(tool_calls);
@@ -530,10 +775,7 @@ fn content_text(v: &Value) -> String {
 
 /// assistant 片(delta 或 message)上的可见正文。
 fn assistant_text(part: &Value) -> String {
-    let from_content = part
-        .get("content")
-        .map(content_text)
-        .unwrap_or_default();
+    let from_content = part.get("content").map(content_text).unwrap_or_default();
     if !from_content.is_empty() {
         return from_content;
     }
@@ -611,6 +853,7 @@ async fn run_deepseek_loop(
             stream: None,
             preamble: None,
             inbox: None,
+            history: Vec::new(),
             max_iters: None,
         },
     )
@@ -649,6 +892,85 @@ async fn run_openai_compat_loop(
             stream: None,
             preamble: None,
             inbox: None,
+            history: Vec::new(),
+            max_iters: None,
+        },
+    )
+    .await?;
+    Ok((out.text, out.records, out.iters))
+}
+
+async fn run_cloud_loop(
+    text: &str,
+    server_url: &str,
+    model: &str,
+    key: &str,
+    session_id: Option<&str>,
+) -> Result<(String, Vec<ToolCallRecord>, usize), LlmError> {
+    let mcp_tools = mcp::list_all_tools()
+        .await
+        .map_err(|e| LlmError(format!("MCP 工具面拉取失败: {e}")))?;
+    let tools = to_openai_tools(&mcp_tools);
+    let step = cloud_step(
+        server_url,
+        model,
+        key,
+        session_id.map(str::to_string),
+        &RequestSpec::default(),
+    );
+    let execute = mcp_executor();
+    let vision = crate::cloud::global()
+        .catalog_cached()
+        .is_some_and(|c| c.find(model).is_some_and(|m| m.capabilities.vision));
+    let out = run_tool_loop(
+        SYSTEM_PROMPT,
+        text,
+        ToolLoopCfg {
+            tools,
+            step: step.as_ref(),
+            execute: execute.as_ref(),
+            vision,
+            sink: None,
+            forbidden: None,
+            cancelled: None,
+            stream: None,
+            preamble: None,
+            inbox: None,
+            history: Vec::new(),
+            max_iters: None,
+        },
+    )
+    .await?;
+    Ok((out.text, out.records, out.iters))
+}
+
+async fn run_antigravity_loop(
+    text: &str,
+    base_url: &str,
+    model: &str,
+    key: &str,
+) -> Result<(String, Vec<ToolCallRecord>, usize), LlmError> {
+    let mcp_tools = mcp::list_all_tools()
+        .await
+        .map_err(|e| LlmError(format!("MCP 工具面拉取失败: {e}")))?;
+    let tools = to_openai_tools(&mcp_tools);
+    let step = crate::antigravity::antigravity_step(base_url, model, key, &RequestSpec::default());
+    let execute = mcp_executor();
+    let out = run_tool_loop(
+        SYSTEM_PROMPT,
+        text,
+        ToolLoopCfg {
+            tools,
+            step: step.as_ref(),
+            execute: execute.as_ref(),
+            vision: true,
+            sink: None,
+            forbidden: None,
+            cancelled: None,
+            stream: None,
+            preamble: None,
+            inbox: None,
+            history: Vec::new(),
             max_iters: None,
         },
     )
@@ -677,10 +999,9 @@ pub struct StepOutcome {
 
 /// provider 步进(可注入;单测用 scripted fake,禁止网络/子进程):
 /// (messages, openai tools, 可选 stream sink) → assistant message + usage。
-pub type StepFn =
-    dyn Fn(Vec<Value>, Vec<Value>, Option<StreamSink>) -> BoxFut<Result<StepOutcome, LlmError>>
-        + Send
-        + Sync;
+pub type StepFn = dyn Fn(Vec<Value>, Vec<Value>, Option<StreamSink>) -> BoxFut<Result<StepOutcome, LlmError>>
+    + Send
+    + Sync;
 
 /// 工具反馈:回注文本 + 可选图片(data URI)。
 /// 图片单列而不并进文本:base64 一进文本就会被 TOOL_FEEDBACK_MAX 截成废串,还白烧 token。
@@ -694,13 +1015,19 @@ pub struct ToolFeedback {
 
 impl From<String> for ToolFeedback {
     fn from(text: String) -> Self {
-        ToolFeedback { text, images: Vec::new() }
+        ToolFeedback {
+            text,
+            images: Vec::new(),
+        }
     }
 }
 
 impl From<&str> for ToolFeedback {
     fn from(text: &str) -> Self {
-        ToolFeedback { text: text.to_string(), images: Vec::new() }
+        ToolFeedback {
+            text: text.to_string(),
+            images: Vec::new(),
+        }
     }
 }
 
@@ -728,6 +1055,9 @@ pub type StreamSink = std::sync::Arc<dyn Fn(StreamDelta) + Send + Sync>;
 /// 工具循环事件(sink;llm/chat 传 None = 零事件 = 原行为;agent.rs 接 EventBus)。
 #[derive(Debug)]
 pub enum LoopEvent {
+    /// The adapter accepted this model context. Used for durable member history
+    /// and inbox acknowledgement; never emitted as a user-visible transcript.
+    ContextAccepted(Vec<Value>),
     ToolInvoked {
         name: String,
         args: Value,
@@ -765,6 +1095,8 @@ pub enum LoopEvent {
 
 /// 工具循环结果。
 pub struct ToolLoopOutcome {
+    /// True only when the loop reached its limit without a terminal model response.
+    pub exhausted: bool,
     pub text: String,
     pub records: Vec<ToolCallRecord>,
     pub iters: usize,
@@ -790,7 +1122,7 @@ pub struct ToolLoopCfg<'a> {
     /// F10 预检索上下文:Some(非空) = 在 system 与 user 之间插入第三条 role:system
     /// 「工作区上下文」消息(不污染 system prompt 本体);None/空 = 原两条消息行为。
     pub preamble: Option<String>,
-    /// 迭代上限覆盖(team 子代理按 profile.maxSteps 收口);None = 缺省 MAX_ITERS。
+    /// 迭代上限覆盖(team 子代理按 profile.maxSteps 收口);None = 缺省 DEFAULT_MAX_ITERS。
     pub max_iters: Option<usize>,
     /// D-038:中途收件——每迭代开头(取消检查之后、步进之前)问一次,Some(text) 即以一条
     /// role:user 消息插进上下文。用途是把后台子代理的回执送进**正在跑**的主 agent 循环,
@@ -798,10 +1130,13 @@ pub struct ToolLoopCfg<'a> {
     /// 插入点选在迭代开头而非工具执行后:此刻末条消息必是 user(首轮)或 tool 结果(其后),
     /// 追加一条 user 消息在 OpenAI 消息序里都合法,且不会打断 assistant→tool 的配对。
     pub inbox: Option<&'a (dyn Fn() -> Option<String> + Send + Sync)>,
+    /// 多轮对话历史(见 [history](crate::history)):插在 preamble 之后、本轮 user 之前。
+    /// 只有主 agent 轮传非空;子代理、research-stdio 与 llm/chat 传空 = 单轮行为。
+    pub history: Vec<Value>,
 }
 
 /// chat.completions 响应 → StepOutcome(message + usage;usage 缺省 None;F8:provider 标签参数化)。
-fn parse_step_response(resp: &Value, provider_label: &str) -> Result<StepOutcome, LlmError> {
+pub(crate) fn parse_step_response(resp: &Value, provider_label: &str) -> Result<StepOutcome, LlmError> {
     let msg = resp
         .get("choices")
         .and_then(Value::as_array)
@@ -843,6 +1178,7 @@ pub fn deepseek_step(key: &str, spec: &RequestSpec) -> Box<StepFn> {
                         &tools,
                         &spec,
                         Some(&sink),
+                        &[],
                     )
                 } else {
                     chat_completions(&key, &messages, &tools, &spec)
@@ -885,6 +1221,7 @@ pub fn openai_compat_step(
                         &tools,
                         &spec,
                         Some(&sink),
+                        &[],
                     )
                 } else {
                     chat_completions_openai_compat(
@@ -895,6 +1232,120 @@ pub fn openai_compat_step(
             .await
             .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
             parse_step_response(&resp, "openai-compat")
+        })
+    })
+}
+
+fn cloud_request_headers(session_id: Option<&str>) -> Vec<(String, String)> {
+    let mut headers = vec![(
+        "X-Forge-Client".to_string(),
+        format!("forge-agentd/{}", env!("CARGO_PKG_VERSION")),
+    )];
+    if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
+        headers.push(("X-Forge-Session".to_string(), sid.to_string()));
+    }
+    headers
+}
+
+fn header_refs(headers: &[(String, String)]) -> Vec<(&str, &str)> {
+    headers
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect()
+}
+
+fn chat_completions_cloud(
+    server_url: &str,
+    model: &str,
+    key: &str,
+    session_id: Option<&str>,
+    messages: &[Value],
+    tools: &[Value],
+    spec: &RequestSpec,
+) -> Result<Value, LlmError> {
+    let url = format!("{}/v1/chat/completions", server_url.trim_end_matches('/'));
+    let headers = cloud_request_headers(session_id);
+    let refs = header_refs(&headers);
+    let body = build_request_body(model, messages, tools, spec);
+    post_chat_completions(&url, "cloud", key, &body, &refs)
+}
+
+/// forge-cloud 网关步进(15 §8.4)。
+pub fn cloud_step(
+    server_url: &str,
+    model: &str,
+    key: &str,
+    session_id: Option<String>,
+    spec: &RequestSpec,
+) -> Box<StepFn> {
+    let server_url = server_url.to_string();
+    let model = model.to_string();
+    let key = key.to_string();
+    let spec = spec.clone();
+    Box::new(move |messages, tools, stream| {
+        let server_url = server_url.clone();
+        let model = model.clone();
+        let key = key.clone();
+        let session_id = session_id.clone();
+        let spec = spec.clone();
+        Box::pin(async move {
+            let resp = tokio::task::spawn_blocking(move || {
+                let headers = cloud_request_headers(session_id.as_deref());
+                let refs = header_refs(&headers);
+                if let Some(sink) = stream {
+                    let url = format!("{}/v1/chat/completions", server_url.trim_end_matches('/'));
+                    chat_completions_stream(
+                        &url,
+                        "cloud",
+                        &model,
+                        &key,
+                        &messages,
+                        &tools,
+                        &spec,
+                        Some(&sink),
+                        &refs,
+                    )
+                } else {
+                    chat_completions_cloud(
+                        &server_url,
+                        &model,
+                        &key,
+                        session_id.as_deref(),
+                        &messages,
+                        &tools,
+                        &spec,
+                    )
+                }
+            })
+            .await
+            .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))?;
+            if let Err(e) = &resp {
+                if e.0.contains("CLOUD_UNAUTHORIZED") {
+                    crate::cloud::global().note_device_key_rejected();
+                }
+            }
+            let resp = resp?;
+            parse_step_response(&resp, "cloud")
+        })
+    })
+}
+
+pub fn cloud_login_required_step() -> Box<StepFn> {
+    Box::new(|_m, _t, _s| {
+        Box::pin(async move {
+            Err(LlmError(format!(
+                "{CLOUD_LOGIN_REQUIRED}: 尚未登录 RurixForge 云账号且无可用自带密钥"
+            )))
+        })
+    })
+}
+
+pub fn cloud_not_configured_step() -> Box<StepFn> {
+    Box::new(|_m, _t, _s| {
+        Box::pin(async move {
+            Err(LlmError(format!(
+                "{CLOUD_MODEL_NOT_CONFIGURED}: 所选云端模型不可用或未登录"
+            )))
         })
     })
 }
@@ -958,7 +1409,9 @@ fn extract_tool_images(text: &str) -> Vec<String> {
             Ok(m) if m.len() <= TOOL_IMAGE_MAX_BYTES => {}
             _ => continue,
         }
-        let Ok(bytes) = std::fs::read(&abs) else { continue };
+        let Ok(bytes) = std::fs::read(&abs) else {
+            continue;
+        };
         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
         out.push(format!("data:image/png;base64,{b64}"));
     }
@@ -1020,7 +1473,9 @@ fn strip_viewport_pixels(text: &str) -> Option<(String, Vec<String>)> {
     let w = obj.get("width").and_then(Value::as_u64)? as u32;
     let h = obj.get("height").and_then(Value::as_u64)? as u32;
     let b64 = obj.get("pixelsB64").and_then(Value::as_str)?.to_string();
-    let rgba = base64::engine::general_purpose::STANDARD.decode(&b64).ok()?;
+    let rgba = base64::engine::general_purpose::STANDARD
+        .decode(&b64)
+        .ok()?;
     let png = gend::mock::encode_png_rgba8(&rgba, w, h).ok()?;
     obj.insert(
         "pixelsB64".into(),
@@ -1043,6 +1498,9 @@ pub fn mcp_executor_in(project_root: std::path::PathBuf) -> Box<ExecFn> {
     Box::new(move |name, args| {
         let root = project_root.clone();
         Box::pin(async move {
+            if let Err(error) = crate::editor::validate_scene_write(&name, &args) {
+                return (false, error.into());
+            }
             match mcp::call_tool_in(&root, &name, Some(args)).await {
                 Ok(result) => {
                     let is_err = result
@@ -1050,7 +1508,11 @@ pub fn mcp_executor_in(project_root: std::path::PathBuf) -> Box<ExecFn> {
                         .and_then(Value::as_bool)
                         .unwrap_or(false);
                     let mut text = envelope_text(&result);
-                    let mut images = if is_err { Vec::new() } else { extract_tool_images(&text) };
+                    let mut images = if is_err {
+                        Vec::new()
+                    } else {
+                        extract_tool_images(&text)
+                    };
                     if !is_err {
                         if let Some((stripped_text, inline_imgs)) = strip_inline_data_urls(&text) {
                             text = stripped_text;
@@ -1080,20 +1542,104 @@ pub async fn run_tool_loop(
     user_text: &str,
     cfg: ToolLoopCfg<'_>,
 ) -> Result<ToolLoopOutcome, LlmError> {
+    run_tool_loop_with_policy(system_prompt, user_text, cfg, ToolLoopPolicy::default()).await
+}
+
+/// Transport/feedback policy for headless research. The editor retains its
+/// existing retry and truncation semantics through the default wrapper above.
+pub(crate) struct ToolLoopPolicy {
+    pub step_attempts: usize,
+    pub step_timeout_seconds: u64,
+    pub tool_feedback_max_chars: usize,
+    pub reject_oversize_feedback: bool,
+    pub parallel_task_calls: bool,
+}
+
+impl Default for ToolLoopPolicy {
+    fn default() -> Self {
+        Self {
+            step_attempts: LLM_STEP_RETRIES,
+            step_timeout_seconds: LLM_STEP_HARD_TIMEOUT_SECS,
+            tool_feedback_max_chars: TOOL_FEEDBACK_MAX,
+            reject_oversize_feedback: false,
+            parallel_task_calls: true,
+        }
+    }
+}
+
+impl ToolLoopPolicy {
+    fn feedback(&self, text: &str) -> Result<String, LlmError> {
+        if self.reject_oversize_feedback {
+            if text.chars().count() > self.tool_feedback_max_chars {
+                return Err(LlmError::new("TOOL_FEEDBACK_LIMIT"));
+            }
+            return Ok(text.to_owned());
+        }
+        Ok(truncate_chars(text, self.tool_feedback_max_chars))
+    }
+}
+
+pub(crate) async fn run_tool_loop_with_policy(
+    system_prompt: &str,
+    user_text: &str,
+    cfg: ToolLoopCfg<'_>,
+    policy: ToolLoopPolicy,
+) -> Result<ToolLoopOutcome, LlmError> {
+    run_tool_loop_inner(system_prompt, user_text, cfg, policy, false).await
+}
+
+/// A persistent app-server turn must not be replayed by HTTP retry policy.
+/// Tool success metadata exists only on this in-process bridge; ordinary HTTP
+/// providers retain the exact chat-completions message shape.
+pub(crate) async fn run_managed_tool_loop(
+    system_prompt: &str,
+    user_text: &str,
+    cfg: ToolLoopCfg<'_>,
+) -> Result<ToolLoopOutcome, LlmError> {
+    run_tool_loop_inner(
+        system_prompt,
+        user_text,
+        cfg,
+        ToolLoopPolicy {
+            step_attempts: 1,
+            ..ToolLoopPolicy::default()
+        },
+        true,
+    )
+    .await
+}
+
+fn tool_reply(call_id: &str, content: String, success: bool, managed: bool) -> Value {
+    let mut message = json!({ "role": "tool", "tool_call_id": call_id, "content": content });
+    if managed {
+        message["forgeToolSuccess"] = json!(success);
+    }
+    message
+}
+
+async fn run_tool_loop_inner(
+    system_prompt: &str,
+    user_text: &str,
+    cfg: ToolLoopCfg<'_>,
+    policy: ToolLoopPolicy,
+    managed: bool,
+) -> Result<ToolLoopOutcome, LlmError> {
     let mut messages = vec![json!({ "role": "system", "content": system_prompt })];
     // F10:预检索上下文作独立 system 消息插在 system 与 user 之间(空串视同 None)。
     if let Some(p) = cfg.preamble.as_deref().filter(|p| !p.is_empty()) {
         messages.push(json!({ "role": "system", "content": p }));
     }
+    messages.extend(cfg.history.iter().cloned());
     messages.push(json!({ "role": "user", "content": user_text }));
     let mut records: Vec<ToolCallRecord> = Vec::new();
     let mut iters_done = 0usize;
-    let max_iters = cfg.max_iters.unwrap_or(MAX_ITERS).max(1);
+    let max_iters = cfg.max_iters.unwrap_or(DEFAULT_MAX_ITERS).max(1);
 
     for iter in 1..=max_iters {
         // 每迭代检查取消令牌(F7 wave.2 runs cancel;llm/chat 传 None 恒 false)。
         if cfg.cancelled.map(|c| c()).unwrap_or(false) {
             return Ok(ToolLoopOutcome {
+                exhausted: false,
                 text: String::new(),
                 records,
                 iters: iters_done,
@@ -1107,6 +1653,13 @@ pub async fn run_tool_loop(
                 messages.push(json!({ "role": "user", "content": text }));
             }
         }
+        // 保留最后四轮供验证、保存和终稿。通知放在完整工具结果之后，保持调用配对，
+        // 也让受管 Codex 桥把它随本批次结果送入同一轮次；不重启或重放已执行工作。
+        if max_iters >= 8 && iter == max_iters - 3 {
+            messages.push(json!({ "role": "user", "content": format!(
+                "工作循环预算提醒：本次上限 {max_iters} 轮，剩余 4 轮（含本轮和最终汇报）。请优先验证、保存已有产物并完成汇报；尚未完成的工作如实列出，供上级基于现有产物继续。"
+            ) }));
+        }
         // 步进带瞬时网络错误重试(远端渠道 peer closed/超时等抖动实测会打断整轮;
         // 重试前发 StreamReset 让前端清掉半截流,幂等重启本轮 LLM 请求)。
         // 另加步级硬超时:超大上下文会令远端流式挂起数分钟不吐字节,僵尸 run 无法取消
@@ -1116,6 +1669,7 @@ pub async fn run_tool_loop(
             loop {
                 if cfg.cancelled.map(|c| c()).unwrap_or(false) {
                     return Ok(ToolLoopOutcome {
+                        exhausted: false,
                         text: String::new(),
                         records,
                         iters: iters_done,
@@ -1125,33 +1679,37 @@ pub async fn run_tool_loop(
                 attempt += 1;
                 let step_fut = (cfg.step)(messages.clone(), cfg.tools.clone(), cfg.stream.clone());
                 match tokio::time::timeout(
-                    std::time::Duration::from_secs(LLM_STEP_HARD_TIMEOUT_SECS),
+                    std::time::Duration::from_secs(policy.step_timeout_seconds),
                     step_fut,
                 )
                 .await
                 {
                     Ok(Ok(out)) => break out,
-                    Ok(Err(e)) if attempt < LLM_STEP_RETRIES && is_transient_llm_error(&e) => {
+                    Ok(Err(e)) if attempt < policy.step_attempts && is_transient_llm_error(&e) => {
                         if let Some(sink) = cfg.sink {
                             sink(LoopEvent::StreamReset);
                         }
-                        let backoff = std::time::Duration::from_millis(2000 * (attempt * attempt) as u64);
+                        let backoff = retry_after_backoff(&e).unwrap_or_else(|| {
+                            std::time::Duration::from_millis(2000 * (attempt * attempt) as u64)
+                        });
                         eprintln!(
                             "[llm] step 瞬时错误重试 {attempt}/{}(退避 {}ms): {e}",
-                            LLM_STEP_RETRIES,
+                            policy.step_attempts,
                             backoff.as_millis()
                         );
                         tokio::time::sleep(backoff).await;
                         continue;
                     }
-                    Err(_elapsed) if attempt < LLM_STEP_RETRIES => {
+                    Err(_elapsed) if attempt < policy.step_attempts => {
                         if let Some(sink) = cfg.sink {
                             sink(LoopEvent::StreamReset);
                         }
-                        let backoff = std::time::Duration::from_millis(2000 * (attempt * attempt) as u64);
+                        let backoff =
+                            std::time::Duration::from_millis(2000 * (attempt * attempt) as u64);
                         eprintln!(
-                            "[llm] step 硬超时({LLM_STEP_HARD_TIMEOUT_SECS}s)重试 {attempt}/{}(退避 {}ms)",
-                            LLM_STEP_RETRIES,
+                            "[llm] step 硬超时({}s)重试 {attempt}/{}(退避 {}ms)",
+                            policy.step_timeout_seconds,
+                            policy.step_attempts,
                             backoff.as_millis()
                         );
                         tokio::time::sleep(backoff).await;
@@ -1159,14 +1717,17 @@ pub async fn run_tool_loop(
                     }
                     Err(_elapsed) => {
                         return Err(LlmError(format!(
-                            "LLM 步进硬超时(>{LLM_STEP_HARD_TIMEOUT_SECS}s),已重试 {} 次",
-                            LLM_STEP_RETRIES
+                            "LLM_STEP_TIMEOUT: {}s; attempts={}",
+                            policy.step_timeout_seconds, policy.step_attempts
                         )))
                     }
                     Ok(Err(e)) => return Err(e),
                 }
             }
         };
+        if let Some(sink) = cfg.sink {
+            sink(LoopEvent::ContextAccepted(messages.clone()));
+        }
         if let (Some(sink), Some(u)) = (cfg.sink, out.usage) {
             sink(LoopEvent::Usage(u));
         }
@@ -1186,6 +1747,17 @@ pub async fn run_tool_loop(
         let Some(calls) = tool_calls_of(&msg).cloned() else {
             // 无工具调用:终止,文本即最终答复。
             let content = message_text(&msg);
+            messages.push(msg.clone());
+            if let Some(sink) = cfg.sink {
+                sink(LoopEvent::ContextAccepted(messages.clone()));
+            }
+            // A message may arrive while the model is composing its final
+            // answer. Preserve that answer and continue at a safe boundary.
+            if let Some(text) = cfg.inbox.and_then(|inbox| inbox()) {
+                messages.push(json!({ "role": "user", "content": text }));
+                iters_done = iter;
+                continue;
+            }
             // 空白收束 + 本轮也没跑过工具 = 渠道空响,不当成功(前端会显示成「没反应」)。
             if content.trim().is_empty() && records.is_empty() {
                 return Err(LlmError(
@@ -1199,6 +1771,7 @@ pub async fn run_tool_loop(
                 }
             }
             return Ok(ToolLoopOutcome {
+                exhausted: false,
                 text: content,
                 records,
                 iters: iter,
@@ -1213,7 +1786,8 @@ pub async fn run_tool_loop(
         // 逐个配对 tool_call_id,中间插一条 user 会打断配对。
         let mut pending_images: Vec<(String, String)> = Vec::new();
         // F-GAME-4 wave.3:同轮全为 task(≥2 条)→ 并发执行;否则原串行语义。
-        let all_task_calls = calls.len() > 1
+        let all_task_calls = policy.parallel_task_calls
+            && calls.len() > 1
             && calls.iter().all(|c| {
                 c.pointer("/function/name").and_then(Value::as_str) == Some(PARALLEL_TOOL)
             });
@@ -1224,10 +1798,12 @@ pub async fn run_tool_loop(
                 &mut records,
                 &mut messages,
                 &mut pending_images,
+                managed,
             )
             .await;
             if cancelled_mid {
                 return Ok(ToolLoopOutcome {
+                    exhausted: false,
                     text: String::new(),
                     records,
                     iters: iters_done,
@@ -1237,10 +1813,20 @@ pub async fn run_tool_loop(
             if !pending_images.is_empty() {
                 messages.push(tool_image_message(&pending_images));
             }
+            // The preceding successful step already acknowledged its mailbox.
+            // Checkpoint executed tool results before the next model request can
+            // fail, without leasing or acknowledging any newly arrived message.
+            if let Some(sink) = cfg.sink {
+                sink(LoopEvent::ContextAccepted(messages.clone()));
+            }
             continue;
         }
         for c in &calls {
-            let call_id = c.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+            let call_id = c
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             let name = c
                 .get("function")
                 .and_then(|f| f.get("name"))
@@ -1252,7 +1838,7 @@ pub async fn run_tool_loop(
                 .and_then(|f| f.get("arguments"))
                 .and_then(Value::as_str)
                 .unwrap_or("{}");
-            let args = serde_json::from_str::<Value>(args_raw).unwrap_or_else(|_| json!({}));
+            let (args, args_invalid) = parse_tool_args(args_raw);
             if let Some(sink) = cfg.sink {
                 sink(LoopEvent::ToolInvoked {
                     name: name.clone(),
@@ -1276,11 +1862,36 @@ pub async fn run_tool_loop(
                     ok: false,
                     summary: truncate_chars(&feedback, 200),
                 });
-                messages.push(json!({
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "content": truncate_chars(&feedback, TOOL_FEEDBACK_MAX),
-                }));
+                messages.push(tool_reply(
+                    &call_id,
+                    policy.feedback(&feedback)?,
+                    false,
+                    managed,
+                ));
+                continue;
+            }
+            // D-044:参数不是合法 JSON → 不执行,按普通工具失败收尾并如实回注(见 parse_tool_args)。
+            if args_invalid {
+                let feedback = TOOL_ARGS_INVALID_JSON.to_string();
+                if let Some(sink) = cfg.sink {
+                    sink(LoopEvent::ToolFailed {
+                        name: name.clone(),
+                        error: truncate_chars(&feedback, 200),
+                        tool_call_id: call_id.clone(),
+                        duration_ms: 0,
+                    });
+                }
+                records.push(ToolCallRecord {
+                    name,
+                    ok: false,
+                    summary: truncate_chars(&feedback, 200),
+                });
+                messages.push(tool_reply(
+                    &call_id,
+                    policy.feedback(&feedback)?,
+                    false,
+                    managed,
+                ));
                 continue;
             }
             let started = std::time::Instant::now();
@@ -1320,18 +1931,23 @@ pub async fn run_tool_loop(
                 ok,
                 summary: truncate_chars(&feedback.text, 200),
             });
-            messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call_id,
-                "content": truncate_chars(&feedback.text, TOOL_FEEDBACK_MAX),
-            }));
+            messages.push(tool_reply(
+                &call_id,
+                policy.feedback(&feedback.text)?,
+                ok,
+                managed,
+            ));
         }
         if !pending_images.is_empty() {
             messages.push(tool_image_message(&pending_images));
         }
+        if let Some(sink) = cfg.sink {
+            sink(LoopEvent::ContextAccepted(messages.clone()));
+        }
     }
     // 轮数耗尽:如实标注,不伪造收尾。
     Ok(ToolLoopOutcome {
+        exhausted: true,
         text: format!("(工具循环已达上限 {max_iters} 轮,未收束;以上为已执行部分)"),
         records,
         iters: max_iters,
@@ -1345,9 +1961,37 @@ const PARALLEL_TOOL: &str = "task";
 /// 同轮并行 task 的并发上限(分段派发,段内 join_all;段间检查取消令牌)。
 const TASK_PARALLEL_MAX: usize = 4;
 
-/// 解析单条 tool_call → (call_id, name, args)。
-fn parse_tool_call(c: &Value) -> (String, String, Value) {
-    let call_id = c.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+/// D-044:工具参数原文不是合法 JSON 时回注给模型的错误。
+///
+/// 此前解析失败会静默当成 `{}` 去执行工具:本仓各请求都不设 max_tokens,一次写太多
+/// (整份计划、大段文件)时参数 JSON 会被渠道的输出上限拦腰截断,工具拿着空参数跑,
+/// 回一句「缺 xxx 字段」,模型看不出是截断,按原尺寸重试,原地打转。
+/// 现在如实告诉它「参数没传完整」并给出对策。
+const TOOL_ARGS_INVALID_JSON: &str =
+    "TOOL_ARGS_INVALID_JSON: 工具参数不是合法 JSON(很可能被输出上限截断);请缩小单次调用的内容或分批调用";
+
+/// 工具参数原文 → (args, 是否非法)。
+///
+/// 空串/纯空白仍按 `{}`(无参工具的既有行为:不少渠道对无参调用就是发空串);
+/// 非空却解析不了 → (`{}`, true):调用方不得执行该工具,改走失败回注。
+/// 返回的 `{}` 只用于 invoked 事件的展示,不会进执行器。
+fn parse_tool_args(raw: &str) -> (Value, bool) {
+    if raw.trim().is_empty() {
+        return (json!({}), false);
+    }
+    match serde_json::from_str::<Value>(raw) {
+        Ok(v) => (v, false),
+        Err(_) => (json!({}), true),
+    }
+}
+
+/// 解析单条 tool_call → (call_id, name, args, 参数是否非法)。
+fn parse_tool_call(c: &Value) -> (String, String, Value, bool) {
+    let call_id = c
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     let name = c
         .pointer("/function/name")
         .and_then(Value::as_str)
@@ -1357,8 +2001,8 @@ fn parse_tool_call(c: &Value) -> (String, String, Value) {
         .pointer("/function/arguments")
         .and_then(Value::as_str)
         .unwrap_or("{}");
-    let args = serde_json::from_str::<Value>(args_raw).unwrap_or_else(|_| json!({}));
-    (call_id, name, args)
+    let (args, args_invalid) = parse_tool_args(args_raw);
+    (call_id, name, args, args_invalid)
 }
 
 /// 同轮全-task 多调用的并发执行(F-GAME-4 wave.3)。
@@ -1380,10 +2024,11 @@ async fn run_task_calls_parallel(
     records: &mut Vec<ToolCallRecord>,
     messages: &mut Vec<Value>,
     pending_images: &mut Vec<(String, String)>,
+    managed: bool,
 ) -> bool {
-    let parsed: Vec<(String, String, Value)> = calls.iter().map(parse_tool_call).collect();
+    let parsed: Vec<(String, String, Value, bool)> = calls.iter().map(parse_tool_call).collect();
     if let Some(sink) = cfg.sink {
-        for (call_id, name, args) in &parsed {
+        for (call_id, name, args, _) in &parsed {
             sink(LoopEvent::ToolInvoked {
                 name: name.clone(),
                 args: args.clone(),
@@ -1402,11 +2047,16 @@ async fn run_task_calls_parallel(
         }
         let end = (idx + TASK_PARALLEL_MAX).min(parsed.len());
         let mut futs = Vec::new();
-        for (off, (call_id, name, args)) in parsed[idx..end].iter().enumerate() {
+        for (off, (call_id, name, args, args_invalid)) in parsed[idx..end].iter().enumerate() {
             // 禁用门与串行分支同语义(task 现状不在任何禁用集,防御性保留)。
             if cfg.forbidden.map(|f| f(name)).unwrap_or(false) {
                 let feedback = format!("TOOL_FORBIDDEN: 当前模式禁止调用写工具 {name}");
                 results[idx + off] = Some((false, feedback.into(), 0));
+                continue;
+            }
+            // D-044:参数非法的那条不派子代理(与串行分支同语义),同轮其余 task 照常并发。
+            if *args_invalid {
+                results[idx + off] = Some((false, TOOL_ARGS_INVALID_JSON.into(), 0));
                 continue;
             }
             let mut args2 = args.clone();
@@ -1426,7 +2076,7 @@ async fn run_task_calls_parallel(
         idx = end;
     }
     // 结果按原 call 顺序回注(完成/失败事件、records、role:tool 消息与串行分支同形态)。
-    for (i, (call_id, name, _)) in parsed.iter().enumerate() {
+    for (i, (call_id, name, _, _)) in parsed.iter().enumerate() {
         let Some((ok, feedback, duration_ms)) = results[i].take() else {
             break; // 取消中断:其后的调用未执行,如实不补结果
         };
@@ -1463,11 +2113,12 @@ async fn run_task_calls_parallel(
             ok,
             summary: truncate_chars(&feedback.text, 200),
         });
-        messages.push(json!({
-            "role": "tool",
-            "tool_call_id": call_id,
-            "content": truncate_chars(&feedback.text, TOOL_FEEDBACK_MAX),
-        }));
+        messages.push(tool_reply(
+            call_id,
+            truncate_chars(&feedback.text, TOOL_FEEDBACK_MAX),
+            ok,
+            managed,
+        ));
     }
     cancelled_mid
 }
@@ -1570,6 +2221,72 @@ pub async fn chat(
         Provider::OpenAiCompatNotConfigured => {
             unreachable!("llm/chat resolve_provider 不产 OpenAiCompatNotConfigured 分支")
         }
+        Provider::Official { .. } => unreachable!("official channels require an explicit session model"),
+        Provider::Cloud {
+            server_url,
+            model,
+            key,
+            session_id,
+        } => {
+            match run_cloud_loop(&req.text, &server_url, &model, &key, session_id.as_deref()).await
+            {
+                Ok((text, records, iters)) => Ok(axum::Json(json!({
+                    "provider": "cloud",
+                    "text": text,
+                    "toolCalls": records
+                        .iter()
+                        .map(|r| json!({ "name": r.name, "ok": r.ok, "summary": r.summary }))
+                        .collect::<Vec<_>>(),
+                    "iters": iters,
+                }))),
+                Err(e) => Err((
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    axum::Json(json!({
+                        "error": { "code": "LLM_UPSTREAM_ERROR", "message": e.to_string() }
+                    })),
+                )
+                    .into_response()),
+            }
+        }
+        Provider::CloudLoginRequired => Err((
+            axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(json!({
+                "error": { "code": CLOUD_LOGIN_REQUIRED, "message": "尚未登录 RurixForge 云账号" }
+            })),
+        )
+            .into_response()),
+        Provider::CloudNotConfigured => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(json!({
+                "error": { "code": CLOUD_MODEL_NOT_CONFIGURED, "message": "云端模型不可用" }
+            })),
+        )
+            .into_response()),
+        Provider::Antigravity {
+            base_url,
+            model,
+            key,
+        } => match run_antigravity_loop(&req.text, &base_url, &model, &key).await {
+            Ok((text, records, iters)) => Ok(axum::Json(json!({
+                "provider": "antigravity",
+                "text": text,
+                "toolCalls": records
+                    .iter()
+                    .map(|r| json!({ "name": r.name, "ok": r.ok, "summary": r.summary }))
+                    .collect::<Vec<_>>(),
+                "iters": iters,
+            }))),
+            Err(e) => Err((
+                axum::http::StatusCode::BAD_GATEWAY,
+                axum::Json(json!({
+                    "error": { "code": "LLM_UPSTREAM_ERROR", "message": e.to_string() }
+                })),
+            )
+                .into_response()),
+        },
+        Provider::AntigravityNotConfigured => {
+            unreachable!("llm/chat resolve_provider 不产 AntigravityNotConfigured 分支")
+        }
     }
 }
 
@@ -1639,7 +2356,10 @@ pub(crate) fn load_openai_compat_file() -> OpenAiCompatFile {
     let path = openai_compat_config_path();
     match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-            eprintln!("llm-openai-compat.json 解析失败({}): {e},按未配置处理", path.display());
+            eprintln!(
+                "llm-openai-compat.json 解析失败({}): {e},按未配置处理",
+                path.display()
+            );
             OpenAiCompatFile::default()
         }),
         Err(_) => OpenAiCompatFile::default(),
@@ -1694,7 +2414,14 @@ pub(crate) fn openai_compat_status() -> OpenAiCompatStatus {
 /// deepseek chat 与本地 mock 都没有视觉面 → 恒 false(发过去只会被拒或当噪声);
 /// openai-compat 端点背后接什么模型只有人知道 → 读渠道配置里用户声明的那一位。
 pub(crate) fn provider_vision(provider: &Provider) -> bool {
-    matches!(provider, Provider::OpenAiCompat { .. }) && load_openai_compat_file().vision
+    match provider {
+        Provider::OpenAiCompat { .. } => load_openai_compat_file().vision,
+        Provider::Antigravity { .. } => true,
+        Provider::Cloud { model, .. } => crate::cloud::global()
+            .catalog_cached()
+            .is_some_and(|c| c.find(model).is_some_and(|m| m.capabilities.vision)),
+        _ => false,
+    }
 }
 
 /// provider 解析:baseUrl+model+key 全齐 → Some;任一缺 → None(调用方走显式 NOT_CONFIGURED)。
@@ -1710,11 +2437,30 @@ pub(crate) fn resolve_openai_compat() -> Option<(String, String, String)> {
 pub(crate) fn step_for_provider(provider: &Provider, spec: &RequestSpec) -> Box<StepFn> {
     match provider {
         Provider::Mock => mock_step(),
+        Provider::Official { channel } => crate::channels::step(channel, spec),
         Provider::Deepseek(k) => deepseek_step(k, spec),
-        Provider::OpenAiCompat { base_url, model, key } => {
-            openai_compat_step(base_url, model, key, spec)
-        }
+        Provider::OpenAiCompat {
+            base_url,
+            model,
+            key,
+        } => openai_compat_step(base_url, model, key, spec),
         Provider::OpenAiCompatNotConfigured => openai_compat_not_configured_step(),
+        Provider::Cloud {
+            server_url,
+            model,
+            key,
+            session_id,
+        } => cloud_step(server_url, model, key, session_id.clone(), spec),
+        Provider::CloudNotConfigured => cloud_not_configured_step(),
+        Provider::CloudLoginRequired => cloud_login_required_step(),
+        Provider::Antigravity {
+            base_url,
+            model,
+            key,
+        } => crate::antigravity::antigravity_step(base_url, model, key, spec),
+        Provider::AntigravityNotConfigured => {
+            crate::antigravity::antigravity_not_configured_step()
+        }
     }
 }
 
@@ -1778,7 +2524,9 @@ pub async fn set_openai_compat_config(
         let file = OpenAiCompatFile {
             base_url: base_url.clone(),
             model: model.clone(),
-            vision: req.vision.unwrap_or_else(|| load_openai_compat_file().vision),
+            vision: req
+                .vision
+                .unwrap_or_else(|| load_openai_compat_file().vision),
         };
         if let Err(e) = save_openai_compat_file(&file) {
             return (
@@ -1833,6 +2581,14 @@ mod tests {
     use super::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
+    fn official_authorization_errors_do_not_retry() {
+        for message in ["CHANNEL_LOGIN_REQUIRED: 请登录", "CHANNEL_NOT_CONFIGURED: 未配置", "KIMI_RUNTIME_ERROR: AuthenticationError"] {
+            assert!(!is_transient_llm_error(&LlmError::new(message)));
+        }
+        assert_eq!(failure_code_from_error("CHANNEL_LOGIN_REQUIRED: 请登录"), Some("CHANNEL_LOGIN_REQUIRED"));
+    }
+
+    #[test]
     fn openai_tools_conversion() {
         let mcp_tools = vec![
             json!({ "name": "mcp__engine-scene__entity_create", "description": "创建实体", "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } } } }),
@@ -1879,6 +2635,7 @@ mod tests {
         let spec = RequestSpec {
             model: Some("deepseek-reasoner".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
+            thinking_enabled: None,
         };
         let body = build_request_body(DEEPSEEK_MODEL, &messages, &tools, &spec);
         assert_eq!(body["model"], "deepseek-reasoner");
@@ -1923,7 +2680,9 @@ mod tests {
         )
         .unwrap();
         match resolve_provider() {
-            Provider::OpenAiCompat { base_url, model, .. } => {
+            Provider::OpenAiCompat {
+                base_url, model, ..
+            } => {
                 assert_eq!(base_url, "https://api.example.com");
                 assert_eq!(model, "test-model");
             }
@@ -1967,7 +2726,9 @@ mod tests {
     fn content_text_accepts_string_array_and_null() {
         assert_eq!(content_text(&json!("你好")), "你好");
         assert_eq!(
-            content_text(&json!([{ "type": "text", "text": "先" }, { "type": "text", "text": "后" }])),
+            content_text(
+                &json!([{ "type": "text", "text": "先" }, { "type": "text", "text": "后" }])
+            ),
             "先后"
         );
         assert_eq!(content_text(&Value::Null), "");
@@ -1983,6 +2744,42 @@ mod tests {
         assert!(!is_transient_llm_error(&LlmError(
             "EMPTY_COMPLETION: 模型没有返回正文(也没有工具调用)".into()
         )));
+    }
+
+    #[test]
+    fn cloud_gateway_codes_map_to_failure_codes_and_retry_class() {
+        let cases = [
+            ("invalid_api_key", 401u16, "CLOUD_UNAUTHORIZED", false),
+            ("insufficient_balance", 402, "INSUFFICIENT_BALANCE", false),
+            ("key_quota_exceeded", 402, "INSUFFICIENT_BALANCE", false),
+            (
+                "included_usage_exhausted",
+                402,
+                "INCLUDED_USAGE_EXHAUSTED",
+                false,
+            ),
+            ("spend_limit_reached", 402, "SPEND_LIMIT_REACHED", false),
+            ("model_not_allowed", 403, "MODEL_NOT_ALLOWED", false),
+            ("model_not_found", 404, "MODEL_NOT_CONFIGURED", false),
+            ("rate_limited", 429, "RATE_LIMITED", true),
+            ("concurrency_limited", 429, "RATE_LIMITED", true),
+            ("no_available_account", 503, "NO_AVAILABLE_ACCOUNT", true),
+            ("upstream_error", 502, "UPSTREAM_ERROR", true),
+        ];
+        for (gateway, status, failure, transient) in cases {
+            let mapped = map_cloud_gateway_code(gateway).unwrap();
+            assert_eq!(mapped, failure);
+            let err = LlmError(format!("cloud HTTP {status}: {mapped}: 详情 retry-after=3"));
+            assert_eq!(failure_code_from_error(&err.0), Some(failure));
+            assert_eq!(is_transient_llm_error(&err), transient, "{gateway}");
+            if transient {
+                assert_eq!(
+                    retry_after_backoff(&err),
+                    Some(std::time::Duration::from_secs(3))
+                );
+            }
+        }
+        assert!(map_cloud_gateway_code("invalid_request").is_none());
     }
 
     // ---------- F7 wave.2:run_tool_loop 可注入核心(全内存 scripted fake,禁网络/子进程) ----------
@@ -2029,12 +2826,14 @@ mod tests {
         let sink = move |ev: LoopEvent| {
             let s = match ev {
                 LoopEvent::ToolInvoked { name, .. } => format!("invoked:{name}"),
-                LoopEvent::ToolCompleted { name, duration_ms, .. } => {
+                LoopEvent::ToolCompleted {
+                    name, duration_ms, ..
+                } => {
                     format!("completed:{name}:{duration_ms}")
                 }
                 LoopEvent::ToolFailed { name, error, .. } => format!("failed:{name}:{error}"),
                 LoopEvent::ToolDenied { name, error, .. } => format!("denied:{name}:{error}"),
-                LoopEvent::Reasoning(_) => return,
+                LoopEvent::Reasoning(_) | LoopEvent::ContextAccepted(_) => return,
                 LoopEvent::Usage(u) => format!("usage:{}", u.total_tokens),
                 LoopEvent::TextDelta(_)
                 | LoopEvent::ReasoningDelta(_)
@@ -2056,9 +2855,8 @@ mod tests {
             ],
             seen.clone(),
         );
-        let execute: Box<ExecFn> = Box::new(|name, _args| {
-            Box::pin(async move { (true, format!("{name} ok").into()) })
-        });
+        let execute: Box<ExecFn> =
+            Box::new(|name, _args| Box::pin(async move { (true, format!("{name} ok").into()) }));
         let (sink, log) = collect_sink();
         let out = run_tool_loop(
             "sys",
@@ -2074,6 +2872,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2115,6 +2914,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2147,11 +2947,15 @@ mod tests {
         let step: Box<StepFn> = Box::new(move |msgs, _tools, _s| {
             seen_step.lock().unwrap().push(msgs);
             let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
-            Box::pin(async move { Ok(StepOutcome { message: next, usage: None }) })
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
         });
-        let execute: Box<ExecFn> = Box::new(|name, _args| {
-            Box::pin(async move { (true, format!("{name} ok").into()) })
-        });
+        let execute: Box<ExecFn> =
+            Box::new(|name, _args| Box::pin(async move { (true, format!("{name} ok").into()) }));
         // 第 2 次被问时有回执,其余为 None。
         let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let asked2 = asked.clone();
@@ -2173,6 +2977,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: Some(&inbox),
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2180,7 +2985,11 @@ mod tests {
         .unwrap();
         assert_eq!(out.text, "终稿");
         assert_eq!(out.iters, 3);
-        assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 3, "每迭代问一次");
+        assert_eq!(
+            asked.load(std::sync::atomic::Ordering::SeqCst),
+            4,
+            "每迭代及终稿边界各检查一次"
+        );
         let seen = seen.lock().unwrap();
         let roles = |i: usize| -> Vec<String> {
             seen[i]
@@ -2191,13 +3000,233 @@ mod tests {
         // 第 1 迭代:无回执,原两条。
         assert_eq!(roles(0), vec!["system", "user"]);
         // 第 2 迭代:… assistant(tool_calls) → tool → **user(回执)**。
-        assert_eq!(roles(1), vec!["system", "user", "assistant", "tool", "user"]);
+        assert_eq!(
+            roles(1),
+            vec!["system", "user", "assistant", "tool", "user"]
+        );
         assert_eq!(seen[1][4]["content"], "【后台子代理回执】甲活干完了");
         // 第 3 迭代:回执消息仍在历史里(它已是上下文的一部分),末尾是新一轮 tool 结果。
         assert_eq!(
             roles(2),
-            vec!["system", "user", "assistant", "tool", "user", "assistant", "tool"]
+            vec![
+                "system",
+                "user",
+                "assistant",
+                "tool",
+                "user",
+                "assistant",
+                "tool"
+            ]
         );
+    }
+
+    #[tokio::test]
+    async fn final_boundary_mail_is_consumed_once_and_acknowledged_after_next_step() {
+        use std::sync::{Arc, Mutex};
+        let mailbox = Arc::new(Mutex::new(None::<String>));
+        let seen = Arc::new(Mutex::new(Vec::<Vec<Value>>::new()));
+        let accepted = Arc::new(Mutex::new(Vec::<Vec<Value>>::new()));
+        let step_mailbox = mailbox.clone();
+        let step_seen = seen.clone();
+        let step_accepted = accepted.clone();
+        let step: Box<StepFn> = Box::new(move |messages, _, _| {
+            let mut seen = step_seen.lock().unwrap();
+            let first = seen.is_empty();
+            if first {
+                *step_mailbox.lock().unwrap() = Some("late user direction".into());
+            } else {
+                assert_eq!(messages.last().unwrap()["content"], "late user direction");
+                assert_eq!(messages[messages.len() - 2]["content"], "first answer");
+                assert!(
+                    !step_accepted.lock().unwrap().iter().any(|context| context
+                        .iter()
+                        .any(|message| message["content"] == "late user direction")),
+                    "receipt must wait for the receiving step to succeed"
+                );
+            }
+            seen.push(messages);
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: final_msg(if first {
+                        "first answer"
+                    } else {
+                        "revised answer"
+                    }),
+                    usage: None,
+                })
+            })
+        });
+        let inbox = || mailbox.lock().unwrap().take();
+        let sink = |event| {
+            if let LoopEvent::ContextAccepted(context) = event {
+                accepted.lock().unwrap().push(context);
+            }
+        };
+        let execute: Box<ExecFn> =
+            Box::new(|_, _| Box::pin(async { panic!("no tools requested") }));
+        let out = run_managed_tool_loop(
+            "sys",
+            "request",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: Some(&inbox),
+                history: vec![],
+                max_iters: Some(3),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "revised answer");
+        assert_eq!(out.iters, 2);
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        assert_eq!(
+            accepted
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .iter()
+                .filter(|message| message["content"] == "late user direction")
+                .count(),
+            1
+        );
+        assert!(mailbox.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn failed_receiving_step_does_not_acknowledge_inbox_context() {
+        use std::sync::{Arc, Mutex};
+        let mailbox = Arc::new(Mutex::new(Some("unaccepted message".to_string())));
+        let inbox = || mailbox.lock().unwrap().take();
+        let accepted = Mutex::new(Vec::<Vec<Value>>::new());
+        let sink = |event| {
+            if let LoopEvent::ContextAccepted(context) = event {
+                accepted.lock().unwrap().push(context);
+            }
+        };
+        let step: Box<StepFn> = Box::new(|messages, _, _| {
+            assert_eq!(messages.last().unwrap()["content"], "unaccepted message");
+            Box::pin(async { Err(LlmError::new("simulated upstream rejection")) })
+        });
+        let execute: Box<ExecFn> =
+            Box::new(|_, _| Box::pin(async { panic!("no tools requested") }));
+        let result = run_managed_tool_loop(
+            "sys",
+            "request",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: Some(&inbox),
+                history: vec![],
+                max_iters: Some(2),
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(accepted.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mailbox_waits_until_the_entire_tool_batch_has_completed() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        for tool_name in ["probe", "task"] {
+            let mailbox = Arc::new(Mutex::new(None::<String>));
+            let completed = Arc::new(AtomicUsize::new(0));
+            let observed = Arc::new(Mutex::new(Vec::<Vec<Value>>::new()));
+            let step_observed = observed.clone();
+            let step: Box<StepFn> = Box::new(move |messages, _, _| {
+                let mut observed = step_observed.lock().unwrap();
+                let first = observed.is_empty();
+                observed.push(messages);
+                let message = if first {
+                    json!({"role":"assistant","content":"","tool_calls":[
+                        {"id":"a","type":"function","function":{"name":tool_name,"arguments":"{}"}},
+                        {"id":"b","type":"function","function":{"name":tool_name,"arguments":"{}"}}
+                    ]})
+                } else {
+                    final_msg("done")
+                };
+                Box::pin(async move {
+                    Ok(StepOutcome {
+                        message,
+                        usage: None,
+                    })
+                })
+            });
+            let tool_mailbox = mailbox.clone();
+            let tool_completed = completed.clone();
+            let execute: Box<ExecFn> = Box::new(move |_, _| {
+                let mailbox = tool_mailbox.clone();
+                let completed = tool_completed.clone();
+                Box::pin(async move {
+                    if completed.fetch_add(1, Ordering::SeqCst) == 0 {
+                        *mailbox.lock().unwrap() = Some("peer correction".into());
+                    }
+                    (true, "tool result".into())
+                })
+            });
+            let inbox = || {
+                let message = mailbox.lock().unwrap().take();
+                if message.is_some() {
+                    assert_eq!(completed.load(Ordering::SeqCst), 2);
+                }
+                message
+            };
+            let out = run_managed_tool_loop(
+                "sys",
+                "request",
+                ToolLoopCfg {
+                    tools: vec![],
+                    step: step.as_ref(),
+                    execute: execute.as_ref(),
+                    vision: false,
+                    sink: None,
+                    forbidden: None,
+                    cancelled: None,
+                    stream: None,
+                    preamble: None,
+                    inbox: Some(&inbox),
+                    history: vec![],
+                    max_iters: Some(3),
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(out.text, "done");
+            assert_eq!(out.records.len(), 2);
+            let observed = observed.lock().unwrap();
+            let messages = &observed[1];
+            let roles: Vec<_> = messages
+                .iter()
+                .map(|message| message["role"].as_str().unwrap())
+                .collect();
+            assert_eq!(
+                roles,
+                vec!["system", "user", "assistant", "tool", "tool", "user"],
+                "{tool_name}"
+            );
+            assert_eq!(messages[3]["tool_call_id"], "a");
+            assert_eq!(messages[4]["tool_call_id"], "b");
+            assert_eq!(messages[5]["content"], "peer correction");
+        }
     }
 
     /// max_iters 覆盖生效(team 子代理 profile.maxSteps 收口):上限 1 轮 → 执行完
@@ -2212,9 +3241,8 @@ mod tests {
             ],
             seen.clone(),
         );
-        let execute: Box<ExecFn> = Box::new(|name, _args| {
-            Box::pin(async move { (true, format!("{name} ok").into()) })
-        });
+        let execute: Box<ExecFn> =
+            Box::new(|name, _args| Box::pin(async move { (true, format!("{name} ok").into()) }));
         let out = run_tool_loop(
             "sys",
             "用户输入",
@@ -2229,15 +3257,144 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: Some(1),
             },
         )
         .await
         .unwrap();
         assert_eq!(out.iters, 1);
+        assert!(out.exhausted);
         assert_eq!(seen.lock().unwrap().len(), 1, "只允许步进一轮");
         assert!(out.text.contains("已达上限 1 轮"), "如实标注: {}", out.text);
         assert_eq!(out.records.len(), 1, "首轮工具照常执行");
+    }
+
+    /// 用真实内建档案和低预算个人覆盖各跑 500 轮工具调用，之后仍可返回终稿。
+    #[tokio::test]
+    async fn every_subagent_can_execute_500_tool_rounds_and_then_finish() {
+        let (profiles, errors) =
+            crate::subagents::list_subagents(&crate::subagents::builtin_agents_dir());
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut budgets: Vec<(String, usize)> = profiles
+            .iter()
+            .map(|p| (p.name.clone(), crate::subagents::loop_max_iters(Some(p))))
+            .collect();
+        budgets.push(("generic".into(), crate::subagents::loop_max_iters(None)));
+        let personal = crate::subagents::parse_profile(
+            "---\nname: personal-worker\ndescription: 低预算个人覆盖\ntools: [\"read_file\"]\nmaxSteps: 24\n---\n读取文件",
+        ).unwrap();
+        budgets.push((
+            personal.name.clone(),
+            crate::subagents::loop_max_iters(Some(&personal)),
+        ));
+        for (name, max_iters) in budgets {
+            let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let mut messages: Vec<Value> = (0..500)
+                .map(|i| {
+                    let mut msg = tool_call_msg("read_file", "{}");
+                    msg["tool_calls"][0]["id"] = json!(format!("call_{i}"));
+                    msg
+                })
+                .collect();
+            messages.push(final_msg("500 轮工作完成并已验证"));
+            let step = scripted_step(messages, seen.clone());
+            let execute: Box<ExecFn> =
+                Box::new(|_, _| Box::pin(async { (true, "已读取".into()) }));
+            let out = run_tool_loop(
+                "sys",
+                "完成委派工作",
+                ToolLoopCfg {
+                    tools: vec![],
+                    step: step.as_ref(),
+                    execute: execute.as_ref(),
+                    vision: false,
+                    sink: None,
+                    forbidden: None,
+                    cancelled: None,
+                    stream: None,
+                    preamble: None,
+                    inbox: None,
+                    history: Vec::new(),
+                    max_iters: Some(max_iters),
+                },
+            )
+            .await
+            .unwrap();
+            assert!(!out.exhausted && !out.cancelled, "{name}");
+            assert_eq!(out.iters, 501, "{name} 必须能在 500 轮工具后汇报");
+            assert_eq!(out.records.len(), 500, "{name}");
+            assert_eq!(seen.lock().unwrap().len(), 501, "{name}");
+            assert_eq!(out.text, "500 轮工作完成并已验证", "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn loop_warns_before_limit_and_accepts_final_response_on_last_round() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Vec<Value>>::new()));
+        let seen2 = seen.clone();
+        let step: Box<StepFn> = Box::new(move |messages, _, _| {
+            let mut seen = seen2.lock().unwrap();
+            seen.push(messages);
+            let iter = seen.len();
+            let message = if iter == 8 {
+                final_msg("最后一轮正常收束")
+            } else {
+                tool_call_msg("read_file", "{}")
+            };
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message,
+                    usage: None,
+                })
+            })
+        });
+        let execute: Box<ExecFn> = Box::new(|_, _| Box::pin(async { (true, "已读取".into()) }));
+        let out = run_tool_loop(
+            "sys",
+            "工作",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: None,
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: None,
+                history: Vec::new(),
+                max_iters: Some(8),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!out.exhausted);
+        assert_eq!(out.iters, 8);
+        assert_eq!(out.records.len(), 7);
+        assert_eq!(out.text, "最后一轮正常收束");
+        let seen = seen.lock().unwrap();
+        let is_warning = |message: &&Value| {
+            message["role"] == "user"
+                && message["content"]
+                    .as_str()
+                    .is_some_and(|s| s.contains("工作循环预算提醒"))
+        };
+        assert_eq!(seen[3].iter().filter(is_warning).count(), 0);
+        for messages in &seen[4..] {
+            assert_eq!(messages.iter().filter(is_warning).count(), 1, "只提醒一次");
+        }
+        let warning_index = seen[4].len() - 1;
+        assert_eq!(
+            seen[4][warning_index - 1]["role"],
+            "tool",
+            "提醒在完整工具结果之后"
+        );
+        assert!(seen[4][warning_index]["content"]
+            .as_str()
+            .unwrap()
+            .contains("剩余 4 轮"));
     }
 
     // ---------- F-GAME-4 wave.3:同轮多 task 并发执行 ----------
@@ -2251,14 +3408,19 @@ mod tests {
             { "id": "call_a", "type": "function", "function": { "name": "task", "arguments": r#"{"prompt":"A"}"# } },
             { "id": "call_b", "type": "function", "function": { "name": "task", "arguments": r#"{"prompt":"B"}"# } },
         ]});
-        let queue = std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::VecDeque::from(vec![round1, final_msg("双单收工")]),
-        ));
+        let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+            vec![round1, final_msg("双单收工")],
+        )));
         let seen2 = msgs_seen.clone();
         let step: Box<StepFn> = Box::new(move |m, _t, _s| {
             seen2.lock().unwrap().push(m);
             let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
-            Box::pin(async move { Ok(StepOutcome { message: next, usage: None }) })
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
         });
         // 每次调用记录 (注入的 _toolCallId, 开始, 结束);sleep 200ms 模拟子代理耗时。
         type Span = (String, std::time::Instant, std::time::Instant);
@@ -2276,7 +3438,10 @@ mod tests {
                 let p = args["prompt"].as_str().unwrap_or("").to_string();
                 let t0 = std::time::Instant::now();
                 tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                spans.lock().unwrap().push((id, t0, std::time::Instant::now()));
+                spans
+                    .lock()
+                    .unwrap()
+                    .push((id, t0, std::time::Instant::now()));
                 (true, format!("done {p}").into())
             })
         });
@@ -2296,6 +3461,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2343,12 +3509,17 @@ mod tests {
             { "id": "call_a", "type": "function", "function": { "name": "task", "arguments": r#"{"prompt":"A"}"# } },
             { "id": "call_b", "type": "function", "function": { "name": "mcp__engine-scene__entity_list", "arguments": "{}" } },
         ]});
-        let queue = std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::VecDeque::from(vec![round1, final_msg("好")]),
-        ));
+        let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+            vec![round1, final_msg("好")],
+        )));
         let step: Box<StepFn> = Box::new(move |_m, _t, _s| {
             let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
-            Box::pin(async move { Ok(StepOutcome { message: next, usage: None }) })
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
         });
         type Span = (std::time::Instant, std::time::Instant);
         let spans: std::sync::Arc<std::sync::Mutex<Vec<Span>>> = Default::default();
@@ -2380,6 +3551,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2388,7 +3560,10 @@ mod tests {
         assert_eq!(out.text, "好");
         let spans = spans.lock().unwrap();
         assert_eq!(spans.len(), 2);
-        assert!(spans[1].0 >= spans[0].1, "混合轮第二工具须在第一个结束后开始(串行)");
+        assert!(
+            spans[1].0 >= spans[0].1,
+            "混合轮第二工具须在第一个结束后开始(串行)"
+        );
     }
 
     /// 并行分支的取消令牌:首段执行期间置旗 → 下一段不再派发,收束 cancelled;
@@ -2403,12 +3578,17 @@ mod tests {
             })
             .collect();
         let round1 = json!({ "role": "assistant", "tool_calls": calls });
-        let queue = std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::VecDeque::from(vec![round1, final_msg("不应到达")]),
-        ));
+        let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+            vec![round1, final_msg("不应到达")],
+        )));
         let step: Box<StepFn> = Box::new(move |_m, _t, _s| {
             let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
-            Box::pin(async move { Ok(StepOutcome { message: next, usage: None }) })
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
         });
         let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag2 = flag.clone();
@@ -2439,14 +3619,254 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
         .await
         .unwrap();
         assert!(out.cancelled, "段间取消须收束 cancelled");
-        assert_eq!(executed.load(std::sync::atomic::Ordering::SeqCst), 4, "第二段不得派发");
+        assert_eq!(
+            executed.load(std::sync::atomic::Ordering::SeqCst),
+            4,
+            "第二段不得派发"
+        );
         assert_eq!(out.records.len(), 4, "已完成段如实入 records");
+    }
+
+    // ---------- D-044:工具参数不是合法 JSON(多半被输出上限截断) ----------
+
+    /// 捕获每轮上行 messages 的 scripted step(断言回注给模型的 tool 消息)。
+    fn capturing_step(
+        script: Vec<Value>,
+        seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<Value>>>>,
+    ) -> Box<StepFn> {
+        let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
+            script,
+        )));
+        Box::new(move |msgs, _tools, _s| {
+            seen.lock().unwrap().push(msgs);
+            let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
+        })
+    }
+
+    /// 记录每次实际执行的 (name, args) 的执行器。
+    fn recording_executor(
+        calls: std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>>,
+    ) -> Box<ExecFn> {
+        Box::new(move |name, args| {
+            calls.lock().unwrap().push((name.clone(), args));
+            Box::pin(async move { (true, format!("{name} ok").into()) })
+        })
+    }
+
+    #[test]
+    fn parse_tool_args_only_flags_nonempty_garbage() {
+        assert_eq!(parse_tool_args("{}"), (json!({}), false));
+        assert_eq!(parse_tool_args(r#"{"a":1}"#), (json!({ "a": 1 }), false));
+        // 空串/纯空白 = 无参调用(既有行为)。
+        assert_eq!(parse_tool_args(""), (json!({}), false));
+        assert_eq!(parse_tool_args(" \n\t"), (json!({}), false));
+        // 截断的 JSON、根本不是 JSON:标非法,返回的 {} 仅供事件展示。
+        assert_eq!(
+            parse_tool_args(r#"{"path":"a.txt","content":"半截"#),
+            (json!({}), true)
+        );
+        assert_eq!(parse_tool_args("not json"), (json!({}), true));
+        assert!(TOOL_ARGS_INVALID_JSON.starts_with("TOOL_ARGS_INVALID_JSON: "));
+        assert!(
+            !TOOL_ARGS_INVALID_JSON.starts_with("TOOL_FORBIDDEN"),
+            "须走 failed 而非 denied 事件"
+        );
+    }
+
+    /// 串行路径:参数被截断的调用不执行,以工具失败回注(事件 + role:tool 消息),循环继续;
+    /// 模型缩小内容重试后照常成功。
+    #[tokio::test]
+    async fn loop_invalid_tool_args_fail_without_executing_then_continue() {
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<Value>>>> = Default::default();
+        let step = capturing_step(
+            vec![
+                tool_call_msg("write_file", r#"{"path":"a.txt","content":"写到一半就被截"#),
+                tool_call_msg("write_file", r#"{"path":"a.txt","content":"短"}"#),
+                final_msg("写好了"),
+            ],
+            seen.clone(),
+        );
+        let calls: std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>> = Default::default();
+        let execute = recording_executor(calls.clone());
+        let (sink, log) = collect_sink();
+        let out = run_tool_loop(
+            "sys",
+            "写个文件",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: None,
+                history: Vec::new(),
+                max_iters: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "写好了", "参数错误不打断循环");
+        assert_eq!(out.iters, 3);
+        // 执行器只见到第二次(合法参数)的调用:截断的那次绝不能带着 {} 去执行。
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1, "非法参数的调用不得执行: {calls:?}");
+        assert_eq!(calls[0].1, json!({ "path": "a.txt", "content": "短" }));
+        // records:先失败后成功。
+        assert_eq!(out.records.len(), 2);
+        assert!(!out.records[0].ok);
+        assert_eq!(out.records[0].name, "write_file");
+        assert_eq!(out.records[0].summary, TOOL_ARGS_INVALID_JSON);
+        assert!(out.records[1].ok);
+        // 事件:invoked → failed(不是 denied)→ invoked → completed。
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 4, "{log:?}");
+        assert_eq!(log[0], "invoked:write_file");
+        assert_eq!(
+            log[1],
+            format!("failed:write_file:{TOOL_ARGS_INVALID_JSON}")
+        );
+        assert_eq!(log[2], "invoked:write_file");
+        assert!(log[3].starts_with("completed:write_file:"), "{}", log[3]);
+        // 回注:第二轮上行里紧跟 assistant 的 tool 消息配对同一 call id,正文是明确的对策。
+        let seen = seen.lock().unwrap();
+        let round2 = &seen[1];
+        let tool_msg = round2.last().unwrap();
+        assert_eq!(tool_msg["role"], "tool");
+        assert_eq!(tool_msg["tool_call_id"], "call_1");
+        assert_eq!(tool_msg["content"], TOOL_ARGS_INVALID_JSON);
+        assert!(tool_msg["content"].as_str().unwrap().contains("分批调用"));
+    }
+
+    /// 空串/纯空白参数仍是无参调用:照常执行,args = {}(既有行为不变)。
+    #[tokio::test]
+    async fn loop_empty_tool_args_still_execute_with_empty_object() {
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<Value>>>> = Default::default();
+        let step = capturing_step(
+            vec![
+                tool_call_msg("mcp__engine-scene__scene_summary", ""),
+                tool_call_msg("mcp__engine-scene__scene_summary", "  \n"),
+                final_msg("好"),
+            ],
+            seen,
+        );
+        let calls: std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>> = Default::default();
+        let execute = recording_executor(calls.clone());
+        let out = run_tool_loop(
+            "sys",
+            "看看场景",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: None,
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: None,
+                history: Vec::new(),
+                max_iters: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "好");
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2, "空参数调用须照常执行");
+        assert!(calls.iter().all(|(_, a)| *a == json!({})), "{calls:?}");
+        assert!(out.records.iter().all(|r| r.ok));
+    }
+
+    /// 并行 task 路径:参数非法的那条不派发、按原顺序回注失败;同轮其余 task 照常执行。
+    #[tokio::test]
+    async fn parallel_task_round_invalid_args_fail_only_that_call() {
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<Value>>>> = Default::default();
+        let round1 = json!({ "role": "assistant", "tool_calls": [
+            { "id": "call_a", "type": "function", "function": { "name": "task", "arguments": r#"{"prompt":"A"}"# } },
+            { "id": "call_b", "type": "function", "function": { "name": "task", "arguments": r#"{"prompt":"B 的委派词写到一半"# } },
+            { "id": "call_c", "type": "function", "function": { "name": "task", "arguments": r#"{"prompt":"C"}"# } },
+        ]});
+        let step = capturing_step(vec![round1, final_msg("收工")], seen.clone());
+        let calls: std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>> = Default::default();
+        let calls2 = calls.clone();
+        let execute: Box<ExecFn> = Box::new(move |name, args| {
+            calls2.lock().unwrap().push((name, args.clone()));
+            Box::pin(async move {
+                let p = args["prompt"].as_str().unwrap_or("").to_string();
+                (true, format!("done {p}").into())
+            })
+        });
+        let (sink, log) = collect_sink();
+        let out = run_tool_loop(
+            "sys",
+            "派三单",
+            ToolLoopCfg {
+                tools: vec![],
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: Some(&sink),
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: None,
+                history: Vec::new(),
+                max_iters: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "收工");
+        // 只有 A、C 真正派出(并行分支:带 _toolCallId 注入);B 没进执行器。
+        let mut dispatched: Vec<String> = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, a)| a["_toolCallId"].as_str().unwrap_or("").to_string())
+            .collect();
+        dispatched.sort();
+        assert_eq!(dispatched, ["call_a", "call_c"], "参数非法的 task 不得派发");
+        // records 与回注消息按原 call 顺序;B 是明确的参数错误。
+        assert_eq!(out.records.len(), 3);
+        assert_eq!(out.records[0].summary, "done A");
+        assert!(!out.records[1].ok);
+        assert_eq!(out.records[1].summary, TOOL_ARGS_INVALID_JSON);
+        assert_eq!(out.records[2].summary, "done C");
+        let seen = seen.lock().unwrap();
+        let tool_msgs: Vec<&Value> = seen[1].iter().filter(|m| m["role"] == "tool").collect();
+        assert_eq!(tool_msgs.len(), 3);
+        assert_eq!(tool_msgs[0]["tool_call_id"], "call_a");
+        assert_eq!(tool_msgs[0]["content"], "done A");
+        assert_eq!(tool_msgs[1]["tool_call_id"], "call_b");
+        assert_eq!(tool_msgs[1]["content"], TOOL_ARGS_INVALID_JSON);
+        assert_eq!(tool_msgs[2]["tool_call_id"], "call_c");
+        assert_eq!(tool_msgs[2]["content"], "done C");
+        // 事件:三条 invoked 先发,随后按原顺序 completed / failed / completed。
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 6, "{log:?}");
+        assert!(log[..3].iter().all(|l| l == "invoked:task"), "{log:?}");
+        assert!(log[3].starts_with("completed:task:"), "{}", log[3]);
+        assert_eq!(log[4], format!("failed:task:{TOOL_ARGS_INVALID_JSON}"));
+        assert!(log[5].starts_with("completed:task:"), "{}", log[5]);
     }
 
     // ---------- 工具产出图片的多模态回注 ----------
@@ -2458,12 +3878,20 @@ mod tests {
             std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let seen_step = seen.clone();
         let queue = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from(
-            vec![tool_call_msg("mcp__gen-model__gen_mesh", "{}"), final_msg("好了")],
+            vec![
+                tool_call_msg("mcp__gen-model__gen_mesh", "{}"),
+                final_msg("好了"),
+            ],
         )));
         let step: Box<StepFn> = Box::new(move |msgs, _t, _s| {
             seen_step.lock().unwrap().push(msgs);
             let next = queue.lock().unwrap().pop_front().expect("script 耗尽");
-            Box::pin(async move { Ok(StepOutcome { message: next, usage: None }) })
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message: next,
+                    usage: None,
+                })
+            })
         });
         let execute: Box<ExecFn> = Box::new(|_n, _a| {
             Box::pin(async move {
@@ -2493,6 +3921,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2508,7 +3937,9 @@ mod tests {
         let msgs = messages_after_tool_with_images(true).await;
         let last = msgs.last().expect("末条应是图片消息");
         assert_eq!(last["role"], "user");
-        let blocks = last["content"].as_array().expect("content 应为多模态块数组");
+        let blocks = last["content"]
+            .as_array()
+            .expect("content 应为多模态块数组");
         // 首块文字交代来历,其后每图一块。
         assert_eq!(blocks[0]["type"], "text");
         assert!(blocks[0]["text"].as_str().unwrap().contains("gen_mesh"));
@@ -2517,7 +3948,10 @@ mod tests {
         assert_eq!(blocks[1]["image_url"]["url"], "data:image/png;base64,AAA");
         assert_eq!(blocks[2]["image_url"]["url"], "data:image/png;base64,BBB");
         // 图片不进 tool 消息:base64 会被 4000 字符截断成废串,还白烧 token。
-        let tool_msg = msgs.iter().find(|m| m["role"] == "tool").expect("须有 tool 消息");
+        let tool_msg = msgs
+            .iter()
+            .find(|m| m["role"] == "tool")
+            .expect("须有 tool 消息");
         assert!(tool_msg["content"].is_string());
         assert!(!tool_msg["content"].as_str().unwrap().contains("base64"));
         // tool 消息必须紧跟 assistant,图片消息排在其后(否则 tool_call 配对被打断)。
@@ -2535,7 +3969,11 @@ mod tests {
             msgs.iter().all(|m| !m["content"].is_array()),
             "无视觉面的渠道不得出现多模态块: {msgs:?}"
         );
-        assert_eq!(msgs.last().unwrap()["role"], "tool", "末条应是 tool,无追加图片消息");
+        assert_eq!(
+            msgs.last().unwrap()["role"],
+            "tool",
+            "末条应是 tool,无追加图片消息"
+        );
     }
 
     /// 无 imageRefs 的普通结果不该被误判出图片;非法/越界路径静默跳过不炸。
@@ -2566,7 +4004,11 @@ mod tests {
         assert!(out.contains("gen-1-42-0.png"), "关键字段保留: {out}");
         assert!(out.contains("gen-1-43-1.png"));
         assert!(!out.contains(&"A".repeat(100)), "巨型 base64 应移除");
-        assert!(out.len() < 1000, "剥离后文本应远小于截断窗口: {}", out.len());
+        assert!(
+            out.len() < 1000,
+            "剥离后文本应远小于截断窗口: {}",
+            out.len()
+        );
         // 短 data URI(图标级)与普通结果不触发。
         assert!(strip_inline_data_urls(r#"{"icon":"data:image/png;base64,AAA"}"#).is_none());
         assert!(strip_inline_data_urls(r#"{"ok":true}"#).is_none());
@@ -2589,8 +4031,12 @@ mod tests {
         .to_string();
         let (out, imgs) = strip_viewport_pixels(&text).expect("应转换");
         assert_eq!(imgs.len(), 1);
-        let png_b64 = imgs[0].strip_prefix("data:image/png;base64,").expect("PNG data URI");
-        let png = base64::engine::general_purpose::STANDARD.decode(png_b64).unwrap();
+        let png_b64 = imgs[0]
+            .strip_prefix("data:image/png;base64,")
+            .expect("PNG data URI");
+        let png = base64::engine::general_purpose::STANDARD
+            .decode(png_b64)
+            .unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n", "须为 PNG 魔数");
         assert!(out.contains("\"draws\":3"), "诊断字段保留: {out}");
         assert!(!out.contains(&base64::engine::general_purpose::STANDARD.encode(&rgba)));
@@ -2602,24 +4048,41 @@ mod tests {
     #[test]
     fn tool_image_message_shape() {
         let m = tool_image_message(&[
-            ("gen_mesh".to_string(), "data:image/png;base64,X".to_string()),
-            ("gen_mesh".to_string(), "data:image/png;base64,Y".to_string()),
+            (
+                "gen_mesh".to_string(),
+                "data:image/png;base64,X".to_string(),
+            ),
+            (
+                "gen_mesh".to_string(),
+                "data:image/png;base64,Y".to_string(),
+            ),
         ]);
         assert_eq!(m["role"], "user");
         let blocks = m["content"].as_array().unwrap();
         assert_eq!(blocks.len(), 3);
         // 同一工具名去重,不重复罗列。
-        assert_eq!(blocks[0]["text"].as_str().unwrap().matches("gen_mesh").count(), 1);
+        assert_eq!(
+            blocks[0]["text"]
+                .as_str()
+                .unwrap()
+                .matches("gen_mesh")
+                .count(),
+            1
+        );
     }
 
     #[tokio::test]
     async fn loop_executor_failure_emits_failed_and_continues() {
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let step = scripted_step(
-            vec![tool_call_msg("mcp__engine-scene__entity_get", "{}"), final_msg("收尾")],
+            vec![
+                tool_call_msg("mcp__engine-scene__entity_get", "{}"),
+                final_msg("收尾"),
+            ],
             seen,
         );
-        let execute: Box<ExecFn> = Box::new(|_n, _a| Box::pin(async move { (false, "假失败".into()) }));
+        let execute: Box<ExecFn> =
+            Box::new(|_n, _a| Box::pin(async move { (false, "假失败".into()) }));
         let (sink, log) = collect_sink();
         let out = run_tool_loop(
             "sys",
@@ -2635,6 +4098,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2683,6 +4147,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2732,6 +4197,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2774,6 +4240,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2796,12 +4263,17 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
         .await
         .unwrap();
-        assert!(out.text.contains("mock:已收到「你好」"), "mock 步进终稿: {}", out.text);
+        assert!(
+            out.text.contains("mock:已收到「你好」"),
+            "mock 步进终稿: {}",
+            out.text
+        );
         assert!(log2.lock().unwrap().is_empty(), "mock 无 usage 事件");
     }
 
@@ -2865,7 +4337,10 @@ mod tests {
         assert_eq!(v["baseUrl"], "http://127.0.0.1:9100");
         assert_eq!(v["model"], "qwen2.5-7b");
         assert_eq!(v["keyConfigured"], true);
-        assert!(!v.to_string().contains(secret), "config 响应回显密钥(R-5): {v}");
+        assert!(
+            !v.to_string().contains(secret),
+            "config 响应回显密钥(R-5): {v}"
+        );
         // 配置 JSON 落盘:含 baseUrl/model,绝不含 key 子串。
         let text = std::fs::read_to_string(guard.dir.join("llm-openai-compat.json")).unwrap();
         assert!(text.contains("http://127.0.0.1:9100"), "{text}");
@@ -2874,12 +4349,21 @@ mod tests {
         assert!(!text.contains("sk-"), "配置 JSON 含 sk- 串(R-5): {text}");
         // key 进 keystore(条目独立,与 deepseek 不互踩见下);Windows DPAPI 密文无明文。
         let ks_text = std::fs::read_to_string(guard.dir.join("keystore.json")).unwrap();
-        assert!(!ks_text.contains(secret), "keystore 落盘含明文(R-5): {ks_text}");
+        assert!(
+            !ks_text.contains(secret),
+            "keystore 落盘含明文(R-5): {ks_text}"
+        );
         let ks = gend::keystore::Keystore::load_from(&guard.dir.join("keystore.json"));
-        assert_eq!(ks.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(), Some(secret));
+        assert_eq!(
+            ks.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(),
+            Some(secret)
+        );
         // resolve 三联 = (base_url, model, key)。
         let (bu, m, k) = resolve_openai_compat().expect("已配齐应 Some");
-        assert_eq!((bu.as_str(), m.as_str(), k.as_str()), ("http://127.0.0.1:9100", "qwen2.5-7b", secret));
+        assert_eq!(
+            (bu.as_str(), m.as_str(), k.as_str()),
+            ("http://127.0.0.1:9100", "qwen2.5-7b", secret)
+        );
         // key 省略 = 只改 baseUrl/model;keystore 既有 key 保留。
         let resp = set_openai_compat_config(axum::Json(OpenAiCompatConfigRequest {
             base_url: "http://127.0.0.1:9200".to_string(),
@@ -2903,12 +4387,21 @@ mod tests {
         // 渠道 key 不互踩:deepseek 条目写入后 openai-compat 原样。
         gend::keystore::set_key("deepseek", "sk-test-oai-deepseek-neighbor").unwrap();
         let ks3 = gend::keystore::Keystore::load_from(&guard.dir.join("keystore.json"));
-        assert_eq!(ks3.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(), Some(secret));
-        assert_eq!(ks3.key_for("deepseek").as_deref(), Some("sk-test-oai-deepseek-neighbor"));
+        assert_eq!(
+            ks3.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(),
+            Some(secret)
+        );
+        assert_eq!(
+            ks3.key_for("deepseek").as_deref(),
+            Some("sk-test-oai-deepseek-neighbor")
+        );
         // status 响应面终态仍无 key。
         let v = openai_compat_status_handler().await.0;
         assert_eq!(v["configured"], true);
-        assert!(!v.to_string().contains("sk-"), "status 响应含 sk- 串(R-5): {v}");
+        assert!(
+            !v.to_string().contains("sk-"),
+            "status 响应含 sk- 串(R-5): {v}"
+        );
     }
 
     #[tokio::test]
@@ -2967,6 +4460,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -2981,7 +4475,9 @@ mod tests {
         );
         // 缺 key 腿(有 baseUrl/model 无 key)同样 None + 显式错;消息面不含 key 域值。
         {
-            let _f = OPENAI_COMPAT_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _f = OPENAI_COMPAT_FILE_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             save_openai_compat_file(&OpenAiCompatFile {
                 base_url: "http://127.0.0.1:1".to_string(),
                 model: "m".to_string(),
@@ -2989,9 +4485,45 @@ mod tests {
             })
             .unwrap();
         }
-        assert!(resolve_openai_compat().is_none(), "缺 key 不得判 configured");
+        assert!(
+            resolve_openai_compat().is_none(),
+            "缺 key 不得判 configured"
+        );
         assert!(!openai_compat_status().configured);
         assert!(!openai_compat_status().key_configured);
+    }
+
+    #[test]
+    fn bind_chat_session_sets_forge_sticky_header() {
+        let device = Provider::Cloud {
+            server_url: "http://127.0.0.1:8110".into(),
+            model: "gpt-5.5".into(),
+            key: "sk-rf-secret".into(),
+            session_id: Some("device-login".into()),
+        };
+        let bound = bind_chat_session(device, "chat-sess-1");
+        match &bound {
+            Provider::Cloud {
+                session_id, key, ..
+            } => {
+                assert_eq!(session_id.as_deref(), Some("chat-sess-1"));
+                assert_eq!(key, "sk-rf-secret");
+            }
+            other => panic!("expected Cloud, got {other:?}"),
+        }
+        assert!(matches!(
+            bind_chat_session(Provider::Mock, "chat-sess-1"),
+            Provider::Mock
+        ));
+        let headers = cloud_request_headers(Some("chat-sess-1"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Forge-Session" && v == "chat-sess-1"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "X-Forge-Client" && v.starts_with("forge-agentd/")));
+        let dbg = format!("{bound:?}");
+        assert!(!dbg.contains("sk-rf-secret"), "Debug 泄漏设备 Key: {dbg}");
     }
 
     #[test]
@@ -3002,8 +4534,68 @@ mod tests {
             key: "sk-test-oai-REDLINE-debug".to_string(),
         };
         let dbg = format!("{p:?}");
-        assert!(!dbg.contains("sk-test-oai-REDLINE-debug"), "Debug 泄漏密钥(R-5): {dbg}");
+        assert!(
+            !dbg.contains("sk-test-oai-REDLINE-debug"),
+            "Debug 泄漏密钥(R-5): {dbg}"
+        );
         assert!(dbg.contains("<redacted>"), "{dbg}");
+    }
+
+    #[tokio::test]
+    async fn claude_signed_thinking_round_trip_over_chat_stream() {
+        use axum::{routing::post, Router};
+        let blocks = json!([
+            {"type":"thinking","thinking":"summary","signature":"opaque+/="},
+            {"type":"redacted_thinking","data":"encrypted+/="},
+            {"type":"tool_use","id":"toolu_1","name":"lookup","input":{"key":"alpha"}},
+        ]);
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let record = seen.clone();
+        let expected = blocks.clone();
+        let app = Router::new().route("/v1/chat/completions", post(move |axum::Json(body): axum::Json<Value>| {
+            let seen = record.clone();
+            let blocks = expected.clone();
+            async move {
+                let followup = body["messages"].as_array().unwrap().iter().any(|m| m["role"] == "tool");
+                seen.lock().unwrap().push(body);
+                let deltas = if followup {
+                    vec![json!({"role":"assistant","content":"23"})]
+                } else {
+                    vec![json!({"role":"assistant","reasoning_content":"summary"}),
+                        json!({"tool_calls":[{"index":0,"id":"toolu_1","type":"function","function":{"name":"lookup","arguments":"{\"key\":\"alpha\"}"}}]}),
+                        json!({"anthropic_content":blocks})]
+                };
+                let mut stream = String::new();
+                for delta in deltas {
+                    stream.push_str(&format!("data: {}\n\n", json!({"choices":[{"delta":delta}]})));
+                }
+                stream.push_str("data: [DONE]\n\n");
+                ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], stream)
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let result = tokio::task::spawn_blocking(move || {
+            let url = format!("http://{addr}/v1/chat/completions");
+            let spec = RequestSpec { reasoning_effort: Some("low".into()), thinking_enabled: Some(true), ..Default::default() };
+            let mut messages = vec![json!({"role":"user","content":"Look up alpha"})];
+            let first = chat_completions_stream(&url, "cloud", "claude-sonnet-5-5", "test-key", &messages, &[], &spec, None, &[]).unwrap();
+            let assistant = &first["choices"][0]["message"];
+            assert_eq!(assistant["anthropic_content"], blocks);
+            assert_eq!(assistant["reasoning_content"], "summary");
+            messages.push(assistant.clone());
+            messages.push(json!({"role":"tool","tool_call_id":"toolu_1","content":"23"}));
+            chat_completions_stream(&url, "cloud", "claude-sonnet-5-5", "test-key", &messages, &[], &spec, None, &[]).unwrap()
+        }).await.unwrap();
+        server.abort();
+        assert_eq!(result["choices"][0]["message"]["content"], "23");
+        let requests = seen.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0]["thinking_enabled"], true);
+        assert_eq!(requests[0]["reasoning_effort"], "low");
+        assert_eq!(requests[1]["messages"][1]["anthropic_content"][0]["signature"], "opaque+/=");
+        assert_eq!(requests[1]["messages"][1]["anthropic_content"][1]["data"], "encrypted+/=");
     }
 
     /// mock OpenAI 兼容 HTTP 服务器:首个无 tool 角色请求 → tool_calls 响应;
@@ -3077,6 +4669,7 @@ mod tests {
         let spec = RequestSpec {
             model: None,
             reasoning_effort: Some("xhigh".to_string()),
+            thinking_enabled: None,
         };
         let step = openai_compat_step(&base_url, "qwen2.5-7b", secret, &spec);
         // 假 executor:不触 MCP,记录调用。
@@ -3091,7 +4684,9 @@ mod tests {
             "sys",
             "创建一个立方体",
             ToolLoopCfg {
-                tools: to_openai_tools(&[json!({ "name": "mcp__engine-scene__entity_create", "description": "d" })]),
+                tools: to_openai_tools(&[
+                    json!({ "name": "mcp__engine-scene__entity_create", "description": "d" }),
+                ]),
                 step: step.as_ref(),
                 execute: execute.as_ref(),
                 vision: false,
@@ -3101,6 +4696,7 @@ mod tests {
                 stream: None,
                 preamble: None,
                 inbox: None,
+                history: Vec::new(),
                 max_iters: None,
             },
         )
@@ -3112,13 +4708,20 @@ mod tests {
         assert_eq!(out.records.len(), 1);
         assert!(out.records[0].ok);
         assert_eq!(out.records[0].name, "mcp__engine-scene__entity_create");
-        assert_eq!(executed.lock().unwrap().as_slice(), ["mcp__engine-scene__entity_create"]);
+        assert_eq!(
+            executed.lock().unwrap().as_slice(),
+            ["mcp__engine-scene__entity_create"]
+        );
         {
             let log = log.lock().unwrap();
             assert_eq!(log.len(), 4, "usage+invoked+completed+usage: {log:?}");
             assert_eq!(log[0], "usage:8");
             assert_eq!(log[1], "invoked:mcp__engine-scene__entity_create");
-            assert!(log[2].starts_with("completed:mcp__engine-scene__entity_create:"), "{}", log[2]);
+            assert!(
+                log[2].starts_with("completed:mcp__engine-scene__entity_create:"),
+                "{}",
+                log[2]
+            );
             assert_eq!(log[3], "usage:18");
         }
         // 请求面:两发 POST /v1/chat/completions,Authorization Bearer = 配置 key;
@@ -3136,7 +4739,9 @@ mod tests {
         }
         let msgs2 = seen[1].3["messages"].as_array().unwrap();
         assert!(
-            msgs2.iter().any(|m| m.get("tool_calls").and_then(Value::as_array).is_some()),
+            msgs2
+                .iter()
+                .any(|m| m.get("tool_calls").and_then(Value::as_array).is_some()),
             "第二轮含 assistant tool_calls 回注: {msgs2:?}"
         );
         let tool_msg = msgs2
@@ -3144,6 +4749,50 @@ mod tests {
             .find(|m| m.get("role").and_then(Value::as_str) == Some("tool"))
             .expect("第二轮含 role:tool 回注");
         assert_eq!(tool_msg["tool_call_id"], "call_oai_1");
-        assert!(tool_msg["content"].as_str().unwrap().contains("entityId"), "tool 回注带执行反馈");
+        assert!(
+            tool_msg["content"].as_str().unwrap().contains("entityId"),
+            "tool 回注带执行反馈"
+        );
+    }
+
+    #[test]
+    fn provider_antigravity_debug_redacts_key() {
+        let secret = "sk-antigravity-secret-key-99999";
+        let p = Provider::Antigravity {
+            base_url: "https://proxy.example.com".to_string(),
+            model: "gemini-3.8-flash".to_string(),
+            key: secret.to_string(),
+        };
+        let debug_str = format!("{p:?}");
+        assert!(debug_str.contains("<redacted>"));
+        assert!(!debug_str.contains(secret), "Debug 泄漏密钥 (红线 R-5 违规)");
+    }
+
+    #[test]
+    fn antigravity_failure_code_mapping() {
+        let msg = "ANTIGRAVITY_NOT_CONFIGURED: Antigravity 渠道未配齐";
+        assert_eq!(
+            failure_code_from_error(msg),
+            Some(ANTIGRAVITY_NOT_CONFIGURED)
+        );
+    }
+
+    #[test]
+    fn antigravity_not_configured_is_non_transient() {
+        let err = LlmError::new("ANTIGRAVITY_NOT_CONFIGURED: not configured");
+        assert!(
+            !is_transient_llm_error(&err),
+            "antigravity_not_configured 必须是非瞬时错误, 严禁退避重试拖延 13 分钟"
+        );
+    }
+
+    #[test]
+    fn provider_antigravity_vision_supported() {
+        let p = Provider::Antigravity {
+            base_url: "https://proxy.example.com".to_string(),
+            model: "gemini-3.8-flash".to_string(),
+            key: "key".to_string(),
+        };
+        assert!(provider_vision(&p), "Gemini 默认支持视觉");
     }
 }

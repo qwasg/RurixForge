@@ -100,7 +100,7 @@ describe('graphStore', () => {
     expect(useGraphStore.getState().graph?.id).toBe('g_door_opener');
     expect(toolCalls()[0].arguments).toEqual({ path: GRAPH_PATH });
 
-    // 无 Script 组件的实体 → 空态(清掉已载图与 dirty)
+    // Switching selection must preserve the unsaved shared graph draft.
     useGraphStore.setState({ dirty: true });
     useEditorStore.setState({
       entities: [{ ...DOOR_ENTITY, components: [] }],
@@ -108,9 +108,12 @@ describe('graphStore', () => {
     });
     await useGraphStore.getState().loadForSelectedEntity();
     const s = useGraphStore.getState();
-    expect(s.graph).toBeNull();
-    expect(s.graphPath).toBeNull();
-    expect(s.dirty).toBe(false);
+    expect(s.graph?.id).toBe('g_door_opener');
+    expect(s.graphPath).toBe(GRAPH_PATH);
+    expect(s.dirty).toBe(true);
+    useGraphStore.setState({ dirty: false });
+    await useGraphStore.getState().loadForSelectedEntity();
+    expect(useGraphStore.getState().graph).toBeNull();
   });
 
   it('editConst:本地改 inputs[pin].const 并置 dirty(不打后端)', () => {

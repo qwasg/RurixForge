@@ -2,9 +2,12 @@ node_modules/
 dist/
 data/
 target/
+cloud/deploy/.env
 *.log
 .DS_Store
 gateway-go/forge-gateway.exe
+# D-043: 官方 Godot 构建(scripts/godot-fetch.ps1 下载 + SHA-512 校验),不入仓
+vendor/godot/
 
 # 临时与过程产物（开发证据/截图，不进入仓库）
 .tmp-*/
@@ -15,9 +18,40 @@ evidence/
 shots/
 **/.forge/tmp/
 **/.forge/cache/
+**/.forge/blender/
 
 # 编译产物
 *.exe
 *.obj
 *.pdb
 *.ilk
+# D-045:Design 流程的大体积中间图(候选、元素素材、验收截图);JSON/MD 记录与 approved.png 照常跟踪。
+**/.forge/design/*/rounds/
+**/.forge/design/*/elements/
+**/.forge/design/*/verify/
+**/.forge/design/*/overlay.png
+
+# 本机账号、工作流与工具配置；保留在本地，不随源码发布
+/.codex/
+/.kiro/
+/.agents/teamwork/
+**/.forge/
+**/.godot/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.blend1
+*.blend2
+/CS安装测试/
+/projects/workspace-create-check-20261003/
+
+# 示例游戏的原始生成记录、测试证据与导出物（源码和运行资源单独跟踪）
+/projects/code-sentinels/.agents/
+/projects/code-sentinels/.codex/
+/projects/code-sentinels/Logs/
+/projects/code-sentinels/artifacts/
+/projects/code-sentinels/qa/
+/projects/code-sentinels/SourceMedia/
+/tools/local-model-gateway/ui_report.json

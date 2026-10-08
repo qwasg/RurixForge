@@ -1,0 +1,21 @@
+{
+  "name": "lights",
+  "project": "models",
+  "doc": "entities[] 是 entity.create 的参数;idMod8 = k:先不带组件建实体,id % 8 != k 就再建(不挂组件),满足后逐个 component.add;props 里 \"@名字\" = 同配方先建的同名实体 id。",
+  "entities": [
+    {"name": "backdrop", "translation": [0.0, 0.0, -0.3], "scale": [7.0, 4.0, 1.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "plane-l", "translation": [-1.8, 0.0, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "checker-l", "translation": [-0.6, 0.0, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/checker.rxmodel"}}]},
+    {"name": "plane-r", "translation": [0.6, 0.0, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "checker-r", "translation": [1.8, 0.0, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/checker.rxmodel"}}]},
+    {"name": "sun", "translation": [0.0, 3.0, 3.0], "rotation": [-0.319151, -0.159576, 0.0, 0.934172], "components": [{"type": "Light", "enabled": true, "props": {"kind": "directional", "color": [1.0, 0.92, 0.8], "intensity": 0.8, "castShadow": false}}]},
+    {"name": "point-red", "translation": [-1.2, 0.6, 1.0], "components": [{"type": "Light", "enabled": true, "props": {"kind": "point", "color": [1.0, 0.25, 0.2], "intensity": 2.0, "castShadow": false}}]},
+    {"name": "spot-rig", "translation": [1.2, 0.0, 2.0], "components": []},
+    {"name": "spot-blue", "translation": [0.0, 0.4, 0.0], "components": [{"type": "Light", "enabled": true, "props": {"kind": "spot", "color": [0.3, 0.55, 1.0], "intensity": 3.0, "castShadow": true}}, {"type": "Parent", "enabled": true, "props": {"entity": "@spot-rig"}}]}
+  ],
+  "camera": {"target": [0.0, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0, "dist": 5.5, "fovY": 50.0, "ortho": false},
+  "width": 640,
+  "height": 360,
+  "probes": [[194, 180], [295, 198], [362, 180], [464, 198], [109, 75], [531, 75]],
+  "probeLabels": ["plane-l", "checker-l.white", "plane-r", "checker-r.white", "backdrop.left", "backdrop.right"]
+}

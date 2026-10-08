@@ -31,6 +31,7 @@ import {
 } from '@/lib/designBoardStore';
 import { isTyping } from '@/lib/keyScope';
 import { useToastStore } from '@/lib/toastStore';
+import { editorReference, makeAnnotation, useEditorAnnotationStore } from '@/lib/editorReferences';
 import { useCanvasViewport, type WorldRect } from '@/lib/useCanvasViewport';
 import BoardContextMenu, { type BoardMenuItem } from './BoardContextMenu';
 import BoardNodeCard, {
@@ -388,7 +389,7 @@ export default function DesignBoardView() {
 
   const onCanvasPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!isTyping(e.target)) canvasRef.current?.focus(); // 画布拿到焦点,快捷键才生效
-    if (e.button === 0) selectNode(hitAnchor(e.target).node);
+    if (e.button === 0) selectNode(hitAnchor(e.target).node, e.ctrlKey || e.metaKey);
     vp.onPointerDown(e);
   };
 
@@ -484,6 +485,7 @@ export default function DesignBoardView() {
   // ---- 三套菜单的项(与上面快捷键一一对应) ----
 
   const canvasMenuItems = (world: [number, number]): BoardMenuItem[] => [
+    { key: 'annotate', label: '添加画板批注', icon: Sparkles, onSelect: () => useEditorAnnotationStore.getState().add([makeAnnotation(editorReference('blueprint', { resourceId: 'main' }), '设计蓝图')]) },
     ...kinds.map((k, i) => ({
       key: `add-${k.id}`,
       label: `在此新建${k.label}`,
@@ -536,6 +538,7 @@ export default function DesignBoardView() {
   ];
 
   const nodeMenuItems = (n: BoardNode, kind: EntityKindDef): BoardMenuItem[] => [
+    { key: 'annotate', label: '添加批注到对话', icon: Sparkles, onSelect: () => useEditorAnnotationStore.getState().add([makeAnnotation(editorReference('blueprint', { resourceId: 'main', selection: { nodeIds: [n.id] } }), n.name)]) },
     {
       key: 'open',
       label: '打开详情画布',
@@ -592,6 +595,7 @@ export default function DesignBoardView() {
   ];
 
   const featureMenuItems = (n: BoardNode, featureId: string): BoardMenuItem[] => [
+    { key: 'annotate', label: '添加特性批注', icon: Sparkles, onSelect: () => useEditorAnnotationStore.getState().add([makeAnnotation(editorReference('blueprint', { resourceId: 'main', selection: { nodeIds: [n.id], featureIds: [featureId] } }), `${n.name} · 特性`)]) },
     {
       key: 'note',
       label: '编辑说明',

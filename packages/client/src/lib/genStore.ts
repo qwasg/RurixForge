@@ -13,6 +13,11 @@ export interface GenBackendInfo {
   kind: string;
   configured: boolean;
   endpointSet: boolean;
+  enabled?: boolean;
+  keyConfigured?: boolean;
+  model?: string | null;
+  label?: string;
+  adapter?: string;
   capabilities?: Record<string, unknown>;
 }
 
@@ -94,6 +99,7 @@ export const useGenStore = create<GenState>((set, get) => ({
   loadBackends: async () => {
     try {
       const r = await apiGet<{ backends: GenBackendInfo[] }>('/api/forge/gen/backends');
+      if (!Array.isArray(r.backends)) throw new Error('生成后端清单格式无效');
       set({ backends: r.backends, backendsLoaded: true, backendsError: null });
     } catch (err) {
       set({ backendsError: (err as Error).message, backendsLoaded: true });

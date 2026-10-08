@@ -1,0 +1,29 @@
+.generation-page { display: flex; flex-direction: column; gap: 16px; }
+.generation-page > h1 { margin-bottom: 0; }
+.generation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.generation-toolbar p { max-width: 620px; color: var(--text-3); font-size: 12px; line-height: 1.7; }
+.generation-toolbar > div, .generation-form-footer > div { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.generation-toolbar button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+.generation-toolbar .generation-add, .generation-save { color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-line, var(--line)); }
+.generation-connections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.generation-connection.is-editing { grid-column: 1 / -1; }
+.generation-connection [data-testid^="gen-backend-row-"] { min-height: 86px; }
+.generation-card-actions { display: flex; align-items: center; gap: 8px; }
+.generation-status { color: var(--text-4); font-size: 10px; white-space: nowrap; }
+.generation-status.is-ready { color: var(--sage); }
+.generation-form { padding: 20px; border-top: 1px solid var(--line); }
+.generation-form-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; }
+.generation-form-heading span { color: var(--text-4); font-size: 11px; }
+.generation-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.generation-fields label, .generation-adapter { display: flex; flex-direction: column; gap: 7px; color: var(--text-3); font-size: 12px; }
+.generation-fields input, .generation-adapter select { width: 100%; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-panel); color: var(--text); outline: none; }
+.generation-fields input:focus, .generation-adapter select:focus { border-color: var(--accent); }
+.generation-adapter { padding: 20px; }
+.generation-form-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 20px; }
+.generation-form-footer > label { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; }
+.generation-save { min-height: 28px; padding: 0 14px; border-radius: 6px; font-size: 12px; }
+.generation-note { margin-top: 12px; color: var(--text-4); font-size: 11px; line-height: 1.7; }
+.generation-error { margin-top: 12px; color: var(--warn); font-size: 12px; }
+.generation-page button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 1000px) { .generation-connections { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .generation-toolbar { align-items: flex-start; flex-direction: column; gap: 12px; } .generation-fields { grid-template-columns: minmax(0, 1fr); } }

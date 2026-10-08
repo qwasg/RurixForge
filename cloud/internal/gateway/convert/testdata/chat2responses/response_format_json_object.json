@@ -1,0 +1,8 @@
+{
+  "options": {"model": "gpt-5"},
+  "request": {
+    "model": "forge-gpt-5",
+    "messages": [{"role": "user", "content": "Reply in JSON."}],
+    "response_format": {"type": "json_object"}
+  }
+}

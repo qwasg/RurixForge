@@ -1,0 +1,92 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 8192,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Weather in Paris and Tokyo?"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Checking."
+        },
+        {
+          "type": "tool_use",
+          "id": "call_1",
+          "name": "get_weather",
+          "input": {
+            "city": "Paris"
+          }
+        },
+        {
+          "type": "tool_use",
+          "id": "call_2",
+          "name": "get_weather",
+          "input": {}
+        },
+        {
+          "type": "tool_use",
+          "id": "call_3",
+          "name": "get_time",
+          "input": {}
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "call_1",
+          "content": "18°C"
+        },
+        {
+          "type": "tool_result",
+          "tool_use_id": "call_2",
+          "content": "error: bad args"
+        },
+        {
+          "type": "tool_result",
+          "tool_use_id": "call_3"
+        },
+        {
+          "type": "text",
+          "text": "Also summarize."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Weather",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_time",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "any",
+    "disable_parallel_tool_use": true
+  }
+}

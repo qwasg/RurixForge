@@ -1,0 +1,18 @@
+{
+  "id": "door",
+  "state": "open",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 1,
+  "sourceModel": "Content/Models/v6/door-open.blend",
+  "method": "Real door-leaf meshes pivot90 degrees around two individual hinges; central doorway is empty geometry",
+  "imageRotationUsed": false
+}

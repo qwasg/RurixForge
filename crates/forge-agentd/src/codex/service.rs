@@ -9,8 +9,11 @@
 //! 配额耗尽)必须原样上抛,不能被当成「换个名字再试」而把真实原因吞掉。
 
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
+
+use crate::events::{EventBus, EventDraft};
 
 use super::bin;
 use super::config;
@@ -48,6 +51,10 @@ pub struct CodexService {
     fingerprint: StdMutex<String>,
     install: Arc<StdMutex<InstallState>>,
     account: Arc<StdMutex<AccountState>>,
+    cancelled_logins: Arc<StdMutex<HashSet<String>>>,
+    /// 正在消费原生 Goal 自动 turns 的会话。REST 更新 Goal 时据此复用现有桥，
+    /// 不能再起第二个订阅者把同一通知映射两遍。
+    goal_bridges: StdMutex<HashSet<String>>,
     /// 单测注入:有则一律用它建客户端,不去 spawn 子进程。
     transport_override: StdMutex<Option<Arc<dyn CodexTransport>>>,
 }
@@ -65,6 +72,8 @@ impl CodexService {
             fingerprint: StdMutex::new(String::new()),
             install: Arc::new(StdMutex::new(InstallState::default())),
             account: Arc::new(StdMutex::new(AccountState::default())),
+            cancelled_logins: Arc::new(StdMutex::new(HashSet::new())),
+            goal_bridges: StdMutex::new(HashSet::new()),
             transport_override: StdMutex::new(None),
         }
     }
@@ -82,15 +91,72 @@ impl CodexService {
     /// 当前配置对应的启动指纹(变了就重建客户端)。
     fn compute_fingerprint(cfg: &config::CodexConfig) -> String {
         let launch = bin::resolve().map(|l| l.display()).unwrap_or_default();
-        format!("{launch}|{}", cfg.codex_home)
+        let cloud = crate::cloud::global();
+        let auth = config::effective_auth_source(&cloud);
+        let home = if auth == config::AUTH_CLOUD && cloud.is_logged_in() {
+            config::managed_cloud_home().display().to_string()
+        } else if cfg.codex_home.is_empty() {
+            config::managed_chatgpt_home().display().to_string()
+        } else {
+            cfg.codex_home.clone()
+        };
+        format!("{launch}|{home}|{auth}")
     }
 
     fn env_for(cfg: &config::CodexConfig) -> Vec<(String, String)> {
         let mut env = Vec::new();
-        if !cfg.codex_home.is_empty() {
-            env.push(("CODEX_HOME".to_string(), cfg.codex_home.clone()));
+        let cloud = crate::cloud::global();
+        let auth = config::effective_auth_source(&cloud);
+        env.push(("FORGE_CODEX_AUTH_SOURCE".to_string(), auth.clone()));
+        let codex_home = if auth == config::AUTH_CLOUD && cloud.is_logged_in() {
+            let url = cloud.server_url();
+            if let Err(e) = config::ensure_cloud_codex_home(&url) {
+                eprintln!("[codex] 写 codex-cloud-home/config.toml 失败: {e}");
+            }
+            config::managed_cloud_home()
+        } else if !cfg.codex_home.is_empty() {
+            std::path::PathBuf::from(&cfg.codex_home)
+        } else {
+            config::managed_chatgpt_home()
+        };
+        if cfg.codex_home.is_empty() {
+            if let Err(error) = std::fs::create_dir_all(&codex_home) {
+                eprintln!("[codex] 无法创建托管 CLI 目录: {error}");
+            }
+        }
+        if !codex_home.as_os_str().is_empty() {
+            env.push((
+                "CODEX_HOME".to_string(),
+                codex_home.to_string_lossy().into_owned(),
+            ));
+        }
+        if auth == config::AUTH_CLOUD {
+            if let Some(key) = cloud.device_key() {
+                env.push(("FORGE_CLOUD_API_KEY".to_string(), key));
+            }
         }
         env
+    }
+
+    /// An isolated workflow process with the same authentication configuration.
+    /// Never install it as the ordinary session/Goal client: interrupt fallback
+    /// may retire this entire process without affecting unrelated sessions.
+    pub fn isolated_client(&self) -> Result<Arc<CodexClient>, CodexError> {
+        let transport = match self
+            .transport_override
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+        {
+            Some(transport) => transport,
+            None => {
+                let launch = bin::resolve().ok_or_else(|| {
+                    CodexError("CODEX_NOT_INSTALLED: 未找到 Codex 可执行文件".to_string())
+                })?;
+                Arc::new(StdioTransport::new(launch, Self::env_for(&config::load())))
+            }
+        };
+        Ok(Arc::new(CodexClient::new(transport)))
     }
 
     /// 取(必要时新建)客户端。未安装 codex → 显式 `CODEX_NOT_INSTALLED`。
@@ -134,7 +200,7 @@ impl CodexService {
             .unwrap_or_else(|e| e.into_inner())
             .replace(Arc::clone(&fresh));
         if let Some(o) = old {
-            o.teardown();
+            o.suspend();
         }
         *self.fingerprint.lock().unwrap_or_else(|e| e.into_inner()) = fp;
         self.spawn_account_watcher(Arc::clone(&fresh));
@@ -148,23 +214,87 @@ impl CodexService {
         Ok(c)
     }
 
+    /// 只返回已运行的客户端，状态查询不能为了“看一眼”暗中启动进程。
+    pub fn running_client(&self) -> Option<Arc<CodexClient>> {
+        self.client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .filter(|client| client.running())
+            .cloned()
+    }
+
+    pub fn goal_bridge_active(&self, session_id: &str) -> bool {
+        self.goal_bridges
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(session_id)
+    }
+
+    pub fn set_goal_bridge(&self, session_id: &str, active: bool) {
+        let mut bridges = self.goal_bridges.lock().unwrap_or_else(|e| e.into_inner());
+        if active {
+            bridges.insert(session_id.to_string());
+        } else {
+            bridges.remove(session_id);
+        }
+    }
+
+    /// 服务启动预热：连接、握手并并行填充设置页会用到的三个缓存。
+    /// 预热是 best-effort，任何失败都不阻塞 HTTP 服务启动。
+    pub async fn prewarm(&self) {
+        if self.ready_client().await.is_err() {
+            return;
+        }
+        let _ = tokio::join!(
+            self.refresh_account(),
+            self.models(true),
+            self.refresh_rate_limits()
+        );
+    }
+
     /// 账户/额度通知的常驻旁听:把 codex 主动推来的账户变化落进缓存,
     /// 好让状态栏与设置页不必每次都发一次 RPC。
     fn spawn_account_watcher(&self, client: Arc<CodexClient>) {
         let account = Arc::clone(&self.account);
+        let cancelled_logins = Arc::clone(&self.cancelled_logins);
+        let client = Arc::downgrade(&client);
         tokio::spawn(async move {
-            let mut rx = client.subscribe();
-            while let Some(msg) = rx.recv().await {
-                let Inbound::Notification { method, params } = msg else {
-                    continue;
+            loop {
+                let Some(current) = client.upgrade() else {
+                    // The service replaced this client after a config change. A weak
+                    // watcher must never resurrect the retired process.
+                    break;
                 };
-                let mut a = account.lock().unwrap_or_else(|e| e.into_inner());
-                match method.as_str() {
-                    "account/rateLimits/updated" => {
-                        a.rate_limits = Some(params.get("rateLimits").cloned().unwrap_or(params));
+                if !current.running() {
+                    if current.restart_if_allowed().await.is_err() {
+                        drop(current);
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        continue;
                     }
-                    "account/updated" | "authStatusChange" => merge_account(&mut a, &params),
-                    _ => {}
+                }
+                let mut rx = current.subscribe();
+                drop(current);
+                while let Some(msg) = rx.recv().await {
+                    let Inbound::Notification { method, params } = msg else {
+                        continue;
+                    };
+                    if method == "account/login/completed" {
+                        let cancelled = cancelled_logins.lock().unwrap_or_else(|e| e.into_inner());
+                        if cancelled.contains("*") || params["loginId"].as_str().is_some_and(|id| cancelled.contains(id)) {
+                            continue;
+                        }
+                    }
+                    let mut a = account.lock().unwrap_or_else(|e| e.into_inner());
+                    match method.as_str() {
+                        "account/rateLimits/updated" => {
+                            let update = rate_limits_snapshot(&params);
+                            a.rate_limits = Some(merge_non_null(a.rate_limits.take(), update));
+                        }
+                        "account/login/completed" => merge_login_completed(&mut a, &params),
+                        "account/updated" | "authStatusChange" => merge_account(&mut a, &params),
+                        _ => {}
+                    }
                 }
             }
         });
@@ -198,7 +328,6 @@ impl CodexService {
         .await?;
         let mut a = self.account.lock().unwrap_or_else(|e| e.into_inner());
         merge_account(&mut a, &v);
-        a.last_error = None;
         Ok(a.clone())
     }
 
@@ -213,7 +342,7 @@ impl CodexService {
             ],
         )
         .await?;
-        let limits = v.get("rateLimits").cloned().unwrap_or(v);
+        let limits = rate_limits_snapshot(&v);
         let mut a = self.account.lock().unwrap_or_else(|e| e.into_inner());
         a.rate_limits = Some(limits.clone());
         Ok(Some(limits))
@@ -233,17 +362,45 @@ impl CodexService {
             }
         }
         let c = self.ready_client().await?;
-        let v = request_first_supported(
-            &c,
-            &[("model/list", json!({})), ("models/list", json!({}))],
-        )
-        .await?;
-        let items = v
-            .get("models")
-            .or_else(|| v.get("items"))
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
+        let (method, mut page) = match c.request("model/list", json!({})).await {
+            Ok(value) => ("model/list", value),
+            Err(error) if is_method_not_found(&error) => {
+                ("models/list", c.request("models/list", json!({})).await?)
+            }
+            Err(error) => return Err(error),
+        };
+        let mut items = Vec::new();
+        let mut seen_cursors = HashSet::new();
+        for _ in 0..100 {
+            items.extend(
+                page.get("data")
+                    .or_else(|| page.get("models"))
+                    .or_else(|| page.get("items"))
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|model| model.get("hidden") != Some(&Value::Bool(true))),
+            );
+            let Some(cursor) = page
+                .get("nextCursor")
+                .and_then(Value::as_str)
+                .filter(|cursor| !cursor.is_empty())
+            else {
+                break;
+            };
+            if !seen_cursors.insert(cursor.to_string()) {
+                return Err(CodexError("model/list 返回了重复 nextCursor".to_string()));
+            }
+            page = c.request(method, json!({ "cursor": cursor })).await?;
+        }
+        if page
+            .get("nextCursor")
+            .and_then(Value::as_str)
+            .is_some_and(|cursor| !cursor.is_empty() && seen_cursors.len() >= 100)
+        {
+            return Err(CodexError("model/list 分页超过 100 页".to_string()));
+        }
         self.account
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -254,6 +411,8 @@ impl CodexService {
     /// 发起登录。`kind`:`chatgpt`(订阅额度,浏览器 OAuth)/ `deviceCode` / `apiKey`。
     /// 返回体原样透传给前端(chatgpt 流里含要打开的 `authUrl`)。
     pub async fn login(&self, kind: &str, api_key: Option<&str>) -> Result<Value, CodexError> {
+        self.cancelled_logins.lock().unwrap_or_else(|e| e.into_inner()).remove("*");
+        self.account.lock().unwrap_or_else(|e| e.into_inner()).last_error = None;
         let c = self.ready_client().await?;
         let out = match kind {
             "chatgpt" => {
@@ -299,19 +458,26 @@ impl CodexService {
     }
 
     pub async fn cancel_login(&self, login_id: Option<&str>) -> Result<Value, CodexError> {
+        {
+            let mut cancelled = self.cancelled_logins.lock().unwrap_or_else(|e| e.into_inner());
+            if cancelled.len() >= 32 { cancelled.clear(); }
+            cancelled.insert(login_id.unwrap_or("*").to_string());
+        }
         let c = self.ready_client().await?;
         let params = match login_id {
             Some(id) => json!({ "loginId": id }),
             None => json!({}),
         };
-        request_first_supported(
+        let result = request_first_supported(
             &c,
             &[
                 ("account/login/cancel", params.clone()),
                 ("cancelLoginChatGpt", params),
             ],
         )
-        .await
+        .await?;
+        self.account.lock().unwrap_or_else(|e| e.into_inner()).last_error = None;
+        Ok(result)
     }
 
     pub async fn logout(&self) -> Result<(), CodexError> {
@@ -323,7 +489,11 @@ impl CodexService {
     }
 
     /// 托管安装(后台跑 npm;重复调用在跑的那次直接返回 false)。
-    pub fn start_install(&self) -> Result<bool, String> {
+    pub fn start_install(
+        &self,
+        events: Arc<EventBus>,
+        session_ids: Vec<String>,
+    ) -> Result<bool, String> {
         {
             let mut st = self.install.lock().unwrap_or_else(|e| e.into_inner());
             if st.running {
@@ -336,6 +506,13 @@ impl CodexService {
                 finished_at: None,
             };
         }
+        emit_install_event(
+            &events,
+            &session_ids,
+            "codex.install.progress",
+            json!({ "stage": "starting", "progress": 0 }),
+            false,
+        );
         let npm = match bin::npm_launch() {
             Some(p) => p,
             None => {
@@ -346,6 +523,14 @@ impl CodexService {
                 st.running = false;
                 st.error = Some(msg.clone());
                 st.finished_at = Some(now_iso());
+                drop(st);
+                emit_install_event(
+                    &events,
+                    &session_ids,
+                    "codex.install.completed",
+                    json!({ "ok": false, "error": msg }),
+                    true,
+                );
                 return Err(msg);
             }
         };
@@ -356,16 +541,33 @@ impl CodexService {
             let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
             st.running = false;
             st.finished_at = Some(now_iso());
-            match outcome {
+            let payload = match outcome {
                 Ok(log) => {
                     st.log = tail(&log, INSTALL_LOG_MAX);
                     st.error = None;
+                    json!({ "ok": true })
                 }
                 Err((log, err)) => {
                     st.log = tail(&log, INSTALL_LOG_MAX);
-                    st.error = Some(err);
+                    st.error = Some(err.clone());
+                    json!({ "ok": false, "error": err })
                 }
-            }
+            };
+            drop(st);
+            emit_install_event(
+                &events,
+                &session_ids,
+                "codex.install.progress",
+                json!({ "stage": "finished", "progress": 100 }),
+                false,
+            );
+            emit_install_event(
+                &events,
+                &session_ids,
+                "codex.install.completed",
+                payload,
+                true,
+            );
         });
         Ok(true)
     }
@@ -426,8 +628,13 @@ impl CodexService {
                             .filter_map(|e| {
                                 let eid = e
                                     .as_str()
+                                    .or_else(|| e.get("reasoningEffort").and_then(Value::as_str))
                                     .or_else(|| e.get("id").and_then(Value::as_str))?;
-                                Some(json!({ "id": eid, "label": eid }))
+                                Some(json!({
+                                    "id": eid,
+                                    "label": eid,
+                                    "description": e.get("description").cloned().unwrap_or(Value::Null),
+                                }))
                             })
                             .collect::<Vec<_>>()
                     })
@@ -438,10 +645,11 @@ impl CodexService {
                             json!({ "id": "high", "label": "high" }),
                         ]
                     });
-                let default_effort = efforts
-                    .first()
-                    .and_then(|e| e.get("id"))
+                let default_effort = m
+                    .get("defaultReasoningEffort")
                     .cloned()
+                    .filter(|v| v.is_string())
+                    .or_else(|| efforts.first().and_then(|e| e.get("id")).cloned())
                     .unwrap_or(json!("medium"));
                 Some(json!({
                     "id": format!("codex:{id}"),
@@ -465,15 +673,17 @@ impl CodexService {
     /// `GET /codex/status` 的完整负载。
     pub fn status_json(&self, project_root: &Path) -> Value {
         let cfg = config::load();
+        let cloud = crate::cloud::global();
+        let auth_source = config::effective_auth_source(&cloud);
         let (codex_installed, cu_installed) = bin::managed_installed();
         let launch = bin::resolve();
         let acct = self.account_snapshot();
         let inst = self.install_snapshot();
-        let (running, transport) = {
+        let (running, transport, version) = {
             let guard = self.client.lock().unwrap_or_else(|e| e.into_inner());
             match guard.as_ref() {
-                Some(c) => (c.running(), Some(c.describe())),
-                None => (false, None),
+                Some(c) => (c.running(), Some(c.describe()), c.server_version()),
+                None => (false, None, None),
             }
         };
         json!({
@@ -484,8 +694,14 @@ impl CodexService {
             "command": launch.map(|l| l.display()),
             "npmAvailable": bin::npm_launch().is_some(),
             "running": running,
+            "version": version,
             "transport": transport,
             "config": cfg.to_json(),
+            "authSource": auth_source,
+            "cloud": {
+                "loggedIn": cloud.is_logged_in(),
+                "serverUrl": cloud.server_url(),
+            },
             "account": {
                 "authMode": acct.auth_mode,
                 "planType": acct.plan_type,
@@ -529,15 +745,31 @@ fn is_method_not_found(e: &CodexError) -> bool {
 /// 把账户负载里认得的字段并进缓存(codex 各版本字段名有出入,认多种拼法)。
 fn merge_account(a: &mut AccountState, v: &Value) {
     let root = v.get("account").unwrap_or(v);
+    // account/read 的未登录正式形态是 `{account:null}`；账户通知登出则是
+    // `{authMode:null}`。两者都必须清旧缓存，不能让 UI 在登出后继续显示 Pro。
+    if root.is_null() || root.get("authMode") == Some(&Value::Null) {
+        a.auth_mode = None;
+        a.plan_type = None;
+        a.email = None;
+        a.rate_limits = None;
+        return;
+    }
     if let Some(m) = root
         .get("authMode")
         .or_else(|| root.get("auth_mode"))
         .or_else(|| root.get("method"))
+        .or_else(|| root.get("type"))
         .and_then(Value::as_str)
     {
-        a.auth_mode = Some(m.to_string());
+        a.auth_mode = Some(match m {
+            "apiKey" => "apikey".to_string(),
+            other => other.to_string(),
+        });
+        a.last_error = None;
     }
-    if let Some(p) = root
+    if root.get("planType") == Some(&Value::Null) || root.get("plan_type") == Some(&Value::Null) {
+        a.plan_type = None;
+    } else if let Some(p) = root
         .get("planType")
         .or_else(|| root.get("plan_type"))
         .or_else(|| root.get("plan"))
@@ -545,7 +777,9 @@ fn merge_account(a: &mut AccountState, v: &Value) {
     {
         a.plan_type = Some(p.to_string());
     }
-    if let Some(e) = root.get("email").and_then(Value::as_str) {
+    if root.get("email") == Some(&Value::Null) {
+        a.email = None;
+    } else if let Some(e) = root.get("email").and_then(Value::as_str) {
         a.email = Some(e.to_string());
     }
     if let Some(r) = root
@@ -561,6 +795,103 @@ fn merge_account(a: &mut AccountState, v: &Value) {
         a.plan_type = None;
         a.email = None;
     }
+}
+
+fn merge_login_completed(account: &mut AccountState, params: &Value) {
+    if params.get("success") == Some(&Value::Bool(true)) {
+        account.last_error = None;
+        return;
+    }
+    account.last_error = Some(
+        params
+            .get("error")
+            .map(safe_login_error)
+            .filter(|message| !message.is_empty())
+            .unwrap_or_else(|| "Codex 登录失败".to_string()),
+    );
+}
+
+/// Login errors may grow extra fields in newer app-server versions. Only surface
+/// code/type and message; never serialize the whole object where tokens or request
+/// metadata could be present.
+fn safe_login_error(error: &Value) -> String {
+    match error {
+        Value::String(message) => {
+            if let Ok(structured) = serde_json::from_str::<Value>(message) {
+                if structured.is_object() {
+                    return safe_login_error(&structured);
+                }
+            }
+            message.chars().take(1_000).collect()
+        }
+        Value::Object(object) => {
+            let code = object
+                .get("code")
+                .or_else(|| object.get("type"))
+                .and_then(Value::as_str);
+            let message = object.get("message").and_then(Value::as_str);
+            let text = match (code, message) {
+                (Some(code), Some(message)) if !message.contains(code) => {
+                    format!("{code}: {message}")
+                }
+                (_, Some(message)) => message.to_string(),
+                (Some(code), None) => code.to_string(),
+                _ => "Codex 登录失败".to_string(),
+            };
+            text.chars().take(1_000).collect()
+        }
+        _ => "Codex 登录失败".to_string(),
+    }
+}
+
+fn emit_install_event(
+    events: &EventBus,
+    session_ids: &[String],
+    event_type: &str,
+    payload: Value,
+    persistent: bool,
+) {
+    for session_id in session_ids {
+        let draft = EventDraft::new(session_id, event_type, "codex").payload(payload.clone());
+        if persistent {
+            events.emit(draft);
+        } else {
+            events.emit_ephemeral(draft);
+        }
+    }
+}
+
+/// 保留历史 primary/secondary 兼容形态，同时把新版多 bucket 与额度补充数据带给 UI。
+fn rate_limits_snapshot(v: &Value) -> Value {
+    let mut out = v.get("rateLimits").cloned().unwrap_or_else(|| v.clone());
+    if let Some(obj) = out.as_object_mut() {
+        for key in [
+            "rateLimitsByLimitId",
+            "accountId",
+            "rateLimitResetCredits",
+            "rateLimitUpsell",
+        ] {
+            if let Some(value) = v.get(key) {
+                obj.insert(key.to_string(), value.clone());
+            }
+        }
+    }
+    out
+}
+
+fn merge_non_null(existing: Option<Value>, update: Value) -> Value {
+    let (Some(mut old), Some(new)) = (existing, update.as_object()) else {
+        return update;
+    };
+    let Some(old_obj) = old.as_object_mut() else {
+        return update;
+    };
+    for (key, value) in new {
+        if !value.is_null() {
+            old_obj.insert(key.clone(), value.clone());
+        }
+    }
+    old
 }
 
 async fn run_install(npm: &Path, root: &Path) -> Result<String, (String, String)> {
@@ -610,9 +941,7 @@ mod tests {
     use super::*;
     use crate::codex::rpc::scripted_with_handshake;
 
-    fn svc(
-        f: impl Fn(&str, &Value, &Value) -> Vec<Value> + Send + Sync + 'static,
-    ) -> CodexService {
+    fn svc(f: impl Fn(&str, &Value, &Value) -> Vec<Value> + Send + Sync + 'static) -> CodexService {
         CodexService::with_transport(Arc::new(scripted_with_handshake(f)))
     }
 
@@ -637,6 +966,9 @@ mod tests {
     #[tokio::test]
     async fn real_errors_are_not_swallowed_by_fallback() {
         let s = svc(|method, _p, id| {
+            if method == "initialized" {
+                return vec![];
+            }
             if method == "account/read" {
                 return vec![json!({ "jsonrpc": "2.0", "id": id, "error": {
                     "code": -32000, "message": "UsageLimitExceeded"
@@ -663,10 +995,7 @@ mod tests {
         });
         let v = s.login("chatgpt", None).await.unwrap();
         assert_eq!(v["authUrl"], "https://auth.openai.com/x");
-        s.account
-            .lock()
-            .unwrap()
-            .auth_mode = Some("chatgpt".into());
+        s.account.lock().unwrap().auth_mode = Some("chatgpt".into());
         s.logout().await.unwrap();
         assert!(s.account_snapshot().auth_mode.is_none());
     }
@@ -680,7 +1009,17 @@ mod tests {
             if method == "model/list" {
                 c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 return vec![json!({ "jsonrpc": "2.0", "id": id, "result": {
-                    "models": [{ "id": "gpt-5.6-terra", "supportedReasoningEfforts": ["low","high"] }]
+                    "data": [
+                        {
+                            "id": "gpt-5.6-terra", "hidden": false,
+                            "defaultReasoningEffort": "high",
+                            "supportedReasoningEfforts": [
+                                { "reasoningEffort": "low", "description": "Fast" },
+                                { "reasoningEffort": "high", "description": "Deep" }
+                            ]
+                        },
+                        { "id": "hidden-model", "hidden": true }
+                    ]
                 }})];
             }
             vec![]
@@ -689,18 +1028,74 @@ mod tests {
         assert_eq!(a.len(), 1);
         let b = s.models(false).await.unwrap();
         assert_eq!(b.len(), 1);
-        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1, "第二次应命中缓存");
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "第二次应命中缓存"
+        );
+        let cards = s.model_cards();
+        assert_eq!(cards[0]["effortOptions"][1]["id"], "high");
+        assert_eq!(cards[0]["defaultEffort"], "high");
+    }
+
+    #[tokio::test]
+    async fn model_list_follows_next_cursor() {
+        let s = svc(|method, params, id| {
+            if method != "model/list" {
+                return vec![];
+            }
+            let result = if params.get("cursor").and_then(Value::as_str) == Some("page-2") {
+                json!({ "data": [{ "id": "second", "hidden": false }], "nextCursor": null })
+            } else {
+                json!({ "data": [{ "id": "first", "hidden": false }], "nextCursor": "page-2" })
+            };
+            vec![json!({ "jsonrpc": "2.0", "id": id, "result": result })]
+        });
+        let models = s.models(true).await.unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0]["id"], "first");
+        assert_eq!(models[1]["id"], "second");
     }
 
     /// codex 主动推的账户/额度通知进缓存(状态栏不必逐次 RPC)。
+    #[tokio::test]
+    async fn official_cancel_ignores_late_completion_error_and_keeps_real_failures() {
+        let transport = scripted_with_handshake(|_method, _params, id| vec![json!({"id":id,"result":{}})]);
+        let injector = transport.injector();
+        let service = CodexService::with_transport(Arc::new(transport));
+        service.cancel_login(Some("cancelled-login")).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        injector.push(json!({"method":"account/login/completed","params":{
+            "loginId":"cancelled-login","success":false,"error":"Login was not completed"}}));
+        injector.push(json!({"method":"account/rateLimits/updated","params":{
+            "rateLimits":{"primary":{"usedPercent":25}}}}));
+        for _ in 0..50 {
+            if service.account_snapshot().rate_limits.is_some() { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(service.account_snapshot().rate_limits.is_some());
+        assert!(service.account_snapshot().last_error.is_none());
+        injector.push(json!({"method":"account/login/completed","params":{
+            "loginId":"different-login","success":false,"error":"Authorization denied"}}));
+        for _ in 0..50 {
+            if service.account_snapshot().last_error.is_some() { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(service.account_snapshot().last_error.as_deref(), Some("Authorization denied"));
+        service.login("chatgpt", None).await.unwrap();
+        assert!(service.account_snapshot().last_error.is_none());
+    }
+
     #[tokio::test]
     async fn account_watcher_absorbs_push_notifications() {
         let t = scripted_with_handshake(|_m, _p, _id| vec![]);
         let inj = t.injector();
         let s = CodexService::with_transport(Arc::new(t));
         s.ready_client().await.unwrap();
-        assert!(inj.push(json!({ "jsonrpc": "2.0", "method": "account/rateLimits/updated",
-            "params": { "rateLimits": { "primary": { "usedPercent": 42.5 } } } })));
+        assert!(inj.push(
+            json!({ "jsonrpc": "2.0", "method": "account/rateLimits/updated",
+            "params": { "rateLimits": { "primary": { "usedPercent": 42.5 } } } })
+        ));
         for _ in 0..50 {
             if s.account_snapshot().rate_limits.is_some() {
                 break;
@@ -711,6 +1106,78 @@ mod tests {
         assert_eq!(limits["primary"]["usedPercent"], 42.5);
     }
 
+    #[tokio::test]
+    async fn login_completion_error_survives_unauthenticated_refresh_and_clears_on_success() {
+        let transport = scripted_with_handshake(|method, _params, id| {
+            if method == "account/read" {
+                return vec![json!({ "id": id, "result": { "account": null } })];
+            }
+            vec![]
+        });
+        let injector = transport.injector();
+        let service = CodexService::with_transport(Arc::new(transport));
+        service.ready_client().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        assert!(injector.push(json!({
+            "method": "account/login/completed",
+            "params": {
+                "success": false,
+                "error": {
+                    "code": "AUTH_DENIED",
+                    "message": "用户拒绝授权",
+                    "apiKey": "sk-must-not-leak",
+                    "accessToken": "secret-token"
+                }
+            }
+        })));
+        for _ in 0..50 {
+            if service.account_snapshot().last_error.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let error = service.account_snapshot().last_error.unwrap();
+        assert_eq!(error, "AUTH_DENIED: 用户拒绝授权");
+        assert!(!error.contains("sk-must-not-leak"));
+        assert!(!error.contains("secret-token"));
+
+        let refreshed = service.refresh_account().await.unwrap();
+        assert!(refreshed.auth_mode.is_none());
+        assert_eq!(refreshed.last_error.as_deref(), Some(error.as_str()));
+
+        assert!(injector.push(json!({
+            "method": "account/login/completed",
+            "params": { "success": true, "error": null }
+        })));
+        for _ in 0..50 {
+            if service.account_snapshot().last_error.is_none() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(service.account_snapshot().last_error.is_none());
+
+        merge_login_completed(
+            &mut service.account.lock().unwrap_or_else(|e| e.into_inner()),
+            &json!({ "success": false, "error": "temporary failure" }),
+        );
+        assert!(service.account_snapshot().last_error.is_some());
+        assert!(injector.push(json!({
+            "method": "account/updated",
+            "params": { "account": { "authMode": "chatgpt", "planType": "plus" } }
+        })));
+        for _ in 0..50 {
+            if service.account_snapshot().auth_mode.as_deref() == Some("chatgpt") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let account = service.account_snapshot();
+        assert_eq!(account.auth_mode.as_deref(), Some("chatgpt"));
+        assert!(account.last_error.is_none());
+    }
+
     /// 日志截断按字符边界切(中文日志切一半会让 status JSON 序列化炸掉)。
     #[test]
     fn tail_respects_char_boundaries() {
@@ -718,5 +1185,47 @@ mod tests {
         let out = tail(&s, 100);
         assert!(out.len() <= 130, "截断后仍过长: {}", out.len());
         assert!(out.contains("前段省略"));
+    }
+
+    #[test]
+    fn account_null_and_null_auth_clear_stale_login() {
+        let mut account = AccountState {
+            auth_mode: Some("chatgpt".into()),
+            plan_type: Some("pro".into()),
+            email: Some("a@b.c".into()),
+            rate_limits: Some(json!({ "primary": { "usedPercent": 50 } })),
+            ..Default::default()
+        };
+        merge_account(
+            &mut account,
+            &json!({ "account": null, "requiresOpenaiAuth": true }),
+        );
+        assert!(account.auth_mode.is_none());
+        assert!(account.plan_type.is_none());
+        assert!(account.rate_limits.is_none());
+
+        merge_account(
+            &mut account,
+            &json!({ "account": { "type": "chatgpt", "planType": "plus", "email": null } }),
+        );
+        assert_eq!(account.auth_mode.as_deref(), Some("chatgpt"));
+        assert_eq!(account.plan_type.as_deref(), Some("plus"));
+        merge_account(&mut account, &json!({ "authMode": null, "planType": null }));
+        assert!(account.auth_mode.is_none());
+    }
+
+    #[test]
+    fn rate_limit_snapshot_keeps_new_multi_bucket_data() {
+        let v = rate_limits_snapshot(&json!({
+            "rateLimits": { "primary": { "usedPercent": 12 } },
+            "rateLimitsByLimitId": {
+                "codex": { "primary": { "usedPercent": 34 } }
+            }
+        }));
+        assert_eq!(v["primary"]["usedPercent"], 12);
+        assert_eq!(
+            v["rateLimitsByLimitId"]["codex"]["primary"]["usedPercent"],
+            34
+        );
     }
 }

@@ -14,6 +14,7 @@ function makeSession(id: string, over: Partial<ForgeSession> = {}): ForgeSession
     title: `会话 ${id}`,
     status: 'idle',
     agentKind: 'coding',
+    agentEngine: 'local',
     selectedModelId: null,
     thinkingEnabled: false,
     reasoningEffort: null,
@@ -90,6 +91,7 @@ describe('sessionStore', () => {
     stubRest({
       'GET /api/forge/sessions': { sessions: [makeSession('sess_a')] },
       'GET /api/forge/chat-folders': { folders: [{ id: 'f1', name: '工作', createdAt: '', updatedAt: '' }] },
+      'GET /api/forge/design-snapshot': { agents: { defaultEngine: 'codex' } },
     });
     await useSessionStore.getState().loadAll();
     const s = useSessionStore.getState();
@@ -97,6 +99,8 @@ describe('sessionStore', () => {
     expect(s.sessions[0].id).toBe('sess_a');
     expect(s.folders).toHaveLength(1);
     expect(s.offline).toBe(false);
+    expect(s.defaultAgentEngine).toBe('codex');
+    expect(s.draftAgentEngine).toBe('codex');
   });
 
   it('loadAll 失败:offline=true + toast 报错', async () => {
@@ -132,10 +136,53 @@ describe('sessionStore', () => {
     });
     expect(calls[0].body).toEqual({
       title: '',
+      agentEngine: 'local',
       thinkingEnabled: true,
       reasoningEffort: 'max',
       contextOptionId: '1m',
     });
+  });
+
+  it('主页草稿引擎进入创建载荷；显式 spec 优先', async () => {
+    const calls = stubRest({
+      'POST /api/forge/sessions': (body: unknown) => ({
+        session: makeSession('sess_engine', {
+          agentEngine: (body as { agentEngine: 'local' | 'codex' }).agentEngine,
+        }),
+      }),
+    });
+    useSessionStore.getState().setDraftAgentEngine('codex');
+    await useSessionStore.getState().create();
+    expect(calls[0].body).toMatchObject({ agentEngine: 'codex' });
+
+    await useSessionStore.getState().create(undefined, { agentEngine: 'local' });
+    expect(calls[1].body).toMatchObject({ agentEngine: 'local' });
+  });
+
+  it('setAgentEngine:乐观 PATCH，成功采用后端模型选择；失败回滚', async () => {
+    const prev = makeSession('sess_a', { agentEngine: 'local', selectedModelId: 'deepseek-chat' });
+    const calls = stubRest({
+      'PATCH /api/forge/sessions/': (body: unknown) => ({
+        session: {
+          ...prev,
+          agentEngine: (body as { agentEngine: 'local' | 'codex' }).agentEngine,
+          selectedModelId: 'codex:gpt-5.6-terra',
+        },
+      }),
+    });
+    useSessionStore.setState({ sessions: [prev], activeSessionId: 'sess_a' });
+    await useSessionStore.getState().setAgentEngine('sess_a', 'codex');
+    expect(calls[0].body).toEqual({ agentEngine: 'codex' });
+    expect(useSessionStore.getState().sessions[0]).toMatchObject({
+      agentEngine: 'codex',
+      selectedModelId: 'codex:gpt-5.6-terra',
+    });
+
+    useSessionStore.setState({ sessions: [prev], activeSessionId: 'sess_a' });
+    vi.unstubAllGlobals();
+    stubRest({}, { method: 'PATCH', path: '/api/forge/sessions/' });
+    await useSessionStore.getState().setAgentEngine('sess_a', 'codex');
+    expect(useSessionStore.getState().sessions[0].agentEngine).toBe('local');
   });
 
   it('rename:乐观改名 + PATCH title;失败回滚 + toast', async () => {

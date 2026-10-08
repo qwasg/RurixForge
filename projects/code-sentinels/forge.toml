@@ -1,0 +1,10 @@
+[project]
+name = "Code Sentinels"
+engine-version = "0.1.0"
+rurix-ref = "v1.0.1-dist"
+entry-scene = "Content/Scenes/CommandV5.rxscene"
+mode = "2d"
+
+[dirs]
+content = "Content"
+scripts = "Content/Scripts"

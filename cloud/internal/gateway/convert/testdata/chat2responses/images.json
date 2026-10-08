@@ -1,0 +1,15 @@
+{
+  "options": {"model": "gpt-5"},
+  "request": {
+    "model": "forge-gpt-5",
+    "messages": [
+      {"role": "user", "content": [
+        {"type": "text", "text": "What is in these images?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}},
+        {"type": "image_url", "image_url": {"url": "https://example.com/cat.jpg", "detail": "high"}},
+        {"type": "input_audio", "input_audio": {"data": "AAAA", "format": "wav"}},
+        {"type": "text", "text": " Answer briefly."}
+      ]}
+    ]
+  }
+}

@@ -5,7 +5,7 @@
 
 use serde_json::{json, Value};
 
-use crate::backends::{GenBackend, GenCandidate, GenRequest, MAX_BATCH, SIZES};
+use crate::backends::{Aspect, EditRequest, GenBackend, GenCandidate, GenRequest, ASPECTS, MAX_BATCH, SIZES};
 use crate::config::GenConfig;
 use crate::keystore::Keystore;
 use crate::{fnv1a64, GenError, Result, GEN_BAD_PARAMS};
@@ -32,8 +32,9 @@ impl GenBackend for LocalMock {
 
     fn capabilities(&self) -> Value {
         json!({
-            "kinds": ["text2img", "texture-set", "variations"],
+            "kinds": ["text2img", "img2img", "texture-set", "variations"],
             "sizes": SIZES,
+            "aspects": ASPECTS,
             "maxBatch": MAX_BATCH,
             // 诚实标注:占位确定性生成器,非 AI 模型。
             "model": "deterministic-placeholder (非 AI 模型)",
@@ -51,8 +52,82 @@ impl GenBackend for LocalMock {
         let mut out = Vec::with_capacity(req.n as usize);
         for i in 0..req.n {
             let seed = req.seed.wrapping_add(u64::from(i));
-            let png = render_map(&req.prompt, "albedo", req.size, seed)?;
+            let png = if req.aspect == Aspect::Square {
+                render_map(&req.prompt, "albedo", req.size, seed)?
+            } else {
+                let (w, h) = req.dims();
+                render_map_sized(&req.prompt, "albedo", w, h, seed)?
+            };
             out.push(GenCandidate { png_bytes: png, seed });
+        }
+        Ok(out)
+    }
+
+    /// 确定性占位改图(D-045,非 AI):输出与主参考图同尺寸。
+    /// 有蒙版 → 蒙版透明区填未遮挡区的平均色(「抹掉前景」的可测替身),其余像素逐字节不变;
+    /// 无蒙版 → 整图按 (prompt, seed) 派生的色调混 15%(让「改过」可被检测到)。
+    fn edit(&self, req: &EditRequest, _cfg: &GenConfig, _keys: &Keystore) -> Result<Vec<GenCandidate>> {
+        req.validate()?;
+        let base = image::load_from_memory(&req.images[0])
+            .map_err(|e| GenError::new(GEN_BAD_PARAMS, format!("参考图解码失败: {e}")))?
+            .to_rgba8();
+        let (w, h) = (base.width(), base.height());
+        let mask = match &req.mask {
+            Some(m) => {
+                let m = image::load_from_memory(m)
+                    .map_err(|e| GenError::new(GEN_BAD_PARAMS, format!("蒙版解码失败: {e}")))?
+                    .to_rgba8();
+                if m.width() != w || m.height() != h {
+                    return Err(GenError::new(
+                        GEN_BAD_PARAMS,
+                        format!("蒙版尺寸 {}x{} 与参考图 {w}x{h} 不符", m.width(), m.height()),
+                    ));
+                }
+                Some(m)
+            }
+            None => None,
+        };
+        let mut out = Vec::with_capacity(req.n as usize);
+        for i in 0..req.n {
+            let seed = req.seed.wrapping_add(u64::from(i));
+            let mut px = base.as_raw().clone();
+            match &mask {
+                Some(m) => {
+                    let (mut sum, mut cnt) = ([0u64; 3], 0u64);
+                    for (p, mp) in px.chunks_exact(4).zip(m.as_raw().chunks_exact(4)) {
+                        if mp[3] != 0 {
+                            for c in 0..3 {
+                                sum[c] += u64::from(p[c]);
+                            }
+                            cnt += 1;
+                        }
+                    }
+                    let fill: [u8; 3] = if cnt == 0 {
+                        let mut st = fnv1a64(req.prompt.as_bytes()) ^ seed;
+                        let r = next_rand(&mut st);
+                        [r as u8, (r >> 8) as u8, (r >> 16) as u8]
+                    } else {
+                        [(sum[0] / cnt) as u8, (sum[1] / cnt) as u8, (sum[2] / cnt) as u8]
+                    };
+                    for (p, mp) in px.chunks_exact_mut(4).zip(m.as_raw().chunks_exact(4)) {
+                        if mp[3] == 0 {
+                            p[..3].copy_from_slice(&fill);
+                            p[3] = 255;
+                        }
+                    }
+                }
+                None => {
+                    let mut st = fnv1a64(req.prompt.as_bytes()) ^ seed;
+                    let r = next_rand(&mut st);
+                    let tint = [r as u8, (r >> 8) as u8, (r >> 16) as u8];
+                    for p in px.chunks_exact_mut(4) {
+                        for c in 0..3 {
+                            p[c] = ((u32::from(p[c]) * 85 + u32::from(tint[c]) * 15) / 100) as u8;
+                        }
+                    }
+                }
+            }
+            out.push(GenCandidate { png_bytes: encode_png_rgba8(&px, w, h)?, seed });
         }
         Ok(out)
     }
@@ -246,13 +321,7 @@ mod tests {
     #[test]
     fn mock_generate_n_candidates_sequential_seeds() {
         let m = LocalMock;
-        let req = GenRequest {
-            prompt: "p".into(),
-            negative_prompt: None,
-            size: 256,
-            seed: 42,
-            n: 4,
-        };
+        let req = GenRequest::square("p", None, 256, 42, 4);
         let cfg = GenConfig::default();
         let ks = Keystore::load_from(std::path::Path::new("no-such-ks.json"));
         let out = m.generate(&req, &cfg, &ks).unwrap();
@@ -263,5 +332,76 @@ mod tests {
         // 越界 n 如实拒绝。
         let bad = GenRequest { n: 5, ..req.clone() };
         assert_eq!(m.generate(&bad, &cfg, &ks).unwrap_err().code, GEN_BAD_PARAMS);
+    }
+
+    #[test]
+    fn mock_generate_landscape_dims() {
+        let m = LocalMock;
+        let mut req = GenRequest::square("p", None, 256, 1, 1);
+        req.aspect = Aspect::Landscape;
+        let cfg = GenConfig::default();
+        let ks = Keystore::load_from(std::path::Path::new("no-such-ks.json"));
+        let out = m.generate(&req, &cfg, &ks).unwrap();
+        let img = image::load_from_memory(&out[0].png_bytes).unwrap();
+        assert_eq!((img.width(), img.height()), (1536, 1024));
+    }
+
+    fn rgba_png(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
+        let mut px = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                px.extend_from_slice(&f(x, y));
+            }
+        }
+        encode_png_rgba8(&px, w, h).unwrap()
+    }
+
+    #[test]
+    fn mock_edit_mask_fills_only_masked_region() {
+        let src = rgba_png(8, 8, |x, _| if x < 4 { [200, 10, 10, 255] } else { [10, 10, 200, 255] });
+        // 右半透明 = 可重绘区。
+        let mask = rgba_png(8, 8, |x, _| if x < 4 { [0, 0, 0, 255] } else { [0, 0, 0, 0] });
+        let req = EditRequest {
+            prompt: "remove".into(),
+            images: vec![src.clone()],
+            mask: Some(mask),
+            aspect: Aspect::Square,
+            seed: 3,
+            n: 2,
+            quality: None,
+            background: None,
+        };
+        let cfg = GenConfig::default();
+        let ks = Keystore::load_from(std::path::Path::new("no-such-ks.json"));
+        let out = LocalMock.edit(&req, &cfg, &ks).unwrap();
+        assert_eq!(out.len(), 2);
+        let img = image::load_from_memory(&out[0].png_bytes).unwrap().to_rgba8();
+        assert_eq!(img.get_pixel(0, 0).0, [200, 10, 10, 255]);
+        assert_eq!(img.get_pixel(7, 7).0, [200, 10, 10, 255]);
+        // 同输入同输出(确定性)。
+        assert_eq!(out[0].png_bytes, LocalMock.edit(&req, &cfg, &ks).unwrap()[0].png_bytes);
+    }
+
+    #[test]
+    fn mock_edit_without_mask_changes_pixels_and_keeps_size() {
+        let src = rgba_png(5, 3, |_, _| [100, 100, 100, 255]);
+        let req = EditRequest {
+            prompt: "warmer".into(),
+            images: vec![src.clone()],
+            mask: None,
+            aspect: Aspect::Square,
+            seed: 9,
+            n: 1,
+            quality: None,
+            background: None,
+        };
+        let cfg = GenConfig::default();
+        let ks = Keystore::load_from(std::path::Path::new("no-such-ks.json"));
+        let out = LocalMock.edit(&req, &cfg, &ks).unwrap();
+        let img = image::load_from_memory(&out[0].png_bytes).unwrap();
+        assert_eq!((img.width(), img.height()), (5, 3));
+        assert_ne!(out[0].png_bytes, src);
+        let empty = EditRequest { images: vec![], ..req };
+        assert_eq!(LocalMock.edit(&empty, &cfg, &ks).unwrap_err().code, GEN_BAD_PARAMS);
     }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { runCommand } from '@/lib/commands';
 import { useOverlayStore } from '@/lib/overlayStore';
+import { isEditableTarget, KEYS } from '@/lib/shortcuts';
 import { useSessionStore } from '@/lib/sessionStore';
 import { useChatStore } from '@/lib/chatStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
@@ -65,7 +66,8 @@ export default function Shell() {
     void useChatStore.getState().ensureModels();
   }, [loadAll, loadWorkspaces]);
 
-  // 全局快捷键:Esc 关全部浮层;Ctrl+K 命令面板;Ctrl+Shift+N 新建会话;Ctrl+J 底部面板;Ctrl+S 挡浏览器保存
+  // 全局快捷键(键位表见 lib/shortcuts.ts):Esc 关全部浮层;Ctrl+K 命令面板;Ctrl+Shift+N 新建会话;
+  // Ctrl+J 底部面板;Ctrl+B 会话栏;Ctrl+Alt+B 右栏;Ctrl+S 挡浏览器保存
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -80,6 +82,24 @@ export default function Shell() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         useWorkbenchStore.getState().toggleBottom();
+        return;
+      }
+      // 按物理键位认 B:部分键盘布局下 Ctrl+Alt 组合会改写 e.key
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === 'KeyB') {
+        e.preventDefault();
+        useWorkbenchStore.getState().togglePane(e.altKey ? 'inspector' : 'sessions');
+        return;
+      }
+      // /:聚焦会话搜索(侧栏收起则先展开);输入态与浮层打开时不抢键
+      if (e.key === KEYS.focusSessionSearch && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)) {
+        const ov = useOverlayStore.getState();
+        if (ov.palette || ov.settings || ov.about || ov.shortcuts) return;
+        e.preventDefault();
+        const wb = useWorkbenchStore.getState();
+        if (wb.collapsed.sessions) wb.togglePane('sessions');
+        requestAnimationFrame(() =>
+          document.querySelector<HTMLInputElement>('[data-testid="sidebar-search"]')?.focus(),
+        );
         return;
       }
       // F9:全局挡浏览器保存对话框;真实保存由文件编辑器(CM keymap/自身监听)消费。
@@ -157,7 +177,7 @@ export default function Shell() {
   }, [miniChat, miniPos, setMiniPos]);
 
   return (
-    <div data-testid="shell" className="relative flex h-full flex-col bg-shell-bg text-fg">
+    <div data-testid="shell" className="forge-legible relative flex h-full flex-col bg-shell-bg text-fg">
       <TitleBar />
       <div ref={bodyRef} data-testid="shell-body" className="relative flex min-h-0 flex-1">
         {!collapsed.sessions && (

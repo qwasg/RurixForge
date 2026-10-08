@@ -1,0 +1,24 @@
+{
+  "schema": "forge.godot_pin.v1",
+  "recorded_at": "2026-09-27",
+  "godot": {
+    "tag": "4.7.2-stable",
+    "commit": "ed1daf0bf001b61586d9930840f2f1394092c079",
+    "commit_date": "2026-08-16T20:18:38-05:00",
+    "source_repo": "https://github.com/godotengine/godot",
+    "local_source": "D:/godot-src/4.7.2-stable",
+    "builds_repo": "https://github.com/godotengine/godot-builds",
+    "assets": {
+      "editor_win64": "Godot_v4.7.2-stable_win64.exe.zip",
+      "export_templates": "Godot_v4.7.2-stable_export_templates.tpz",
+      "checksums": "SHA512-SUMS.txt"
+    }
+  },
+  "gdext": {
+    "crate": "godot",
+    "version": "=0.5.5",
+    "features": ["api-4-7"],
+    "repo": "https://github.com/godot-rust/gdext"
+  },
+  "note": "D-043: Godot 为可选第二渲染后端(rurix 仍为缺省)。源码仅作本地只读参考,不入仓;官方二进制经 scripts/godot-fetch.ps1 按同 release 的 SHA512-SUMS.txt 校验后落 vendor/godot/<tag>/(gitignore)。LibGodot 进程内嵌待 godot-rust/gdext#1488。校验:scripts/godot-pin-check.ps1"
+}

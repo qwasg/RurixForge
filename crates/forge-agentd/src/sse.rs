@@ -11,9 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::http::StatusCode;
 use axum::Json;
 use futures_util::{stream, StreamExt};
 use serde::Deserialize;
@@ -89,13 +89,20 @@ pub async fn session_event_stream(
                 }
                 // 慢消费者丢帧:如实合成 gap,不静默跳过(参考同语义)。
                 Err(RecvError::Lagged(_n)) => {
-                    return Some((Ok::<Event, Infallible>(gap_event(&sid, "subscriber-lagged")), (rx, sid, last)));
+                    return Some((
+                        Ok::<Event, Infallible>(gap_event(&sid, "subscriber-lagged")),
+                        (rx, sid, last),
+                    ));
                 }
                 Err(RecvError::Closed) => return None,
             }
         }
     });
     Sse::new(backlog_stream.chain(live))
-        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keep-alive"))
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(15))
+                .text("keep-alive"),
+        )
         .into_response()
 }

@@ -1,0 +1,453 @@
+{
+  "schemaVersion": 2,
+  "id": "door",
+  "image": "door.png",
+  "width": 1024,
+  "height": 1024,
+  "frameCount": 16,
+  "frameSize": [
+    256,
+    256
+  ],
+  "pivot": [
+    0.5,
+    0.88
+  ],
+  "boxes": [
+    [
+      0,
+      0,
+      256,
+      256
+    ],
+    [
+      256,
+      0,
+      256,
+      256
+    ],
+    [
+      512,
+      0,
+      256,
+      256
+    ],
+    [
+      768,
+      0,
+      256,
+      256
+    ],
+    [
+      0,
+      256,
+      256,
+      256
+    ],
+    [
+      256,
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      256,
+      256,
+      256
+    ],
+    [
+      768,
+      256,
+      256,
+      256
+    ],
+    [
+      0,
+      512,
+      256,
+      256
+    ],
+    [
+      256,
+      512,
+      256,
+      256
+    ],
+    [
+      512,
+      512,
+      256,
+      256
+    ],
+    [
+      768,
+      512,
+      256,
+      256
+    ],
+    [
+      0,
+      768,
+      256,
+      256
+    ],
+    [
+      256,
+      768,
+      256,
+      256
+    ],
+    [
+      512,
+      768,
+      256,
+      256
+    ],
+    [
+      768,
+      768,
+      256,
+      256
+    ]
+  ],
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "clips": {
+    "idle": {
+      "s": {
+        "start": 0,
+        "endExclusive": 1,
+        "fps": 1,
+        "loop": true
+      },
+      "sw": {
+        "start": 1,
+        "endExclusive": 2,
+        "fps": 1,
+        "loop": true
+      },
+      "w": {
+        "start": 2,
+        "endExclusive": 3,
+        "fps": 1,
+        "loop": true
+      },
+      "nw": {
+        "start": 3,
+        "endExclusive": 4,
+        "fps": 1,
+        "loop": true
+      },
+      "n": {
+        "start": 4,
+        "endExclusive": 5,
+        "fps": 1,
+        "loop": true
+      },
+      "ne": {
+        "start": 5,
+        "endExclusive": 6,
+        "fps": 1,
+        "loop": true
+      },
+      "e": {
+        "start": 6,
+        "endExclusive": 7,
+        "fps": 1,
+        "loop": true
+      },
+      "se": {
+        "start": 7,
+        "endExclusive": 8,
+        "fps": 1,
+        "loop": true
+      }
+    },
+    "open": {
+      "s": {
+        "start": 8,
+        "endExclusive": 9,
+        "fps": 1,
+        "loop": true
+      },
+      "sw": {
+        "start": 9,
+        "endExclusive": 10,
+        "fps": 1,
+        "loop": true
+      },
+      "w": {
+        "start": 10,
+        "endExclusive": 11,
+        "fps": 1,
+        "loop": true
+      },
+      "nw": {
+        "start": 11,
+        "endExclusive": 12,
+        "fps": 1,
+        "loop": true
+      },
+      "n": {
+        "start": 12,
+        "endExclusive": 13,
+        "fps": 1,
+        "loop": true
+      },
+      "ne": {
+        "start": 13,
+        "endExclusive": 14,
+        "fps": 1,
+        "loop": true
+      },
+      "e": {
+        "start": 14,
+        "endExclusive": 15,
+        "fps": 1,
+        "loop": true
+      },
+      "se": {
+        "start": 15,
+        "endExclusive": 16,
+        "fps": 1,
+        "loop": true
+      }
+    },
+    "closed": {
+      "s": {
+        "start": 0,
+        "endExclusive": 1,
+        "fps": 1,
+        "loop": true
+      },
+      "sw": {
+        "start": 1,
+        "endExclusive": 2,
+        "fps": 1,
+        "loop": true
+      },
+      "w": {
+        "start": 2,
+        "endExclusive": 3,
+        "fps": 1,
+        "loop": true
+      },
+      "nw": {
+        "start": 3,
+        "endExclusive": 4,
+        "fps": 1,
+        "loop": true
+      },
+      "n": {
+        "start": 4,
+        "endExclusive": 5,
+        "fps": 1,
+        "loop": true
+      },
+      "ne": {
+        "start": 5,
+        "endExclusive": 6,
+        "fps": 1,
+        "loop": true
+      },
+      "e": {
+        "start": 6,
+        "endExclusive": 7,
+        "fps": 1,
+        "loop": true
+      },
+      "se": {
+        "start": 7,
+        "endExclusive": 8,
+        "fps": 1,
+        "loop": true
+      }
+    }
+  },
+  "provenance": {
+    "id": "door",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/door.blend",
+    "glb": "Content/Models/v6/door.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review",
+    "sourceModelSha256": "5323863df2446648395eb9f34d67a0c6271b9805db72d35e9ae54a0904de5e6e",
+    "glbSha256": "370de7665d0ca1d2c038479d08cc5bb9b7f4464230c1ec572c41016d5ef9be4a"
+  },
+  "stateProvenance": [
+    {
+      "id": "door",
+      "state": "open",
+      "directions": [
+        "s",
+        "sw",
+        "w",
+        "nw",
+        "n",
+        "ne",
+        "e",
+        "se"
+      ],
+      "framesPerDirection": 1,
+      "sourceModel": "Content/Models/v6/door-open.blend",
+      "method": "Real door-leaf meshes pivot90 degrees around two individual hinges; central doorway is empty geometry",
+      "imageRotationUsed": false,
+      "startFrame": 8,
+      "sourceModelSha256": "1dff3ae6f91bfbf3d7d6a62e612d2f11aa43358d274c27d2cacb6c9611144288"
+    }
+  ],
+  "orthographicSpan": 3.6,
+  "projection": "isometric-2:1",
+  "nativePlaneSpan": 2.545584412271571,
+  "bakeFitScale": 1.0,
+  "sourcePivot": [
+    0.5,
+    0.6563656979055237
+  ],
+  "anchorMeaning": "exact projected model world origin at ground z=0",
+  "directionConvention": {
+    "labels": "screen directions on the isometric map",
+    "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+    "mapping": [
+      {
+        "index": 0,
+        "label": "s",
+        "worldDelta": [
+          1,
+          1
+        ],
+        "screenDelta": [
+          0.0,
+          0.5
+        ],
+        "blenderYawDegrees": -135
+      },
+      {
+        "index": 1,
+        "label": "sw",
+        "worldDelta": [
+          0,
+          1
+        ],
+        "screenDelta": [
+          -0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -180
+      },
+      {
+        "index": 2,
+        "label": "w",
+        "worldDelta": [
+          -1,
+          1
+        ],
+        "screenDelta": [
+          -1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -225
+      },
+      {
+        "index": 3,
+        "label": "nw",
+        "worldDelta": [
+          -1,
+          0
+        ],
+        "screenDelta": [
+          -0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -270
+      },
+      {
+        "index": 4,
+        "label": "n",
+        "worldDelta": [
+          -1,
+          -1
+        ],
+        "screenDelta": [
+          0.0,
+          -0.5
+        ],
+        "blenderYawDegrees": -315
+      },
+      {
+        "index": 5,
+        "label": "ne",
+        "worldDelta": [
+          0,
+          -1
+        ],
+        "screenDelta": [
+          0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -360
+      },
+      {
+        "index": 6,
+        "label": "e",
+        "worldDelta": [
+          1,
+          -1
+        ],
+        "screenDelta": [
+          1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -405
+      },
+      {
+        "index": 7,
+        "label": "se",
+        "worldDelta": [
+          1,
+          0
+        ],
+        "screenDelta": [
+          0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -450
+      }
+    ],
+    "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+    "zeroMovement": "retain previous direction",
+    "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+  },
+  "defaultDirection": "ne",
+  "frontModelAxis": "-Y",
+  "defaultPlacement": "unrotated model geometry aligned to map x/y; direction index5 has root yaw-360degrees"
+}

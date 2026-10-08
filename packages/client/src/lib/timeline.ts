@@ -37,8 +37,41 @@
 
 export type BlockStatus = 'running' | 'done' | 'error';
 
+export type ToolKind = 'command' | 'fileChange' | 'webSearch' | 'mcp' | 'native';
+
+export interface ToolChange {
+  path: string;
+  kind?: string;
+  diff?: string;
+}
+
+export interface ApprovalOption {
+  label: string;
+  description?: string;
+  /** 兼容扩展选项；Codex v2 当前把“其他”标记放在 question 上。 */
+  isOther?: boolean;
+}
+
+export interface ApprovalQuestion {
+  id: string;
+  header?: string;
+  question?: string;
+  options?: ApprovalOption[];
+  /** 旧/扩展审批面可显式标记必填；Codex v2 的表单 schema 另由 approval.schema 表达。 */
+  required?: boolean;
+  /** 旧字段名，原样保留供兼容 UI 使用。 */
+  secret?: boolean;
+  /** Codex app-server v2 `ToolRequestUserInputQuestion.isSecret`。 */
+  isSecret?: boolean;
+  /** Codex app-server v2 `ToolRequestUserInputQuestion.isOther`。 */
+  isOther?: boolean;
+}
+
+export type PermissionDecision = 'accept' | 'acceptForSession' | 'decline';
+
 export type ChatBlock =
   | { kind: 'text'; text: string; final: boolean }
+  | { kind: 'image'; toolCallId: string; url: string; imageFileRef: string; revisedPrompt?: string }
   | {
       kind: 'reasoning';
       text: string;
@@ -60,6 +93,12 @@ export type ChatBlock =
       durationMs?: number;
       /** 成功工具截断后的输出(本仓 completed 带 output/outputPreview)。 */
       result?: string;
+      /** 命令流式输出；result 为旧组件兼容别名，二者由 chatStore 同步写入。 */
+      output?: string;
+      exitCode?: number;
+      changes?: ToolChange[];
+      /** 新事件恒有；旧快照/测试夹具可缺省并由名称推断。 */
+      toolKind?: ToolKind;
       status?: BlockStatus;
       /** mcp__server__tool 形态剥出;否则 null。 */
       mcp: [string, string] | null;
@@ -67,6 +106,9 @@ export type ChatBlock =
   | {
       kind: 'subagent';
       id: string;
+      /** Stable mailbox identity; unlike id, it survives subsequent runs. */
+      agentId?: string;
+      agentRunId?: string;
       label: string;
       status: BlockStatus;
       summary?: string;
@@ -79,6 +121,78 @@ export type ChatBlock =
        */
       detachedRunId?: string;
       work: ChatBlock[];
+    }
+  | {
+      kind: 'plan';
+      text: string;
+      final: boolean;
+      planPath?: string;
+    }
+  | {
+      kind: 'approval';
+      id: string;
+      agentId?: string;
+      agentName?: string;
+      approvalKind: 'command' | 'fileChange' | 'permissions' | 'userInput' | 'elicitation' | string;
+      tool?: string;
+      command?: string;
+      cwd?: string;
+      changes?: ToolChange[];
+      reason?: string;
+      message?: string;
+      questions?: ApprovalQuestion[];
+      /** `item/permissions/requestApproval` 的 fileSystem/network 请求原文。 */
+      permissions?: Record<string, unknown>;
+      /** MCP elicitation 的 requestedSchema/schema 原文。 */
+      schema?: Record<string, unknown>;
+      /** command approval 的托管网络上下文与持久策略建议。 */
+      networkApprovalContext?: Record<string, unknown>;
+      proposedExecpolicyAmendment?: string[];
+      proposedNetworkPolicyAmendments?: Array<Record<string, unknown>>;
+      /** file-change approval 请求在本会话授予写权限的根目录。 */
+      grantRoot?: string;
+      /** MCP elicitation 来源与 URL-mode 外部流程。 */
+      mode?: string;
+      serverName?: string;
+      url?: string;
+      elicitationId?: string;
+      availableDecisions?: PermissionDecision[];
+      decision?: PermissionDecision | string;
+      /** elicitation 可包含 string/number/boolean/array，不能收窄为纯字符串。 */
+      answers?: Record<string, unknown>;
+    }
+  | {
+      /**
+       * D-044:UltraPlan 流程卡(问卷 / Demo / 计划 / 验收清单 / 完成)。每道关口是独立的一轮,
+       * 卡片由持久化的 ultraplan.* 事件建出,刷新 / 切会话后原样回放。
+       */
+      kind: 'ultraplan';
+      step: 'questionnaire' | 'demo' | 'plan' | 'acceptance' | 'done';
+      /** 流程 id(= UltraPlanState.id);与当前流程不符的卡只读。 */
+      upId: string;
+      /** 问卷 rev / demo iteration / plan rev / 验收 round;done 恒 0。 */
+      rev: number;
+      /** 建卡事件的载荷原文(questionnaire / demo.ready / plan.ready / acceptance.ready / done)。 */
+      payload: Record<string, unknown>;
+      /**
+       * 用户已提交的内容:answers.submitted / demo.decision / acceptance.recorded 的载荷原文。
+       * 有值即卡片只读,并据此回显当时填了什么。
+       */
+      submitted?: Record<string, unknown>;
+    }
+  | {
+      /**
+       * D-045:Design 流程卡(设计稿审阅 / 元素清单 / 验收结果 / 完成)。由持久化的 design.* 事件建出。
+       */
+      kind: 'design';
+      step: 'review' | 'layout' | 'verify' | 'done';
+      /** 流程 id(= DesignState.id);与当前流程不符的卡只读。 */
+      flowId: string;
+      /** review = 候选批次 designRev;layout / done = 复刻轮次;verify = 验收序号。 */
+      rev: number;
+      payload: Record<string, unknown>;
+      /** 用户在审阅卡上的决定(design.decision 载荷);有值即只读。 */
+      submitted?: Record<string, unknown>;
     };
 
 /** tool 块状态派生(显式 status 优先;否则 ok 未回填 = running)。 */
@@ -127,6 +241,7 @@ const m = (done: string, running: string, groupPrefix: string, groupSuffix: stri
 });
 
 const TOOL_META: Record<string, ToolMeta> = {
+  imagegen: m('Generated image', 'Generating image', 'Generated', 'images'),
   // engine-scene:实体/组件/变换
   entity_create: m('Created entity', 'Creating entity', 'Created', 'entities'),
   entity_destroy: m('Deleted entity', 'Deleting entity', 'Deleted', 'entities'),
@@ -206,15 +321,38 @@ const TOOL_META: Record<string, ToolMeta> = {
   write_file: m('Wrote', 'Writing', 'Wrote', 'files'),
   str_replace_edit: m('Edited', 'Editing', 'Edited', 'files'),
   apply_patch: m('Patched', 'Patching', 'Patched', 'files'),
+  shell: m('Ran', 'Running', 'Ran', 'commands'),
+  web_search: m('Searched web', 'Searching web', 'Searched web', 'times'),
+  update_plan: m('Updated plan', 'Updating plan', 'Updated plan', 'times'),
   todo_write: m('Updated todos', 'Updating todos', 'Updated todos', 'times'),
   write_todos: m('Updated todos', 'Updating todos', 'Updated todos', 'times'),
   plan_write: m('Wrote plan', 'Writing plan', 'Wrote plan', 'times'),
+  // D-044 UltraPlan:leader 的出口工具(每种 turn 一个)+ 子代理的 Demo 探测 / 试玩回归。
+  ultraplan_questionnaire: m('Drafted questionnaire', 'Drafting questionnaire', 'Drafted', 'questionnaires'),
+  ultraplan_spec: m('Wrote spec', 'Writing spec', 'Wrote', 'specs'),
+  ultraplan_plan_doc: m('Wrote plan', 'Writing plan', 'Wrote plan', 'times'),
+  ultraplan_plan_tasks: m('Wrote plan tasks', 'Writing plan tasks', 'Wrote plan tasks', 'times'),
+  web_demo_probe: m('Probed demo', 'Probing demo', 'Probed demo', 'times'),
+  playtest_run: m('Ran playtest', 'Running playtest', 'Ran', 'playtests'),
   todo_update: m('Updated todo', 'Updating todo', 'Updated', 'todos'),
   task: m('Delegated', 'Delegating', 'Delegated', 'times'),
   // D-036:multitask 异步派发。刻意不进 isMilestoneBlock —— 里程碑工具块在
   // AssistantMessage 里走 TodoMilestoneLine(待办行),派发该并进活动段读作
   // 「Dispatched N subagents」;真正的子代理进展另有卡片(subagent.* 事件)。
   dispatch: m('Dispatched subagent', 'Dispatching subagent', 'Dispatched', 'subagents'),
+  // open-computer-use:过程链沿用英文动词；未知的同服务工具仍回退 server / tool。
+  list_apps: m('Listed apps', 'Listing apps', 'Listed apps', 'times'),
+  get_app_state: m('Read app state', 'Reading app state', 'Read app state', 'times'),
+  screenshot: m('Captured screen', 'Capturing screen', 'Captured screen', 'times'),
+  click: m('Clicked', 'Clicking', 'Clicked', 'times'),
+  double_click: m('Double-clicked', 'Double-clicking', 'Double-clicked', 'times'),
+  type_text: m('Typed text', 'Typing text', 'Typed text', 'times'),
+  press_key: m('Pressed key', 'Pressing key', 'Pressed key', 'times'),
+  scroll: m('Scrolled', 'Scrolling', 'Scrolled', 'times'),
+  move_mouse: m('Moved pointer', 'Moving pointer', 'Moved pointer', 'times'),
+  open_app: m('Opened app', 'Opening app', 'Opened app', 'times'),
+  focus_app: m('Focused app', 'Focusing app', 'Focused app', 'times'),
+  wait: m('Waited', 'Waiting', 'Waited', 'times'),
 };
 
 /** 通配族(viewport_* / asset_* 的兜底,具名项见上表)。 */
@@ -281,7 +419,7 @@ export type TimelineItem =
 export function isMilestoneBlock(block: ChatBlock): boolean {
   // 留痕⑧:reasoning 不断段 —— 思考行与工具行同列并进活动段。
   if (block.kind === 'reasoning') return false;
-  if (block.kind !== 'tool') return true; // text / subagent
+  if (block.kind !== 'tool') return true; // text / subagent / plan / approval / ultraplan
   const bare = bareName(block.name);
   return bare === 'write_todos' || bare === 'todo_write' || bare === 'plan_write' || bare === 'task';
 }
@@ -361,6 +499,7 @@ const EXPLORE_TOOLS = new Set([
 ]);
 const SEARCH_TOOLS = new Set(['code_symbol_search', 'code_references', 'grep']);
 const COMMAND_TOOLS = new Set([
+  'shell',
   'rx_build', 'rx_run', 'rx_test', 'swarm.execute',
   'play_enter', 'play_exit', 'play_pause', 'play_resume', 'play_step',
 ]);
@@ -369,6 +508,7 @@ export function toolCategory(name: string): ToolCategory {
   const bare = bareName(name);
   if (EDIT_TOOLS.has(bare)) return 'edit';
   if (EXPLORE_TOOLS.has(bare)) return 'explore';
+  if (bare === 'web_search') return 'search';
   if (SEARCH_TOOLS.has(bare)) return 'search';
   if (COMMAND_TOOLS.has(bare)) return 'command';
   return 'other';
@@ -410,6 +550,17 @@ function jsonArgStr(args: string, key: string): string | null {
 
 /** Edit 类目标文件(无目标键 → 空调用方按 #{index} 占位去重,参考同口径)。 */
 export function editTargetFiles(args: string): string[] {
+  const obj = parseArgs(args);
+  if (Array.isArray(obj?.changes)) {
+    const paths = obj.changes
+      .map((change) =>
+        change && typeof change === 'object' && typeof (change as { path?: unknown }).path === 'string'
+          ? (change as { path: string }).path.trim()
+          : '',
+      )
+      .filter((path) => path !== '');
+    if (paths.length > 0) return [...new Set(paths)];
+  }
   for (const k of TARGET_KEYS) {
     const v = jsonArgStr(args, k);
     if (v) return [v];
@@ -442,6 +593,18 @@ export function diffCounts(oldText: string, newText: string): { added: number; r
 export function toolDiffStats(args: string): { added: number; removed: number } {
   const obj = parseArgs(args);
   if (!obj) return { added: 0, removed: 0 };
+  if (Array.isArray(obj.changes)) {
+    return obj.changes.reduce(
+      (sum, change) => {
+        if (!change || typeof change !== 'object') return sum;
+        const diff = (change as { diff?: unknown }).diff;
+        if (typeof diff !== 'string') return sum;
+        const stat = patchDiffStats(diff);
+        return { added: sum.added + stat.added, removed: sum.removed + stat.removed };
+      },
+      { added: 0, removed: 0 },
+    );
+  }
   const pick = (k: string): string => {
     const v = obj[k];
     return typeof v === 'string' ? v : '';
@@ -677,7 +840,26 @@ export function toolTarget(b: Extract<ChatBlock, { kind: 'tool' }>): string {
   if (bare === 'glob') return ellipsize(str('pattern') ?? str('glob_pattern') ?? '', 72);
   if (bare === 'apply_patch') {
     const hit = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/m.exec(str('patch') ?? '');
-    return hit ? baseName(hit[1].trim()) : '';
+    if (hit) return baseName(hit[1].trim());
+    const obj = parseArgs(b.args);
+    const first = Array.isArray(obj?.changes) ? obj.changes[0] : null;
+    const path = first && typeof first === 'object' ? (first as { path?: unknown }).path : null;
+    return typeof path === 'string' ? baseName(path) : '';
+  }
+  // D-044:UltraPlan 出口工具的参数是整份问卷 / 需求 / 计划,行尾只取标题或名字,
+  // 绝不落到通用兜底去摘一段正文(流式中 args 是半截 JSON → 解析不出 → 只剩动词)。
+  if (bare === 'ultraplan_questionnaire' || bare === 'ultraplan_spec') {
+    return ellipsize(compactText(str('title') ?? ''), 48);
+  }
+  if (bare === 'ultraplan_plan_doc') return ellipsize(compactText(str('name') ?? ''), 48);
+  if (bare === 'ultraplan_plan_tasks') {
+    const tasks = parseArgs(b.args)?.tasks;
+    return Array.isArray(tasks) ? plural(tasks.length, 'task') : '';
+  }
+  if (bare === 'web_demo_probe') return '';
+  if (bare === 'playtest_run') {
+    const ref = str('matrixRef');
+    return ref === null ? '' : baseName(ref);
   }
   const range = lineRange(b.args);
   const withRange = (s: string): string => (range === '' ? s : `${s} ${range}`);
@@ -764,6 +946,9 @@ export function workLine(block: ChatBlock): string {
   if (block.kind === 'reasoning') return block.text;
   if (block.kind === 'tool') return toolLine(block);
   if (block.kind === 'subagent') return block.label;
+  if (block.kind === 'plan') return block.text;
+  if (block.kind === 'approval') return block.command ?? block.reason ?? 'Approval requested';
+  if (block.kind === 'ultraplan') return `UltraPlan ${block.step}`;
   return '';
 }
 

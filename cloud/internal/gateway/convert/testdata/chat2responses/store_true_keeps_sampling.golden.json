@@ -1,0 +1,21 @@
+{
+  "model": "gpt-4.1",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "hi"
+        }
+      ]
+    }
+  ],
+  "stream": false,
+  "store": true,
+  "prompt_cache_key": "client-key",
+  "max_output_tokens": 300,
+  "temperature": 1,
+  "top_p": 0.95
+}

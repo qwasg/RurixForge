@@ -1,0 +1,76 @@
+# forge-cloud 生产部署：forge-cloud + PostgreSQL 16 + Redis 7，可选 Caddy 自动 HTTPS。
+# 1) cp cloud/deploy/.env.example cloud/deploy/.env 并填写（JWT 密钥、主密钥、数据库密码、管理员）
+# 2) docker compose -f cloud/deploy/docker-compose.yml up -d --build
+#    需要自动 HTTPS：docker compose -f cloud/deploy/docker-compose.yml --profile https up -d --build
+# 3) 打开 {FORGE_CLOUD_PUBLIC_URL}/admin/ 用管理员账号登录，添加上游账号与模型定价。
+name: forge-cloud
+
+services:
+  forge-cloud:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: rurixforge/forge-cloud:latest
+    env_file: .env
+    environment:
+      FORGE_CLOUD_ENV: prod
+      FORGE_CLOUD_ADDR: ":8110"
+      FORGE_CLOUD_DATABASE_URL: postgres://forge:${POSTGRES_PASSWORD}@postgres:5432/forge_cloud?sslmode=disable
+      FORGE_CLOUD_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${FORGE_CLOUD_BIND:-127.0.0.1}:8110:8110"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?在 .env 中设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: forge_cloud
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge -d forge_cloud"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    environment:
+      FORGE_CLOUD_DOMAIN: ${FORGE_CLOUD_DOMAIN:?启用 https profile 时在 .env 中设置 FORGE_CLOUD_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - forge-cloud
+    restart: unless-stopped
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+  caddy_data: {}
+  caddy_config: {}

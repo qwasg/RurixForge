@@ -1,0 +1,512 @@
+{
+  "id": "plasma-hit",
+  "image": "plasma-hit.png",
+  "width": 2066,
+  "height": 1034,
+  "frames": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "boxes": [
+    [
+      2,
+      2,
+      256,
+      256
+    ],
+    [
+      260,
+      2,
+      256,
+      256
+    ],
+    [
+      518,
+      2,
+      256,
+      256
+    ],
+    [
+      776,
+      2,
+      256,
+      256
+    ],
+    [
+      1034,
+      2,
+      256,
+      256
+    ],
+    [
+      1292,
+      2,
+      256,
+      256
+    ],
+    [
+      1550,
+      2,
+      256,
+      256
+    ],
+    [
+      1808,
+      2,
+      256,
+      256
+    ],
+    [
+      2,
+      260,
+      256,
+      256
+    ],
+    [
+      260,
+      260,
+      256,
+      256
+    ],
+    [
+      518,
+      260,
+      256,
+      256
+    ],
+    [
+      776,
+      260,
+      256,
+      256
+    ],
+    [
+      1034,
+      260,
+      256,
+      256
+    ],
+    [
+      1292,
+      260,
+      256,
+      256
+    ],
+    [
+      1550,
+      260,
+      256,
+      256
+    ],
+    [
+      1808,
+      260,
+      256,
+      256
+    ],
+    [
+      2,
+      518,
+      256,
+      256
+    ],
+    [
+      260,
+      518,
+      256,
+      256
+    ],
+    [
+      518,
+      518,
+      256,
+      256
+    ],
+    [
+      776,
+      518,
+      256,
+      256
+    ],
+    [
+      1034,
+      518,
+      256,
+      256
+    ],
+    [
+      1292,
+      518,
+      256,
+      256
+    ],
+    [
+      1550,
+      518,
+      256,
+      256
+    ],
+    [
+      1808,
+      518,
+      256,
+      256
+    ],
+    [
+      2,
+      776,
+      256,
+      256
+    ],
+    [
+      260,
+      776,
+      256,
+      256
+    ],
+    [
+      518,
+      776,
+      256,
+      256
+    ],
+    [
+      776,
+      776,
+      256,
+      256
+    ],
+    [
+      1034,
+      776,
+      256,
+      256
+    ],
+    [
+      1292,
+      776,
+      256,
+      256
+    ],
+    [
+      1550,
+      776,
+      256,
+      256
+    ],
+    [
+      1808,
+      776,
+      256,
+      256
+    ]
+  ],
+  "frameCount": 32,
+  "fps": 24,
+  "loop": false,
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "frameSize": [
+    256,
+    256
+  ],
+  "crop": "none",
+  "chromaKey": "black",
+  "alphaMode": "straight",
+  "effectUnionFit": null,
+  "emissionGain": 1.0,
+  "fadeOutFrames": 4,
+  "chromaProcessing": "per-frame flat-corner estimate, exterior-connected color key, foreground structure protected",
+  "variableBackgroundPalette": false,
+  "edgeFeather": {
+    "widthPixels": 6,
+    "frameSize": 256,
+    "innerPixelsUnchanged": 244,
+    "algorithm": "alpha-only smoothstep"
+  },
+  "sourceDerivedGarbageMatte": {
+    "enabled": false,
+    "purpose": null
+  },
+  "sourceDerivedInnerMatte": {
+    "enabled": false,
+    "purpose": "preserve fixed machine panels when provider background hue overlaps original paint"
+  },
+  "sourceFrameCount": 124,
+  "sourceFps": 24.0,
+  "sourceDurationSec": 5.17,
+  "selectedSourceFrames": [
+    0,
+    2,
+    5,
+    7,
+    9,
+    11,
+    14,
+    16,
+    18,
+    20,
+    23,
+    25,
+    27,
+    29,
+    32,
+    34,
+    36,
+    38,
+    41,
+    43,
+    45,
+    47,
+    50,
+    52,
+    54,
+    56,
+    59,
+    61,
+    63,
+    65,
+    68,
+    70
+  ],
+  "uniqueFrames": 32,
+  "sourceSize": [
+    384,
+    384
+  ],
+  "sourceCropBox": [
+    0,
+    0,
+    384,
+    384
+  ],
+  "sourceActionWindowSec": [
+    0,
+    2.9166666666666665
+  ],
+  "minimumSourceMarginsLTRB": [
+    0,
+    0,
+    0,
+    62
+  ],
+  "clippedSourceFrames": 22,
+  "referenceGeometry": {
+    "canvas": [
+      1024,
+      1024
+    ],
+    "maxEffectSpan": 0.66,
+    "safeMargin": 0.16
+  },
+  "provenance": {
+    "method": "image-to-video-extracted-frames",
+    "model": "MiniMax-H3-Base FL2VA INT8 + Turbo8",
+    "taskId": "b1dc7db4-1663-5aa1-9be4-b116ac2073eb",
+    "video": "SourceMedia/effects-v5/plasma-hit.mp4",
+    "videoSha256": "bf29171ebec4fe849054dca70506e91d994c3e3560b2f41759ca53b3c0ffef2c",
+    "sourceImage": "Content/UI/v5/vfx-references/plasma-hit.png",
+    "request": "pipeline/v5/jobs/plasma-hit/request.json"
+  },
+  "clips": {
+    "oneshot": {
+      "start": 0,
+      "endExclusive": 32,
+      "fps": 24,
+      "loop": false
+    }
+  },
+  "recommendedBlend": "additive"
+}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="selection-corners-title selection-corners-desc"><title id="selection-corners-title">selection corners</title><desc id="selection-corners-desc">Original Code Sentinels tactical vector artwork.</desc>
+<path d="M5 65V24L24 5H65M191 5H232L251 24V65M251 191V232L232 251H191M65 251H24L5 232V191" stroke="#EDB63B" stroke-width="5"/>
+<path d="M17 54V28L28 17H54M202 17H228L239 28V54M239 202V228L228 239H202M54 239H28L17 228V202" stroke="#F2F0E9" stroke-width="2"/>
+<path d="M91 6H165M250 91V165M91 250H165M6 91V165" stroke="#F2F0E9" stroke-opacity=".18"/>
+<path d="M120 6H136M250 120V136M120 250H136M6 120V136" stroke="#F2F0E9" stroke-opacity=".68" stroke-width="2"/></svg>

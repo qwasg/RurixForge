@@ -15,7 +15,21 @@ use tokio::sync::{Mutex, MutexGuard};
 
 /// 已挂载的 engine-scene 工具面(显式全量清单,与 engine-scene-mcp 工具表一一对应)
 pub const KNOWN_TOOLS: &[&str] = &[
+    "mcp__engine-scene__editor_resolve",
+    "mcp__engine-scene__editor_apply",
+    "mcp__engine-scene__observation_capture",
+    "mcp__engine-scene__shader_preview",
+    "mcp__engine-scene__observation_resolve",
+    "mcp__engine-scene__shader_publish",
+    "mcp__engine-scene__shader_status",
+    "mcp__asset-pipeline__shader_graph_get",
+    "mcp__asset-pipeline__shader_graph_save",
+    "mcp__asset-pipeline__shader_graph_compile",
+    "mcp__asset-pipeline__shader_graph_list_nodes",
+    "mcp__asset-pipeline__shader_material_create",
     "mcp__engine-scene__host_ping",
+    "mcp__engine-scene__render_backend_info",
+    "mcp__engine-scene__render_capabilities",
     "mcp__engine-scene__host_events",
     // F3 wave.3:debug 三件套——内存事件环排空(场景域事件)
     "mcp__engine-scene__host_events_drain",
@@ -23,8 +37,15 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__scene_summary",
     "mcp__engine-scene__render_once",
     "mcp__engine-scene__entity_create",
+    "mcp__engine-scene__prefab_instantiate",
+    "mcp__engine-scene__prefab_revert",
+    "mcp__engine-scene__asset_reload",
+    "mcp__engine-scene__animation_control",
+    "mcp__engine-scene__template_preview",
     // F-GAME-3:2D 精灵一步创建(实体 + Sprite 组件组合工具)
     "mcp__engine-scene__sprite_create",
+    // D-045:Text 组件一步创建
+    "mcp__engine-scene__text_create",
     "mcp__engine-scene__entity_destroy",
     "mcp__engine-scene__entity_rename",
     "mcp__engine-scene__entity_get",
@@ -93,6 +114,9 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__asset-pipeline__sprite_get",
     "mcp__asset-pipeline__sprite_set",
     "mcp__asset-pipeline__sprite_autoslice",
+    // D-045:字体资产(列可用字体 / 导入入库)
+    "mcp__asset-pipeline__font_list",
+    "mcp__asset-pipeline__font_import",
     // F4 wave.1:code-forge(rx 工具链五工具,子进程包上游 rx CLI/rurixc)
     "mcp__code-forge__rx_check",
     "mcp__code-forge__rx_build",
@@ -110,6 +134,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     // F5 wave.1:gen-image 五工具(05 §7;GEN_BACKEND_NOT_CONFIGURED 门 + keystore R-5)
     "mcp__gen-image__gen_backends_list",
     "mcp__gen-image__gen_image",
+    // D-045:改图(img2img,参考图 + 蒙版)
+    "mcp__gen-image__gen_edit",
     "mcp__gen-image__gen_texture_set",
     "mcp__gen-image__gen_accept",
     "mcp__gen-image__gen_variations",
@@ -155,6 +181,14 @@ const STORE_PREFIX: &str = "mcp__store__";
 const COMPUTER_USE_PREFIX: &str = "mcp__computer-use__";
 /// MCP 调用缺省超时(交互级工具:场景编辑/资产查询/代码检索)。
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Godot 初始化含运行时校验及最多两轮 30s GPU 启动；不占用交互工具的响应预算。
+fn connect_timeout(kind: ServerKind) -> Duration {
+    match kind {
+        ServerKind::EngineScene => Duration::from_secs(90),
+        _ => CALL_TIMEOUT,
+    }
+}
 /// 3D 生成:供应商异步任务制,meshy 两阶段各 900s 预算(gend::media 的 MESHY_STAGE_BUDGET_SECS)
 /// 加下载余量。真正的控制面是工具参数 timeoutSec,外层只负责不比内层先断。
 const GEN_MESH_TIMEOUT: Duration = Duration::from_secs(2000);
@@ -171,8 +205,14 @@ const STORE_TIMEOUT: Duration = Duration::from_secs(90);
 /// 外层先断会让内层的超时与错误码永远走不到,调用方只看到一句无信息量的「MCP 调用超时」。
 fn call_timeout(tool: &str) -> Duration {
     match tool {
+        "mcp__engine-scene__viewport_frame" | "mcp__engine-scene__template_preview"
+        | "mcp__engine-scene__observation_capture" | "mcp__engine-scene__shader_preview"
+        | "mcp__engine-scene__asset_reload" | "mcp__engine-scene__play_enter"
+        // 系统字体逐个解析表头,字体多时超出交互级 10s。
+        | "mcp__asset-pipeline__font_list" => Duration::from_secs(40),
         "mcp__gen-model__gen_mesh" => GEN_MESH_TIMEOUT,
         "mcp__gen-image__gen_image"
+        | "mcp__gen-image__gen_edit"
         | "mcp__gen-image__gen_texture_set"
         | "mcp__gen-image__gen_variations"
         // 截帧 = ffmpeg 解一整段视频 + 逐帧抠底 + 拼图,同属分钟量级。
@@ -307,7 +347,9 @@ pub fn server_bin() -> PathBuf {
         .ancestors()
         .nth(2)
         .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("engine-scene-mcp.exe")
+    root.join("target")
+        .join("debug")
+        .join("engine-scene-mcp.exe")
 }
 
 /// asset-pipeline-mcp 二进制路径:env FORGE_ASSET_PIPELINE_MCP_BIN 优先。
@@ -320,7 +362,9 @@ fn asset_server_bin() -> PathBuf {
         .ancestors()
         .nth(2)
         .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("asset-pipeline-mcp.exe")
+    root.join("target")
+        .join("debug")
+        .join("asset-pipeline-mcp.exe")
 }
 
 /// code-forge-mcp 二进制路径:env FORGE_CODE_FORGE_MCP_BIN 优先。
@@ -428,7 +472,11 @@ struct McpClient {
 
 impl McpClient {
     /// spawn + initialize 握手(args 为空 = 无额外参数)。
-    async fn connect(bin: &Path, args: &[String], env: &[(String, String)]) -> Result<Self, McpError> {
+    async fn connect(
+        bin: &Path,
+        args: &[String],
+        env: &[(String, String)],
+    ) -> Result<Self, McpError> {
         let mut cmd = Command::new(bin);
         for a in args {
             cmd.arg(a);
@@ -437,13 +485,21 @@ impl McpClient {
             cmd.env(k, v);
         }
         let mut child = cmd
+            // 初始化超时或连接失效后释放句柄时，不遗留 MCP 子进程。
+            .kill_on_drop(true)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| McpError(format!("spawn {} 失败: {e}", bin.display())))?;
-        let stdin = child.stdin.take().ok_or_else(|| McpError("子进程无 stdin".into()))?;
-        let stdout = child.stdout.take().ok_or_else(|| McpError("子进程无 stdout".into()))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| McpError("子进程无 stdin".into()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| McpError("子进程无 stdout".into()))?;
         let mut client = Self {
             child,
             stdin,
@@ -525,9 +581,14 @@ static POOL: OnceLock<StdMutex<HashMap<(ServerKind, PathBuf), Slot>>> = OnceLock
 
 fn client_slot(kind: ServerKind, project_root: &Path) -> Slot {
     let pool = POOL.get_or_init(|| StdMutex::new(HashMap::new()));
-    let key = (kind, project_root.to_path_buf());
+    // Windows extended paths, relative paths and directory aliases must share
+    // one engine connection. Coordinated edits resolve roots canonically.
+    let key = (kind, project_root.canonicalize().unwrap_or_else(|_| project_root.to_path_buf()));
     let mut guard = pool.lock().unwrap_or_else(|e| e.into_inner());
-    guard.entry(key).or_insert_with(|| Arc::new(Mutex::new(None))).clone()
+    guard
+        .entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(None)))
+        .clone()
 }
 
 /// 取可用连接:无连接/已退出则重连
@@ -550,14 +611,25 @@ async fn ensure_connected<'a>(
             bin.display()
         )));
     }
-    **guard = Some(McpClient::connect(&bin, &args, &spawn_env(kind, project_root)).await?);
+    let budget = connect_timeout(kind);
+    **guard = Some(
+        tokio::time::timeout(
+            budget,
+            McpClient::connect(&bin, &args, &spawn_env(kind, project_root)),
+        )
+        .await
+        .map_err(|_| McpError(format!("MCP 初始化超时({}s):{:?}", budget.as_secs(), kind)))??,
+    );
     Ok(())
 }
 
 /// 启动程序是否确定不存在。裸命令名(如 `node`)由 OS 按 PATH 解析,这里不能按
 /// 「文件不存在」判死——computer-use 走 `node <script>` 形态,此前会被误报成缺二进制。
 fn program_missing(bin: &Path) -> bool {
-    let is_bare = bin.parent().map(|p| p.as_os_str().is_empty()).unwrap_or(true);
+    let is_bare = bin
+        .parent()
+        .map(|p| p.as_os_str().is_empty())
+        .unwrap_or(true);
     !is_bare && !bin.exists()
 }
 
@@ -569,13 +641,16 @@ pub(crate) fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec
         // engine-scene 与 code-forge 经 env 认项目根(二者无 --project 参数面):
         // 前者是 engine-host 的 FORGE_PROJECT_ROOT,后者是 FORGE_CODE_FORGE_PROJECT。
         ServerKind::EngineScene => (server_bin(), vec![]),
-        ServerKind::AssetPipeline => (
-            asset_server_bin(),
+        ServerKind::AssetPipeline => (asset_server_bin(), vec!["--project".to_string(), project]),
+        ServerKind::CodeForge => (code_forge_server_bin(), vec![]),
+        ServerKind::GenImage => (
+            gen_image_server_bin(),
             vec!["--project".to_string(), project],
         ),
-        ServerKind::CodeForge => (code_forge_server_bin(), vec![]),
-        ServerKind::GenImage => (gen_image_server_bin(), vec!["--project".to_string(), project]),
-        ServerKind::GenModel => (gen_model_server_bin(), vec!["--project".to_string(), project]),
+        ServerKind::GenModel => (
+            gen_model_server_bin(),
+            vec!["--project".to_string(), project],
+        ),
         ServerKind::Context => (
             context_server_bin(),
             vec![
@@ -602,8 +677,7 @@ pub(crate) fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec
         // 决议不出来时给一个必然「二进制不存在」的占位路径,让上层报如实原因而不是 panic。
         ServerKind::ComputerUse => match crate::codex::bin::resolve_computer_use() {
             Some(l) => {
-                let mut args = l.prefix_args.clone();
-                args.push("--stdio".to_string());
+                let args = computer_use_args(l.prefix_args.clone());
                 (l.program, args)
             }
             None => (
@@ -615,6 +689,15 @@ pub(crate) fn spawn_spec(kind: ServerKind, project_root: &Path) -> (PathBuf, Vec
             ),
         },
     }
+}
+
+/// `open-computer-use-mcp` 0.3.x exposes its stdio MCP server as the `mcp`
+/// subcommand. `--stdio` is not a supported flag and makes the process exit before
+/// the initialize handshake. Keep this in one helper so direct shims and
+/// `node <script>` launches share the exact argument shape.
+fn computer_use_args(mut prefix_args: Vec<String>) -> Vec<String> {
+    prefix_args.push("mcp".to_string());
+    prefix_args
 }
 
 /// 子进程环境注入。
@@ -709,18 +792,33 @@ pub async fn call_tool_in(
     tool: &str,
     arguments: Option<Value>,
 ) -> Result<Value, McpError> {
-    let kind = ServerKind::from_tool(tool)
-        .ok_or_else(|| McpError(format!("未知工具前缀: {tool}")))?;
+    if matches!(tool,"mcp__engine-scene__editor_apply"|"mcp__engine-scene__edit_undo"|"mcp__engine-scene__edit_redo") {
+        let args=arguments.unwrap_or_else(||json!({}));
+        let result=if tool.ends_with("editor_apply") {crate::editor::apply_in_project(project_root,&args).await}
+            else {crate::editor::history_in_project(project_root,&args,tool.ends_with("edit_redo")).await};
+        return Ok(match result {
+            Ok(mut value)=>{
+                if let Some(result)=value["result"].as_object().cloned(){for(key,item)in result{value[key]=item;}}
+                json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value})
+            },
+            Err(error)=>json!({"isError":true,"content":[{"type":"text","text":error}]}),
+        });
+    }
+    call_tool_in_raw(project_root,tool,arguments).await
+}
+
+/// Internal transaction transport: editor journals own orchestration and must not recursively route.
+pub(crate) async fn call_tool_in_raw(
+    project_root:&Path,tool:&str,arguments:Option<Value>
+)->Result<Value,McpError>{
+    let kind =
+        ServerKind::from_tool(tool).ok_or_else(|| McpError(format!("未知工具前缀: {tool}")))?;
     let name = tool
         .strip_prefix(kind.prefix())
         .ok_or_else(|| McpError(format!("工具名前缀剥离失败: {tool}")))?;
-    let budget = call_timeout(tool);
-    tokio::time::timeout(
-        budget,
-        call_with_retry(kind, project_root, name, arguments),
-    )
-    .await
-    .map_err(|_| McpError(format!("MCP 调用超时({}s):{tool}", budget.as_secs())))?
+    let result = call_with_retry(kind, project_root, name, arguments, call_timeout(tool)).await?;
+    crate::editor::notify_tool_result(project_root, tool, &result);
+    Ok(result)
 }
 
 async fn call_with_retry(
@@ -728,26 +826,64 @@ async fn call_with_retry(
     project_root: &Path,
     name: &str,
     arguments: Option<Value>,
+    budget: Duration,
 ) -> Result<Value, McpError> {
     let slot = client_slot(kind, project_root);
-    let mut guard = slot.lock().await;
+    // 同工作区的并发查询允许等待前一个冷启动；排队和重连共享有界启动预算。
+    let connect_deadline = tokio::time::Instant::now() + connect_timeout(kind);
+    let mut guard = tokio::time::timeout_at(connect_deadline, slot.lock())
+        .await
+        .map_err(|_| McpError(format!("MCP 等待连接超时:{name}")))?;
     let mut last_err: Option<McpError> = None;
+    let mut remaining = budget;
     for attempt in 0..2 {
-        ensure_connected(kind, project_root, &mut guard).await?;
-        let client = guard.as_mut().expect("ensure_connected 后必有连接");
-        let params = json!({ "name": name, "arguments": arguments.clone().unwrap_or_else(|| json!({})) });
-        match client.request("tools/call", params).await {
+        tokio::time::timeout_at(
+            connect_deadline,
+            ensure_connected(kind, project_root, &mut guard),
+        )
+        .await
+        .map_err(|_| McpError(format!("MCP 初始化超时:{name}")))??;
+        let params =
+            json!({ "name": name, "arguments": arguments.clone().unwrap_or_else(|| json!({})) });
+        let started = tokio::time::Instant::now();
+        let result = request_with_budget(&mut guard, params, remaining, name).await;
+        remaining = remaining.saturating_sub(started.elapsed());
+        match result {
             Ok(result) => return Ok(result),
             Err(e) => {
                 last_err = Some(e);
                 *guard = None;
-                if attempt == 1 {
+                // 响应超时可能已经执行了写操作，不能盲目重放。
+                if attempt == 1 || remaining.is_zero() || crate::agent::is_write_tool(&format!("{}{name}",kind.prefix())) {
                     break;
                 }
             }
         }
     }
     Err(last_err.unwrap_or_else(|| McpError("MCP 调用失败".into())))
+}
+
+async fn request_with_budget(
+    client: &mut Option<McpClient>,
+    params: Value,
+    budget: Duration,
+    name: &str,
+) -> Result<Value, McpError> {
+    let request = client
+        .as_mut()
+        .expect("ensure_connected 后必有连接")
+        .request("tools/call", params);
+    match tokio::time::timeout(budget, request).await {
+        Ok(result) => result,
+        Err(_) => {
+            // 不复用可能残留旧响应的 stdio 连接；kill_on_drop 回收 MCP 进程。
+            *client = None;
+            Err(McpError(format!(
+                "MCP 调用超时({}s):{name}",
+                budget.as_secs()
+            )))
+        }
+    }
 }
 
 /// 单 server 的工具面拉取结果(部分降级用:一个服务起不来不该让整个工具面归零)。
@@ -788,6 +924,8 @@ pub async fn list_all_tools() -> Result<Vec<Value>, McpError> {
 /// 旧实现让整个 turn 拿不到任何工具(用户看到的就是「agent 不会调用工具」);
 /// 现在缺失的服务只是自己那一族不可用,其余照常可调,原因随 ServerTools.error 上报。
 pub async fn list_tools_in(project_root: &Path) -> Vec<ServerTools> {
+    let canonical_root = project_root.canonicalize().unwrap_or_else(|_| project_root.to_path_buf());
+    let project_root = canonical_root.as_path();
     let cache = TOOLS_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     {
         let guard = cache.lock().await;
@@ -819,18 +957,26 @@ pub async fn list_tools_in(project_root: &Path) -> Vec<ServerTools> {
     out
 }
 
-async fn list_one(kind: ServerKind, project_root: &Path) -> ServerTools {
+pub(crate) async fn list_one(kind: ServerKind, project_root: &Path) -> ServerTools {
     let slot = client_slot(kind, project_root);
     let mut guard = slot.lock().await;
     if let Err(e) = ensure_connected(kind, project_root, &mut guard).await {
-        return ServerTools { kind, tools: Vec::new(), error: Some(e.0) };
+        return ServerTools {
+            kind,
+            tools: Vec::new(),
+            error: Some(e.0),
+        };
     }
     let client = guard.as_mut().expect("ensure_connected 后必有连接");
     let result = match client.request("tools/list", json!({})).await {
         Ok(r) => r,
         Err(e) => {
             *guard = None;
-            return ServerTools { kind, tools: Vec::new(), error: Some(e.0) };
+            return ServerTools {
+                kind,
+                tools: Vec::new(),
+                error: Some(e.0),
+            };
         }
     };
     if result.get("nextCursor").and_then(Value::as_str).is_some() {
@@ -852,13 +998,27 @@ async fn list_one(kind: ServerKind, project_root: &Path) -> ServerTools {
         let Some(name) = t.get("name").and_then(Value::as_str) else {
             continue;
         };
+        let full_name = format!("{}{}", kind.prefix(), name);
+        let mut schema = t.get("inputSchema").cloned().unwrap_or_else(|| json!({ "type": "object" }));
+        if crate::editor::requires_scene_stamp(&full_name) {
+            if !schema["properties"].is_object() { schema["properties"] = json!({}); }
+            schema["properties"]["expected"] = json!({"type":"object","description":"Mandatory for agent writes: latest scene stamp returned by editor_resolve or scene_summary; checked atomically by the shared host.","properties":{"sceneGuid":{"type":"string"},"hostEpoch":{"type":"string"},"contentRevision":{"type":"integer"},"targetMode":{"type":"string"}},"required":["sceneGuid","hostEpoch","contentRevision","targetMode"]});
+            if !schema["required"].is_array() { schema["required"] = json!([]); }
+            if !schema["required"].as_array().unwrap().contains(&json!("expected")) {
+                schema["required"].as_array_mut().unwrap().push(json!("expected"));
+            }
+        }
         out.push(json!({
-            "name": format!("{}{}", kind.prefix(), name),
+            "name": full_name,
             "description": t.get("description").cloned().unwrap_or(Value::Null),
-            "inputSchema": t.get("inputSchema").cloned().unwrap_or_else(|| json!({ "type": "object" })),
+            "inputSchema": schema,
         }));
     }
-    ServerTools { kind, tools: out, error: None }
+    ServerTools {
+        kind,
+        tools: out,
+        error: None,
+    }
 }
 
 /// tools/list 进程内缓存(server schema 运行期不变;按项目根分键)。
@@ -878,6 +1038,17 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn canonical_aliases_share_one_project_connection() {
+        let root = std::env::temp_dir().join(crate::events::new_id("mcp-root-alias"));
+        std::fs::create_dir_all(&root).unwrap();
+        let canonical = root.canonicalize().unwrap();
+        let direct = client_slot(ServerKind::EngineScene, &root);
+        let alias = client_slot(ServerKind::EngineScene, &canonical.join("."));
+        assert!(Arc::ptr_eq(&direct, &alias));
+        std::fs::remove_dir(&root).unwrap();
+    }
+
     /// 外层超时不得比工具内层预算紧,否则内层的超时与错误码永远走不到。
     #[test]
     fn long_running_tools_get_budget_above_their_inner_timeout() {
@@ -888,10 +1059,24 @@ mod tests {
         );
         // rx_build/rx_test 子进程缺省 120s。
         for t in ["mcp__code-forge__rx_build", "mcp__code-forge__rx_test"] {
-            assert!(call_timeout(t).as_secs() >= 120, "{t} 外层预算不足以覆盖内层");
+            assert!(
+                call_timeout(t).as_secs() >= 120,
+                "{t} 外层预算不足以覆盖内层"
+            );
         }
         // 图像面单次远端 30s,贴图组逐 map 串行。
         assert!(call_timeout("mcp__gen-image__gen_texture_set").as_secs() >= 120);
+        for tool in [
+            "mcp__engine-scene__viewport_frame",
+            "mcp__engine-scene__template_preview",
+            "mcp__engine-scene__asset_reload",
+            "mcp__engine-scene__play_enter",
+        ] {
+            assert!(
+                call_timeout(tool).as_secs() > 30,
+                "outer RPC must outlast bounded cold GPU upload"
+            );
+        }
         // 交互级工具维持 10s:慢就是故障,不该靠拉长超时掩盖。
         for t in [
             "mcp__engine-scene__scene_load",
@@ -901,6 +1086,64 @@ mod tests {
         ] {
             assert_eq!(call_timeout(t), CALL_TIMEOUT, "{t} 应维持缺省超时");
         }
+    }
+
+    #[test]
+    fn render_metadata_tools_are_exposed_by_agentd() {
+        for tool in [
+            "mcp__engine-scene__render_backend_info",
+            "mcp__engine-scene__render_capabilities",
+        ] {
+            assert!(KNOWN_TOOLS.contains(&tool), "REST whitelist missing {tool}");
+            assert_eq!(ServerKind::from_tool(tool), Some(ServerKind::EngineScene));
+            assert_eq!(call_timeout(tool), CALL_TIMEOUT);
+        }
+        assert!(connect_timeout(ServerKind::EngineScene) > Duration::from_secs(60));
+        assert_eq!(connect_timeout(ServerKind::AssetPipeline), CALL_TIMEOUT);
+    }
+
+    /// 使用真实 stdio 子进程验证：慢初始化不会缩短响应预算，响应超时会废弃连接。
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn cold_handshake_and_tool_response_have_separate_budgets() {
+        let script = r#"
+while ($null -ne ($line = [Console]::ReadLine())) {
+    $m = $line | ConvertFrom-Json
+    if ($null -eq $m.id) { continue }
+    if ($m.method -eq 'initialize') { Start-Sleep -Milliseconds 500 }
+    if ($m.params.name -eq 'slow') { Start-Sleep -Seconds 5 }
+    [Console]::WriteLine((@{jsonrpc='2.0';id=$m.id;result=@{ok=$true}} | ConvertTo-Json -Compress))
+}
+"#;
+        let args = vec![
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            script.into(),
+        ];
+        let start = tokio::time::Instant::now();
+        let connected = tokio::time::timeout(
+            connect_timeout(ServerKind::EngineScene),
+            McpClient::connect(Path::new("powershell.exe"), &args, &[]),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let budget = Duration::from_millis(250);
+        assert!(
+            start.elapsed() > budget,
+            "fixture must initialize slower than call budget"
+        );
+        let mut slot = Some(connected);
+        let result = request_with_budget(&mut slot, json!({"name":"fast"}), budget, "fast")
+            .await
+            .unwrap();
+        assert_eq!(result["ok"], true);
+        let error = request_with_budget(&mut slot, json!({"name":"slow"}), budget, "slow")
+            .await
+            .unwrap_err();
+        assert!(error.0.contains("MCP 调用超时"));
+        assert!(slot.is_none(), "timed out stream must not be reused");
     }
 
     /// 超时表里的工具名必须真实存在,否则改名后这张表会静默失效。
@@ -941,5 +1184,14 @@ mod tests {
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0]["function"]["name"], "mcp__context__context_search");
         assert!(mixed.iter().any(|s| s.error.is_some()));
+    }
+
+    #[test]
+    fn computer_use_starts_the_mcp_subcommand() {
+        assert_eq!(computer_use_args(Vec::new()), vec!["mcp"]);
+        assert_eq!(
+            computer_use_args(vec!["C:/pkg/bin/open-computer-use-mcp".into()]),
+            vec!["C:/pkg/bin/open-computer-use-mcp", "mcp"]
+        );
     }
 }

@@ -470,8 +470,8 @@ describe('designBoardStore v3 — buildPrompt / handoff', () => {
     board().addNode('role');
     board().handoffToAgent();
     const pf = useComposerPrefillStore.getState();
-    expect(pf.draft).toContain('【实体类型定义】');
-    expect(pf.draft).toContain('角色 1');
+    expect(pf.draft).toContain('所附设计蓝图');
+    expect(useEditorAnnotationStore.getState().drafts[activeAnnotationDraftKey()].some((a) => a.reference.kind === 'blueprint')).toBe(true);
     expect(pf.mode).toBe('build');
     expect(pf.token).toBe(1);
   });
@@ -636,8 +636,8 @@ describe('<DesignBoardView /> — 自定义类型与连线', () => {
     fireEvent.click(screen.getByTestId('board-handoff'));
 
     const pf = useComposerPrefillStore.getState();
-    expect(pf.draft).toContain('角色 1');
-    expect(pf.draft).toContain('MeshRenderer');
+    expect(pf.draft).toContain('所附设计蓝图');
+    expect(useEditorAnnotationStore.getState().drafts[activeAnnotationDraftKey()].some((a) => a.label === '角色 1')).toBe(true);
     expect(pf.mode).toBe('build');
     expect(useToastStore.getState().items.some((t) => t.title.includes('已预填'))).toBe(true);
   });
@@ -901,9 +901,11 @@ describe('EditorView 画板页签', () => {
 
     // 挂载即懒加载组件注册表(特性下拉的数据源)
     await screen.findByTestId('board-handoff');
-    const tools = fetchMock.mock.calls.map(
-      (c) => (JSON.parse((c[1] as { body: string }).body) as { tool: string }).tool,
-    );
+    const tools = fetchMock.mock.calls
+      .filter((c) => (c[1] as { body?: string } | undefined)?.body)
+      .map(
+        (c) => (JSON.parse((c[1] as { body: string }).body) as { tool: string }).tool,
+      );
     expect(tools).toContain('mcp__engine-scene__component_list_types');
   });
 });
@@ -1298,3 +1300,4 @@ describe('<DesignBoardView /> — 画布快捷键', () => {
     expect(card.hasAttribute('data-board-node-selected')).toBe(false);
   });
 });
+import { activeAnnotationDraftKey, useEditorAnnotationStore } from '@/lib/editorReferences';

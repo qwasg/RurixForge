@@ -1,0 +1,11 @@
+[project]
+name = "stage4-models"
+engine-version = "0.1.0"
+rurix-ref = "v1.0.1-dist"
+entry-scene = "Content/Scenes/Main.rxscene"
+# Stage 4 夹具项目(scripts/f4-make-fixtures.py 生成,勿手改):只放 Content/Models/*.rxmodel。
+mode = "3d"
+
+[dirs]
+content = "Content"
+scripts = "Content/Scripts"

@@ -1,0 +1,14 @@
+data: {"id":"chatcmpl-test0000","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test0000","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"content":"Full text from done."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test0000","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_d","type":"function","function":{"name":"lookup","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test0000","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"q\":\"x\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-test0000","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-test0000","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[],"usage":{"prompt_tokens":8,"completion_tokens":9,"total_tokens":17,"prompt_tokens_details":{"cached_tokens":0}}}
+
+data: [DONE]
+

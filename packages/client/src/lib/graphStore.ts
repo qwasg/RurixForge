@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { callCodeTool } from './forgeApi';
 import { useEditorStore } from './editorStore';
+import { readActiveWorkspaceId } from './activeWorkspace';
 
 /**
  * F4 wave.4 NodeGraph 面板数据面(07 §1 G 区 / 10 §5)。
@@ -57,6 +58,9 @@ export interface GraphError {
 }
 
 interface GraphState {
+  workspaceId: string | null;
+  bindWorkspace: (id: string) => void;
+  selectedNodeIds: string[];
   graph: GraphDoc | null;
   graphPath: string | null;
   errors: GraphError[];
@@ -84,6 +88,14 @@ function graphNameForSave(graph: GraphDoc, graphPath: string | null): string {
 }
 
 export const useGraphStore = create<GraphState>((set, get) => ({
+  workspaceId: null,
+  bindWorkspace: (id) => {
+    if (get().workspaceId === id) return;
+    let draft: { graph: GraphDoc; graphPath: string | null; dirty: boolean } | null = null;
+    try { draft = JSON.parse(localStorage.getItem(`forge:logic-draft:${id}`) ?? 'null'); } catch { /* keep readable file as fallback */ }
+    set({ workspaceId: id, graph: draft?.graph ?? null, graphPath: draft?.graphPath ?? null, dirty: draft?.dirty ?? false, selectedNodeIds: [], errors: [], lastError: null, loading: false });
+  },
+  selectedNodeIds: [],
   graph: null,
   graphPath: null,
   errors: [],
@@ -95,9 +107,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   loadByPath: async (path) => {
     const p = path.trim();
     if (p === '') return;
+    const workspaceId = readActiveWorkspaceId(), previous = get().graph;
     set({ loading: true, lastError: null, lastSaved: null });
     try {
       const r = await callCodeTool<{ graph: GraphDoc }>('graph_get', { path: p });
+      if (readActiveWorkspaceId() !== workspaceId) return;
+      if (get().graph !== previous && get().dirty) { set({ loading: false, lastError: '加载期间图已更新，本地修改已保留' }); return; }
       set({
         graph: r.graph,
         graphPath: p,
@@ -108,11 +123,12 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       });
     } catch (err) {
       // 失败如实:lastError 进状态行,不伪造成空图
-      set({ lastError: (err as Error).message, loading: false });
+      if (readActiveWorkspaceId() === workspaceId) set({ lastError: (err as Error).message, loading: false });
     }
   },
 
   loadForSelectedEntity: async () => {
+    if (get().dirty) return;
     const { entities, selectedId } = useEditorStore.getState();
     const entity = entities.find((e) => e.id === selectedId);
     const script = entity?.components.find((c) => c.type === 'Script');
@@ -155,12 +171,14 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   save: async () => {
     const { graph, graphPath } = get();
     if (!graph || get().loading) return;
+    const workspaceId = readActiveWorkspaceId();
     set({ loading: true, lastError: null, lastSaved: null });
     try {
       // 保存即全图校验(10 §5):不过 → errors 展示、不落盘
       const v = await callCodeTool<{ ok: boolean; errors?: GraphError[] }>('graph_validate', {
         graph,
       });
+      if (readActiveWorkspaceId() !== workspaceId) return;
       if (!v.ok) {
         set({ errors: v.errors ?? [], loading: false });
         return;
@@ -170,6 +188,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         'graph_create',
         { name, graph },
       );
+      if (readActiveWorkspaceId() !== workspaceId) return;
       if (!c.ok) {
         // create 内复核校验(与 validate 同错误面),同样不落盘
         set({ errors: c.errors ?? [], loading: false });
@@ -177,13 +196,18 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       }
       set({
         errors: [],
-        dirty: false,
+        dirty: get().graph !== graph,
         loading: false,
         graphPath: c.path ?? graphPath,
         lastSaved: c.path ?? graphPath ?? name,
       });
     } catch (err) {
-      set({ lastError: (err as Error).message, loading: false });
+      if (readActiveWorkspaceId() === workspaceId) set({ lastError: (err as Error).message, loading: false });
     }
   },
 }));
+useGraphStore.subscribe((state, previous) => {
+  if (state.workspaceId && (state.graph !== previous.graph || state.graphPath !== previous.graphPath || state.dirty !== previous.dirty)) {
+    try { localStorage.setItem(`forge:logic-draft:${state.workspaceId}`, JSON.stringify({ graph: state.graph, graphPath: state.graphPath, dirty: state.dirty })); } catch { /* in-memory draft is preserved */ }
+  }
+});

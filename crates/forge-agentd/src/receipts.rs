@@ -127,11 +127,24 @@ impl ReceiptStore {
 
     /// 终态回填(按 runId);run 不存在 → None。
     pub fn finish(&self, run_id: &str, status: &str, summary: &str) -> Option<Receipt> {
+        self.finish_with_delivery(run_id, status, summary, false)
+    }
+
+    /// Mark a receipt already handed to the durable collaboration mailbox in
+    /// the same write as its terminal status, closing the legacy delivery race.
+    pub fn finish_with_delivery(
+        &self,
+        run_id: &str,
+        status: &str,
+        summary: &str,
+        consumed: bool,
+    ) -> Option<Receipt> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let r = inner.iter_mut().find(|r| r.run_id == run_id)?;
         r.status = status.to_string();
         r.summary = summary.to_string();
         r.finished_at = Some(now_rfc3339());
+        r.consumed = consumed;
         let out = r.clone();
         self.persist_locked(&inner);
         Some(out)
@@ -160,6 +173,15 @@ impl ReceiptStore {
             }
         }
         self.persist_locked(&inner);
+    }
+
+    /// Includes queued detached jobs that have not registered a participant yet.
+    pub fn has_running(&self, session_id: &str) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .any(|r| r.session_id == session_id && r.status == "running")
     }
 
     /// 全量列举(测试断言用;生产取件一律走 unconsumed —— 对外可见面是事件流,
@@ -294,13 +316,23 @@ mod tests {
     #[test]
     fn begin_finish_and_unconsumed_roundtrip() {
         let (store, dir) = temp_store("roundtrip");
-        let r = store.begin("s1", "run_1", "run_parent", Some("scene-builder"), "摆放僵尸");
+        let r = store.begin(
+            "s1",
+            "run_1",
+            "run_parent",
+            Some("scene-builder"),
+            "摆放僵尸",
+        );
         assert_eq!(r.status, "running");
         // running 不进注入面(还没结束,没什么可汇报)。
         assert!(store.unconsumed("s1").is_empty());
         assert_eq!(store.list_by_session("s1").len(), 1);
 
-        store.finish("run_1", "completed", "已摆 5 个僵尸,资产 Content/Zombies/*.rxsprite");
+        store.finish(
+            "run_1",
+            "completed",
+            "已摆 5 个僵尸,资产 Content/Zombies/*.rxsprite",
+        );
         let pending = store.unconsumed("s1");
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].status, "completed");
@@ -390,7 +422,11 @@ mod tests {
             .map(|i| fake(&format!("r{i}"), "completed", "批量", &"字".repeat(900)))
             .collect();
         let (text2, used2) = injection_section(&items);
-        assert!(used2.len() < items.len(), "应有条目被预算挡下: {}", used2.len());
+        assert!(
+            used2.len() < items.len(),
+            "应有条目被预算挡下: {}",
+            used2.len()
+        );
         assert!(text2.contains("因本轮上下文预算未列出"));
         assert!(text2.chars().count() <= SECTION_BUDGET_CHARS + 80);
     }

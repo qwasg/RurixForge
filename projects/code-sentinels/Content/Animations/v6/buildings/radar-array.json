@@ -1,0 +1,738 @@
+{
+  "schemaVersion": 2,
+  "id": "radar-array",
+  "image": "radar-array.png",
+  "width": 2048,
+  "height": 2304,
+  "frameCount": 72,
+  "frameSize": [
+    256,
+    256
+  ],
+  "pivot": [
+    0.5,
+    0.88
+  ],
+  "boxes": [
+    [
+      0,
+      0,
+      256,
+      256
+    ],
+    [
+      256,
+      0,
+      256,
+      256
+    ],
+    [
+      512,
+      0,
+      256,
+      256
+    ],
+    [
+      768,
+      0,
+      256,
+      256
+    ],
+    [
+      1024,
+      0,
+      256,
+      256
+    ],
+    [
+      1280,
+      0,
+      256,
+      256
+    ],
+    [
+      1536,
+      0,
+      256,
+      256
+    ],
+    [
+      1792,
+      0,
+      256,
+      256
+    ],
+    [
+      0,
+      256,
+      256,
+      256
+    ],
+    [
+      256,
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      256,
+      256,
+      256
+    ],
+    [
+      768,
+      256,
+      256,
+      256
+    ],
+    [
+      1024,
+      256,
+      256,
+      256
+    ],
+    [
+      1280,
+      256,
+      256,
+      256
+    ],
+    [
+      1536,
+      256,
+      256,
+      256
+    ],
+    [
+      1792,
+      256,
+      256,
+      256
+    ],
+    [
+      0,
+      512,
+      256,
+      256
+    ],
+    [
+      256,
+      512,
+      256,
+      256
+    ],
+    [
+      512,
+      512,
+      256,
+      256
+    ],
+    [
+      768,
+      512,
+      256,
+      256
+    ],
+    [
+      1024,
+      512,
+      256,
+      256
+    ],
+    [
+      1280,
+      512,
+      256,
+      256
+    ],
+    [
+      1536,
+      512,
+      256,
+      256
+    ],
+    [
+      1792,
+      512,
+      256,
+      256
+    ],
+    [
+      0,
+      768,
+      256,
+      256
+    ],
+    [
+      256,
+      768,
+      256,
+      256
+    ],
+    [
+      512,
+      768,
+      256,
+      256
+    ],
+    [
+      768,
+      768,
+      256,
+      256
+    ],
+    [
+      1024,
+      768,
+      256,
+      256
+    ],
+    [
+      1280,
+      768,
+      256,
+      256
+    ],
+    [
+      1536,
+      768,
+      256,
+      256
+    ],
+    [
+      1792,
+      768,
+      256,
+      256
+    ],
+    [
+      0,
+      1024,
+      256,
+      256
+    ],
+    [
+      256,
+      1024,
+      256,
+      256
+    ],
+    [
+      512,
+      1024,
+      256,
+      256
+    ],
+    [
+      768,
+      1024,
+      256,
+      256
+    ],
+    [
+      1024,
+      1024,
+      256,
+      256
+    ],
+    [
+      1280,
+      1024,
+      256,
+      256
+    ],
+    [
+      1536,
+      1024,
+      256,
+      256
+    ],
+    [
+      1792,
+      1024,
+      256,
+      256
+    ],
+    [
+      0,
+      1280,
+      256,
+      256
+    ],
+    [
+      256,
+      1280,
+      256,
+      256
+    ],
+    [
+      512,
+      1280,
+      256,
+      256
+    ],
+    [
+      768,
+      1280,
+      256,
+      256
+    ],
+    [
+      1024,
+      1280,
+      256,
+      256
+    ],
+    [
+      1280,
+      1280,
+      256,
+      256
+    ],
+    [
+      1536,
+      1280,
+      256,
+      256
+    ],
+    [
+      1792,
+      1280,
+      256,
+      256
+    ],
+    [
+      0,
+      1536,
+      256,
+      256
+    ],
+    [
+      256,
+      1536,
+      256,
+      256
+    ],
+    [
+      512,
+      1536,
+      256,
+      256
+    ],
+    [
+      768,
+      1536,
+      256,
+      256
+    ],
+    [
+      1024,
+      1536,
+      256,
+      256
+    ],
+    [
+      1280,
+      1536,
+      256,
+      256
+    ],
+    [
+      1536,
+      1536,
+      256,
+      256
+    ],
+    [
+      1792,
+      1536,
+      256,
+      256
+    ],
+    [
+      0,
+      1792,
+      256,
+      256
+    ],
+    [
+      256,
+      1792,
+      256,
+      256
+    ],
+    [
+      512,
+      1792,
+      256,
+      256
+    ],
+    [
+      768,
+      1792,
+      256,
+      256
+    ],
+    [
+      1024,
+      1792,
+      256,
+      256
+    ],
+    [
+      1280,
+      1792,
+      256,
+      256
+    ],
+    [
+      1536,
+      1792,
+      256,
+      256
+    ],
+    [
+      1792,
+      1792,
+      256,
+      256
+    ],
+    [
+      0,
+      2048,
+      256,
+      256
+    ],
+    [
+      256,
+      2048,
+      256,
+      256
+    ],
+    [
+      512,
+      2048,
+      256,
+      256
+    ],
+    [
+      768,
+      2048,
+      256,
+      256
+    ],
+    [
+      1024,
+      2048,
+      256,
+      256
+    ],
+    [
+      1280,
+      2048,
+      256,
+      256
+    ],
+    [
+      1536,
+      2048,
+      256,
+      256
+    ],
+    [
+      1792,
+      2048,
+      256,
+      256
+    ]
+  ],
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "clips": {
+    "idle": {
+      "s": {
+        "start": 0,
+        "endExclusive": 1,
+        "fps": 1,
+        "loop": true
+      },
+      "sw": {
+        "start": 1,
+        "endExclusive": 2,
+        "fps": 1,
+        "loop": true
+      },
+      "w": {
+        "start": 2,
+        "endExclusive": 3,
+        "fps": 1,
+        "loop": true
+      },
+      "nw": {
+        "start": 3,
+        "endExclusive": 4,
+        "fps": 1,
+        "loop": true
+      },
+      "n": {
+        "start": 4,
+        "endExclusive": 5,
+        "fps": 1,
+        "loop": true
+      },
+      "ne": {
+        "start": 5,
+        "endExclusive": 6,
+        "fps": 1,
+        "loop": true
+      },
+      "e": {
+        "start": 6,
+        "endExclusive": 7,
+        "fps": 1,
+        "loop": true
+      },
+      "se": {
+        "start": 7,
+        "endExclusive": 8,
+        "fps": 1,
+        "loop": true
+      }
+    },
+    "work": {
+      "s": {
+        "start": 8,
+        "endExclusive": 16,
+        "fps": 8,
+        "loop": true
+      },
+      "sw": {
+        "start": 16,
+        "endExclusive": 24,
+        "fps": 8,
+        "loop": true
+      },
+      "w": {
+        "start": 24,
+        "endExclusive": 32,
+        "fps": 8,
+        "loop": true
+      },
+      "nw": {
+        "start": 32,
+        "endExclusive": 40,
+        "fps": 8,
+        "loop": true
+      },
+      "n": {
+        "start": 40,
+        "endExclusive": 48,
+        "fps": 8,
+        "loop": true
+      },
+      "ne": {
+        "start": 48,
+        "endExclusive": 56,
+        "fps": 8,
+        "loop": true
+      },
+      "e": {
+        "start": 56,
+        "endExclusive": 64,
+        "fps": 8,
+        "loop": true
+      },
+      "se": {
+        "start": 64,
+        "endExclusive": 72,
+        "fps": 8,
+        "loop": true
+      }
+    }
+  },
+  "provenance": {
+    "id": "radar-array",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/radar-array.blend",
+    "glb": "Content/Models/v6/radar-array.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review",
+    "sourceModelSha256": "4c30bd47976794bf4865e65c3d04ae6358caf00a6db9073cd0c65fc22c60e850",
+    "glbSha256": "4807ad8a83da3381666f6fe7c703b09f00c7801decbfc69e66c6ee54eba19791"
+  },
+  "workProvenance": {
+    "id": "radar-array",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "framesPerDirection": 8,
+    "fps": 8,
+    "loop": true,
+    "sourceModel": "Content/Models/v6/radar-array-work.blend",
+    "method": "actual Blender animated geometry and equipment emission; CPU Cycles render",
+    "mechanismAnimated": true,
+    "emissionAnimated": true,
+    "sourceModelSha256": "beff82ba146f6b42b2278036ebee48896991462f528973d8008ac6dfd3fbec05"
+  },
+  "orthographicSpan": 3.6,
+  "projection": "isometric-2:1",
+  "nativePlaneSpan": 2.545584412271571,
+  "bakeFitScale": 1.0,
+  "sourcePivot": [
+    0.5,
+    0.6563656979055237
+  ],
+  "anchorMeaning": "exact projected model world origin at ground z=0",
+  "directionConvention": {
+    "labels": "screen directions on the isometric map",
+    "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+    "mapping": [
+      {
+        "index": 0,
+        "label": "s",
+        "worldDelta": [
+          1,
+          1
+        ],
+        "screenDelta": [
+          0.0,
+          0.5
+        ],
+        "blenderYawDegrees": -135
+      },
+      {
+        "index": 1,
+        "label": "sw",
+        "worldDelta": [
+          0,
+          1
+        ],
+        "screenDelta": [
+          -0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -180
+      },
+      {
+        "index": 2,
+        "label": "w",
+        "worldDelta": [
+          -1,
+          1
+        ],
+        "screenDelta": [
+          -1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -225
+      },
+      {
+        "index": 3,
+        "label": "nw",
+        "worldDelta": [
+          -1,
+          0
+        ],
+        "screenDelta": [
+          -0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -270
+      },
+      {
+        "index": 4,
+        "label": "n",
+        "worldDelta": [
+          -1,
+          -1
+        ],
+        "screenDelta": [
+          0.0,
+          -0.5
+        ],
+        "blenderYawDegrees": -315
+      },
+      {
+        "index": 5,
+        "label": "ne",
+        "worldDelta": [
+          0,
+          -1
+        ],
+        "screenDelta": [
+          0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -360
+      },
+      {
+        "index": 6,
+        "label": "e",
+        "worldDelta": [
+          1,
+          -1
+        ],
+        "screenDelta": [
+          1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -405
+      },
+      {
+        "index": 7,
+        "label": "se",
+        "worldDelta": [
+          1,
+          0
+        ],
+        "screenDelta": [
+          0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -450
+      }
+    ],
+    "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+    "zeroMovement": "retain previous direction",
+    "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+  },
+  "defaultDirection": "ne",
+  "frontModelAxis": "-Y",
+  "defaultPlacement": "unrotated model geometry aligned to map x/y; direction index5 has root yaw-360degrees"
+}

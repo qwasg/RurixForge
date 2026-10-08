@@ -1,0 +1,13 @@
+"""Explicitly repair observed ambiguous cast/reaction composites with separate body motion."""
+from media import *
+char=sys.argv[1];d=sys.argv[2];id=f'{char}-{d}-hit-body-v1';folder=HERE/'jobs'/id
+if (folder/'attempt.json').exists():raise RuntimeError('Existing immutable attempt; inspect before another revision: '+id)
+face={'s':'front-facing toward the viewer','sw':'front-left three-quarter facing down-left','w':'strict left-side profile facing screen left','nw':'rear-left three-quarter facing up-left','n':'strict rear facing away with no face or eye visible','ne':'rear-right three-quarter facing up-right','e':'strict right-side profile facing screen right','se':'front-right three-quarter facing down-right'}[d]
+ref=f'pipeline/v6/first-frames/{char}-{d}.png'
+prompt=(f'Physical startle-recovery animation rehearsal of the EXACT illustrated character in the reference. Remain in the exact {face} orientation. '
+ 'Perform two brief clear flinch repetitions: abruptly recoil the shoulders backward, tuck the chin down, draw the elbows inward and the open hands toward the chest, and soften the knees slightly; then recover smoothly to the exact original upright relaxed stance. '
+ 'First flinch begins at half a second and finishes recovering by two seconds. Second flinch repeats from two-and-a-half to four seconds, then hold the original stance. Feet remain planted on their original marks, with no kneeling or falling and no hand thrusts or arm-spreading. '
+ 'Only original body, hair and clothing move. Preserve exact hair, costume, ornaments, face orientation, body scale and small existing props. No new objects, weapons, particles, circles, rays, spell graphics, trails, text, shadows, floor or ground plane. '
+ 'Entire background always pure flat uniform green RGB0,255,0 with unchanged matte lighting. Locked elevated orthographic camera: no zoom, pan, cut, refocus, growth or recentering. Never rotate toward the viewer. Keep complete silhouette inside the middle two thirds. This is physical body motion only.')
+save(folder/'request.json',{'id':id,'category':'character','character':char,'direction':d,'action':'hit','firstFrame':ref,'lastFrame':ref,'prompt':prompt,'frames':124,'width':384,'height':384,'fps':24,'segments':{'hit':[0,124,24,False]},'priorityFront':True,'revisionReason':'Dense inspection shows composite casting recovery or leftover emitted symbols overlaps the intended hit. Independent physical flinch replaces only that ambiguous action.'})
+submit(folder);overrides=read(HERE/'action-overrides.json');overrides[f'{char}/{d}/hit']=id;save(HERE/'action-overrides.json',overrides)

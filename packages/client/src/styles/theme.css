@@ -7,7 +7,13 @@
  *
  * 留痕:本表取代原 F7 wave.3 Moonlit 复刻表(暖奶油 #FAF9F5/陶土 #C96442,
  * 用户反馈显脏);moonlit 预设仍在 THEME_PRESETS 中可选。语义色 sage/danger/warn/info
- * 为全局共享(所有预设生效);code-* 高亮 token 不接 applyPalette,按新色族静态派生。
+ * 为全局共享(所有预设生效);code-* 与 mode-* 图标色不接 applyPalette,按亮暗主题静态派生。
+ *
+ * D-046(2026-10-07):--font-serif 首选打包的 Noto Serif SC Variable(main.tsx 导入),
+ * 与 themeStore FONT_SERIF_STACK 同步;配色表不变。
+ *
+ * 可读性波(2026-10-07):applyPalette 的 text_2/3/4 基比收深(见 themeStore 文件头),
+ * 本表 text-2/3/4、dot-idle 随之重印;code-comment / code-punct 原取 text-3 / text-2,同步跟深。
  */
 
 :root {
@@ -23,9 +29,9 @@
   --bg-selection: #C94F1214;
   /* 文字 */
   --text: #1B1D21;
-  --text-2: #6A6B6D;
-  --text-3: #949597;
-  --text-4: #B7B8B9;
+  --text-2: #595A5D;
+  --text-3: #747678;
+  --text-4: #9B9C9E;
   --text-inv: #FFFFFF;
   /* 线 */
   --line: #1B1D2117;
@@ -44,10 +50,19 @@
   --warn-bg: rgba(154, 106, 10, 0.12);
   --info: #2563EB;
   --info-bg: rgba(37, 99, 235, 0.1);
+  /* 模式图标:各模式固定色相,在菜单、模式钮与消息标签中保持一致。 */
+  --mode-agent-icon: #2563EB;
+  --mode-plan-icon: #A16207;
+  --mode-ultraplan-icon: #7C3AED;
+  --mode-design-icon: #DB2777;
+  --mode-team-icon: #047857;
+  --mode-debug-icon: #E11D48;
+  --mode-multitask-icon: #0E7490;
+  --mode-ask-icon: #EA580C;
   /* 状态点 */
   --dot-running: #C94F12;
   --dot-done: #1D7A46;
-  --dot-idle: #B7B8B9;
+  --dot-idle: #9B9C9E;
   --dot-blocked: #CE3A1E;
   --dot-queued: #9A6A0A;
   /* 代码高亮 token(文件编辑器 CodeMirror HighlightStyle 消费;
@@ -55,16 +70,16 @@
      静态双表随 data-theme 切换,不接 applyPalette 自定义派色) */
   --code-keyword: #B84810;
   --code-string: #1D7A46;
-  --code-comment: #949597;
+  --code-comment: #747678;
   --code-number: #9A6A0A;
   --code-func: #2563EB;
   --code-type: #7C3AED;
   --code-prop: #7F5539;
-  --code-punct: #6A6B6D;
+  --code-punct: #595A5D;
   --code-meta: #A16207;
   /* 字体栈与字号(themeStore 可注入覆盖) */
   --font-sans: "Inter Variable", "HarmonyOS Sans SC", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-serif: "Noto Serif SC", "SimSun", serif;
+  --font-serif: "Noto Serif SC Variable", "Noto Serif SC", "SimSun", serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", Consolas, monospace;
   --ui-size: 13px;
   --code-size: 12px;
@@ -89,9 +104,9 @@
   --bg-active: #FFFFFF14;
   --bg-selection: #F47B3324;
   --text: #E8E9EC;
-  --text-2: #A2A3A6;
-  --text-3: #7C7D80;
-  --text-4: #5B5C5F;
+  --text-2: #B1B2B5;
+  --text-3: #98999C;
+  --text-4: #747578;
   --text-inv: #191A1D;
   --line: #E8E9EC12;
   --line-strong: #E8E9EC21;
@@ -107,19 +122,27 @@
   --warn-bg: rgba(224, 180, 92, 0.16);
   --info: #7AA8F0;
   --info-bg: rgba(122, 168, 240, 0.16);
+  --mode-agent-icon: #60A5FA;
+  --mode-plan-icon: #FACC15;
+  --mode-ultraplan-icon: #A78BFA;
+  --mode-design-icon: #F472B6;
+  --mode-team-icon: #34D399;
+  --mode-debug-icon: #FB7185;
+  --mode-multitask-icon: #22D3EE;
+  --mode-ask-icon: #FB923C;
   --dot-running: #F47B33;
   --dot-done: #7BC996;
-  --dot-idle: #5B5C5F;
+  --dot-idle: #747578;
   --dot-blocked: #F0755A;
   --dot-queued: #E0B45C;
   --code-keyword: #F47B33;
   --code-string: #7BC996;
-  --code-comment: #7C7D80;
+  --code-comment: #98999C;
   --code-number: #E0B45C;
   --code-func: #7AA8F0;
   --code-type: #A78BFA;
   --code-prop: #C9A87C;
-  --code-punct: #A2A3A6;
+  --code-punct: #B1B2B5;
   --code-meta: #CBA35F;
   --sh-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --sh-float: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
@@ -128,29 +151,22 @@
   --scrim-modal: rgba(8, 9, 11, 0.36);
 }
 
-/* F7 wave.4:流式 caret 1s 闪烁(参考 .stream-caret);reduce-motion 禁闪 */
-@keyframes forge-caret-blink {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-.forge-stream-caret {
-  animation: forge-caret-blink 1s step-end infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .forge-stream-caret {
-    animation: none;
-  }
-}
-
-/* 思考中「Thinking」字样:亮带沿字面从左到右扫过(AssistantMessage ReasoningLine);
-   reduce-motion 停在静态 text_3 色,不留透明字。 */
-@keyframes forge-thinking-sweep {
+/* D-047 运行态扫光(Cursor 式):亮带从左到右循环扫过「正在执行」的那一行字——
+   思考中、活动段汇总、运行中的工具行 / 命令 / 文件变更、子代理进展行、Plan · Writing、
+   轮次状态行(Planning next moves 等)。取代原仅 Thinking 用的 .forge-thinking 与消息末的
+   accent 闪烁 caret。
+   - 对比(2026-10-07 用户反馈「太弱看不清」后加强;Codex 亮色实测原底 text_2 与亮带 text 只差约
+     28 L*,再被 .forge-legible 的 0.2px 底色描边吃掉一截,亮带里只剩约 20):
+     亮色 = 底色 text_4 + 亮带「text 再压黑一半」,描边钉在亮带色上——静息观感约 text_3(深色描边
+     托住字重,不像整片 text_4 那样又淡又细),扫到处近黑;
+     暗色没有描边,text_4 静息太暗,底色抬到 text_3,亮带「text 再提亮」到近白。都不借强调色。
+   - 亮带有平台(46%–54% 满强度)而非单点峰值,细笔画中文 / 12px 字上也看得出整段在亮。
+   - 背景 300% 宽:亮带扫出字面后留一小段空档再进场,不是连续闪。
+   - 挂在「贴字宽」的元素上(inline / inline-flex / w-fit):挂在整行宽的块上,亮带大半时间在扫空白。
+     子元素不要再写文字色(会盖掉 transparent),图标须自带颜色类。
+   - 透明字的描边色默认跟着透明,.forge-legible 的描边会消失、字显细;所以描边色要显式钉住。
+   - reduce-motion:停在静态 text_2,不留透明字。 */
+@keyframes forge-shimmer-sweep {
   from {
     background-position: 100% 0;
   }
@@ -158,26 +174,70 @@
     background-position: 0% 0;
   }
 }
-.forge-thinking {
-  /* 底色取 text_3 = 同列灰字汇总行的静息色,亮带到 text,扫过即亮一档 */
+.forge-shimmer {
+  --shimmer-base: var(--text-4);
+  --shimmer-hi: color-mix(in srgb, var(--text) 50%, #000);
   background-image: linear-gradient(
     90deg,
-    var(--text-3) 0%,
-    var(--text-3) 40%,
-    var(--text) 50%,
-    var(--text-3) 60%,
-    var(--text-3) 100%
+    var(--shimmer-base) 0%,
+    var(--shimmer-base) 38%,
+    var(--shimmer-hi) 46%,
+    var(--shimmer-hi) 54%,
+    var(--shimmer-base) 62%,
+    var(--shimmer-base) 100%
   );
-  background-size: 200% 100%;
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: forge-thinking-sweep 1.6s linear infinite;
+  -webkit-text-stroke-color: var(--shimmer-hi);
+  animation: forge-shimmer-sweep 2s linear infinite;
+}
+[data-theme='dark'] .forge-shimmer {
+  --shimmer-base: var(--text-3);
+  --shimmer-hi: color-mix(in srgb, var(--text) 40%, #fff);
 }
 @media (prefers-reduced-motion: reduce) {
-  .forge-thinking {
+  .forge-shimmer {
     background-image: none;
-    color: var(--text-3);
+    color: var(--text-2);
+    -webkit-text-stroke-color: currentColor;
+    animation: none;
+  }
+}
+
+/* D-047 新内容入场(Cursor 式「从上往下」):流式中新出现的块自上而下展开,同时轻微下落淡入。
+   遮罩是纵向软边渐变,mask-size 从 0 长到超过块高 → 可见区下沿从顶端一路推到底;
+   遮罩只写在关键帧里、fill-mode 用 backwards:播完即撤掉遮罩与位移,长对话里不留一堆合成层。
+   只挂在流式中的新块上(StreamEnter 在挂载时定夺),历史回放不动;reduce-motion 关闭。 */
+@keyframes forge-stream-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+    mask-image: linear-gradient(to bottom, #000 60%, transparent);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 0%;
+    mask-size: 100% 0%;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+    mask-image: linear-gradient(to bottom, #000 60%, transparent);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 170%;
+    mask-size: 100% 170%;
+  }
+}
+.forge-stream-in {
+  animation: forge-stream-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .forge-stream-in {
     animation: none;
   }
 }

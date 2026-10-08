@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 /// 托管安装锁定的版本(升级须显式改这里,免得某天上游破坏协议后无声漂移)。
-pub const CODEX_NPM_SPEC: &str = "@openai/codex@0.153.2";
+pub const CODEX_NPM_SPEC: &str = "@openai/codex@0.160.1";
 /// 桌面级 Computer Use 的开源 MCP 服务(官方运行时只随 ChatGPT 桌面版插件发布,
 /// 第三方 app-server 客户端拿不到;这个包跨平台且支持 Windows)。
 pub const COMPUTER_USE_NPM_SPEC: &str = "open-computer-use@0.3.3";

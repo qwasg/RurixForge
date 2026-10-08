@@ -7,6 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "antigravity:build": "node tools/antigravity-bridge/build.mjs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
@@ -15,6 +16,10 @@
     "dev:desktop": "pnpm --filter @forge/desktop dev",
     "test:rust": "cargo test --workspace",
     "test:go": "go -C gateway-go test ./...",
+    "dev:cloud": "docker compose -f cloud/deploy/docker-compose.dev.yml up -d",
+    "dev:cloud-admin": "pnpm --filter @forge/cloud-admin dev",
+    "test:cloud": "go -C cloud test ./...",
+    "test:cloud-e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cloud-e2e.ps1",
     "smoke:f0": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/f0-stack-smoke.ps1",
     "test:full": "node tools/e2e/run-all.mjs",
     "test:full:core": "node tools/e2e/run-all.mjs --profile core"

@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "researchedAt": "2026-09-06",
+  "purpose": "Code Sentinels 2D tower-defense visual reference provenance",
+  "policy": "Specific traceable community versions; no official or universally canonical AI character claim. Reference files are research material, not automatically redistributable game assets.",
+  "selectedCharacters": [
+    {
+      "id": "deepseek",
+      "displayName": "DeepSeek 鲸鱼娘",
+      "version": "Neko3000 DeepSeek Whale-chan Project reference sheet, based on 上善无形 / ZipZipPipe community design",
+      "sourcePage": "https://github.com/Neko3000/deepseek-whalechan",
+      "sourceFiles": [
+        {
+          "path": "deepseek-whalechan-overview.webp",
+          "url": "https://raw.githubusercontent.com/Neko3000/deepseek-whalechan/main/assets/readme/cn/character-samples/whalechan-character-overview-reference-sheet.webp"
+        },
+        {
+          "path": "deepseek-whalechan-portrait.webp",
+          "url": "https://raw.githubusercontent.com/Neko3000/deepseek-whalechan/main/assets/readme/cn/whalechan-standard-character-portrait.webp"
+        }
+      ],
+      "attribution": [
+        {
+          "name": "上善无形 / 上善",
+          "role": "鲸鱼娘原创原型",
+          "url": "https://space.bilibili.com/4456176",
+          "alternate": "https://www.pixiv.net/users/62155430"
+        },
+        {
+          "name": "ZipZipPipe / zipzip",
+          "role": "加入 DeepSeek 元素的女仆鲸鱼娘二创",
+          "url": "https://space.bilibili.com/4168597",
+          "alternate": "https://www.pixiv.net/users/18604994"
+        },
+        {
+          "name": "Neko3000 / DeepSeek Whale-chan Project",
+          "role": "本地所用参考卡整理与衍生视觉版本",
+          "url": "https://github.com/Neko3000/deepseek-whalechan"
+        }
+      ],
+      "observedFeatures": [
+        "深蓝长发，末梢渐变浅青",
+        "蓝眼睛，弯曲呆毛",
+        "头两侧鲸鳍状耳，深蓝鲸尾，尾部下侧浅色",
+        "白色褶边女仆头饰，蓝色蝴蝶结",
+        "深蓝长袖裙、白色围裙和裙摆褶边、金色纹饰",
+        "围裙蓝鲸图案、白袜、深蓝玛丽珍鞋"
+      ],
+      "verification": "Downloaded both source images and personally viewed them with view_image; overview includes front, side and back views.",
+      "licenseStatus": "Repository declares nonofficial noncommercial fan creation; specification documents CC BY-NC-SA 4.0; original artworks remain with original creators. Preserve attribution and NC-SA conditions for resulting fan derivative; do not claim MIT artwork.",
+      "licensePage": "https://github.com/Neko3000/deepseek-whalechan#-角色形象与二创著作权归属"
+    },
+    {
+      "id": "gpt",
+      "displayName": "GPT 龙娘",
+      "version": "JPEthan / ゆうまEthan〜 Token Monitor white-purple chibi dragon shown on YouTube",
+      "sourcePage": "https://github.com/JPEthan/token-monitor",
+      "sourceFiles": [
+        {
+          "path": "gpt-dragon-jpethan.png",
+          "url": "https://raw.githubusercontent.com/JPEthan/token-monitor/main/Resources/Mascot/dragon-chibi-neutral-v4.png"
+        },
+        {
+          "path": "gpt-dragon-youtube-037.png",
+          "url": "https://www.youtube.com/watch?v=xASRX37IIiY",
+          "kind": "Browser screenshot around 0:37; viewport includes YouTube UI"
+        }
+      ],
+      "attribution": [
+        {
+          "name": "JPEthan",
+          "role": "Published the reference image in Token Monitor; project owner states GPT image generation was used",
+          "url": "https://github.com/JPEthan/token-monitor"
+        },
+        {
+          "name": "ゆうまEthan〜",
+          "role": "YouTube uploader displaying the same character",
+          "url": "https://www.youtube.com/@ゆうまEthan"
+        }
+      ],
+      "observedFeatures": [
+        "白色长发与浅紫色描线，弯曲呆毛",
+        "两根有节理的白色角",
+        "紫色大眼睛，尖耳",
+        "左右浅紫翼膜的龙翼",
+        "白紫高领衣领、露肩与宽袖、紫色菱形胸饰",
+        "右侧头发有链形饰品与垂下的紫晶"
+      ],
+      "verification": "Opened and played the actual YouTube watch page using browser; confirmed uploader, title, date and character frame. Downloaded repository image and personally viewed it; design matches visible video. Source PNG is an upper-body crop, so legs and tail are not verified.",
+      "adaptationBoundary": "Only verified upper-body features; use a summoning projection / software pedestal below, not invented character lower body.",
+      "licenseStatus": "Artwork explicitly excluded from repository MIT license. No separate reuse, modification, sublicensing or redistribution permission granted by repository. Source reference is not a distributable production asset.",
+      "licensePage": "https://github.com/JPEthan/token-monitor/blob/main/ASSET_LICENSE.md",
+      "rightsRecord": "https://github.com/JPEthan/token-monitor/blob/main/ASSET_RIGHTS.md"
+    }
+  ],
+  "platformEvidence": [
+    {
+      "platform": "bilibili",
+      "url": "https://www.bilibili.com/video/BV1EvKK6NEoi/",
+      "title": "GPT小龙娘开始融入DeepSeek大家庭了（误）~这期花絮也加在后面喽~",
+      "uploader": "这个刀子真甜",
+      "published": "2026-07-18",
+      "evidence": "Indexed video description attributes maid and dragon-girl designs to ZipZipPipe and thanks the creator for open sharing.",
+      "verification": "Search tool returned real indexed video metadata/description; direct browser and API access returned HTTP 412. Do not represent this as personally watched."
+    },
+    {
+      "platform": "bilibili",
+      "url": "https://www.bilibili.com/video/BV1LMuQ6wEqS/",
+      "title": "什么叫GPT大半夜带着我的大肥鱼上天了？？？",
+      "uploader": "这个刀子真甜",
+      "published": "2026-08-10",
+      "evidence": "Indexed description says GPT design is from ZipZipPipe.",
+      "verification": "Indexed text verified; direct web opening unavailable."
+    },
+    {
+      "platform": "bilibili",
+      "url": "https://www.bilibili.com/video/BV1hauq6EEhU/",
+      "title": "DeepSeek大肥鱼在偷摸儿搜什么呢？",
+      "uploader": "尹紫鹭幻想社",
+      "published": "2026-08-11",
+      "evidence": "Indexed description credits ZipZipPipe design based on 上善无形 and explicitly refers to CC BY-NC-SA 4.0.",
+      "verification": "Indexed text verified; not personally played."
+    },
+    {
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=xASRX37IIiY",
+      "title": "DeepSeek 有的，我们 GPT 也要有！桌面 Token 龙娘来了｜macOS 主力开发、Windows 测试中",
+      "uploader": "ゆうまEthan〜",
+      "published": "2026-08-28",
+      "evidence": "Actual watch-page player shows DeepSeek whale-girl and white-purple GPT dragon-girl; expanded description mentions token-monitor and Bilibili BV1Ro866nEVh.",
+      "verification": "Browser watch page, expanded description and playback inspected. Screenshot preserved."
+    }
+  ],
+  "unresolved": [
+    "No verified universally accepted VS Code娘 or PyCharm娘 was found; use actual software logos as software facilities.",
+    "Bilibili ZipZipPipe GPT-girl evidence and YouTube JPEthan dragon reference are recorded separately: an original-author connection between those exact images has not been proven.",
+    "No verified full-body source for selected GPT dragon image; do not fabricate legs/tail or assert their design.",
+    "Alternative gpt-alternative-jadpp.webp was inspected but is not selected; it is a separate green/black-haired GPT version from JAdpp/dsh-whale-galgame."
+  ],
+  "software": [
+    {
+      "id": "vscode",
+      "path": "software/vscode.svg",
+      "name": "Visual Studio Code",
+      "owner": "Microsoft",
+      "sourcePage": "https://code.visualstudio.com/brand",
+      "download": "https://code.visualstudio.com/assets/branding/visual-studio-code-icons.zip",
+      "notes": "Actual stable SVG from official icon ZIP. resources/linux/code.svg returned 404; repository code.png also downloaded but is not the selected stable brand SVG. Trademark guidance applies; do not reshape/recolor or imply endorsement."
+    },
+    {
+      "id": "pycharm",
+      "path": "software/pycharm.svg",
+      "name": "PyCharm",
+      "owner": "JetBrains",
+      "sourcePage": "https://www.jetbrains.com/company/brand/",
+      "download": "https://resources.jetbrains.com/storage/logos/web/pycharm/pycharm.svg",
+      "notes": "Official brand-page asset path, actual SVG downloaded. Brand trademark remains JetBrains."
+    },
+    {
+      "id": "git",
+      "path": "software/git.svg",
+      "name": "Git",
+      "owner": "Git project / design by Jason Long",
+      "sourcePage": "https://git-scm.com/community/logos",
+      "download": "https://git-scm.com/images/logos/downloads/Git-Icon-1788C.svg",
+      "license": "CC BY 3.0 (Jason Long attribution)"
+    },
+    {
+      "id": "rust",
+      "path": "software/rust.svg",
+      "name": "Rust",
+      "owner": "Rust project",
+      "sourcePage": "https://github.com/rust-lang/rust-artwork",
+      "download": "https://raw.githubusercontent.com/rust-lang/rust-artwork/main/logo/rust-logo.svg",
+      "notes": "Actual Rust artwork repository logo. Trademark/media guide: https://foundation.rust-lang.org/policies/logo-policy-and-media-guide/"
+    }
+  ]
+}

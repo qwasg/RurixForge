@@ -1,5 +1,6 @@
 import { useChatStore, type TodoItem } from '@/lib/chatStore';
-import { StatusDot } from '@/components/shell/primitives';
+import TodoStatusIndicator from '@/components/workbench/TodoStatusIndicator';
+import { normalizeTodoStatus, type TodoStatus } from '@/lib/todoStatus';
 
 /**
  * F7 wave.5 Todo tab(参考 render_todo_page 四列看板):
@@ -8,19 +9,21 @@ import { StatusDot } from '@/components/shell/primitives';
  * 只读(本仓 todo 无 run 语义,不造重跑钮;参考的 rerun 依赖 active_run + action 面,不落)。
  */
 
-const COLUMNS: Array<{ id: string; label: string; statuses: string[] }> = [
-  { id: 'backlog', label: 'Backlog', statuses: ['queued', 'pending', '', 'created', 'todo'] },
-  { id: 'running', label: 'Running', statuses: ['running', 'in_progress'] },
-  { id: 'review', label: 'Review', statuses: ['failed', 'review', 'blocked'] },
-  { id: 'done', label: 'Done', statuses: ['completed', 'done'] },
+const COLUMNS: Array<{ id: string; label: string; status: TodoStatus }> = [
+  { id: 'backlog', label: 'Backlog', status: 'pending' },
+  { id: 'running', label: 'Running', status: 'running' },
+  { id: 'review', label: 'Review', status: 'failed' },
+  { id: 'done', label: 'Done', status: 'completed' },
 ];
 
-function statusDotColor(status: string): string {
-  if (status === 'completed' || status === 'done') return 'var(--dot-done)';
-  if (status === 'running' || status === 'in_progress') return 'var(--dot-running)';
-  if (status === 'failed' || status === 'blocked') return 'var(--dot-blocked)';
-  return 'var(--dot-queued)';
-}
+/** 待办来源标记(todo.source);Agent 在对话中建的待办无来源字段,不画标记。 */
+const SOURCE_LABEL: Record<string, string> = { plan: '计划', user: '用户', ultraplan: 'UltraPlan' };
+/** 来源标记的悬停说明(D-044:UltraPlan 制作阶段物化的任务另有一句)。 */
+const SOURCE_TITLE: Record<string, string> = {
+  plan: '来自计划文件',
+  user: '手动创建',
+  ultraplan: '来自 UltraPlan 计划',
+};
 
 function KanbanColumn({ label, items }: { label: string; items: TodoItem[] }) {
   return (
@@ -36,7 +39,7 @@ function KanbanColumn({ label, items }: { label: string; items: TodoItem[] }) {
           className="flex flex-col gap-1 rounded-lg border border-edge bg-shell-panel p-2 shadow-sh1"
         >
           <div className="flex items-center gap-1.5">
-            <StatusDot color={statusDotColor(t.status)} pulse={t.status === 'running'} />
+            <TodoStatusIndicator status={t.status} />
             <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg">
               {t.title === '' ? t.id : t.title}
             </span>
@@ -50,7 +53,15 @@ function KanbanColumn({ label, items }: { label: string; items: TodoItem[] }) {
             </div>
           ) : null}
           <div className="flex items-center gap-1">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-acc-bg text-[9px] text-acc">铸</span>
+            {SOURCE_LABEL[t.source ?? ''] && (
+              <span
+                data-testid={`todo-source-${t.id}`}
+                title={SOURCE_TITLE[t.source ?? '']}
+                className="rounded-full bg-acc-bg px-1.5 text-[9.5px] leading-4 text-acc"
+              >
+                {SOURCE_LABEL[t.source ?? '']}
+              </span>
+            )}
             <span className="text-[10px] text-fg-4">{t.status}</span>
           </div>
         </div>
@@ -70,7 +81,7 @@ export default function TodoTab() {
           <KanbanColumn
             key={c.id}
             label={c.label}
-            items={todos.filter((t) => c.statuses.includes(t.status))}
+            items={todos.filter((t) => normalizeTodoStatus(t.status) === c.status)}
           />
         ))}
       </div>

@@ -23,6 +23,7 @@ export interface EffectiveSpec {
   modelLabel: string;
   thinking: boolean;
   thinkingSupported: boolean;
+  thinkingAlwaysOn: boolean;
   effort: ModelEffortOption | null;
   effortOptions: ModelEffortOption[];
   effortSupported: boolean;
@@ -45,7 +46,8 @@ export function resolveModelSpec(
   const effortOptions = model?.effortOptions ?? [];
   const contextOptions = model?.contextOptions ?? [];
   const thinkingSupported = model?.supportsThinking === true;
-  const thinking = thinkingEnabled && thinkingSupported;
+  const thinkingAlwaysOn = thinkingSupported && model?.thinkingAlwaysOn === true;
+  const thinking = (thinkingEnabled || thinkingAlwaysOn) && thinkingSupported;
   const effortSupported = thinkingSupported && effortOptions.length > 0;
 
   const effort = effortSupported
@@ -68,6 +70,7 @@ export function resolveModelSpec(
     modelLabel: model?.label || modelId || 'default',
     thinking,
     thinkingSupported,
+    thinkingAlwaysOn,
     effort,
     effortOptions,
     effortSupported,

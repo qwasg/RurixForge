@@ -1,0 +1,55 @@
+{
+  "model": "claude-haiku-4-5",
+  "max_tokens": 4000,
+  "system": "sys",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "(continue)"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Earlier answer."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "First question"
+        },
+        {
+          "type": "text",
+          "text": "Second part"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Part A. "
+        },
+        {
+          "type": "text",
+          "text": "Part B."
+        },
+        {
+          "type": "text",
+          "text": "More."
+        }
+      ]
+    }
+  ]
+}

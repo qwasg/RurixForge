@@ -13,7 +13,9 @@ pub mod backends;
 pub mod config;
 pub mod embed;
 pub mod keystore;
+pub mod matte;
 pub mod media;
+pub mod profiles;
 pub mod mock;
 pub mod remote;
 // timeutil 已抽至 forge-util(三份逐字重复合并);重导出保 gend::timeutil 路径兼容
@@ -40,6 +42,8 @@ pub const GEN_BAD_PARAMS: &str = "GEN_BAD_PARAMS";
 /// 外部可执行依赖缺失(当前仅 ffmpeg,视频截帧用)。与「后端未配置」同档:
 /// 环境缺件是用户可补的配置问题,不是生成失败,更不能伪造帧糊过去(I-5)。
 pub const GEN_TOOL_MISSING: &str = "GEN_TOOL_MISSING";
+/// 后端已配置但不具备该能力(如改图)。
+pub const GEN_UNSUPPORTED: &str = "GEN_UNSUPPORTED";
 
 impl GenError {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {

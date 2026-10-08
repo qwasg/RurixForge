@@ -289,7 +289,7 @@ pub fn validate_graph_with_project(doc: &GraphDoc, root: &std::path::Path) -> Ve
     // 扫描器缓存:同 module 文件只读一次(文本级,D-RD4-A)。
     let mut export_cache: HashMap<String, Option<Vec<crate::rxexport::ExportedFn>>> = HashMap::new();
     for n in &doc.nodes {
-        if n.ntype != "call.call_function" {
+        if n.ntype != "call.call_function" && n.ntype != "call.native_frame" {
             continue;
         }
         // module/fn 缺失/悬空已被八臂 GRAPH_DANGLING_INPUT 报过,跳过不级联。
@@ -321,7 +321,9 @@ pub fn validate_graph_with_project(doc: &GraphDoc, root: &std::path::Path) -> Ve
                     let p = root.join(&module);
                     std::fs::read_to_string(p)
                         .ok()
-                        .map(|text| crate::rxexport::scan_export_c_fns(&text))
+                        .map(|text| if mpath.extension().and_then(|s| s.to_str()) == Some("rs") {
+                            crate::rxexport::scan_rust_c_fns(&text)
+                        } else { crate::rxexport::scan_export_c_fns(&text) })
                 })
                 .clone()
         } else {
@@ -343,6 +345,20 @@ pub fn validate_graph_with_project(doc: &GraphDoc, root: &std::path::Path) -> Ve
             ));
             continue;
         };
+        if n.ntype == "call.native_frame" {
+            let signature:Vec<&str>=efn.params.iter().map(|(_,t)|t.as_str()).collect();
+            if efn.ret!="u32" || signature!=["u32","f32","*const NativeBinding","u32","*mut NativeUpdate","u32"] {
+                errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH,&n.id,"native_frame requires ABI v1 (u32, f32, *const NativeBinding, u32, *mut NativeUpdate, u32) -> u32"));
+            }
+            match n.inputs.get("bindings") {
+                Some(ValueSource::Const{konst})=>match serde_json::from_value::<Vec<crate::callruntime::NativeBinding>>(konst.clone()) {
+                    Ok(bindings)=>{let ids:std::collections::HashSet<u64>=bindings.iter().map(|b|b.entity_id).collect();if bindings.len()>4096||ids.len()!=bindings.len(){errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH,&n.id,"native frame bindings exceed 4096 or contain duplicate entity IDs"));}},
+                    Err(error)=>errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH,&n.id,format!("invalid native frame bindings: {error}"))),
+                },
+                _=>errs.push(GraphError::at(GRAPH_CALL_SIG_MISMATCH,&n.id,"native frame bindings must be a constant array")),
+            }
+            continue;
+        }
         // 返回类型子集门(result 编组面)。
         if !matches!(efn.ret.as_str(), "void" | "f32" | "f64" | "i32" | "bool") {
             errs.push(GraphError::at(

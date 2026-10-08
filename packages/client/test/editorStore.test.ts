@@ -35,6 +35,44 @@ function callBody(n = 0): { tool: string; arguments: Record<string, unknown> } {
 }
 
 describe('editorStore', () => {
+  it('refreshRenderBackend:能力来自真实 RPC，只提示 forge.toml 不一致，不执行切换/写配置', async () => {
+    const capabilities = {
+      renderBackend: 'godot',
+      pipelined: true,
+      legs: ['sprite_mesh', 'model'],
+      preview: true,
+      particles: false,
+      frameExits: { cpuRgba8: true, sharedD3d12: true, zeroCopy: false },
+      stats: { nonzero: true, triangles: true, truncated: false, meshFallbacks: false, meshClasses: false },
+      maxDraws: { spriteMesh: null, model: null, sentinelsV6: null },
+      maxSize: { rpc: [1920, 1080] as [number, number], stream: [1280, 720] as [number, number] },
+      coverage: { unsupported: [{ feature: 'Sprite.flip', reason: '配置未接入' }] },
+    };
+    fetchMock = mockForgeBackend({
+      render_backend_info: {
+        renderBackend: 'godot', method: 'forward_plus', driver: 'd3d12', source: 'forge.toml',
+        ready: true, deviceName: '真实 GPU', versions: { engineHost: '0.1.0', godot: '4.7.2', gdext: '0.5.5' },
+      },
+      render_capabilities: capabilities,
+    }, {
+      '/api/forge/workspace/file': {
+        path: 'forge.toml',
+        content: '[render]\\nbackend = "godot"\\nmethod = "mobile"\\ndriver = "d3d12"\\n',
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.removeItem('forge:activeWorkspace');
+
+    await useEditorStore.getState().refreshRenderBackend(null);
+    const state = useEditorStore.getState();
+    expect(state.renderBackendInfo?.deviceName).toBe('真实 GPU');
+    expect(state.renderCapabilities).toEqual(capabilities);
+    expect(state.renderConfigMismatch).toContain('forge.toml 当前配置为 godot / mobile / d3d12');
+    expect(state.renderConfigMismatch).toContain('未自动切换');
+    expect(state.renderStatusError).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => String(url) === '/api/forge/mcp/call' || String(url).startsWith('/api/forge/workspace/file'))).toBe(true);
+  });
+
   it('loadEntities:打 entity_list 并填充实体表', async () => {
     fetchMock = mockForgeBackend({ entity_list: { entities: [CUBE] } });
     vi.stubGlobal('fetch', fetchMock);
@@ -164,13 +202,11 @@ describe('editorStore', () => {
   });
 
   it('错误分支:工具调用失败时写入 lastError', async () => {
-    fetchMock = mockForgeBackend({
-      entity_list: { entities: [CUBE] },
-    });
-    // edit_undo 未 mock → 抛错 → lastError
+    fetchMock = vi.fn(async () => ({ ok: false, status: 409, json: async () => ({ error: { code: 'HISTORY_CONFLICT', message: '历史栈顶已改变' } }) }) as Response);
+    // 协调撤销拒绝后，冲突原因必须展示而不能绕过后端直接 edit_undo。
     vi.stubGlobal('fetch', fetchMock);
     await useEditorStore.getState().undo();
-    expect(useEditorStore.getState().lastError).toContain('未 mock 的工具');
+    expect(useEditorStore.getState().lastError).toContain('历史栈顶已改变');
   });
 
   it('runPlaytest:汇总行 + 失败用例走 toast(底栏波:Console 退役后的唯一展示位)', async () => {

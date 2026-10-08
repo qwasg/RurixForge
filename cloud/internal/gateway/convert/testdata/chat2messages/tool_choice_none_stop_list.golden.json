@@ -1,0 +1,31 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 8192,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Just talk."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "calc",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "none"
+  },
+  "stop_sequences": [
+    "STOP",
+    "END"
+  ]
+}

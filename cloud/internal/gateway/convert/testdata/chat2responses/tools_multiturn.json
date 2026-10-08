@@ -1,0 +1,28 @@
+{
+  "options": {"model": "gpt-5", "stream": true},
+  "request": {
+    "model": "forge-gpt-5",
+    "messages": [
+      {"role": "system", "content": [{"type": "text", "text": "Use tools when needed."}]},
+      {"role": "user", "content": "Weather in Paris and the time in Tokyo?"},
+      {"role": "assistant", "content": "Let me check both.", "tool_calls": [
+        {"id": "call_a", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}},
+        {"id": "call_b", "type": "function", "function": {"name": "get_time", "arguments": ""}}
+      ]},
+      {"role": "tool", "tool_call_id": "call_a", "content": "18°C, cloudy"},
+      {"role": "tool", "tool_call_id": "call_b", "content": [{"type": "text", "text": "09:30 "}, {"type": "text", "text": "JST"}]},
+      {"role": "assistant", "content": null, "tool_calls": [
+        {"id": "call_c", "type": "function", "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}}}
+      ]},
+      {"role": "tool", "tool_call_id": "call_c", "content": "22°C, sunny"},
+      {"role": "assistant", "content": "Paris: 18°C cloudy. Tokyo: 09:30, 22°C sunny."},
+      {"role": "user", "content": "Thanks!"}
+    ],
+    "tools": [
+      {"type": "function", "function": {"name": "get_weather", "description": "Get current weather", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}, "strict": true}},
+      {"type": "function", "function": {"name": "get_time"}}
+    ],
+    "tool_choice": "auto",
+    "parallel_tool_calls": true
+  }
+}

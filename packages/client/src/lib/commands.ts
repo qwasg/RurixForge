@@ -1,6 +1,7 @@
 import { useOverlayStore } from './overlayStore';
 import { usePlanStore } from './planStore';
 import { useSessionStore } from './sessionStore';
+import { KEYS } from './shortcuts';
 import { useThemeStore } from './themeStore';
 import { useToastStore } from './toastStore';
 import { useWorkbenchStore } from './workbenchStore';
@@ -25,7 +26,7 @@ export const COMMANDS: Command[] = [
     id: 'session.new',
     label: 'New Agent',
     section: 'agent',
-    shortcut: 'Ctrl+Shift+N',
+    shortcut: KEYS.newSession,
     run: () => void useSessionStore.getState().create(),
   },
   {
@@ -55,6 +56,12 @@ export const COMMANDS: Command[] = [
     run: () => useWorkbenchStore.getState().openTab('todo'),
   },
   {
+    id: 'tab.goal',
+    label: '打开 Goal',
+    section: 'navigate',
+    run: () => useWorkbenchStore.getState().openTab('goal'),
+  },
+  {
     id: 'tab.proposals',
     label: '打开提案',
     section: 'navigate',
@@ -76,7 +83,7 @@ export const COMMANDS: Command[] = [
     id: 'bottom.toggle',
     label: '切换底部面板',
     section: 'view',
-    shortcut: 'Ctrl+J',
+    shortcut: KEYS.toggleBottom,
     run: () => useWorkbenchStore.getState().toggleBottom(),
   },
   {
@@ -89,6 +96,7 @@ export const COMMANDS: Command[] = [
     id: 'pane.sessions',
     label: '切换会话栏',
     section: 'view',
+    shortcut: KEYS.toggleSessions,
     run: () => useWorkbenchStore.getState().togglePane('sessions'),
   },
   {
@@ -101,6 +109,7 @@ export const COMMANDS: Command[] = [
     id: 'pane.inspector',
     label: '切换 Inspector',
     section: 'view',
+    shortcut: KEYS.toggleInspector,
     run: () => useWorkbenchStore.getState().togglePane('inspector'),
   },
   {
@@ -119,7 +128,7 @@ export const COMMANDS: Command[] = [
     id: 'palette.open',
     label: '命令面板',
     section: 'view',
-    shortcut: 'Ctrl+K',
+    shortcut: KEYS.palette,
     run: () => useOverlayStore.getState().open('palette'),
   },
   {

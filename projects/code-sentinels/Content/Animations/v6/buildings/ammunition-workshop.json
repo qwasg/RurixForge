@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 2,
+  "id": "ammunition-workshop",
+  "image": "ammunition-workshop.png",
+  "width": 1024,
+  "height": 512,
+  "frameCount": 8,
+  "frameSize": [
+    256,
+    256
+  ],
+  "pivot": [
+    0.5,
+    0.88
+  ],
+  "boxes": [
+    [
+      0,
+      0,
+      256,
+      256
+    ],
+    [
+      256,
+      0,
+      256,
+      256
+    ],
+    [
+      512,
+      0,
+      256,
+      256
+    ],
+    [
+      768,
+      0,
+      256,
+      256
+    ],
+    [
+      0,
+      256,
+      256,
+      256
+    ],
+    [
+      256,
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      256,
+      256,
+      256
+    ],
+    [
+      768,
+      256,
+      256,
+      256
+    ]
+  ],
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "clips": {
+    "idle": {
+      "s": {
+        "start": 0,
+        "endExclusive": 1,
+        "fps": 1,
+        "loop": true
+      },
+      "sw": {
+        "start": 1,
+        "endExclusive": 2,
+        "fps": 1,
+        "loop": true
+      },
+      "w": {
+        "start": 2,
+        "endExclusive": 3,
+        "fps": 1,
+        "loop": true
+      },
+      "nw": {
+        "start": 3,
+        "endExclusive": 4,
+        "fps": 1,
+        "loop": true
+      },
+      "n": {
+        "start": 4,
+        "endExclusive": 5,
+        "fps": 1,
+        "loop": true
+      },
+      "ne": {
+        "start": 5,
+        "endExclusive": 6,
+        "fps": 1,
+        "loop": true
+      },
+      "e": {
+        "start": 6,
+        "endExclusive": 7,
+        "fps": 1,
+        "loop": true
+      },
+      "se": {
+        "start": 7,
+        "endExclusive": 8,
+        "fps": 1,
+        "loop": true
+      }
+    }
+  },
+  "provenance": {
+    "id": "ammunition-workshop",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/ammunition-workshop.blend",
+    "glb": "Content/Models/v6/ammunition-workshop.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review",
+    "sourceModelSha256": "f915cb1b8522e1af40e9cf30d4e7d0a169d7456a39699020541836090cb65930",
+    "glbSha256": "0cc390c6c9081aefa88463a47dbaa14146e476f2bb24d817fa3e0a0ae5c43782"
+  },
+  "orthographicSpan": 3.6,
+  "projection": "isometric-2:1",
+  "nativePlaneSpan": 2.545584412271571,
+  "bakeFitScale": 1.0,
+  "sourcePivot": [
+    0.5,
+    0.6563656979055237
+  ],
+  "anchorMeaning": "exact projected model world origin at ground z=0",
+  "directionConvention": {
+    "labels": "screen directions on the isometric map",
+    "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+    "mapping": [
+      {
+        "index": 0,
+        "label": "s",
+        "worldDelta": [
+          1,
+          1
+        ],
+        "screenDelta": [
+          0.0,
+          0.5
+        ],
+        "blenderYawDegrees": -135
+      },
+      {
+        "index": 1,
+        "label": "sw",
+        "worldDelta": [
+          0,
+          1
+        ],
+        "screenDelta": [
+          -0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -180
+      },
+      {
+        "index": 2,
+        "label": "w",
+        "worldDelta": [
+          -1,
+          1
+        ],
+        "screenDelta": [
+          -1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -225
+      },
+      {
+        "index": 3,
+        "label": "nw",
+        "worldDelta": [
+          -1,
+          0
+        ],
+        "screenDelta": [
+          -0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -270
+      },
+      {
+        "index": 4,
+        "label": "n",
+        "worldDelta": [
+          -1,
+          -1
+        ],
+        "screenDelta": [
+          0.0,
+          -0.5
+        ],
+        "blenderYawDegrees": -315
+      },
+      {
+        "index": 5,
+        "label": "ne",
+        "worldDelta": [
+          0,
+          -1
+        ],
+        "screenDelta": [
+          0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -360
+      },
+      {
+        "index": 6,
+        "label": "e",
+        "worldDelta": [
+          1,
+          -1
+        ],
+        "screenDelta": [
+          1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -405
+      },
+      {
+        "index": 7,
+        "label": "se",
+        "worldDelta": [
+          1,
+          0
+        ],
+        "screenDelta": [
+          0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -450
+      }
+    ],
+    "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+    "zeroMovement": "retain previous direction",
+    "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+  },
+  "defaultDirection": "ne",
+  "frontModelAxis": "-Y",
+  "defaultPlacement": "unrotated model geometry aligned to map x/y; direction index5 has root yaw-360degrees"
+}

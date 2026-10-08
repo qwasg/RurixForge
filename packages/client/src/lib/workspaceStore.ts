@@ -66,9 +66,12 @@ interface WorkspaceState {
   recentIds: string[];
   loading: boolean;
   offline: boolean;
+  /** 侧栏工作区选择器面板是否展开(状态栏工作区段也能唤起;不持久化)。 */
+  pickerOpen: boolean;
 
   loadAll: () => Promise<void>;
-  create: (name: string, root: string) => Promise<ForgeWorkspace | null>;
+  setPickerOpen: (open: boolean) => void;
+  create: (name: string, root: string, options?: { createRoot?: boolean }) => Promise<ForgeWorkspace | null>;
   rename: (id: string, name: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   setActive: (id: string | null) => void;
@@ -85,6 +88,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   recentIds: readRecentIds(),
   loading: false,
   offline: false,
+  pickerOpen: false,
+
+  setPickerOpen: (open) => set({ pickerOpen: open }),
 
   loadAll: async () => {
     set({ loading: true });
@@ -111,14 +117,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  create: async (name, root) => {
+  create: async (name, root, options) => {
     const trimmedName = name.trim();
     const trimmedRoot = root.trim();
-    if (trimmedName === '' || trimmedRoot === '') return null;
+    if (trimmedName === '' || (trimmedRoot === '' && !options?.createRoot)) return null;
     try {
       const r = await apiPost<{ workspace: ForgeWorkspace }>('/api/forge/workspaces', {
         name: trimmedName,
         root: trimmedRoot,
+        ...(options?.createRoot ? { createRoot: true } : {}),
       });
       const recentIds = touchRecent(get().recentIds, r.workspace.id);
       set((st) => ({

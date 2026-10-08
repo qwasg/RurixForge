@@ -24,6 +24,8 @@ describe('settingsStore', () => {
     expect(globalThis.localStorage?.getItem('forge:settingsPage')).toBe('models');
     useSettingsStore.getState().setPage('skills');
     expect(globalThis.localStorage?.getItem('forge:settingsPage')).toBe('skills');
+    useSettingsStore.getState().setPage('codex');
+    expect(globalThis.localStorage?.getItem('forge:settingsPage')).toBe('codex');
   });
 
   it('Ctrl+Enter 发送开关 + 持久化 forge:submitCtrl', () => {
@@ -72,6 +74,15 @@ describe('workbenchStore 底部面板', () => {
     useWorkbenchStore.getState().openTab('proposals');
     expect(useWorkbenchStore.getState().tabs.length).toBe(2);
     expect(useWorkbenchStore.getState().activeTabId).toBe('proposals');
+  });
+
+  it('Goal 是可单例打开的内建 tab', () => {
+    useWorkbenchStore.getState().openTab('goal');
+    useWorkbenchStore.getState().openTab('goal');
+    expect(useWorkbenchStore.getState().tabs).toEqual([
+      { id: 'goal', kind: 'goal', title: 'Goal' },
+    ]);
+    expect(useWorkbenchStore.getState().activeTabId).toBe('goal');
   });
 
   it('openFile 按 path 单例:重开=激活;关闭后个人工作区空态', () => {

@@ -1,0 +1,6 @@
+fn main() {}
+static mut HEALTH: f32 = 20.0;
+#[export(c)]
+pub fn probe(value: f32) -> f32 {
+    unsafe { HEALTH = HEALTH + value; return HEALTH; }
+}

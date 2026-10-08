@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Search, Sparkles } from 'lucide-react';
+import { formatAmount } from '@/lib/accountApi';
 import { useChatStore, type SnapshotModel } from '@/lib/chatStore';
-import { useEffectiveSpec, type EffectiveSpec } from '@/lib/modelSpec';
+import { resolveModelSpec, type EffectiveSpec } from '@/lib/modelSpec';
 import { cn } from '@/lib/cn';
 
 /**
@@ -34,19 +35,58 @@ export default function ModelPicker({
   onOpen,
   placement = 'up',
   align = 'left',
+  provider,
+  excludeProvider,
+  disabled = false,
 }: {
   onOpen?: () => void;
   placement?: PickerPlacement;
   align?: PickerAlign;
+  /** 指定引擎时只展示该 provider 的模型；Codex Composer 用此隔离本地目录。 */
+  provider?: string;
+  excludeProvider?: string;
+  disabled?: boolean;
 }) {
   const models = useChatStore((st) => st.models);
+  const selectedModelId = useChatStore((st) => st.selectedModelId);
+  const defaultModelId = useChatStore((st) => st.defaultModelId);
   const thinkingEnabled = useChatStore((st) => st.thinkingEnabled);
+  const reasoningEffort = useChatStore((st) => st.reasoningEffort);
+  const contextOptionId = useChatStore((st) => st.contextOptionId);
   const pickModel = useChatStore((st) => st.pickModel);
   const setThinking = useChatStore((st) => st.setThinking);
   const pickEffort = useChatStore((st) => st.pickEffort);
   const pickContext = useChatStore((st) => st.pickContext);
   const ensureModels = useChatStore((st) => st.ensureModels);
-  const spec = useEffectiveSpec();
+  const visibleModels = useMemo(
+    () =>
+      provider
+        ? models.filter((model) => (model.provider ?? '').toLowerCase() === provider.toLowerCase())
+        : excludeProvider
+          ? models.filter((model) => (model.provider ?? '').toLowerCase() !== excludeProvider.toLowerCase())
+          : models,
+    [excludeProvider, models, provider],
+  );
+  // provider 模式（当前只有 Codex）不能借用本地目录的 defaultModelId。会话未显式
+  // 选模型时，真实语义是「交给 Codex 配置/app-server 选默认」，因此显示“自动”，
+  // 而不是只在视觉上冒充列表第一项。
+  const requestedModelId = selectedModelId ?? (provider ? null : defaultModelId);
+  const requestedIsVisible =
+    requestedModelId !== null && visibleModels.some((model) => model.id === requestedModelId);
+  const visibleModelId = provider
+    ? (requestedIsVisible ? requestedModelId : null)
+    : (excludeProvider && !requestedIsVisible
+        ? (visibleModels[0]?.id ?? requestedModelId)
+        : requestedModelId);
+  const spec = resolveModelSpec(
+    visibleModels,
+    visibleModelId,
+    thinkingEnabled,
+    reasoningEffort,
+    contextOptionId,
+  );
+  const automatic = provider !== undefined && visibleModelId === null;
+  const modelLabel = automatic ? '自动' : spec.modelLabel;
 
   const [open, setOpen] = useState(false);
   const [sub, setSub] = useState<SubMenu>(null);
@@ -80,8 +120,16 @@ export default function ModelPicker({
     }
   }, [open]);
   useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+  useEffect(() => {
     if (sub === 'model') searchRef.current?.focus();
   }, [sub]);
+
+  useEffect(() => {
+    if (!provider || visibleModels.length > 0) return;
+    void ensureModels(false, provider);
+  }, [ensureModels, provider, visibleModels.length]);
 
   const closeAll = () => setOpen(false);
   // 可展开行:hover 与 click 都只「确保展开」而非 toggle——否则鼠标移上去已展开、
@@ -89,26 +137,29 @@ export default function ModelPicker({
   const expand = (key: Exclude<SubMenu, null>, enabled = true) => () => setSub(enabled ? key : null);
 
   return (
-    <div ref={rootRef} className="relative flex items-center">
+    <div ref={rootRef} className="relative flex min-w-0 items-center">
       <button
         type="button"
         aria-label="选择模型"
         aria-expanded={open}
         data-testid="composer-model"
+        disabled={disabled}
         onClick={() => {
+          if (disabled) return;
           if (!open) {
             onOpen?.();
-            if (models.length === 0) void ensureModels();
+            if (visibleModels.length === 0) void ensureModels(false, provider);
           }
           setOpen((v) => !v);
         }}
         className={cn(
-          'flex h-[22px] items-center gap-1 rounded-md px-1.5 text-[11px] hover:bg-shell-hover',
+          'flex h-[22px] min-w-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[11px] hover:bg-shell-hover',
           open ? 'bg-shell-hover text-fg' : 'text-fg-2',
+          disabled && 'cursor-not-allowed opacity-60',
         )}
       >
-        <Sparkles size={11} />
-        <span className="max-w-[140px] truncate">{spec.modelLabel}</span>
+        <Sparkles size={11} className="shrink-0" />
+        <span className="min-w-0 max-w-[140px] truncate">{modelLabel}</span>
         {spec.suffix !== '' && (
           <span data-testid="composer-model-suffix" className="text-fg-4">
             {spec.suffix}
@@ -132,14 +183,15 @@ export default function ModelPicker({
           <SpecRow
             testId="spec-row-thinking"
             label="Thinking"
-            disabled={!spec.thinkingSupported}
-            disabledHint={`${spec.modelLabel} 不支持思考模式`}
+            value={spec.thinkingAlwaysOn ? '始终开启' : undefined}
+            disabled={!spec.thinkingSupported || spec.thinkingAlwaysOn}
+            disabledHint={spec.thinkingAlwaysOn ? `${modelLabel} 始终启用自适应思考，可在 Effort 中调整强度` : `${modelLabel} 不支持思考模式`}
             onHover={() => setSub(null)}
             onSelect={() => void setThinking(!thinkingEnabled)}
             trailing={
               <Switch
                 on={spec.thinking}
-                disabled={!spec.thinkingSupported}
+                disabled={!spec.thinkingSupported || spec.thinkingAlwaysOn}
                 testId="spec-thinking-switch"
               />
             }
@@ -161,7 +213,7 @@ export default function ModelPicker({
             value={spec.effort?.label}
             disabled={!spec.effortSupported || !spec.thinking}
             disabledHint={
-              spec.effortSupported ? '先开启 Thinking' : `${spec.modelLabel} 不接受推理强度参数`
+              spec.effortSupported ? '先开启 Thinking' : `${modelLabel} 不接受推理强度参数`
             }
             expandable
             active={sub === 'effort'}
@@ -172,7 +224,7 @@ export default function ModelPicker({
           <SpecRow
             testId="spec-row-model"
             label="Model"
-            value={spec.modelLabel}
+            value={modelLabel}
             expandable
             active={sub === 'model'}
             onHover={expand('model')}
@@ -215,13 +267,15 @@ export default function ModelPicker({
 
           {sub === 'model' && (
             <ModelSubMenu
-              models={models}
+              models={visibleModels}
               spec={spec}
               query={query}
               onQuery={setQuery}
               searchRef={searchRef}
               placement={placement}
               align={align}
+              allowAutomatic={provider !== undefined}
+              automaticActive={automatic}
               onPick={(id) => {
                 closeAll();
                 void pickModel(id);
@@ -322,6 +376,7 @@ function OptionRow({
   testId,
   label,
   detail,
+  badge,
   active,
   disabled,
   disabledHint,
@@ -330,6 +385,7 @@ function OptionRow({
   testId: string;
   label: string;
   detail?: string;
+  badge?: React.ReactNode;
   active: boolean;
   disabled?: boolean;
   disabledHint?: string;
@@ -349,12 +405,29 @@ function OptionRow({
       )}
     >
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[12px] text-fg-2">{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[12px] text-fg-2">{label}</span>
+          {badge}
+        </span>
         {detail && <span className="truncate text-[10.5px] text-fg-4">{detail}</span>}
       </span>
       {active && <Check size={11} className="shrink-0 text-acc" />}
     </button>
   );
+}
+
+/** 云端条目(provider=cloud)的单价提示:每 1M tokens 输入 / 输出。 */
+function cloudPriceHint(m: SnapshotModel): string | undefined {
+  const p = m.pricing;
+  if (!p || (p.inputPer1M === undefined && p.outputPer1M === undefined)) return undefined;
+  return `输入 ${formatAmount(p.inputPer1M)} · 输出 ${formatAmount(p.outputPer1M)} ${m.currency || 'USD'}/1M`;
+}
+
+/** 云端条目不可选的原因(needs-login / unavailable);可选时返回 undefined。 */
+function cloudBlockedHint(availability: string | undefined): string | undefined {
+  if (availability === 'needs-login') return '需登录 RurixForge 云';
+  if (availability === 'unavailable') return '暂不可用';
+  return undefined;
 }
 
 /** 模型子菜单:搜索框 + 按 group 分组 + needs-key 禁用。 */
@@ -366,6 +439,8 @@ function ModelSubMenu({
   searchRef,
   placement,
   align,
+  allowAutomatic,
+  automaticActive,
   onPick,
 }: {
   models: SnapshotModel[];
@@ -375,7 +450,9 @@ function ModelSubMenu({
   searchRef: React.RefObject<HTMLInputElement>;
   placement: PickerPlacement;
   align: PickerAlign;
-  onPick: (id: string) => void;
+  allowAutomatic: boolean;
+  automaticActive: boolean;
+  onPick: (id: string | null) => void;
 }) {
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -409,7 +486,16 @@ function ModelSubMenu({
           className="min-w-0 flex-1 bg-transparent text-[11.5px] text-fg outline-none placeholder:text-fg-4"
         />
       </div>
-      {groups.length === 0 && (
+      {allowAutomatic && (
+        <OptionRow
+          testId="model-item-auto"
+          label="自动"
+          detail="使用 Codex 默认模型"
+          active={automaticActive}
+          onSelect={() => onPick(null)}
+        />
+      )}
+      {groups.length === 0 && !allowAutomatic && (
         <div className="p-2.5 text-[11.5px] text-fg-4">
           {models.length === 0 ? '暂无可用模型' : '无匹配模型'}
         </div>
@@ -418,16 +504,64 @@ function ModelSubMenu({
         <div key={g.name} className="flex flex-col">
           <div className="px-2 py-1 text-[9.5px] text-fg-4">{g.name}</div>
           {g.items.map((m) => {
-            const needsKey = m.availability === 'needs-key';
+            if (m.provider === 'cloud') {
+              const blocked = cloudBlockedHint(m.availability);
+              return (
+                <OptionRow
+                  key={m.id}
+                  testId={`model-item-${m.id}`}
+                  label={m.label || m.id}
+                  detail={blocked ?? cloudPriceHint(m)}
+                  badge={
+                    m.vision ? (
+                      <span
+                        data-testid={`model-vision-${m.id}`}
+                        className="shrink-0 rounded bg-sage-bg px-1 text-[9px] leading-[14px] text-sage"
+                      >
+                        视觉
+                      </span>
+                    ) : undefined
+                  }
+                  active={m.id === spec.model?.id}
+                  disabled={blocked !== undefined}
+                  disabledHint={blocked}
+                  onSelect={() => onPick(m.id)}
+                />
+              );
+            }
+            const isNeedsKey = m.availability === 'needs-key';
+            const isNeedsConfig = m.availability === 'needs-config';
+            const isOffline = m.availability === 'offline' || m.availability === 'disconnected';
+
+            let disabledHint: string | undefined = undefined;
+            if (isNeedsKey) disabledHint = '未配置 Key';
+            else if (isNeedsConfig) disabledHint = '未配置反代';
+            else if (isOffline) disabledHint = '反代离线';
+
+            const isDisabled = disabledHint !== undefined;
+            const detailText = isDisabled
+              ? `${m.provider ?? ''} · ${disabledHint}`
+              : m.provider;
+
             return (
               <OptionRow
                 key={m.id}
                 testId={`model-item-${m.id}`}
                 label={m.label || m.id}
-                detail={needsKey ? `${m.provider ?? ''} · 未配置 Key` : m.provider}
+                detail={detailText}
+                badge={
+                  m.vision ? (
+                    <span
+                      data-testid={`model-vision-${m.id}`}
+                      className="shrink-0 rounded bg-sage-bg px-1 text-[9px] leading-[14px] text-sage"
+                    >
+                      视觉
+                    </span>
+                  ) : undefined
+                }
                 active={m.id === spec.model?.id}
-                disabled={needsKey}
-                disabledHint="未配置 Key"
+                disabled={isDisabled}
+                disabledHint={disabledHint}
                 onSelect={() => onPick(m.id)}
               />
             );

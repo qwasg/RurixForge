@@ -1,0 +1,40 @@
+{
+  "id": "chatcmpl-msg_ns1",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "claude-sonnet-4-5",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Final answer.",
+        "reasoning_content": "Reasoning here.",
+        "anthropic_content": [
+          {
+            "signature": "sig",
+            "thinking": "Reasoning here.",
+            "type": "thinking"
+          },
+          {
+            "data": "xyz",
+            "type": "redacted_thinking"
+          },
+          {
+            "text": "Final answer.",
+            "type": "text"
+          }
+        ]
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 100,
+    "completion_tokens": 25,
+    "total_tokens": 125,
+    "prompt_tokens_details": {
+      "cached_tokens": 60
+    }
+  }
+}

@@ -145,6 +145,7 @@ fn doc_json(d: &IndexDoc, full: bool) -> Value {
         "tags": d.tags,
         "facts": if full { d.facts.clone() } else { snippet(&d.facts) },
         "refs": d.refs,
+        "indexedContentHash": d.content_hash,
     })
 }
 

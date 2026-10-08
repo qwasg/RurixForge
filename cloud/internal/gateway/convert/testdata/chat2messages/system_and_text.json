@@ -1,0 +1,18 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [
+      {"role": "system", "content": "You are Claude."},
+      {"role": "developer", "content": [{"type": "text", "text": "Be concise."}]},
+      {"role": "user", "content": "Hello <there> & welcome"}
+    ],
+    "max_tokens": 1024,
+    "temperature": 0.5,
+    "top_p": 0.9,
+    "stop": "END",
+    "user": "user-42",
+    "tool_choice": "auto",
+    "stream": true
+  }
+}

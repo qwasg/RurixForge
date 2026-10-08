@@ -1,0 +1,68 @@
+{
+  "tool": "built-in image_gen",
+  "purpose": "Tactical card interface artwork, original illustrations; researched AI identities retained; real GPU photos composed separately",
+  "assets": [
+    {
+      "key": "operator-deepseek",
+      "refs": [
+        "D:\\RurixForge\\packages\\client\\public\\games\\code-sentinels\\deepseek.png"
+      ],
+      "prompt": "Create a premium vertical OPERATOR CARD ILLUSTRATION for an original science-fiction tower defense. Use the attached researched DeepSeek whale-maid character as the EXACT character reference: same chibi proportions, blue eyes, cobalt long hair with cyan tips, whale-fin ears, white maid headband, navy-and-white maid outfit with gold details, blue whale apron motif, white stockings and navy whale tail. Do not change the character design or add weapons. Make a dynamic three-quarter portrait composition of this same character extending her hand to command a curling cyan tidal ribbon; place her large in the middle and upper two-thirds, face especially clear. Behind her: monochrome charcoal industrial architecture, layered ivory paper-like geometric planes, thin cyan circuit arcs and flowing ocean-energy mist. High-contrast premium anime collectible tactical card art, intricate professional finish, restrained palette charcoal/ivory/cyan/cobalt, graphic silhouette, beautiful dramatic light. The bottom20% fades to deep charcoal for later code-drawn typography. Borderless full-bleed illustration, portrait2:3 composition. NO words, NO letters, NO logos, NO UI, NO drawn frame or cards within image. This is original game art inspired by industrial tactical presentation, not an Arknights character."
+    },
+    {
+      "key": "operator-gpt",
+      "refs": [
+        "D:\\RurixForge\\packages\\client\\public\\games\\code-sentinels\\gpt.png"
+      ],
+      "prompt": "Create a premium vertical operator-card illustration for an original sci-fi tower-defense game. Attached image is the EXACT identity reference for the existing GPT white dragon girl: preserve her white hair and ahoge, two ridged white horns, large violet eyes, pointed ears, lavender membranous wings, violet crystal earring and pendant, white high-neck bare-shoulder patterned garment, and chibi proportions. Reference is HALF BODY ONLY: retain a half-body projection and do not invent legs, tail or new costume. Compose this same figure large in the upper two-thirds, a contained brilliant lavender star core and three thin orbit arcs near the lower torso, floating ivory crystalline shards behind. Background is charcoal industrial graphic architecture crossed with ivory diagonal paper panels, precise monochrome texture and restrained violet glow. Premium high-contrast anime tactical collectible card art, clean hierarchy, deeply detailed illustration, elegant face and wings. Fade bottom20% to dark charcoal for later text overlay. Portrait2:3, full bleed, NO literal text, NO logos, NO UI or frame, no second figure. Preserve the established researched character design."
+    },
+    {
+      "key": "operator-vscode",
+      "prompt": "Premium vertical full-bleed card illustration for a science-fiction tactical defense unit embodying a code editor. NO humanoid. A beautiful angular floating blue crystalline compiler blade and compact dark metal computing pylon, surrounded by a few precise cyan holographic planes and a ribbon of abstract light traces. Iconic simple main silhouette, highly detailed graphite and brushed silver surfaces, cobalt/cyan luminous edges, dramatic directional light. Monochrome charcoal industrial ruin background with bold ivory geometric planes and technical editorial textures. This is an elegant software-weapon artifact card, not a real hardware photograph and not a person. The real VS Code logo will be added separately in code; DO NOT draw any logo, word, letter, number or interface. Upper two-thirds contain the artifact, lower20% fades to charcoal. Premium anime science-fiction tactical collectible illustration with crisp graphic composition. Vertical2:3, no frame."
+    },
+    {
+      "key": "operator-pycharm",
+      "prompt": "Premium vertical full-bleed tactical operator card illustration for a science-fiction debugging unit. NO humanoid. A sophisticated floating dark graphite diagnostic orb held inside an asymmetric mechanical bracket, two elegant luminous emerald serpent-like circuit ribbons curl around it, slender lime-green scan rays and translucent rectangular glass panels form a precise powerful silhouette. Rich charcoal, brushed steel and muted ivory materials with emerald/lime highlights. Dramatic monochrome industrial architecture and slashed ivory graphic planes behind, premium anime sci-fi collectible game rendering, fine intricate components, controlled contrast and expressive lighting. The actual PyCharm logo will be overlaid by code; do NOT generate logos, letters, numbers, words, UI or a card frame. Main subject in upper two-thirds, bottom20% fades dark for typography. Portrait2:3, one coherent artifact unit."
+    },
+    {
+      "key": "hardware-consumer",
+      "prompt": "A vertical2:3 full-bleed collectible HARDWARE CARD BACKPLATE illustration. Empty central socket for a real graphics-card photograph to be overlaid later. Charcoal-black industrial server bay, brushed gunmetal machined layers, diagonal ivory graphic cuts, delicate amber warning light, subtle circuitry and a few sparks at the edges. The central upper-middle45% must be uncluttered nearly black space; do not draw any GPU, card, chip logo, text or object there. Premium tactical anime game card material art, matte texture and high contrast, fine beautifully shaded beveled metal structure mostly around perimeter, lower25% dark reserved for code typography. No actual words, no numbers, no UI buttons, no brand logo. Original design."
+    },
+    {
+      "key": "hardware-pro",
+      "prompt": "Premium vertical2:3 full-bleed game-card background for a workstation-grade hardware module. Deep charcoal/ivory architectural planes with restrained ice-white and teal reflected light, intricate silver rails and subtle fiber-optic strands around the perimeter. Leave the upper-central45% as quiet dark negative space for an actual GPU product photo to be added by code. Bottom quarter dark. Beautiful detailed industrial tactical collectible card aesthetic, worn printed texture blended with sophisticated brushed metal, sharp diagonal shapes, no rounded dashboard panel. NO GPU, NO product illustration, NO character, NO words or numeric text, no logo, no frame typography."
+    },
+    {
+      "key": "hardware-datacenter",
+      "prompt": "A premium high-tier data-center card background, vertical2:3. Elegant black and antique-gold industrial framing material, layered ivory diagonal planes and fine golden luminous circuit threads, dark server-hall architecture dissolving into shadow. Keep the central upper-mid45% EMPTY DARK negative space for a real accelerator-card photograph to be composited later. Detailed gold trim at extreme edges, a few golden motes, restrained luxury tactical collectible presentation, not a UI mockup. Lower quarter fades charcoal for text. No actual hardware or GPU invented, no characters, no brands, no words, no labels, no logo."
+    },
+    {
+      "key": "title-scene",
+      "prompt": "A cinematic background painting for an original anime sci-fi tower-defense title screen, wide16:9. A vast abandoned industrial communications citadel emerging from a misty rocky forest, tall angular charcoal server towers, ivory searchlight rays and distant amber signal beacons, intricate cables and catwalks, broken data monoliths, thin soft cyan streams on the ground. Dramatic overcast dawn with strong dark/ivory graphic lighting and restrained ochre-gold glow. Composition places most architectural detail in right two-thirds and leaves left third calm dark fog for code-drawn title, with dark lower edge for navigation cards. Premium illustrated tactical game art, beautifully detailed, painterly but crisp. No characters, no logos, no typography, no labels, no UI or cards. This is the actual art backdrop, not a website screenshot."
+    },
+    {
+      "key": "mission-forest",
+      "prompt": "A cinematic chapter-card illustration, wide16:9, an abandoned black industrial relay gate half swallowed by dense cold pine forest and broken stone. Ivory fog and diagonal dawn light, one restrained cyan stream of energy crossing rock, fine anime sci-fi environmental painting. High-contrast charcoal/ivory with desaturated forest green, a few amber signal lights. Strong centered architectural silhouette, atmosphere and depth, detailed landscape meant for a tactical mission selection card. No character, no UI, no labels, no text, no logos."
+    },
+    {
+      "key": "mission-marsh",
+      "prompt": "Premium chapter-card environment painting for an original tactical sci-fi game, wide16:9. A flooded industrial memory archive in a cold marsh, long broken steel bridge spanning deep teal water, half-submerged black data monoliths, ivory mist, amber beacons reflected on water, solemn large-scale composition. Desaturated graphite and dark teal, high contrast white fog, tiny sharp yellow signal highlights. Beautiful detailed anime environment artwork, meant for a mission card not the actual top-down gameplay map. No people, no UI, no words, no logo."
+    },
+    {
+      "key": "mission-highland",
+      "prompt": "Cinematic chapter-card art, wide16:9. A fortress of stacked black server-like monoliths on a harsh mountain plateau, tier after tier of angular industrial stone rising into ivory cloud, fractured violet energy seams in the cliffs, narrow steel causeway, amber warning beacons, crisp dramatic graphite-and-ivory anime sci-fi painting. An epic recursive highland stronghold, restrained violet/ochre highlights, exquisite environment detail and atmospheric depth. No people, no UI, no logo, no writing."
+    },
+    {
+      "key": "result-victory",
+      "prompt": "A premium mission-success artwork background, wide16:9. An empty abandoned industrial battlefield after the storm, a dark angular central relay beacon emitting warm ivory-gold light upward through broken cloud, delicate golden data fragments floating upward, mist clearing over steel ruins and distant pine silhouettes. Celebratory yet restrained tactical science-fiction anime painting, strong black/ivory/antique gold palette, beautiful glancing light, high contrast graphic shapes, lower half and left third calm for later text. No trophy icon, no humanoid, no words, no labels, no logo, no interface."
+    },
+    {
+      "key": "result-defeat",
+      "prompt": "A premium mission-failure artwork background for an original tactical sci-fi game, wide16:9. A broken industrial relay beacon in cold rain and ash, fractured dark steel plates with faint ember-red circuit seams, distant ruined data towers dissolving in grey fog, a single small red emergency light. Somber cinematic anime environmental painting, charcoal/ivory with restrained rust red, high contrast moody light, left third and lower area calm for typography to be added separately. No bodies, no people, no gore, no words, no logo, no UI."
+    },
+    {
+      "key": "skill-icons",
+      "prompt": "One production skill-icon art atlas for a tactical game: EXACT 2 columns by2 rows, FOUR equal square panels touching edge to edge. Each panel pure black background, no borders, no labels. TOP LEFT: elegant blue-white crystalline sniper spear tip crossed by a small precise cyan lens ring. TOP RIGHT: bright emerald debugging vortex of angular jade data fragments around a white scanning core. BOTTOM LEFT: flowing cyan tidal spiral with luminous water crescents. BOTTOM RIGHT: beautiful violet-white star nucleus encircled by three graceful orbit rings and a few light crystal shards. Each object fits inside central70% of its panel with black margins, premium detailed hand-painted sci-fi anime spell icon art, clean bold readable silhouettes, rich materials, controlled glow. No human, no text, no numbers, no logo, no UI beyond these four standalone icon illustrations. Square overall canvas, 2x2 exact regular layout."
+    }
+  ]
+}

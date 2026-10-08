@@ -1,64 +1,126 @@
 # RurixForge
 
-**AI-first 游戏制作引擎** — 以 rurix 渲染器/物理引擎为运行时内核，以 agent 集群（coding 模式 + swarm）为第一公民操作者，以 MCP 工程为全部重复性工作的执行面，人类只经极简前端做必须的人工确认与直观调整。
+**一个让你和 AI 一起做游戏的桌面工作台。**
 
-本仓库是 RurixForge 的完整工程实现：Rust 引擎与服务层 + React 前端 IDE + Go 边缘网关 + 示例游戏项目。
+你描述想做的游戏，AI 帮你拆任务、写代码、准备素材和搭场景。你可以在同一个窗口里看进度、改细节、运行游戏，再决定下一步怎么做。
 
-## 仓库结构
+它把聊天、代码编辑、场景编辑、素材管理和试玩放在了一起。项目仍在开发中，目前主要在 Windows 上开发和验证，适合愿意从源码运行、一起完善工具的开发者。
 
-| 模块 | 目录 | 说明 |
-|---|---|---|
-| 引擎宿主 | `crates/engine-host` | JSON-RPC 2.0 over TCP 控制通道、rurix-physics 固定步后台线程、soft-raster CPU 渲染 / Vulkan 视口（D3D12 共享纹理 + H.264 帧流）、PIE |
-| 素材管线 | `crates/assetd` | glTF 严格导入、纹理/材质处理、`.meta`+GUID、缓存键、引用图、缩略图、清理 |
-| Agent 内核 | `crates/forge-agentd` | 会话、plan/todo、swarm 集群、subagent、proposal 权限确认、checkpoint、多 LLM provider（含 openai-compat 通用渠道） |
-| 生成服务 | `crates/gend` | 图像/模型/媒体生成后端抽象（mock + 远程渠道；密钥经 DPAPI keystore，不落明文） |
-| 代码索引 | `crates/forge-index` | 词法/向量索引、文档提取、检索 |
-| 逻辑内核 | `crates/forge-logic` | 节点图（Blueprint-lite）解释器、`.rx` 脚本、call_function DLL 运行时 |
-| 共享层 | `crates/forge-util` 等 | 工具库 / 场景模型（`forge-scene`）/ 技能与包仓库（`forge-store`） |
-| MCP 工程 | `crates/mcp/*` | 七个领域 MCP server：engine-scene、asset-pipeline、context、code-forge、gen-image、gen-model、store |
-| 前端 IDE | `packages/client` | React + TypeScript：三栏壳、聊天时间线、Composer、Workbench tabs、节点图、Inspector、设置页、明暗主题 |
-| 宿主服务 | `packages/host` | Node 宿主：静态服务、HTTP/SSE、forge 代理、会话 |
-| 协议 | `packages/protocol` | 前后端共享 TS 类型 |
-| 桌面壳 | `apps/desktop` | Electron 桌面应用 |
-| 边缘网关 | `gateway-go` | Go：CORS/JWT/反向代理/WS→SSE 桥 |
-| 示例项目 | `projects/demo` | demo 游戏项目（场景/材质/贴图/脚本/节点图） |
-| 技能库 | `skills/` | SKILL.md 形式的可复用操作规程（素材导入、场景搭建、材质调优、回归验证等） |
-| 设计文档 | `00_MASTER_INDEX.md` ~ `14_DECISION_LOG.md` | 冻结级架构设计文档集 |
+## 现在可以做什么
 
-## 构建与测试
+- **边聊边制作**：让 AI 读项目、改文件、执行工具；也可以先列计划，再分工完成任务。需要确认的操作会在界面里提出。
+- **从想法做到可试玩的版本**：UltraPlan 会先帮你梳理需求，做一个 Web 小样供你试玩；确认玩法和计划后，再进入正式制作与验收。
+- **先看设计稿，再搭场景**：Design 模式先生成场景或界面草图。选定后，把画面拆成可编辑的场景元素，文字也能继续修改。
+- **管理游戏内容**：查看场景层级、调整对象属性、编辑代码和节点逻辑，导入图片、材质、模型与动画。
+- **接入制作工具**：已有 Blender 接入，以及图像、视频、音频、模型生成接口；实际可用能力取决于你配置的工具和服务。
+- **选择运行后端**：支持 Rurix 和 Godot。新建 2D 项目默认使用 Godot，普通新建 3D 项目默认使用 Rurix；UltraPlan 会让你确认具体选择。
+- **使用自己的模型服务**：可配置自带 API Key 的渠道或 Codex；仓库也包含可自行部署的云端账号、同步和模型网关服务。
 
-前置要求：Node.js ≥ 22、pnpm 11.5、Rust ≥ 1.80、Go；视口 D3D12 共享纹理部分为 Windows only。
+这里的“AI 帮你做”仍然需要检查和试玩。自动检查通过，不代表游戏的玩法、美术和体验已经符合你的预期。
 
-```bash
-pnpm install            # 前端依赖
-pnpm build              # 构建全部 JS/TS 包
-pnpm test               # 前端测试
-cargo test --workspace  # Rust 测试
-go -C gateway-go test ./...
+## 从源码启动
+
+下面以 **Windows + PowerShell** 为例。请在仓库根目录执行命令。
+
+### 1. 准备环境
+
+- Git、Node.js 22 或更新版本，以及 pnpm。仓库在 `package.json` 中声明的 pnpm 版本为 **11.5.0**。
+- Rust / rustup。`rust-toolchain.toml` 固定了 **Rust 1.94.1**，进入项目后由 rustup 使用该版本。
+- Visual Studio C++ 构建工具、Windows SDK 和 CMake，用于编译原生依赖。
+- 需要云服务、Go 网关或 Antigravity 桥接时，再安装 **Go 1.26 或更新版本**。
+
+首次构建会下载依赖并产生较多编译缓存，请预留足够磁盘空间。Windows 原生视口需要相应的图形驱动；其他系统尚未完成同等范围的桌面验证。
+
+### 2. 下载并构建
+
+```powershell
+git clone https://github.com/qwasg/RurixForge.git
+cd RurixForge
+
+pnpm install --frozen-lockfile
+cargo fetch --locked
+
+# 补齐当前固定版本的上游物理库构建文件；脚本会校验来源和哈希
+.\scripts\bootstrap-rurix-physics.ps1
+
+# 先构建默认 Rurix 后端和各服务；Godot 在下一步单独准备
+cargo build --workspace --exclude godot-host --locked
+
+# 按顺序构建桌面端需要的网页和宿主服务
+pnpm --filter @forge/protocol build
+pnpm --filter @forge/host build
+pnpm --filter @forge/client build
+pnpm --filter @forge/desktop build
 ```
 
-> **上游依赖说明**：`crates/*` 以 git 依赖引用开源的 rurix 上游内核（[qwasg/Rurix](https://github.com/qwasg/Rurix)，锚定 rev `1478859a`，对账时点记录见 `RURIX_PIN.json`），`cargo build` 会自动拉取，无需本地存在 rurix 源码树。本地双仓开发时，取消根 `Cargo.toml` 末尾 `[patch."https://github.com/qwasg/Rurix"]` 注释节即可指向本地工作树（提交前须恢复注释）。
+Rurix 内核来自 [qwasg/Rurix](https://github.com/qwasg/Rurix)，具体版本固定在 `Cargo.toml` 和 `Cargo.lock` 中，无须另建本地源码目录。仓库内还保留了一份小范围的渲染修补，见 [修补说明](vendor/rurix/FORGE_BLEND_PATCH.md)。
 
-## 设计文档
+如果要使用 Godot（包括默认的新建 2D 项目），继续执行：
 
-| 文档 | 内容 |
-|---|---|
-| [00_MASTER_INDEX.md](00_MASTER_INDEX.md) | 主索引：文档地图、术语表、全局不变量 |
-| [01_PRODUCT_VISION.md](01_PRODUCT_VISION.md) | 产品定位与设计原则 |
-| [02_SYSTEM_ARCHITECTURE.md](02_SYSTEM_ARCHITECTURE.md) | 系统总体架构 |
-| [03_ENGINE_LAYER.md](03_ENGINE_LAYER.md) | 引擎层（rurix 内核复用面） |
-| [04_AGENT_BACKEND.md](04_AGENT_BACKEND.md) | Agent 后端 |
-| [05_MCP_PROJECTS.md](05_MCP_PROJECTS.md) | MCP 工程集 |
-| [06_SKILLS_LIBRARY.md](06_SKILLS_LIBRARY.md) | Skill 体系 |
-| [07_FRONTEND_IDE.md](07_FRONTEND_IDE.md) | 前端 IDE |
-| [08_ASSET_PIPELINE.md](08_ASSET_PIPELINE.md) | 素材处理管线 |
-| [09_ENTITY_SCENE_MODEL.md](09_ENTITY_SCENE_MODEL.md) | 实体与场景模型 |
-| [10_INTERACTION_LOGIC.md](10_INTERACTION_LOGIC.md) | 交互逻辑（节点图 + `.rx` 双轨） |
-| [11_API_CONTRACTS.md](11_API_CONTRACTS.md) | API 与数据契约 |
-| [12_SECURITY_PERMISSIONS.md](12_SECURITY_PERMISSIONS.md) | 安全与权限 |
-| [13_ROADMAP.md](13_ROADMAP.md) | 里程碑路线图 |
-| [14_DECISION_LOG.md](14_DECISION_LOG.md) | 决策日志 |
+```powershell
+.\scripts\godot-fetch.ps1 -Templates
+.\scripts\godot-runtime.ps1 -Build
+```
 
-## License
+Godot 版本与依赖见 [GODOT_PIN.json](GODOT_PIN.json)，接入范围与现有限制见 [Godot 说明](docs/godot-backend/03-completion.md)。不使用 Godot 时，可以先用 Rurix 后端。
 
-[Apache-2.0](LICENSE)
+### 3. 打开应用
+
+在第一个终端启动 AI 后端，保持它运行：
+
+```powershell
+.\target\debug\forge-agentd.exe
+```
+
+再打开一个终端，进入同一个仓库目录：
+
+```powershell
+pnpm dev:desktop
+```
+
+桌面应用会启动网页宿主服务。首次进入后，可以登录你配置的云服务，也可以选择自带密钥，在设置里配置模型渠道；Codex 的可用能力取决于本机安装、登录状态和上游支持。
+
+想在浏览器里开发界面时，保持 AI 后端运行，分别执行 `pnpm dev:host` 和 `pnpm dev:client`，再打开 Vite 输出的地址。默认宿主端口为 `3080`，AI 后端端口为 `8103`。
+
+## 按需启用的功能
+
+- **UltraPlan**：需要可用的模型服务和系统 Edge / Chrome，用来实际操作、检查 Web 试玩版。见 [使用说明](docs/ultraplan.md) 和 [验证范围](docs/ultraplan-validation.md)。
+- **Design 与素材生成**：先配置支持对应能力的生成服务；视频截帧还需要 ffmpeg。见 [Design 说明](docs/design-mode.md)。
+- **Blender**：用于建模、贴图、骨骼动画和模板同步。见 [接入步骤](tools/blender/README.md)。
+- **云服务**：账号、资料同步和模型网关均可自行部署。开发依赖使用 PostgreSQL、Redis 和 Docker，`pnpm dev:cloud` 只启动这些依赖；完整配置见 [云服务文档](15_CLOUD_SERVICE.md)。本地自带密钥的用法不要求部署整套云服务。
+
+## 开发时常用的检查
+
+```powershell
+pnpm typecheck                 # TypeScript 类型检查
+pnpm test                      # 前端与 Node 宿主测试
+cargo test --workspace         # Rust 工作区测试
+go -C gateway-go test ./...     # Go 网关测试
+go -C cloud test ./...          # 云服务测试
+```
+
+需要真实 GPU、Godot、浏览器或外部模型服务的检查，要先准备对应环境。上面的命令是运行入口，不代表所有检查都已在当前机器上通过。
+
+## 想改代码，从哪里看
+
+- `packages/client`：用户看到的界面，使用 React 和 TypeScript。
+- `apps/desktop`、`packages/host`：Electron 桌面窗口和本地网页服务。
+- `crates/forge-agentd`：AI 会话、任务计划、工具调用与权限处理。
+- `crates/engine-host`、`crates/godot-host`：场景运行与两种渲染后端。
+- `crates/assetd`、`crates/gend`：素材导入、处理和生成服务。
+- `crates/mcp`：供 AI 调用的场景、素材、代码等工具。
+- `cloud`、`gateway-go`：可选的云服务和网关。
+- `projects/demo`、`projects/code-sentinels`：示例项目与游戏制作代码。
+- `agents`、`skills`：任务角色和可复用的制作步骤。
+
+详细设计从 [文档索引](00_MASTER_INDEX.md) 进入。日常上手先看这份 README，需要查接口或实现细节时再翻设计文档。
+
+## 当前状态
+
+这是开发中的源码仓库，还没有提供完整的 RurixForge 一键安装包。不同模型、图形后端和外部工具的能力并不完全相同，具体支持范围以对应文档和实际运行结果为准。
+
+仓库保留源码、示例运行资源和必要说明。模型密钥、登录状态、本机配置、生成服务原始记录、测试截图及历史打包副本留在本地，不随源码提交；部分历史验证文档引用的是本地证据文件。
+
+## 许可证
+
+项目代码采用 [Apache-2.0](LICENSE)。第三方依赖和示例素材请同时查看各自保留的许可证与来源说明。

@@ -1,0 +1,17 @@
+{
+  "options": {"model": "gpt-5"},
+  "request": {
+    "model": "forge-gpt-5",
+    "messages": [{"role": "user", "content": "Give me a person."}],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "person",
+        "description": "A person record",
+        "strict": true,
+        "schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"], "additionalProperties": false}
+      }
+    },
+    "verbosity": "low"
+  }
+}

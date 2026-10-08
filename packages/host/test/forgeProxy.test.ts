@@ -17,6 +17,7 @@ interface Recorded {
   method: string;
   url: string;
   body: string;
+  range?: string;
 }
 
 let upstream: http.Server;
@@ -38,7 +39,19 @@ beforeAll(async () => {
         method: req.method ?? '',
         url: req.url ?? '',
         body: Buffer.concat(chunks).toString('utf8'),
+        range: req.headers.range,
       });
+      if (req.url?.startsWith('/api/forge/gen/video/file?')) {
+        res.writeHead(206, {
+          'Content-Type': 'video/mp4',
+          'Content-Range': 'bytes 2-5/8',
+          'Accept-Ranges': 'bytes',
+          'Content-Length': '4',
+          'Cache-Control': 'private, no-store',
+        });
+        res.end(Buffer.from([2, 3, 4, 5]));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(UPSTREAM_REPLY);
     });
@@ -61,6 +74,32 @@ afterAll(async () => {
 });
 
 describe('forgeProxy', () => {
+  it('official channel status and authorization preserve methods, refresh query and key payload', async () => {
+    const status = await fetch(`${base}/api/forge/channels/kimi?refresh=true`);
+    expect(status.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/channels/kimi?refresh=true' && r.method === 'GET')).toBe(true);
+    for (const endpoint of ['kimi/login', 'kimi/login/cancel', 'kimi/logout', 'glm/config']) {
+      const payload = JSON.stringify(endpoint.endsWith('config') ? { apiKey: 'test-secret', model: 'glm-5.3' } : {});
+      const response = await fetch(`${base}/api/forge/channels/${endpoint}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
+      });
+      expect(response.status).toBe(200);
+      expect(recorded.some((r) => r.url === `/api/forge/channels/${endpoint}` && r.method === 'POST' && r.body === payload)).toBe(true);
+    }
+    expect(proxyMatches('/api/forge/channels-lookalike')).toBe(false);
+    expect(upstreamTimeoutMs('/api/forge/channels/kimi/login')).toBe(60_000);
+  });
+  it('Agent 配置 GET/PATCH 经 host 透传到本地后台', async () => {
+    const res = await fetch(`${base}/api/forge/agent/config`);
+    expect(res.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/agent/config' && r.method === 'GET')).toBe(true);
+    const payload = JSON.stringify({ exploreModel: 'deepseek-chat', defaultPermissionMode: 'auto' });
+    const patched = await fetch(`${base}/api/forge/agent/config`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: payload,
+    });
+    expect(patched.status).toBe(200);
+    expect(recorded.some((r) => r.url === '/api/forge/agent/config' && r.method === 'PATCH' && r.body === payload)).toBe(true);
+  });
   it('POST /api/forge/mcp/call 方法与 body 透传,上游响应原样回传', async () => {
     const payload = JSON.stringify({ tool: 'mcp__engine-scene__scene_summary', arguments: {} });
     const res = await fetch(`${base}/api/forge/mcp/call`, {
@@ -136,6 +175,33 @@ describe('forgeProxy', () => {
     ).toBe(true);
   });
 
+  it('session collaboration routes preserve stable actor ids, message guards and team actions', async () => {
+    const session = '/api/forge/sessions/session%20collaboration';
+    const mailbox = `${session}/agents/agent%20member/messages`;
+    for (const url of [`${session}/agents`, mailbox, `${session}/team`, `${session}/teams/team%20one`]) {
+      const res = await fetch(`${base}${url}`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(UPSTREAM_REPLY);
+      expect(recorded).toContainEqual(expect.objectContaining({ method: 'GET', url, body: '' }));
+    }
+
+    const requests = [
+      { method: 'POST', url: mailbox, payload: { text: '调整任务顺序', clientMessageId: 'retry-stable-id', expectedRunId: 'actual-member-run' } },
+      ...['pause', 'resume', 'stop'].map((action) => ({ method: 'PATCH', url: `${session}/teams/team%20one`, payload: { action } })),
+    ];
+    for (const { method, url, payload } of requests) {
+      const body = JSON.stringify(payload);
+      const res = await fetch(`${base}${url}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(UPSTREAM_REPLY);
+      expect(recorded).toContainEqual(expect.objectContaining({ method, url, body }));
+    }
+  });
+
   it('F7 wave.1/2:代理前缀/长生命周期超时豁免纯函数判定', () => {
     // 新前缀命中(含子路径)
     expect(proxyMatches('/api/forge/sessions')).toBe(true);
@@ -145,6 +211,10 @@ describe('forgeProxy', () => {
     expect(proxyMatches('/api/forge/chat-folders')).toBe(true);
     expect(proxyMatches('/api/forge/chat-folders/fld_1')).toBe(true);
     expect(proxyMatches('/api/forge/design-snapshot')).toBe(true);
+    expect(proxyMatches('/api/forge/account')).toBe(true);
+    expect(proxyMatches('/api/forge/account/status')).toBe(true);
+    expect(proxyMatches('/api/forge/memory')).toBe(true);
+    expect(proxyMatches('/api/forge/memory/abc')).toBe(true);
     // F7 wave.2:runs/todos 前缀 + ask:execute(sessions 前缀内)
     expect(proxyMatches('/api/forge/runs')).toBe(true);
     expect(proxyMatches('/api/forge/runs/run_1')).toBe(true);
@@ -164,7 +234,8 @@ describe('forgeProxy', () => {
     expect(proxyMatches('/api/forge/todosx')).toBe(false);
     expect(proxyMatches('/api/forge/health')).toBe(false);
     expect(proxyMatches('/api/other')).toBe(false);
-    // 长生命周期豁免:/events/stream 与 /ask:execute 并列 0(不限时),其余 15s
+    // 长生命周期豁免:/events/stream 与 /ask:execute 并列 0(不限时);
+    // Codex 控制面给冷启动/RPC 60s，其余仍为 15s。
     expect(isLongLivedPath('/api/forge/sessions/sess_1/events/stream')).toBe(true);
     expect(isLongLivedPath('/api/forge/sessions/sess_1/ask:execute')).toBe(true);
     expect(isLongLivedPath('/api/forge/sessions/sess_1/events')).toBe(false);
@@ -177,6 +248,11 @@ describe('forgeProxy', () => {
     expect(upstreamTimeoutMs('/api/forge/design-snapshot')).toBe(15_000);
     expect(upstreamTimeoutMs('/api/forge/runs/run_1')).toBe(15_000);
     expect(upstreamTimeoutMs('/api/forge/todos/todo_1')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/codex')).toBe(60_000);
+    expect(upstreamTimeoutMs('/api/forge/codex/login')).toBe(60_000);
+    expect(upstreamTimeoutMs('/api/forge/codex/models')).toBe(60_000);
+    expect(upstreamTimeoutMs('/api/forge/codexx/models')).toBe(15_000);
+    expect(upstreamTimeoutMs('/api/forge/permissions/approval_1/approve')).toBe(15_000);
   });
 
   it('F10-RAG 修复:mcp/call 按体内 tool 名豁免长时生成工具(gen_image 分钟级,15s 必断)', () => {
@@ -185,11 +261,17 @@ describe('forgeProxy', () => {
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_texture_set')).toBe(0);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_variations')).toBe(0);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__gen-image__gen_video_frames')).toBe(0);
-    // 普通 MCP 工具维持 15s;无 tool 名(非 mcp/call 路径/坏 body)维持 15s
-    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__engine-scene__host_ping')).toBe(15_000);
+    // 引擎工具预留有界冷启动；其他普通工具和缺失/错误 tool 名保持 15s。
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__engine-scene__host_ping')).toBe(135_000);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__engine-scene__render_backend_info')).toBe(135_000);
+    expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__engine-scene__render_capabilities')).toBe(135_000);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', 'mcp__asset-pipeline__asset_list')).toBe(15_000);
     expect(upstreamTimeoutMs('/api/forge/mcp/call', null)).toBe(15_000);
     expect(upstreamTimeoutMs('/api/forge/mcp/call')).toBe(15_000);
+    for (const tool of ['viewport_frame','template_preview','asset_reload','play_enter']) {
+      // engine-scene has a bounded 30s cold-GPU budget, agentd wraps it in 40s.
+      expect(upstreamTimeoutMs('/api/forge/mcp/call', `mcp__engine-scene__${tool}`)).toBe(135_000);
+    }
     // mcpCallTool 解析:正常/坏 JSON/缺字段/非字符串
     expect(mcpCallTool(Buffer.from('{"tool":"mcp__gen-image__gen_image","arguments":{}}'))).toBe(
       'mcp__gen-image__gen_image',
@@ -231,6 +313,38 @@ describe('forgeProxy', () => {
     expect(recorded.some((r) => r.url === '/api/forge/todos/todo_1' && r.method === 'PATCH')).toBe(
       true,
     );
+  });
+
+  it('Codex 状态与审批动作经代理透传，且相邻前缀不误命中', async () => {
+    expect(proxyMatches('/api/forge/codex')).toBe(true);
+    expect(proxyMatches('/api/forge/codex/status')).toBe(true);
+    expect(proxyMatches('/api/forge/permissions/approval_1/approve')).toBe(true);
+    expect(proxyMatches('/api/forge/codexx/status')).toBe(false);
+    expect(proxyMatches('/api/forge/permissionsx/approval_1/approve')).toBe(false);
+
+    const status = await fetch(`${base}/api/forge/codex/status?sessionId=sess_1`);
+    expect(status.status).toBe(200);
+    expect(
+      recorded.some(
+        (r) => r.url === '/api/forge/codex/status?sessionId=sess_1' && r.method === 'GET',
+      ),
+    ).toBe(true);
+
+    const payload = JSON.stringify({ decision: 'accept' });
+    const approve = await fetch(`${base}/api/forge/permissions/approval_1/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(approve.status).toBe(200);
+    expect(
+      recorded.some(
+        (r) =>
+          r.url === '/api/forge/permissions/approval_1/approve' &&
+          r.method === 'POST' &&
+          r.body === payload,
+      ),
+    ).toBe(true);
   });
 
   it('F9(D5):/api/forge/project 前缀命中并透传(pack 浏览器单源 404 缺口修复)', async () => {
@@ -291,11 +405,72 @@ describe('forgeProxy', () => {
     expect(isLongLivedPath('/api/forge/gen/video')).toBe(true);
     expect(isLongLivedPath('/api/forge/gen/video/frames')).toBe(true);
     expect(isLongLivedPath('/api/forge/gen/audio')).toBe(true);
+    expect(upstreamTimeoutMs('/api/forge/gen/video')).toBe(0);
     expect(upstreamTimeoutMs('/api/forge/gen/video/frames')).toBe(0);
     // 可用性探测是一次 `ffmpeg -version`:走代理但不需要豁免。
     expect(proxyMatches('/api/forge/tools/ffmpeg')).toBe(true);
     expect(isLongLivedPath('/api/forge/tools/ffmpeg')).toBe(false);
     expect(upstreamTimeoutMs('/api/forge/tools/ffmpeg')).toBe(15_000);
+  });
+
+  it('本地 H3 视频生成透传 backend、workspaceId 与项目参考图', async () => {
+    const payload = JSON.stringify({
+      backend: 'comfyui-minimax-h3',
+      workspaceId: 'ws-local-h3',
+      prompt: '角色缓缓转身',
+      imageRef: 'Content/Concepts/character.png',
+      aspect: '16:9',
+      resolution: '352p',
+      durationSec: 2,
+    });
+    const response = await fetch(`${base}/api/forge/gen/video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(UPSTREAM_REPLY);
+    expect(recorded.some((r) =>
+      r.url === '/api/forge/gen/video' && r.method === 'POST' && r.body === payload,
+    )).toBe(true);
+  });
+
+  it('持久化视频文件保留工作区查询、Range 及播放响应头和字节', async () => {
+    const query = new URLSearchParams({
+      workspaceId: 'ws-video-playback',
+      fileRef: '.forge/tmp/gen/video sample.mp4',
+    });
+    const url = `/api/forge/gen/video/file?${query}`;
+    const response = await fetch(`${base}${url}`, { headers: { Range: 'bytes=2-5' } });
+    expect(response.status).toBe(206);
+    expect(response.headers.get('content-type')).toBe('video/mp4');
+    expect(response.headers.get('content-range')).toBe('bytes 2-5/8');
+    expect(response.headers.get('accept-ranges')).toBe('bytes');
+    expect(response.headers.get('content-length')).toBe('4');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([2, 3, 4, 5]);
+    expect(recorded.some((r) => r.url === url && r.method === 'GET'
+      && r.body === '' && r.range === 'bytes=2-5')).toBe(true);
+  });
+
+  it("D-044:代理出口统一补 CSP frame-ancestors 'none'(JSON 与视频 Range 特例路径均带,Range 头不受影响)", async () => {
+    const json = await fetch(`${base}/api/forge/sessions`);
+    expect(json.status).toBe(200);
+    expect(json.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+    expect(json.headers.get('x-frame-options')).toBeNull();
+    expect(await json.text()).toBe(UPSTREAM_REPLY);
+
+    const query = new URLSearchParams({ workspaceId: 'ws-video-csp', fileRef: '.forge/tmp/gen/v.mp4' });
+    const video = await fetch(`${base}/api/forge/gen/video/file?${query}`, {
+      headers: { Range: 'bytes=2-5' },
+    });
+    expect(video.status).toBe(206);
+    expect(video.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+    expect(video.headers.get('content-type')).toBe('video/mp4');
+    expect(video.headers.get('content-range')).toBe('bytes 2-5/8');
+    expect(video.headers.get('accept-ranges')).toBe('bytes');
+    expect(video.headers.get('content-length')).toBe('4');
+    expect([...new Uint8Array(await video.arrayBuffer())]).toEqual([2, 3, 4, 5]);
   });
 
   it('上游不可达 → 502 UPSTREAM_UNREACHABLE', async () => {
@@ -317,6 +492,7 @@ describe('forgeProxy', () => {
         body: JSON.stringify({ tool: 'mcp__engine-scene__host_ping' }),
       });
       expect(res.status).toBe(502);
+      expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
       const body = (await res.json()) as ApiError;
       expect(body.error.code).toBe('UPSTREAM_UNREACHABLE');
     } finally {
@@ -324,6 +500,55 @@ describe('forgeProxy', () => {
       fs.rmSync(tmp2, { recursive: true, force: true });
       if (saved === undefined) delete process.env.FORGE_AGENTD_ORIGIN;
       else process.env.FORGE_AGENTD_ORIGIN = saved;
+    }
+  });
+
+  it('上游已开始 SSE 后中途断开，host 主动结束下游以便客户端重连', async () => {
+    const broken = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('event: agent.started\ndata: {"ok":true}\n\n');
+      setTimeout(() => res.socket?.destroy(), 100);
+    });
+    await new Promise<void>((resolve) => broken.listen(0, '127.0.0.1', resolve));
+    const brokenPort = (broken.address() as AddressInfo).port;
+
+    const saved = process.env.FORGE_AGENTD_ORIGIN;
+    process.env.FORGE_AGENTD_ORIGIN = `http://127.0.0.1:${brokenPort}`;
+    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-proxy-abort-'));
+    const srv = buildServer({ dataDir: tmp2 });
+    const port = await srv.listen(0);
+    try {
+      const observed = await new Promise<{ terminal: string; body: string }>((resolve) => {
+        let body = '';
+        let done = false;
+        const finish = (terminal: string) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timeout);
+          resolve({ terminal, body });
+        };
+        const timeout = setTimeout(() => finish('timeout'), 1_000);
+        const req = http.get(
+          `http://127.0.0.1:${port}/api/forge/sessions/sess_1/events/stream`,
+          (response) => {
+            response.on('data', (chunk: Buffer) => {
+              body += chunk.toString('utf8');
+            });
+            response.on('end', () => finish('end'));
+            response.on('aborted', () => finish('aborted'));
+            response.on('error', () => finish('error'));
+          },
+        );
+        req.on('error', () => finish('request-error'));
+      });
+      expect(observed.body).toContain('event: agent.started');
+      expect(observed.terminal).not.toBe('timeout');
+    } finally {
+      await srv.close();
+      fs.rmSync(tmp2, { recursive: true, force: true });
+      if (saved === undefined) delete process.env.FORGE_AGENTD_ORIGIN;
+      else process.env.FORGE_AGENTD_ORIGIN = saved;
+      await new Promise<void>((resolve) => broken.close(() => resolve()));
     }
   });
 

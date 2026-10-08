@@ -33,6 +33,10 @@ beforeAll(async () => {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(body));
     };
+    if (url.pathname === '/health' && req.method === 'GET') {
+      send(200, { service: 'forge-agentd', status: 'ok', version: '9.9.9', uptimeSec: 12.5 });
+      return;
+    }
     if (url.pathname === '/api/forge/sessions' && req.method === 'GET') {
       send(200, { sessions: [...store.values()] });
       return;
@@ -97,6 +101,36 @@ describe('http api', () => {
     expect(typeof body.time).toBe('string');
     // 前缀不重叠:health 不命中上游。
     expect(upstreamHits.some((h) => h.endsWith('/api/forge/health'))).toBe(false);
+    // D-040:平台 / Node / 本机用户名 + 上游 agentd 探测(版本与运行时长)。
+    expect(body.platform).toBe(process.platform);
+    expect(body.node).toBe(process.versions.node);
+    expect(typeof body.user?.name).toBe('string');
+    expect(body.user?.name.length).toBeGreaterThan(0);
+    expect(body.agentd).toEqual({ ok: true, version: '9.9.9', uptimeSec: 12.5 });
+    expect(upstreamHits).toContain('GET /health');
+  });
+
+  it('D-040:上游 agentd 不可达时健康接口仍 200,agentd.ok=false', async () => {
+    const probe = http.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const deadPort = (probe.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    const prevOrigin = process.env.FORGE_AGENTD_ORIGIN;
+    process.env.FORGE_AGENTD_ORIGIN = `http://127.0.0.1:${deadPort}`;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-http-dead-'));
+    const lonely = buildServer({ dataDir: dir });
+    try {
+      const port = await lonely.listen(0);
+      const res = await fetch(`http://127.0.0.1:${port}/api/forge/health`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as HealthStatus;
+      expect(body.status).toBe('ok');
+      expect(body.agentd).toEqual({ ok: false });
+    } finally {
+      await lonely.close();
+      process.env.FORGE_AGENTD_ORIGIN = prevOrigin;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('F7:sessions 面经代理透传(agentd wire 形态;host F0 stub 被遮蔽)', async () => {
@@ -148,5 +182,37 @@ describe('http api', () => {
     const res = await fetch(`${base}/api/forge/health`, { method: 'OPTIONS' });
     expect(res.status).toBe(204);
     expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+  });
+
+  it("D-044:host 自有响应(health / 404 / 非 GET 静态 / OPTIONS)与代理透传的错误同样带 CSP frame-ancestors 'none'", async () => {
+    const cases: [string, RequestInit, number, string | null][] = [
+      ['/api/forge/health', {}, 200, null],
+      ['/api/forge/unknown', {}, 404, 'NOT_FOUND'],
+      ['/', { method: 'POST' }, 404, 'NOT_FOUND'],
+      ['/api/forge/health', { method: 'OPTIONS' }, 204, null],
+      ['/api/forge/sessions/no-such-id', {}, 404, 'SESSION_NOT_FOUND'],
+    ];
+    for (const [p, init, status, code] of cases) {
+      const res = await fetch(`${base}${p}`, init);
+      expect(res.status).toBe(status);
+      expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      if (code) expect(((await res.json()) as ApiError).error.code).toBe(code);
+      else await res.arrayBuffer();
+    }
+  });
+
+  it("D-044:静态目录缺 index.html 时的 404 也带 frame-ancestors 'none'", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-http-nostatic-'));
+    const bare = buildServer({ dataDir: path.join(dir, 'data'), staticDir: path.join(dir, 'empty') });
+    try {
+      const port = await bare.listen(0);
+      const res = await fetch(`http://127.0.0.1:${port}/some/spa/route`);
+      expect(res.status).toBe(404);
+      expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+      expect(((await res.json()) as ApiError).error.code).toBe('NOT_FOUND');
+    } finally {
+      await bare.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

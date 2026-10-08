@@ -16,19 +16,9 @@ fn tmp_project(tag: &str) -> PathBuf {
     dir
 }
 
-/// 上游 rurix 仓根(conformance gltf 样本所在)。
-fn rurix_root() -> PathBuf {
-    PathBuf::from("H:/rurix")
-}
-
 /// 复制 conformance 样本到临时目录。
 fn copy_conformance(name: &str, dest_dir: &std::path::Path) -> PathBuf {
-    let src = rurix_root()
-        .join("conformance")
-        .join("asset")
-        .join("gltf")
-        .join("accept")
-        .join(name);
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name);
     let dst = dest_dir.join(name);
     std::fs::copy(&src, &dst).unwrap();
     dst

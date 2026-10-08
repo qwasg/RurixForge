@@ -1,0 +1,20 @@
+{
+  "id": "research-console",
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "framesPerDirection": 8,
+  "fps": 8,
+  "loop": true,
+  "sourceModel": "Content/Models/v6/research-console-work.blend",
+  "method": "actual Blender animated geometry and equipment emission; CPU Cycles render",
+  "mechanismAnimated": false,
+  "emissionAnimated": true
+}

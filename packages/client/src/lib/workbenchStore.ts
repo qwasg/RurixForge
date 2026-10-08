@@ -14,10 +14,12 @@ import { create } from 'zustand';
  * 「当前编辑哪个 sprite」在 spriteStore,tab 本身仍是无 payload 单例)。
  * D-035:plan 退出单例集——计划是工作区文件(.forge/plans/<名>.plan.md),按 path 多开,
  * 与 file tab 同形态(dirty 拦截/草稿暂存全套复用)。
+ * D-044:demo=UltraPlan 流程的网页 Demo 试玩页,按流程 id 多开(同一流程单例)。页签是全局的、
+ * 不随会话切换关闭,所以带上所属会话 id——切到别的会话后仍可看,但动作一律禁用。
  */
-export type BuiltinTabKind = 'editor' | 'todo' | 'proposals' | 'store' | 'skills' | 'sprite-editor';
-/** 工作区 tab:内建页 + 按路径多开的文件编辑器与计划页(Cursor 式)。 */
-export type TabKind = BuiltinTabKind | 'file' | 'plan';
+export type BuiltinTabKind = 'editor' | 'goal' | 'todo' | 'proposals' | 'store' | 'skills' | 'sprite-editor';
+/** 工作区 tab:内建页 + 按路径多开的文件编辑器与计划页(Cursor 式)+ 按流程多开的 Demo 页。 */
+export type TabKind = BuiltinTabKind | 'file' | 'plan' | 'demo';
 
 export interface WorkbenchTab {
   id: string;
@@ -27,10 +29,15 @@ export interface WorkbenchTab {
   path?: string;
   /** F9:未保存改动标记(文件编辑器写入;tabbar 圆点 + 关闭拦截消费)。 */
   dirty?: boolean;
+  /** kind=demo|plan:UltraPlan 流程 id(UltraPlanState.id)。 */
+  upId?: string;
+  /** kind=demo|plan:流程所属会话(与当前会话不符时流程动作只读)。 */
+  sessionId?: string;
 }
 
 /** 内建 tab 元信息(id=kind,单例)。 */
 export const BUILTIN_TABS: Record<Exclude<BuiltinTabKind, 'editor'>, { title: string }> = {
+  goal: { title: 'Goal' },
   todo: { title: 'Todo' },
   proposals: { title: '提案' },
   store: { title: '资产商店' },
@@ -57,6 +64,17 @@ export function planTabId(path: string): string {
 export function planTabTitle(path: string): string {
   const name = fileTabTitle(path);
   return name.replace(/\.plan\.md$/i, '') || 'Plan';
+}
+
+/** D-044:Demo tab id(同一 UltraPlan 流程单例;不用 token / slug,事件与页签只认流程 id)。 */
+export function demoTabId(upId: string): string {
+  return `demo:${upId}`;
+}
+
+/** Demo tab 标题:「Demo · <流程标题>」,流程还没有标题时只写 Demo。 */
+export function demoTabTitle(title: string): string {
+  const t = title.trim();
+  return t === '' ? 'Demo' : `Demo · ${t}`;
 }
 
 export type PaneKind = 'sessions' | 'chat' | 'inspector';
@@ -205,7 +223,12 @@ interface WorkbenchState {
   /** 工作区文件 → 个人工作区 tab(已开则激活)。 */
   openFile: (path: string) => void;
   /** D-035:计划文件 → Plan tab(已开则激活;plan.created/updated 事件与命令面板共用)。 */
-  openPlan: (path: string) => void;
+  openPlan: (path: string, owner?: { upId: string; sessionId: string }) => void;
+  /**
+   * D-044:UltraPlan Demo → Demo tab(已开则激活;实时 ultraplan.demo.ready、Demo 卡、状态条共用)。
+   * title 是流程标题(页签文案由 demoTabTitle 拼)。
+   */
+  openDemo: (upId: string, sessionId: string, title: string) => void;
   /** tab 标题回填(计划页加载出 front matter 真名后改 tabbar 文案)。 */
   setTabTitle: (id: string, title: string) => void;
   /** 关闭 tab(F9:dirty tab 先拦截 → 激活 + 挂 pendingCloseTabId,不直接关)。 */
@@ -318,19 +341,43 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
       }
     },
 
-    openPlan: (path) => {
+    openPlan: (path, owner) => {
       const id = planTabId(path);
       const { tabs } = get();
       if (!tabs.some((t) => t.id === id)) {
         set({
-          tabs: [...tabs, { id, kind: 'plan', title: planTabTitle(path), path }],
+          tabs: [...tabs, { id, kind: 'plan', title: planTabTitle(path), path, ...owner }],
           activeTabId: id,
           rightTab: 'files',
           homeDismissed: false,
         });
       } else {
-        set({ activeTabId: id, rightTab: 'files', homeDismissed: false });
+        set({ tabs: owner ? tabs.map((t) => t.id === id ? { ...t, ...owner } : t) : tabs, activeTabId: id, rightTab: 'files', homeDismissed: false });
       }
+    },
+
+    openDemo: (upId, sessionId, title) => {
+      const id = demoTabId(upId);
+      const { tabs } = get();
+      const existing = tabs.find((t) => t.id === id);
+      if (!existing) {
+        set({
+          tabs: [...tabs, { id, kind: 'demo', title: demoTabTitle(title), upId, sessionId }],
+          activeTabId: id,
+          rightTab: 'files',
+          homeDismissed: false,
+        });
+        return;
+      }
+      // 已开:激活;流程标题此前还没拿到(开页签时 state 未回填)的,顺手补上。
+      const nextTitle = title.trim() === '' ? existing.title : demoTabTitle(title);
+      set({
+        tabs:
+          nextTitle === existing.title ? tabs : tabs.map((t) => (t.id === id ? { ...t, title: nextTitle } : t)),
+        activeTabId: id,
+        rightTab: 'files',
+        homeDismissed: false,
+      });
     },
 
     setTabTitle: (id, title) => {

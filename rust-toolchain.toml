@@ -1,0 +1,5 @@
+# Pinned for the Godot backend: godot-rust gdext 0.5.x needs rustc >= 1.94 (docs/godot-backend/00-spike-report.md section 2.6).
+# rurix frame output must stay byte-identical across this bump: evidence/godot-backend/rurix-frame-baseline.json.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]

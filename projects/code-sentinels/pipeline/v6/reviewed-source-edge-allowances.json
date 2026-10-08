@@ -1,0 +1,77 @@
+{
+  "claude/nw/hit": {
+    "sourceJob": "claude-nw-actions-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Independent original RGB inspection: border is impact ring/flying graphical elements; complete character remains visible."
+  },
+  "claude/e/hit": {
+    "sourceJob": "claude-e-actions-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Independent original RGB inspection: border is impact ring/flying graphical elements; complete character remains visible."
+  },
+  "deepseek/s/hit": {
+    "sourceJob": "deepseek-s-actions-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Independent original RGB inspection: border is remote hit effect, not body or whale tail."
+  },
+  "deepseek/se/hit": {
+    "sourceJob": "deepseek-se-actions-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Independent original RGB inspection: border is remote hit effect, not body or whale tail."
+  },
+  "deepseek/ne/hit": {
+    "sourceJob": "deepseek-ne-actions-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Independent original RGB inspection: border is remote hit effect, not body or whale tail; source raw RGB checked before garbage matte."
+  },
+  "deepseek/e/idle": {
+    "sourceJob": "deepseek-e-actions-v2",
+    "classification": "isolated-background-only",
+    "requiresGarbageMatte": "primary-component-bounds",
+    "evidence": "Complete original RGB contact re-inspected: moving distant gold/blue stars reach the image edges; the maid, hair, whale tail and feet stay inside. Only the disclosed remote-background garbage matte removes those dots."
+  },
+  "deepseek/e/walk": {
+    "sourceJob": "deepseek-e-actions-v2",
+    "classification": "isolated-background-only",
+    "requiresGarbageMatte": "primary-component-bounds",
+    "evidence": "Complete raw RGB timeline shows intact alternating-foot movement and tail; edge candidates are distant animated backdrop stars, removed by the explicitly reviewed garbage matte."
+  },
+  "deepseek/e/hit": {
+    "sourceJob": "deepseek-e-actions-v2",
+    "classification": "isolated-background-only",
+    "requiresGarbageMatte": "primary-component-bounds",
+    "evidence": "Raw RGB selected hit interval retains complete body/hair/tail. Border brightness belongs to distant stars, not the physical body; garbage matte already disclosed and inspected."
+  },
+  "deepseek/e/death": {
+    "sourceJob": "deepseek-e-actions-v2",
+    "classification": "isolated-background-only",
+    "requiresGarbageMatte": "primary-component-bounds",
+    "evidence": "Original RGB final fall is fully visible with source margins; changing edge spots are distant gold/blue background stars. This is separate from the genuinely truncated SW source, which was regenerated."
+  },
+  "gemini/n/cast": {
+    "sourceJob": "gemini-n-cast-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Complete original RGB contact viewed again: only the outer white rune-circle rays reach the raw source border. The rear-facing head, hands, torso, dress and both boots remain within clear margins. A reviewed6-source-pixel feather softens only the peripheral ray endpoints; it does not conceal missing body pixels."
+  },
+  "gpt/n/cast": {
+    "sourceJob": "gpt-n-cast-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Exact original RGB f15/f25 inspected at384 resolution: left-edge pixels are broad outward light rays; every body part and wing remains well inside the frame. Reviewed6px peripheral fade does not touch the figure."
+  },
+  "glm/n/attack": {
+    "sourceJob": "glm-n-attack-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Exact original RGB f23/f38 inspected: top boundary is the vertical ray/sparkle above the girl, not her hair or hands. Body, book/pen and clothing remain complete; only outer ray endpoints receive6px alpha feather."
+  },
+  "kimi/nw/idle": {
+    "sourceJob": "kimi-nw-actions-v2",
+    "classification": "isolated-background-only",
+    "requiresGarbageMatte": "primary-component-bounds",
+    "evidence": "Exact raw f8/f15 inspected: edge patches are distant colored backdrop spots below/aside the full rear-left figure. The entire hair, limbs and robe are inside; the already reviewed garbage matte removes only those separated background dots."
+  },
+  "minimax/n/attack": {
+    "sourceJob": "minimax-n-attack-v2",
+    "classification": "peripheral-effect-only",
+    "evidence": "Exact original RGB f23/f38/f54/f61 visually inspected in reviews/minimax-n-attack-raw-boundary.jpg. Gold/black radial streaks alone reach top/side borders; hair, hands, microphone, clothes and boots remain complete with clear margins. Reviewed6px peripheral feather affects only ray endpoints."
+  }
+}

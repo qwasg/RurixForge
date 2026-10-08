@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"reasoning_content":"Let me think"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"reasoning_content":" step by step."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"reasoning_content":"\n\nDouble-checking."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"content":"The answer is 4."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"anthropic_content":[{"signature":"EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds","thinking":"Let me think step by step.","type":"thinking"},{"data":"EmwKAhgBEgy3va3pzix","type":"redacted_thinking"},{"thinking":"Double-checking.","type":"thinking"},{"text":"The answer is 4.","type":"text"}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-msg_01Think","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[],"usage":{"prompt_tokens":40,"completion_tokens":90,"total_tokens":130,"prompt_tokens_details":{"cached_tokens":0}}}
+
+data: [DONE]
+

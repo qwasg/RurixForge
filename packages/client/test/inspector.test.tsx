@@ -1,7 +1,9 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Inspector from '@/components/shell/Inspector';
 import Workbench from '@/components/shell/Workbench';
+import { useGitStore } from '@/lib/gitStore';
+import { useThemeStore } from '@/lib/themeStore';
 import { useToastStore } from '@/lib/toastStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
 
@@ -12,6 +14,7 @@ import { useWorkbenchStore } from '@/lib/workbenchStore';
 
 const initialToast = useToastStore.getState();
 const initialWorkbench = useWorkbenchStore.getState();
+const initialGit = useGitStore.getState();
 
 function renderWorkspace() {
   return render(
@@ -35,16 +38,20 @@ function entry(name: string, kind: 'dir' | 'file', relPath: string, hidden = fal
   return { name, kind, relPath, size: kind === 'file' ? 10 : 0, modifiedAt: '2026-08-18T10:00:00Z', hidden };
 }
 
-/** 按 path query 分派的假 workspace/tree + workspace/file 后端。 */
+/** 按 path query 分派的假 workspace/tree + workspace/file 后端(D-040:git 状态请求单独应答,不计入 calls)。 */
 function stubTree(
   map: Record<string, Entry[]>,
   files: Record<string, { content: string } | { status: number; code: string; message: string }> = {},
+  git: unknown = { isRepo: false, reason: 'not a git repository' },
 ) {
   const calls: string[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: unknown) => {
       const u = String(url);
+      if (u.startsWith('/api/forge/workspace/git')) {
+        return { ok: true, status: 200, json: async () => git } as Response;
+      }
       const m = /[?&]path=([^&]*)/.exec(u);
       const path = decodeURIComponent(m?.[1] ?? '');
       calls.push(path);
@@ -98,6 +105,8 @@ function stubTree(
 beforeEach(() => {
   useToastStore.setState(initialToast, true);
   useWorkbenchStore.setState(initialWorkbench, true);
+  useGitStore.setState(initialGit, true);
+  useThemeStore.getState().setDiffMarkers('color');
 });
 
 afterEach(() => {
@@ -184,6 +193,77 @@ describe('Inspector 工作区树', () => {
     // gone.txt 无 stub → 404
     fireEvent.click(screen.getByTestId('ws-file-gone.txt'));
     expect((await screen.findByTestId('ws-preview-error')).textContent).toContain('404 PATH_NOT_FOUND');
+  });
+
+  it('D-040:文件类型图标 + git 改动标记(字母/目录点);+/- 模式显示增删行', async () => {
+    stubTree(
+      {
+        '': [entry('src', 'dir', 'src'), entry('README.md', 'file', 'README.md'), entry('a.ts', 'file', 'a.ts')],
+      },
+      {},
+      {
+        isRepo: true,
+        branch: 'main',
+        rootUntracked: false,
+        files: [
+          { path: 'a.ts', status: 'M', staged: false, dir: false, insertions: 4, deletions: 1, origPath: null },
+          { path: 'src/new.ts', status: 'U', staged: false, dir: false, insertions: null, deletions: null, origPath: null },
+        ],
+        total: 2,
+      },
+    );
+    renderWorkspace();
+    const a = await screen.findByTestId('ws-file-a.ts');
+    await vi.waitFor(() => expect(a).toHaveAttribute('data-git', 'M'));
+    expect(a).toHaveTextContent('M');
+    expect(screen.getByTestId('ws-file-README.md')).not.toHaveAttribute('data-git');
+    expect(screen.getByTestId('ws-dir-src').querySelector('[data-testid="ws-dir-dirty"]')).not.toBeNull();
+    act(() => useThemeStore.getState().setDiffMarkers('plusminus'));
+    expect(screen.getByTestId('ws-file-a.ts')).toHaveTextContent('+4');
+    expect(screen.getByTestId('ws-file-a.ts')).toHaveTextContent('−1');
+  });
+
+  it('D-040:「仅看改动」平铺改动列表,点开文件;删除项不可打开', async () => {
+    stubTree(
+      { '': [entry('a.ts', 'file', 'a.ts')] },
+      { 'a.ts': { content: 'x' } },
+      {
+        isRepo: true,
+        branch: 'dev',
+        rootUntracked: false,
+        insertions: 4,
+        deletions: 3,
+        files: [
+          { path: 'a.ts', status: 'M', staged: false, dir: false, insertions: 4, deletions: 1, origPath: null },
+          { path: 'old/gone.ts', status: 'D', staged: false, dir: false, insertions: 0, deletions: 2, origPath: null },
+        ],
+        total: 2,
+      },
+    );
+    renderWorkspace();
+    const toggle = screen.getByTestId('ws-changes-toggle');
+    await vi.waitFor(() => expect(toggle).not.toBeDisabled());
+    fireEvent.click(toggle);
+    const list = screen.getByTestId('ws-changes');
+    expect(list).toHaveTextContent('dev');
+    expect(list).toHaveTextContent('2 个改动');
+    expect(screen.getByTestId('ws-change-old/gone.ts')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('ws-change-a.ts'));
+    expect(useWorkbenchStore.getState().activeTabId).toBe('file:a.ts');
+  });
+
+  it('D-040:工作区目录整体未跟踪如实提示;非仓库时改动开关禁用', async () => {
+    stubTree({ '': [entry('a.ts', 'file', 'a.ts')] }, {}, { isRepo: true, branch: 'main', rootUntracked: true, files: [], total: 0 });
+    renderWorkspace();
+    await vi.waitFor(() => expect(screen.getByTestId('ws-changes-toggle')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('ws-changes-toggle'));
+    expect(screen.getByTestId('ws-changes')).toHaveTextContent('整体未被 git 跟踪');
+    cleanup();
+    useGitStore.setState(initialGit, true);
+    stubTree({ '': [entry('a.ts', 'file', 'a.ts')] });
+    renderWorkspace();
+    await screen.findByTestId('ws-file-a.ts');
+    expect(screen.getByTestId('ws-changes-toggle')).toBeDisabled();
   });
 
   it('错误面(如 confined 400/不存在 404):toast 如实 + 空态「工作区加载失败」', async () => {

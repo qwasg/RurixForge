@@ -1,0 +1,82 @@
+[
+  {
+    "name": "class-debug.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "class-precision.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "class-support.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "class-tide.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "credit-emblem.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "defeat-stamp.svg",
+    "viewBox": "0 0 720 240",
+    "same": true
+  },
+  {
+    "name": "deployment-reticle.svg",
+    "viewBox": "0 0 256 256",
+    "same": true
+  },
+  {
+    "name": "diagonal-hazard-strip.svg",
+    "viewBox": "0 0 256 32",
+    "same": true
+  },
+  {
+    "name": "energy-core-emblem.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "hardware-card-frame.svg",
+    "viewBox": "0 0 720 480",
+    "same": true
+  },
+  {
+    "name": "operation-seal.svg",
+    "viewBox": "0 0 320 320",
+    "same": true
+  },
+  {
+    "name": "operator-card-frame.svg",
+    "viewBox": "0 0 600 900",
+    "same": true
+  },
+  {
+    "name": "scan-grid.svg",
+    "viewBox": "0 0 128 128",
+    "same": true
+  },
+  {
+    "name": "selection-corners.svg",
+    "viewBox": "0 0 256 256",
+    "same": true
+  },
+  {
+    "name": "skill-diamond-frame.svg",
+    "viewBox": "0 0 256 256",
+    "same": true
+  },
+  {
+    "name": "victory-stamp.svg",
+    "viewBox": "0 0 720 240",
+    "same": true
+  }
+]

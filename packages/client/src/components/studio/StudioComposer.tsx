@@ -4,9 +4,11 @@ import { cn } from '@/lib/cn';
 import { useAssetStore } from '@/lib/assetStore';
 import { apiFfmpegStatus, type FfmpegStatus } from '@/lib/forgeApi';
 import { configuredBackends, useGenStore, type GenBackendInfo } from '@/lib/genStore';
+import { genBackendLabel, LOCAL_H3_BACKEND_ID, videoBackendOptions } from '@/lib/videoBackend';
 import { useOverlayStore } from '@/lib/overlayStore';
 import { useSettingsStore } from '@/lib/settingsStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
+import BlenderComposer from './BlenderComposer';
 import {
   presetOf,
   TEXT_TEMPLATES,
@@ -68,6 +70,17 @@ function ModelPicker({ node, onClose }: { node: StudioNode; onClose: () => void 
   const kind = genKindOf(node);
   const list = kind === null ? [] : backends.filter((b) => supportsKind(b, kind));
   const selected = typeof node.params.backend === 'string' ? node.params.backend : '';
+  const selectBackend = (id: string) => {
+    const backend = id === '' ? configuredBackends(list)[0] : list.find((b) => b.id === id);
+    // 本地预览默认值显式应用于切换,即使云端的 768p/15s 也在本地合法范围内。
+    if (backend?.id === LOCAL_H3_BACKEND_ID && selected !== id) {
+      const defaults = videoBackendOptions(backend, node.params, true);
+      setParam(node.id, 'resolution', defaults.resolution);
+      setParam(node.id, 'durationSec', defaults.durationSec);
+    }
+    setParam(node.id, 'backend', id);
+    onClose();
+  };
 
   useEffect(() => {
     const onDown = (ev: MouseEvent) => {
@@ -94,10 +107,7 @@ function ModelPicker({ node, onClose }: { node: StudioNode; onClose: () => void 
           <button
             type="button"
             data-testid="studio-model-auto"
-            onClick={() => {
-              setParam(node.id, 'backend', '');
-              onClose();
-            }}
+            onClick={() => selectBackend('')}
             className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors hover:bg-shell-hover"
           >
             <span className="min-w-0 flex-1">
@@ -111,16 +121,15 @@ function ModelPicker({ node, onClose }: { node: StudioNode; onClose: () => void 
               key={b.id}
               type="button"
               data-testid={`studio-model-opt-${b.id}`}
-              onClick={() => {
-                setParam(node.id, 'backend', b.id);
-                onClose();
-              }}
+              onClick={() => selectBackend(b.id)}
               className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors hover:bg-shell-hover"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-mono text-2xs text-fg">{b.id}</span>
+                <span className="block truncate font-mono text-2xs text-fg">{genBackendLabel(b.id, b.label)}</span>
                 <span className={cn('block text-[10px]', b.configured ? 'text-sage' : 'text-fg-4')}>
-                  {b.configured ? '已配置' : '未配置(生成时如实报错,去设置页配 endpoint/key)'}
+                  {b.configured ? (b.id === LOCAL_H3_BACKEND_ID ? '已配置 · 本机生成 · 无需 API Key' : '已配置')
+                    : b.kind === 'local' ? '未配置 · 去设置页启用并填写服务地址'
+                      : '未配置(生成时如实报错,去设置页配 endpoint/key)'}
                 </span>
               </span>
               {selected === b.id && <Check size={12} strokeWidth={2} className="shrink-0 text-acc" />}
@@ -170,9 +179,10 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
   const loadAssets = useAssetStore((s) => s.load);
   const [ffmpeg, setFfmpeg] = useState<FfmpegStatus | null>(null);
   const isSprite = presetOf(node.preset)?.kind === 'sprite';
+  const canReference = isSprite || presetOf(node.preset)?.kind === 'video';
   /** 上游连过来的原画节点(有则参考图自动取它的当前版本,无需手选) */
   const upstreamRef = useStudioStore((s) => {
-    if (!isSprite) return null;
+    if (!canReference) return null;
     for (const e of s.edges.filter((e) => e.to === node.id)) {
       const up = s.nodes.find((n) => n.id === e.from);
       if (up === undefined || presetOf(up.preset)?.kind !== 'image') continue;
@@ -190,42 +200,80 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
 
   // 角色动画额外要两样:能选的贴图资产,以及 ffmpeg 到底在不在(截帧全靠它)。
   useEffect(() => {
+    if (canReference) void loadAssets();
     if (!isSprite) return;
-    void loadAssets();
     apiFfmpegStatus().then(setFfmpeg, () => setFfmpeg({ found: false }));
-  }, [isSprite, node.id, loadAssets]);
+  }, [isSprite, canReference, node.id, loadAssets]);
 
   const preset = presetOf(node.preset);
-  if (!preset) return null;
-  const kind = preset.kind;
+  const kind = preset?.kind;
   const genKind = genKindOf(node);
   const error = lastError !== null && lastError.nodeId === node.id ? lastError : null;
 
   const selectedBackend = typeof node.params.backend === 'string' ? node.params.backend : '';
   const kindBackends = genKind === null ? [] : backends.filter((b) => supportsKind(b, genKind));
   const anyConfigured = configuredBackends(kindBackends).length > 0;
+  const resolvedBackend = selectedBackend !== ''
+    ? kindBackends.find((b) => b.id === selectedBackend)
+    : configuredBackends(kindBackends)[0];
+  const videoKind = kind === 'video' || kind === 'sprite';
+  const capabilities = videoKind ? resolvedBackend?.capabilities : undefined;
+  const {
+    aspects: videoAspects, resolutions: videoResolutions, durations: videoDurations,
+    aspect: videoAspect, resolution: videoResolution, durationSec: videoDuration,
+  } = videoBackendOptions(videoKind ? resolvedBackend : undefined, node.params);
+  const advertisedPromptMax = capabilities?.maxPromptChars;
+  const promptMax = typeof advertisedPromptMax === 'number'
+    && Number.isInteger(advertisedPromptMax) && advertisedPromptMax > 0
+    ? advertisedPromptMax : PROMPT_MAX;
+  const promptTooLong = node.prompt.length > promptMax;
+
+  // 清单异步加载及切模型后,将历史草稿参数同步到当前后端支持的值。
+  useEffect(() => {
+    if (!videoKind || resolvedBackend === undefined) return;
+    if (node.params.aspect !== videoAspect) setParam(node.id, 'aspect', videoAspect);
+    if (node.params.resolution !== videoResolution) setParam(node.id, 'resolution', videoResolution);
+    if (node.params.durationSec !== videoDuration) setParam(node.id, 'durationSec', videoDuration);
+  }, [videoKind, resolvedBackend?.id, node.id, node.params.resolution, node.params.durationSec,
+    node.params.aspect, videoAspect, videoResolution, videoDuration, setParam]);
+
+  if (!preset) return null;
   /** 模型钮显示文案(text = LLM 自动;其余 = 显式选择或「自动」) */
   const modelLabel =
-    kind === 'text' ? 'LLM · 自动' : selectedBackend !== '' ? selectedBackend : '自动';
+    kind === 'text' ? 'LLM · 自动' : selectedBackend !== '' ? genBackendLabel(selectedBackend, resolvedBackend?.label)
+      : resolvedBackend?.id === LOCAL_H3_BACKEND_ID ? 'MiniMax H3 · 本地(自动)' : '自动';
 
   const openModelsSettings = () => {
-    useSettingsStore.getState().setPage('models');
+    useSettingsStore.getState().setPage(kind === 'text' ? 'models' : 'generation');
     useOverlayStore.getState().open('settings');
   };
 
   const send = () => {
-    if (busy || node.prompt.trim() === '') return;
+    if (busy || node.prompt.trim() === '' || promptTooLong) return;
+    if (videoKind && resolvedBackend !== undefined) {
+      setParam(node.id, 'aspect', videoAspect);
+      setParam(node.id, 'resolution', videoResolution);
+      setParam(node.id, 'durationSec', videoDuration);
+    }
     void generate(node.id);
   };
 
   const templateId = typeof node.params.template === 'string' ? node.params.template : 'free';
   const audioMode = node.params.mode === 'music' ? 'music' : 'tts';
 
+  if (kind === 'model' && node.params.creationMethod === 'blender') {
+    return <BlenderComposer key={`${activeWorkspaceId ?? 'default'}:${node.id}`} node={node} />;
+  }
+
   return (
     <div
       data-testid="studio-composer"
       className="pointer-events-auto w-[560px] max-w-[94%]"
     >
+      {kind === 'model' && <div className="mb-1 flex justify-end">
+        <button type="button" data-testid="studio-use-blender" className="rounded border border-edge-strong bg-shell-float px-2 py-1 text-2xs text-fg-2 hover:bg-shell-hover"
+          onClick={() => setParam(node.id, 'creationMethod', 'blender')}>使用 Blender 制作地图／角色</button>
+      </div>}
       {/* 错误条:错误码如实;NOT_CONFIGURED 引导设置页 */}
       {error !== null && (
         <div
@@ -433,7 +481,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
           <textarea
             data-testid="studio-prompt"
             value={node.prompt}
-            maxLength={PROMPT_MAX}
+            maxLength={promptMax}
             onChange={(e) => setPrompt(node.id, e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send();
@@ -444,8 +492,8 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
             rows={3}
             className="block w-full resize-none bg-transparent px-2.5 py-2 text-xs text-fg outline-none placeholder:text-fg-4"
           />
-          <span className="pointer-events-none absolute bottom-1 right-2.5 text-[10px] text-fg-4">
-            {node.prompt.length} / {PROMPT_MAX}
+          <span className={cn('pointer-events-none absolute bottom-1 right-2.5 text-[10px]', promptTooLong ? 'text-danger' : 'text-fg-4')}>
+            {node.prompt.length} / {promptMax}{promptTooLong && ' · 请缩短提示词'}
           </span>
         </div>
 
@@ -464,7 +512,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
         )}
 
         {/* 角色动画:参考图来源 + clip 名(截帧参数在底条) */}
-        {kind === 'sprite' && (
+        {canReference && (
           <div
             data-testid="studio-charanim-ref"
             className="flex flex-wrap items-center gap-1.5 border-t border-edge px-2.5 py-1.5"
@@ -499,7 +547,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
               </select>
             )}
             <span className="h-3.5 w-px bg-edge-strong" />
-            <label className="flex items-center gap-1 text-[10px] text-fg-4">
+            {isSprite && <label className="flex items-center gap-1 text-[10px] text-fg-4">
               动作名
               <input
                 data-testid="studio-charanim-clip"
@@ -508,8 +556,8 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
                 placeholder="walk"
                 className="w-[80px] rounded border border-edge-strong bg-shell-sunk px-1 py-px font-mono text-[10px] text-fg outline-none placeholder:text-fg-4 focus:border-fg-4"
               />
-            </label>
-            {ffmpeg !== null && (
+            </label>}
+            {isSprite && ffmpeg !== null && (
               <span
                 data-testid="studio-ffmpeg-badge"
                 title={
@@ -584,37 +632,37 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
 
           {kind === 'video' && (
             <>
-              {['16:9', '9:16', '1:1'].map((a) => (
+              {videoAspects.map((a) => (
                 <button
                   key={a}
                   type="button"
                   data-testid={`studio-aspect-${a}`}
                   onClick={() => setParam(node.id, 'aspect', a)}
-                  className={cn(chipBtn, node.params.aspect === a && chipActive)}
+                  className={cn(chipBtn, videoAspect === a && chipActive)}
                 >
                   {a}
                 </button>
               ))}
               <span className="h-3.5 w-px bg-edge-strong" />
-              {['720p', '1080p', '2k'].map((r) => (
+              {videoResolutions.map((r) => (
                 <button
                   key={r}
                   type="button"
                   data-testid={`studio-res-${r}`}
                   onClick={() => setParam(node.id, 'resolution', r)}
-                  className={cn(chipBtn, node.params.resolution === r && chipActive)}
+                  className={cn(chipBtn, videoResolution === r && chipActive)}
                 >
-                  {r}
+                  {r === '352p' ? '352p 预览' : r}
                 </button>
               ))}
               <span className="h-3.5 w-px bg-edge-strong" />
-              {[5, 10].map((d) => (
+              {videoDurations.map((d) => (
                 <button
                   key={d}
                   type="button"
                   data-testid={`studio-dur-${d}`}
                   onClick={() => setParam(node.id, 'durationSec', d)}
-                  className={cn(chipBtn, node.params.durationSec === d && chipActive)}
+                  className={cn(chipBtn, videoDuration === d && chipActive)}
                 >
                   {d}s
                 </button>
@@ -624,14 +672,14 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
 
           {kind === 'sprite' && (
             <>
-              {[5, 10].map((d) => (
+              {videoDurations.map((d) => (
                 <button
                   key={d}
                   type="button"
                   data-testid={`studio-dur-${d}`}
                   title={`视频时长 ${d} 秒`}
                   onClick={() => setParam(node.id, 'durationSec', d)}
-                  className={cn(chipBtn, node.params.durationSec === d && chipActive)}
+                  className={cn(chipBtn, videoDuration === d && chipActive)}
                 >
                   {d}s
                 </button>
@@ -765,7 +813,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
                       (node.params.textureResolution ?? '2k') === r && chipActive,
                     )}
                   >
-                    {r}
+                    {r === '352p' ? '352p 预览' : r}
                   </button>
                 ))}
               <span className="flex items-center gap-1 text-[10px] text-fg-4">
@@ -790,7 +838,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
             <button
               type="button"
               data-testid="studio-send"
-              disabled={node.prompt.trim() === ''}
+              disabled={node.prompt.trim() === '' || promptTooLong}
               title="生成(Ctrl+Enter)"
               onClick={send}
               className="flex h-7 w-7 items-center justify-center rounded-full bg-acc text-fg-inv transition-opacity hover:opacity-90 disabled:opacity-40"

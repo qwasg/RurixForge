@@ -1,0 +1,16 @@
+{
+  "options": {"model": "gpt-5", "stream": true},
+  "request": {
+    "model": "forge-gpt-5",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello <b>world</b> & friends"}
+    ],
+    "stream": true,
+    "stream_options": {"include_usage": true},
+    "temperature": 0.7,
+    "max_tokens": 256,
+    "user": "user-42",
+    "metadata": {"trace": "abc"}
+  }
+}

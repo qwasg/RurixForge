@@ -5,6 +5,7 @@ import {
   ForgeApiError,
   type WorkspaceFileResp,
 } from './forgeApi';
+import { useGitStore } from './gitStore';
 import { useWorkbenchStore } from './workbenchStore';
 import { useWorkspaceStore } from './workspaceStore';
 
@@ -230,6 +231,8 @@ export function useFileEditor(
       }
       setSaveState(dirty ? 'dirty' : 'clean');
       setTabDirty(tabId, dirty);
+      // 落盘改变了工作区改动面:文件树标记 / 状态栏增删行即时跟上
+      void useGitStore.getState().refresh();
       return !dirty;
     } catch (err) {
       setSaveState('error');

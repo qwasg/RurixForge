@@ -1,0 +1,2646 @@
+[
+  {
+    "id": "aa-turret",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/aa-turret.blend",
+    "glb": "Content/Models/v6/aa-turret.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "aegis-array",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/aegis-array.blend",
+    "glb": "Content/Models/v6/aegis-array.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "aerospace-fighter",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/aerospace-fighter.blend",
+    "glb": "Content/Models/v6/aerospace-fighter.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "airfield",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/airfield.blend",
+    "glb": "Content/Models/v6/airfield.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "ammunition-workshop",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/ammunition-workshop.blend",
+    "glb": "Content/Models/v6/ammunition-workshop.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "anti-air",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/anti-air.blend",
+    "glb": "Content/Models/v6/anti-air.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "artillery",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/artillery.blend",
+    "glb": "Content/Models/v6/artillery.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "autocannon",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/autocannon.blend",
+    "glb": "Content/Models/v6/autocannon.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "breach-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/breach-tank.blend",
+    "glb": "Content/Models/v6/breach-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "bridge",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/bridge.blend",
+    "glb": "Content/Models/v6/bridge.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "cargo-aircraft",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/cargo-aircraft.blend",
+    "glb": "Content/Models/v6/cargo-aircraft.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "cargo-truck",
+    "category": "truck",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/cargo-truck.blend",
+    "glb": "Content/Models/v6/cargo-truck.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "coal-node",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/coal-node.blend",
+    "glb": "Content/Models/v6/coal-node.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "coal-power",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/coal-power.blend",
+    "glb": "Content/Models/v6/coal-power.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "column",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/column.blend",
+    "glb": "Content/Models/v6/column.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "command-core",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/command-core.blend",
+    "glb": "Content/Models/v6/command-core.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "cuda-wall",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/cuda-wall.blend",
+    "glb": "Content/Models/v6/cuda-wall.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "depot",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/depot.blend",
+    "glb": "Content/Models/v6/depot.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "distributed-array",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/distributed-array.blend",
+    "glb": "Content/Models/v6/distributed-array.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "door",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/door.blend",
+    "glb": "Content/Models/v6/door.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "drainage-pump",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/drainage-pump.blend",
+    "glb": "Content/Models/v6/drainage-pump.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "drilling-rig",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/drilling-rig.blend",
+    "glb": "Content/Models/v6/drilling-rig.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "elevator",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/elevator.blend",
+    "glb": "Content/Models/v6/elevator.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "energy-defense",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/energy-defense.blend",
+    "glb": "Content/Models/v6/energy-defense.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "engineer-drone",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/engineer-drone.blend",
+    "glb": "Content/Models/v6/engineer-drone.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "extractor",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/extractor.blend",
+    "glb": "Content/Models/v6/extractor.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "factory",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/factory.blend",
+    "glb": "Content/Models/v6/factory.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "fighter",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/fighter.blend",
+    "glb": "Content/Models/v6/fighter.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "fire-control",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/fire-control.blend",
+    "glb": "Content/Models/v6/fire-control.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "floor",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/floor.blend",
+    "glb": "Content/Models/v6/floor.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "fortress-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/fortress-tank.blend",
+    "glb": "Content/Models/v6/fortress-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "foundation",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/foundation.blend",
+    "glb": "Content/Models/v6/foundation.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "generator",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/generator.blend",
+    "glb": "Content/Models/v6/generator.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "hydro-power",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/hydro-power.blend",
+    "glb": "Content/Models/v6/hydro-power.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "interceptor",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/interceptor.blend",
+    "glb": "Content/Models/v6/interceptor.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "laser-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/laser-tank.blend",
+    "glb": "Content/Models/v6/laser-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "launchpad",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/launchpad.blend",
+    "glb": "Content/Models/v6/launchpad.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "light-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/light-tank.blend",
+    "glb": "Content/Models/v6/light-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "logistics-belt",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/logistics-belt.blend",
+    "glb": "Content/Models/v6/logistics-belt.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "loiter-drone",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/loiter-drone.blend",
+    "glb": "Content/Models/v6/loiter-drone.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "micro-drone",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/micro-drone.blend",
+    "glb": "Content/Models/v6/micro-drone.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "missile-silo",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/missile-silo.blend",
+    "glb": "Content/Models/v6/missile-silo.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "missile-truck",
+    "category": "truck",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/missile-truck.blend",
+    "glb": "Content/Models/v6/missile-truck.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "moat",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/moat.blend",
+    "glb": "Content/Models/v6/moat.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "mobile-relay",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/mobile-relay.blend",
+    "glb": "Content/Models/v6/mobile-relay.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "modular-workshop",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/modular-workshop.blend",
+    "glb": "Content/Models/v6/modular-workshop.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "mortar",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/mortar.blend",
+    "glb": "Content/Models/v6/mortar.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "network-defense",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/network-defense.blend",
+    "glb": "Content/Models/v6/network-defense.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "nuclear-power",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/nuclear-power.blend",
+    "glb": "Content/Models/v6/nuclear-power.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "orbital-control",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/orbital-control.blend",
+    "glb": "Content/Models/v6/orbital-control.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "orbital-lance",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/orbital-lance.blend",
+    "glb": "Content/Models/v6/orbital-lance.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "ore-node",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/ore-node.blend",
+    "glb": "Content/Models/v6/ore-node.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "particle-cannon",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/particle-cannon.blend",
+    "glb": "Content/Models/v6/particle-cannon.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "particle-foundry",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/particle-foundry.blend",
+    "glb": "Content/Models/v6/particle-foundry.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "physical-wall",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/physical-wall.blend",
+    "glb": "Content/Models/v6/physical-wall.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plasma-cannon",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plasma-cannon.blend",
+    "glb": "Content/Models/v6/plasma-cannon.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-algorithm-attack",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-algorithm-attack.blend",
+    "glb": "Content/Models/v6/plugin-algorithm-attack.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-algorithm-core",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-algorithm-core.blend",
+    "glb": "Content/Models/v6/plugin-algorithm-core.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-algorithm-support",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-algorithm-support.blend",
+    "glb": "Content/Models/v6/plugin-algorithm-support.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-lightweight-attack",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-lightweight-attack.blend",
+    "glb": "Content/Models/v6/plugin-lightweight-attack.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-lightweight-core",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-lightweight-core.blend",
+    "glb": "Content/Models/v6/plugin-lightweight-core.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-lightweight-support",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-lightweight-support.blend",
+    "glb": "Content/Models/v6/plugin-lightweight-support.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-science-attack",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-science-attack.blend",
+    "glb": "Content/Models/v6/plugin-science-attack.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-science-core",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-science-core.blend",
+    "glb": "Content/Models/v6/plugin-science-core.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-science-support",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-science-support.blend",
+    "glb": "Content/Models/v6/plugin-science-support.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-security-attack",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-security-attack.blend",
+    "glb": "Content/Models/v6/plugin-security-attack.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-security-core",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-security-core.blend",
+    "glb": "Content/Models/v6/plugin-security-core.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-security-support",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-security-support.blend",
+    "glb": "Content/Models/v6/plugin-security-support.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-speed-attack",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-speed-attack.blend",
+    "glb": "Content/Models/v6/plugin-speed-attack.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-speed-core",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-speed-core.blend",
+    "glb": "Content/Models/v6/plugin-speed-core.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "plugin-speed-support",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/plugin-speed-support.blend",
+    "glb": "Content/Models/v6/plugin-speed-support.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "precision-strike",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/precision-strike.blend",
+    "glb": "Content/Models/v6/precision-strike.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "pulse-turret",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/pulse-turret.blend",
+    "glb": "Content/Models/v6/pulse-turret.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "pycharm",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/pycharm.blend",
+    "glb": "Content/Models/v6/pycharm.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review",
+    "softwareBrand": {
+      "reference": "Content/Models/v6/branding/pycharm.png",
+      "sha256": "05bb66fa22f6c7055e134b1e24f6347ce9dd1e72362187f623d4a8282ec1b911",
+      "source": "Previously verified JetBrains official brand PNG",
+      "bitmapModified": false
+    }
+  },
+  {
+    "id": "rack",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/rack.blend",
+    "glb": "Content/Models/v6/rack.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "radar-array",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/radar-array.blend",
+    "glb": "Content/Models/v6/radar-array.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "rail-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/rail-tank.blend",
+    "glb": "Content/Models/v6/rail-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "ramp",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/ramp.blend",
+    "glb": "Content/Models/v6/ramp.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "repair-bay",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/repair-bay.blend",
+    "glb": "Content/Models/v6/repair-bay.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "research-console",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/research-console.blend",
+    "glb": "Content/Models/v6/research-console.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "resource-hauler",
+    "category": "truck",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/resource-hauler.blend",
+    "glb": "Content/Models/v6/resource-hauler.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "roof",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/roof.blend",
+    "glb": "Content/Models/v6/roof.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "roof-corner",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/roof-corner.blend",
+    "glb": "Content/Models/v6/roof-corner.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "scout-buggy",
+    "category": "buggy",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/scout-buggy.blend",
+    "glb": "Content/Models/v6/scout-buggy.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "secure-switch",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/secure-switch.blend",
+    "glb": "Content/Models/v6/secure-switch.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "shield-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/shield-tank.blend",
+    "glb": "Content/Models/v6/shield-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "siege-launcher",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/siege-launcher.blend",
+    "glb": "Content/Models/v6/siege-launcher.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "stairs",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/stairs.blend",
+    "glb": "Content/Models/v6/stairs.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "stealth-wing",
+    "category": "air",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/stealth-wing.blend",
+    "glb": "Content/Models/v6/stealth-wing.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "strategic-node",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/strategic-node.blend",
+    "glb": "Content/Models/v6/strategic-node.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "vscode",
+    "category": "turret",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/vscode.blend",
+    "glb": "Content/Models/v6/vscode.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review",
+    "softwareBrand": {
+      "reference": "Content/Models/v6/branding/vscode.png",
+      "sha256": "7ac29e00cd66e549acc2ea6a99a813f92cb23a6d165293be6959845670f0c5a4",
+      "source": "Previously verified Microsoft official branding bundle",
+      "bitmapModified": false
+    }
+  },
+  {
+    "id": "wall",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/wall.blend",
+    "glb": "Content/Models/v6/wall.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "wind-power",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/wind-power.blend",
+    "glb": "Content/Models/v6/wind-power.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  },
+  {
+    "id": "window-wall",
+    "category": "module",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/window-wall.blend",
+    "glb": "Content/Models/v6/window-wall.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review"
+  }
+]

@@ -10,11 +10,13 @@
 use serde_json::{json, Value};
 
 /// 回话形态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Reply {
     /// `{ decision: "accept" | "acceptForSession" | "decline" }`
     Decision,
-    /// `{ answers: [...] }`(要用户填表)
+    /// 内建 `request_permissions` 要回授获准的请求子集，而不是通用 decision 枚举。
+    Permissions { requested: Value },
+    /// `{ answers: { questionId: { answers: string[] } } }`(要用户填表)
     Answers,
     /// MCP elicitation:`{ action: "accept" | "decline", content }`
     Elicitation,
@@ -51,7 +53,12 @@ pub fn classify(method: &str, params: &Value) -> Option<Approval> {
                 "command": command_line(params),
                 "cwd": params.get("cwd").cloned().unwrap_or(Value::Null),
                 "reason": reason,
-                "availableDecisions": ["accept", "acceptForSession", "decline"],
+                "approvalKind": params.get("kind").cloned().unwrap_or(Value::Null),
+                "environmentId": params.get("environmentId").cloned().unwrap_or(Value::Null),
+                "networkApprovalContext": params.get("networkApprovalContext").cloned().unwrap_or(Value::Null),
+                "proposedExecpolicyAmendment": params.get("proposedExecpolicyAmendment").cloned().unwrap_or(Value::Null),
+                "proposedNetworkPolicyAmendments": params.get("proposedNetworkPolicyAmendments").cloned().unwrap_or(Value::Null),
+                "availableDecisions": available_decisions(params, &["accept", "acceptForSession", "decline"]),
             }),
             reply: Reply::Decision,
         }),
@@ -62,24 +69,25 @@ pub fn classify(method: &str, params: &Value) -> Option<Approval> {
                 "tool": "apply_patch",
                 "changes": changes(params),
                 "reason": reason,
-                "availableDecisions": ["accept", "acceptForSession", "decline"],
+                "grantRoot": params.get("grantRoot").cloned().unwrap_or(Value::Null),
+                "availableDecisions": available_decisions(params, &["accept", "acceptForSession", "decline"]),
             }),
             reply: Reply::Decision,
         }),
-        "item/permissions/requestApproval" => Some(Approval {
-            kind: "permissions",
-            payload: json!({
-                "itemId": item_id,
-                "tool": "permissions",
-                "permissions": params
-                    .get("permissions")
-                    .cloned()
-                    .unwrap_or(Value::Null),
-                "reason": reason,
-                "availableDecisions": ["accept", "acceptForSession", "decline"],
-            }),
-            reply: Reply::Decision,
-        }),
+        "item/permissions/requestApproval" => {
+            let requested = requested_permissions(params);
+            Some(Approval {
+                kind: "permissions",
+                payload: json!({
+                    "itemId": item_id,
+                    "tool": "permissions",
+                    "permissions": requested,
+                    "reason": reason,
+                    "availableDecisions": available_decisions(params, &["accept", "acceptForSession", "decline"]),
+                }),
+                reply: Reply::Permissions { requested },
+            })
+        }
         "item/tool/requestUserInput" => Some(Approval {
             kind: "userInput",
             payload: json!({
@@ -91,31 +99,38 @@ pub fn classify(method: &str, params: &Value) -> Option<Approval> {
                     .cloned()
                     .unwrap_or(Value::Null),
                 "reason": reason,
-                "availableDecisions": ["accept", "decline"],
+                "availableDecisions": available_decisions(params, &["accept", "decline"]),
             }),
             reply: Reply::Answers,
         }),
-        "elicitation/create" | "item/tool/elicitation" => Some(Approval {
-            kind: "elicitation",
-            payload: json!({
-                "itemId": item_id,
-                "tool": params.get("tool").cloned().unwrap_or(Value::Null),
-                "message": params.get("message").cloned().unwrap_or(Value::Null),
-                "schema": params
-                    .get("requestedSchema")
-                    .or_else(|| params.get("schema"))
-                    .cloned()
-                    .unwrap_or(Value::Null),
-                "availableDecisions": ["accept", "decline"],
-            }),
-            reply: Reply::Elicitation,
-        }),
+        "mcpServer/elicitation/request" | "elicitation/create" | "item/tool/elicitation" => {
+            Some(Approval {
+                kind: "elicitation",
+                payload: json!({
+                    "itemId": item_id,
+                    "tool": params.get("tool").cloned().unwrap_or(Value::Null),
+                    "serverName": params.get("serverName").cloned().unwrap_or(Value::Null),
+                    "mode": params.get("mode").cloned().unwrap_or(Value::Null),
+                    "message": params.get("message").cloned().unwrap_or(Value::Null),
+                    "url": params.get("url").cloned().unwrap_or(Value::Null),
+                    "elicitationId": params.get("elicitationId").cloned().unwrap_or(Value::Null),
+                    "_meta": params.get("_meta").cloned().unwrap_or(Value::Null),
+                    "schema": params
+                        .get("requestedSchema")
+                        .or_else(|| params.get("schema"))
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                    "availableDecisions": available_decisions(params, &["accept", "decline"]),
+                }),
+                reply: Reply::Elicitation,
+            })
+        }
         _ => None,
     }
 }
 
 /// 前端回话(`permission.resolved` 的决定原文)→ Codex 期望的响应体。
-pub fn to_codex_result(reply: Reply, decision: &Value) -> Value {
+pub fn to_codex_result(reply: &Reply, decision: &Value) -> Value {
     let choice = decision
         .get("decision")
         .and_then(Value::as_str)
@@ -132,29 +147,113 @@ pub fn to_codex_result(reply: Reply, decision: &Value) -> Value {
             };
             json!({ "decision": d })
         }
-        Reply::Answers => {
-            if !allowed {
-                return json!({ "cancelled": true });
-            }
+        Reply::Permissions { requested } => {
+            let permissions = if allowed {
+                requested_permissions(&json!({ "permissions": requested }))
+            } else {
+                json!({})
+            };
             json!({
-                "answers": decision.get("answers").cloned().unwrap_or_else(|| json!([]))
+                "permissions": permissions,
+                "scope": if choice == "acceptForSession" && allowed { "session" } else { "turn" },
             })
+        }
+        Reply::Answers => {
+            let answers = if allowed {
+                normalize_answers(decision.get("answers"))
+            } else {
+                json!({})
+            };
+            json!({ "answers": answers })
         }
         Reply::Elicitation => {
             if !allowed {
-                return json!({ "action": "decline" });
+                return json!({ "action": "decline", "content": Value::Null });
             }
             json!({
                 "action": "accept",
-                "content": decision.get("answers").cloned().unwrap_or_else(|| json!({})),
+                "content": decision.get("answers").cloned().unwrap_or(Value::Null),
             })
         }
     }
 }
 
 /// 连接断了/turn 被中止时给 Codex 的兜底回话:一律拒,让它干净收场而不是挂着。
-pub fn abandon_result(reply: Reply) -> Value {
+pub fn abandon_result(reply: &Reply) -> Value {
     to_codex_result(reply, &json!({ "decision": "decline" }))
+}
+
+fn available_decisions(params: &Value, fallback: &[&str]) -> Value {
+    params
+        .get("availableDecisions")
+        .filter(|value| value.is_array())
+        .cloned()
+        .unwrap_or_else(|| json!(fallback))
+}
+
+fn requested_permissions(params: &Value) -> Value {
+    let Some(src) = params.get("permissions").and_then(Value::as_object) else {
+        return json!({});
+    };
+    let mut out = serde_json::Map::new();
+    for key in ["fileSystem", "network"] {
+        if let Some(value) = src.get(key) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+/// 兼容前端已有的数组答卷与 app-server 的对象答卷，线上统一输出正式 schema。
+fn normalize_answers(raw: Option<&Value>) -> Value {
+    let mut out = serde_json::Map::new();
+    match raw {
+        Some(Value::Object(obj)) => {
+            for (id, answer) in obj {
+                if let Some(values) = answer_values(answer) {
+                    out.insert(id.clone(), json!({ "answers": values }));
+                }
+            }
+        }
+        Some(Value::Array(items)) => {
+            for item in items {
+                let Some(id) = item
+                    .get("id")
+                    .or_else(|| item.get("questionId"))
+                    .and_then(Value::as_str)
+                else {
+                    continue;
+                };
+                if let Some(values) = item
+                    .get("answers")
+                    .or_else(|| item.get("value"))
+                    .or_else(|| item.get("answer"))
+                    .and_then(answer_values)
+                {
+                    out.insert(id.to_string(), json!({ "answers": values }));
+                }
+            }
+        }
+        _ => {}
+    }
+    Value::Object(out)
+}
+
+fn answer_values(value: &Value) -> Option<Vec<String>> {
+    if let Some(inner) = value.get("answers") {
+        return answer_values(inner);
+    }
+    match value {
+        Value::String(s) => Some(vec![s.clone()]),
+        Value::Array(values) => Some(
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 fn command_line(params: &Value) -> Value {
@@ -224,7 +323,7 @@ mod tests {
     fn file_change_approval_flattens_changes() {
         let a = classify(
             "item/fileChange/requestApproval",
-            &json!({ "threadId": "th_1", "changes": {
+            &json!({ "threadId": "th_1", "grantRoot": "D:/proj/generated", "changes": {
                 "src/main.rs": { "kind": "modify", "diff": "@@ -1 +1 @@" }
             }}),
         )
@@ -232,6 +331,7 @@ mod tests {
         assert_eq!(a.kind, "fileChange");
         assert_eq!(a.payload["changes"][0]["path"], "src/main.rs");
         assert_eq!(a.payload["changes"][0]["kind"], "modify");
+        assert_eq!(a.payload["grantRoot"], "D:/proj/generated");
     }
 
     /// 非审批类请求不该被这里截走(dynamicTool 调用归 tools 处理)。
@@ -244,15 +344,15 @@ mod tests {
     #[test]
     fn accept_for_session_is_preserved() {
         assert_eq!(
-            to_codex_result(Reply::Decision, &json!({ "decision": "acceptForSession" })),
+            to_codex_result(&Reply::Decision, &json!({ "decision": "acceptForSession" })),
             json!({ "decision": "acceptForSession" })
         );
         assert_eq!(
-            to_codex_result(Reply::Decision, &json!({ "decision": "accept" })),
+            to_codex_result(&Reply::Decision, &json!({ "decision": "accept" })),
             json!({ "decision": "accept" })
         );
         assert_eq!(
-            to_codex_result(Reply::Decision, &json!({ "decision": "decline" })),
+            to_codex_result(&Reply::Decision, &json!({ "decision": "decline" })),
             json!({ "decision": "decline" })
         );
     }
@@ -261,19 +361,89 @@ mod tests {
     #[test]
     fn user_input_answers_and_cancel() {
         let ok = to_codex_result(
-            Reply::Answers,
+            &Reply::Answers,
             &json!({ "decision": "accept", "answers": [{ "id": "q1", "value": "2d" }] }),
         );
-        assert_eq!(ok["answers"][0]["value"], "2d");
-        let no = to_codex_result(Reply::Answers, &json!({ "decision": "decline" }));
-        assert_eq!(no, json!({ "cancelled": true }));
+        assert_eq!(ok["answers"]["q1"]["answers"], json!(["2d"]));
+        let no = to_codex_result(&Reply::Answers, &json!({ "decision": "decline" }));
+        assert_eq!(no, json!({ "answers": {} }));
     }
 
     /// 放弃(连接断/被中止)一律回拒绝,让 Codex 干净收场。
     #[test]
     fn abandon_declines_every_shape() {
-        assert_eq!(abandon_result(Reply::Decision)["decision"], "decline");
-        assert_eq!(abandon_result(Reply::Answers)["cancelled"], true);
-        assert_eq!(abandon_result(Reply::Elicitation)["action"], "decline");
+        assert_eq!(abandon_result(&Reply::Decision)["decision"], "decline");
+        assert_eq!(abandon_result(&Reply::Answers)["answers"], json!({}));
+        assert_eq!(abandon_result(&Reply::Elicitation)["action"], "decline");
+    }
+
+    #[test]
+    fn permissions_grant_echoes_only_requested_subset_and_scope() {
+        let a = classify(
+            "item/permissions/requestApproval",
+            &json!({
+                "permissions": {
+                    "network": { "enabled": true },
+                    "fileSystem": { "write": ["D:/proj"] },
+                    "unexpected": { "secret": "must-not-echo" }
+                }
+            }),
+        )
+        .unwrap();
+        let yes = to_codex_result(&a.reply, &json!({ "decision": "acceptForSession" }));
+        assert_eq!(yes["scope"], "session");
+        assert_eq!(yes["permissions"]["network"]["enabled"], true);
+        assert!(yes["permissions"].get("unexpected").is_none());
+        let no = to_codex_result(&a.reply, &json!({ "decision": "decline" }));
+        assert_eq!(no, json!({ "permissions": {}, "scope": "turn" }));
+    }
+
+    #[test]
+    fn official_mcp_elicitation_method_is_classified() {
+        let a = classify(
+            "mcpServer/elicitation/request",
+            &json!({
+                "serverName": "store", "mode": "url", "message": "登录后继续",
+                "url": "https://example.test/login", "elicitationId": "el_1",
+                "_meta": { "trace": "t1" }
+            }),
+        )
+        .expect("正式方法名必须被处理，否则 turn 会永久挂住");
+        assert_eq!(a.kind, "elicitation");
+        assert_eq!(a.payload["serverName"], "store");
+        assert_eq!(a.payload["mode"], "url");
+        assert_eq!(a.payload["url"], "https://example.test/login");
+        assert_eq!(a.payload["elicitationId"], "el_1");
+        assert_eq!(a.payload["_meta"]["trace"], "t1");
+        let no = to_codex_result(&a.reply, &json!({ "decision": "decline" }));
+        assert_eq!(no, json!({ "action": "decline", "content": null }));
+    }
+
+    #[test]
+    fn command_approval_preserves_upstream_risk_context_and_decisions() {
+        let a = classify(
+            "item/commandExecution/requestApproval",
+            &json!({
+                "itemId": "cmd_1",
+                "availableDecisions": ["accept", "decline"],
+                "networkApprovalContext": { "host": "api.example.test" },
+                "proposedExecpolicyAmendment": ["prefix_rule", "cargo"],
+                "proposedNetworkPolicyAmendments": [{ "host": "api.example.test", "action": "allow" }]
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            a.payload["availableDecisions"],
+            json!(["accept", "decline"])
+        );
+        assert_eq!(
+            a.payload["networkApprovalContext"]["host"],
+            "api.example.test"
+        );
+        assert_eq!(a.payload["proposedExecpolicyAmendment"][1], "cargo");
+        assert_eq!(
+            a.payload["proposedNetworkPolicyAmendments"][0]["action"],
+            "allow"
+        );
     }
 }

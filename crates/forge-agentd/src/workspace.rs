@@ -102,9 +102,12 @@ fn resolve_confined(
     root: &std::path::Path,
     rel: &str,
 ) -> Result<std::path::PathBuf, (StatusCode, &'static str)> {
-    let root = root
-        .canonicalize()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "WORKSPACE_ROOT_UNREADABLE"))?;
+    let root = root.canonicalize().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "WORKSPACE_ROOT_UNREADABLE",
+        )
+    })?;
     // 不裁切斜杠:越界防护全靠 canonicalize + starts_with(带盘符/根的路径 join 整体替换,
     // 裁切反而会把 "C:/" 降级成盘符相对路径)。""/空白 = 根本身。
     let rel = rel.trim();
@@ -164,7 +167,8 @@ fn load_file_in(
     if size > MAX_FILE_BYTES {
         return Err((StatusCode::PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE"));
     }
-    let bytes = std::fs::read(&canon).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "FORGE_IO"))?;
+    let bytes =
+        std::fs::read(&canon).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "FORGE_IO"))?;
     let sniff = &bytes[..bytes.len().min(SNIFF_BYTES)];
     if sniff.contains(&0) {
         return Err((StatusCode::UNSUPPORTED_MEDIA_TYPE, "BINARY_FILE"));
@@ -316,7 +320,11 @@ pub async fn workspace_file_write(
             } else {
                 format!("path 须为根内 ≤256KB 已存在文本文件(实: {rel})")
             };
-            (status, Json(json!({ "error": { "code": code, "message": message } }))).into_response()
+            (
+                status,
+                Json(json!({ "error": { "code": code, "message": message } })),
+            )
+                .into_response()
         }
     }
 }
@@ -333,7 +341,11 @@ fn rel_path(root: &std::path::Path, abs: &std::path::Path) -> String {
         .unwrap_or_default()
 }
 
-fn entry_json(root: &std::path::Path, dir: &std::path::Path, ent: &std::fs::DirEntry) -> Option<Value> {
+fn entry_json(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    ent: &std::fs::DirEntry,
+) -> Option<Value> {
     let name = ent.file_name().to_string_lossy().into_owned();
     // symlink_metadata:不跟随软链接(软链接目录取 dir 亦不越根,读的是链接自身类型)。
     let meta = ent.metadata().ok()?;
@@ -438,8 +450,12 @@ pub async fn workspace_tree(
         bd.cmp(&ad).then_with(|| {
             let an = a["name"].as_str().unwrap_or("").to_lowercase();
             let bn = b["name"].as_str().unwrap_or("").to_lowercase();
-            an.cmp(&bn)
-                .then_with(|| a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or("")))
+            an.cmp(&bn).then_with(|| {
+                a["name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(b["name"].as_str().unwrap_or(""))
+            })
         })
     });
     let total = entries.len();
@@ -464,10 +480,8 @@ mod tests {
 
     /// 独立 workspace 根(返回路径;调用方收尾 remove_dir_all)。
     fn temp_root(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "agentd-f8w1-wsfile-{tag}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("agentd-f8w1-wsfile-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.canonicalize().unwrap()
     }

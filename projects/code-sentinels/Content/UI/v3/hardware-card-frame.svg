@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480" viewBox="0 0 720 480" fill="none" role="img" aria-labelledby="hardware-card-frame-title hardware-card-frame-desc"><title id="hardware-card-frame-title">hardware card frame</title><desc id="hardware-card-frame-desc">Original Code Sentinels tactical vector artwork.</desc>
+<defs><linearGradient id="hc-shade" x1="360" y1="342" x2="360" y2="479" gradientUnits="userSpaceOnUse"><stop stop-color="#101316" stop-opacity="0"/><stop offset=".5" stop-color="#101316" stop-opacity=".88"/><stop offset="1" stop-color="#101316"/></linearGradient></defs>
+<path d="M2 24L24 2H695L718 25V454L694 478H2Z" stroke="#F2F0E9" stroke-width="3"/>
+<path d="M12 28L28 12H690L707 30V449L689 467H12Z" stroke="#7F878A" stroke-opacity=".5"/>
+<path d="M3 332H717V455L694 477H3Z" fill="url(#hc-shade)"/>
+<path d="M3 24L24 3H220L208 14H29L14 29V120L3 131Z" fill="#EDB63B"/>
+<path d="M434 3H695L718 25V67L706 78V30L689 14H423Z" fill="#F2F0E9"/>
+<path d="M26 364H626L648 342H691" stroke="#EDB63B" stroke-width="3"/>
+<path d="M26 375H177M189 375H265" stroke="#F2F0E9" stroke-opacity=".42"/>
+<path d="M26 401H33V448H26ZM683 401H690V448H683Z" fill="#F2F0E9"/>
+<path d="M404 452H638L649 441H691" stroke="#F2F0E9" stroke-opacity=".55" stroke-width="2"/>
+<g fill="#F2F0E9" opacity=".5"><path d="M31 44H40V53H31ZM45 44H54V53H45ZM59 44H68V53H59ZM31 58H40V67H31ZM59 58H68V67H59Z"/></g>
+<path d="M39 309H57M48 300V318M653 94H677M665 82V106" stroke="#7F878A" stroke-opacity=".65"/>
+<path d="M286 15H314M322 15H350M358 15H386" stroke="#7F878A" stroke-width="2"/></svg>

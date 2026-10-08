@@ -1,0 +1,225 @@
+{
+ "name": "env_panel",
+ "doc": "Environment: sky background + sky ambient/reflection, AgX, glow, SSAO (rurix ignores Environment; comparison only)",
+ "project": "models",
+ "entities": [
+  {
+   "name": "floor",
+   "translation": [
+    0.0,
+    -1.0,
+    -1.0
+   ],
+   "rotation": [
+    -0.7071067811865476,
+    0.0,
+    0.0,
+    0.7071067811865476
+   ],
+   "scale": [
+    6.0,
+    6.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wall",
+   "translation": [
+    0.0,
+    1.0,
+    -3.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    6.0,
+    4.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "red",
+   "translation": [
+    -1.0,
+    0.0,
+    -1.5
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/red.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "green",
+   "translation": [
+    1.0,
+    0.0,
+    -1.5
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/green.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "lamp",
+   "translation": [
+    0.0,
+    1.2,
+    -2.9
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/lamp.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "env",
+   "translation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "Environment",
+     "enabled": true,
+     "props": {
+      "background": "sky",
+      "ambientSource": "sky",
+      "reflectionSource": "sky",
+      "tonemap": "agx",
+      "glowEnabled": true,
+      "glowIntensity": 0.8,
+      "ssaoEnabled": true
+     }
+    }
+   ]
+  }
+ ],
+ "camera": {
+  "target": [
+   0.0,
+   -0.3,
+   -2.0
+  ],
+  "yaw": 0.0,
+  "pitch": 20.0,
+  "dist": 6.0,
+  "fovY": 50.0,
+  "ortho": false
+ },
+ "width": 640,
+ "height": 360,
+ "probes": [
+  [
+   320,
+   300
+  ],
+  [
+   320,
+   120
+  ],
+  [
+   200,
+   190
+  ],
+  [
+   440,
+   190
+  ],
+  [
+   320,
+   95
+  ]
+ ],
+ "probeLabels": [
+  "floor",
+  "wall",
+  "red",
+  "green",
+  "lamp"
+ ],
+ "warmFrames": 3
+}

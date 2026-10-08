@@ -1,0 +1,580 @@
+{
+  "schemaVersion": 1,
+  "version": 6,
+  "verifiedAt": "2026-09-11T15:08:56.910601+00:00",
+  "pass": true,
+  "scope": "Actual native Rurix GPU lifecycle/alpha-pick verification of lossless indexed runtime pages, using explicitly unearned validated replica fixtures. This is not earned gameplay, balance, LAN, first-use timing or pressure acceptance.",
+  "engineSha256": "3f3236dfe452c0b10f75496f840a901d53aeb0293c8aea31bcb345dd81fceb1f",
+  "devices": [
+    "NVIDIA GeForce RTX 5060 Laptop GPU"
+  ],
+  "dimensions": [
+    1920,
+    1080
+  ],
+  "nativePngReadbacks": 794,
+  "nativeFallbacks": 0,
+  "nativeTruncatedFrames": 0,
+  "characterAssets": [
+    {
+      "id": "gemini",
+      "atlasSha256": "eb1376d9028045c15f9ee1a5f5fa21311e70598c9fe937df2cc4f860cd507744",
+      "metadataSha256": "f719ad147a14598d5743e75c8c5aa4ff7a7fd203993551acb572b730dd0e0fd4",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ],
+        [
+          258,
+          258
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    },
+    {
+      "id": "claude",
+      "atlasSha256": "5920b547d8dffa4aaf051f12233edd19c5d84a6a344e04cd01a53ac32ea211db",
+      "metadataSha256": "26a678a7e9604427c23e2c8b545ef24de3608a4f4262dcd31a40c753299430c1",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ],
+        [
+          264,
+          264
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    },
+    {
+      "id": "kimi",
+      "atlasSha256": "86e29aa14b687e72aa349ccf241c2ecc27602b0080f5b2a42f6b7be35ff9b95e",
+      "metadataSha256": "6a5c4e7976b03f368f82f1504e90ef5da81a5bbbf754f8480f85e585869aef97",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    },
+    {
+      "id": "minimax",
+      "atlasSha256": "c04a1f5b5331fd25b79309641a0a13be46ab38df0766c6c9a54d35f2ba6346ef",
+      "metadataSha256": "b5e98edf9f9e6f1209dbf3d4abb9c970d55eae898f3f13fb503fea8a421c3313",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ],
+        [
+          264,
+          264
+        ],
+        [
+          350,
+          350
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    },
+    {
+      "id": "glm",
+      "atlasSha256": "8dc3b846daa0ab043039ee0514e7f919764233a646b9e77bf5b41389b67f0264",
+      "metadataSha256": "6df8ad911ca621d52ffc1b5b0103ac37f52d6202274c109485970ad019299779",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ],
+        [
+          264,
+          264
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    },
+    {
+      "id": "deepseek",
+      "atlasSha256": "419f1899f03107381a47c40146beb45409cf0891fd62a4ec157da698d2320b44",
+      "metadataSha256": "c6bb24f29174c6aa1aa32319c4f22c12a50238512289f27a85bd6ff410574101",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ],
+        [
+          264,
+          264
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    },
+    {
+      "id": "gpt",
+      "atlasSha256": "4c1184fc7fd358e4c9ac1523febd1041fc1c4a7b18275fe6daef58940bad63ed",
+      "metadataSha256": "5a72086231367996fe16077ad5b5f6c355c7e34c69d0be03655bda8b4b692355",
+      "frames": 512,
+      "frameSizes": [
+        [
+          256,
+          256
+        ],
+        [
+          264,
+          264
+        ]
+      ],
+      "preservePixelDensity": true,
+      "pixelsPerWorldUnit": 100.5656819610308
+    }
+  ],
+  "characters": {
+    "operators": 7,
+    "directions": 8,
+    "actions": [
+      "idle",
+      "walk",
+      "attack",
+      "cast",
+      "hit",
+      "death"
+    ],
+    "actualAtlasFramesCovered": 3584,
+    "opaqueScreenTexelsChecked": 22394759,
+    "minMatchWithin3RgbBytes": 1.0,
+    "maxMeanRgbByteError": 0.0732807774307105,
+    "method": "Compare actual GPU readback to real atlas texels under each clip pivot/span and variable frame size. Near-integral UV boundaries within0.02 native texels are excluded for Vulkan subpixel/f32 raster ambiguity. No frame is drawn or repaired on CPU.",
+    "deathEnd": {
+      "completeTenFramesPerDirection": true,
+      "durationSeconds": 0.8333333333333334,
+      "expiresToEmptyNativeBaseline": true,
+      "corpseLingerImplemented": false
+    }
+  },
+  "effects": {
+    "currentlyConsumedEffects": 15,
+    "uniqueActualSourceFramesCovered": 656,
+    "sourceFrameComparisonsIncludingLoops": 706,
+    "minMeaningfulPixelMatchWithin3RgbBytes": 1.0,
+    "method": "Actual GPU pixels checked against original source RGBA plus native baseline using the configured SRC_ALPHA blending factors.",
+    "persistentLoops": [
+      {
+        "asset": "construction-dust",
+        "fullFrames": 48,
+        "metadataDuration": 2,
+        "sourceStartAndNextLoopStartHaveIdenticalGpuPixels": true
+      },
+      {
+        "asset": "energy-barrier",
+        "fullFrames": 48,
+        "metadataDuration": 2,
+        "sourceStartAndNextLoopStartHaveIdenticalGpuPixels": true
+      }
+    ],
+    "eventsKeptPastDurationAndCorrectlyExpired": true,
+    "retainedButUnmappedLegacy": [
+      "repair"
+    ]
+  },
+  "directionMapping": {
+    "eightDirectionsOnAllSevenOperators": true,
+    "worldVectorVersusExplicitFacingByteIdenticalCases": 14,
+    "directionalBeamAndConeGpuTexelChecks": 16,
+    "pass": true
+  },
+  "foregroundOcclusion": {
+    "cases": [
+      {
+        "character": "glm",
+        "action": "death",
+        "direction": 7,
+        "foregroundWalls": [
+          10010,
+          10011,
+          10012
+        ],
+        "opaqueCharacterPixelsCorrectlyOccluded": 1840,
+        "characterPixelsStillVisible": 5686,
+        "wallPoint": [
+          898.5,
+          633.5
+        ],
+        "wallPick": {
+          "id": 10010,
+          "kind": "wall",
+          "owner": 1,
+          "pos": {
+            "x": 67,
+            "y": 52,
+            "z": 0
+          }
+        },
+        "actorPoint": [
+          953.5,
+          588.5
+        ],
+        "actorPick": null,
+        "pass": true
+      },
+      {
+        "character": "minimax",
+        "action": "death",
+        "direction": 3,
+        "foregroundWalls": [
+          10020,
+          10021,
+          10022
+        ],
+        "opaqueCharacterPixelsCorrectlyOccluded": 449,
+        "characterPixelsStillVisible": 6545,
+        "wallPoint": [
+          984.5,
+          676.5
+        ],
+        "wallPick": {
+          "id": 10021,
+          "kind": "wall",
+          "owner": 1,
+          "pos": {
+            "x": 68,
+            "y": 52,
+            "z": 0
+          }
+        },
+        "actorPoint": [
+          957.5,
+          610.5
+        ],
+        "actorPick": null,
+        "pass": true
+      },
+      {
+        "character": "claude",
+        "action": "death",
+        "direction": 1,
+        "foregroundWalls": [
+          10030,
+          10031,
+          10032
+        ],
+        "opaqueCharacterPixelsCorrectlyOccluded": 1685,
+        "characterPixelsStillVisible": 5602,
+        "wallPoint": [
+          897.5,
+          632.5
+        ],
+        "wallPick": {
+          "id": 10030,
+          "kind": "wall",
+          "owner": 1,
+          "pos": {
+            "x": 67,
+            "y": 52,
+            "z": 0
+          }
+        },
+        "actorPoint": [
+          937.5,
+          587.5
+        ],
+        "actorPick": null,
+        "pass": true
+      },
+      {
+        "character": "gemini",
+        "action": "idle",
+        "direction": 0,
+        "foregroundWalls": [
+          10040,
+          10041,
+          10042
+        ],
+        "opaqueCharacterPixelsCorrectlyOccluded": 449,
+        "characterPixelsStillVisible": 5935,
+        "wallPoint": [
+          924.5,
+          606.5
+        ],
+        "wallPick": {
+          "id": 10040,
+          "kind": "wall",
+          "owner": 1,
+          "pos": {
+            "x": 66,
+            "y": 51,
+            "z": 0
+          }
+        },
+        "actorPoint": [
+          971.5,
+          508.5
+        ],
+        "actorPick": {
+          "id": 1000,
+          "kind": "unit",
+          "owner": 1,
+          "pos": {
+            "x": 66,
+            "y": 50,
+            "z": 0
+          }
+        },
+        "pass": true
+      }
+    ],
+    "pass": true
+  },
+  "fixedNativeDefect": {
+    "previousEngineSha256": "9974933a7c984103c6bc09592ce78a6f6ba809ce8e3fc5ef1341220db88fdffc",
+    "problem": "Constant billboard foot depth let foreground terrain erase lower parts of a real fallen pose. GLM SE lost2272 opaque screen pixels; MiniMax NW lost1127; Claude SW lost609.",
+    "fix": "Per-fragment below-foot depth follows the ground projection while retaining depth testing and native picking. Sprite position/pivot/span and all original image/video assets remain unchanged.",
+    "constructionAndBarrierLoopFix": "Persistent consumers now use each real48-frame/24fps metadata duration of2seconds, replacing the former1.4second partial cycle.",
+    "historicalFixPredatesThisPageConsumerRun": true
+  },
+  "screenshots": [
+    {
+      "file": "native-rendering/glm-death-eight-directions.png",
+      "sha256": "13eb12983fc69e7a8bfab0bcde883f48af0033256b3633e108dde073792e45af",
+      "size": [
+        1920,
+        1080
+      ],
+      "origin": "Unmodified native Rurix GPU readback from this engine and explicitly unearned fixture"
+    },
+    {
+      "file": "native-rendering/minimax-attack-eight-directions.png",
+      "sha256": "9c13ec194729c59760ec8b9735b273ac24cc406aa323af95fb536212c43a87b1",
+      "size": [
+        1920,
+        1080
+      ],
+      "origin": "Unmodified native Rurix GPU readback from this engine and explicitly unearned fixture"
+    },
+    {
+      "file": "native-rendering/gpt-cast-eight-directions.png",
+      "sha256": "27c642e15aa5b24ec711ecb37ed26af1ff347f65dcc83b9f421e6722094d8c20",
+      "size": [
+        1920,
+        1080
+      ],
+      "origin": "Unmodified native Rurix GPU readback from this engine and explicitly unearned fixture"
+    },
+    {
+      "file": "native-rendering/skill-effects.png",
+      "sha256": "6c84de140565265adbaed1db4576e64d4a44caafb2d7426e60bd7510c4d96851",
+      "size": [
+        1920,
+        1080
+      ],
+      "origin": "Unmodified native Rurix GPU readback from this engine and explicitly unearned fixture"
+    },
+    {
+      "file": "native-rendering/impact-effects.png",
+      "sha256": "96279f0d6b512b7a323f6c7ee675afba650d5328459d2a875ac2e99b49e5f112",
+      "size": [
+        1920,
+        1080
+      ],
+      "origin": "Unmodified native Rurix GPU readback from this engine and explicitly unearned fixture"
+    },
+    {
+      "file": "native-rendering/foreground-wall-occludes-corpse.png",
+      "sha256": "8639defff2679176ca58ed257dcf943f06b2c7418fe2cc0e69b10c2acf38ae81",
+      "size": [
+        1920,
+        1080
+      ],
+      "origin": "Unmodified native Rurix GPU readback from this engine and explicitly unearned fixture"
+    }
+  ],
+  "sourceEvidence": {
+    "keptInDevelopmentProject": true,
+    "files": [
+      {
+        "file": "Logs/v6/media-lifecycle-pages-3f323-20260911/capture-report.json",
+        "sha256": "195b7ba51302ac07f90da936b2592b6aa17656e78c2e0832e81ee69030cf008f"
+      },
+      {
+        "file": "Logs/v6/media-lifecycle-pages-3f323-20260911/gpu-frame-fidelity.json",
+        "sha256": "aa33e5cc485a0d6109cd22e44879d8bf292efafa913c99a30ef3747da233b74e"
+      },
+      {
+        "file": "Logs/v6/fx-lifecycle-pages-3f323-20260911/capture-report.json",
+        "sha256": "97a031af9591566b611826a022f3b85510dd2b2567515b0e806e465a521a4c86"
+      },
+      {
+        "file": "Logs/v6/fx-lifecycle-pages-3f323-20260911/gpu-fx-fidelity.json",
+        "sha256": "b0947a789f49fb689a662034aa36167a7528a10fe432a3a0cff32ed75ef56e87"
+      },
+      {
+        "file": "Logs/v6/fx-lifecycle-pages-3f323-20260911/gpu-directions-and-tails.json",
+        "sha256": "137d311432c7a2c478e13179c55bf261e62d0d2449aea8351f5d7b1f2b726d53"
+      },
+      {
+        "file": "Logs/v6/foreground-occlusion-pages-3f323-20260911/capture-report.json",
+        "sha256": "9aeab139fca2c9b9e691f6c77cfa2e919f511c2e6e065588e1303ba5e8951cdc"
+      },
+      {
+        "file": "pipeline/v6/runtime-frame-derivation-v1/rust-page-oracle.json",
+        "sha256": "6c06fa48f509121e1867e49c099f723ae1091eace80316f92c2a9aafd634e6b0"
+      },
+      {
+        "file": "pipeline/v6/runtime-frame-derivation-v1/derivation-report.json",
+        "sha256": "650ea59f8e30f97f36811baa0aa3858e272d7368ce9820963649bf20b90ac354"
+      },
+      {
+        "file": "game/v6/performance-repair-host-receipt-20260911.json",
+        "sha256": "77abf3d6854bf6c239288ebdea9201a99445ec470aed64d46a73c46c0feec0bc"
+      }
+    ]
+  },
+  "notCovered": [
+    "Earned deployment/research/resource acquisition and weapon damage are covered by separate gameplay tests, not this visual fixture.",
+    "Whole-game performance and LAN soak results are separate reports.",
+    "The legacy V5 repair effect has no current V6 event mapping; current repair actions use the verified repair-field effect."
+  ],
+  "effectAssets": [
+    {
+      "id": "collapse-explosion",
+      "atlasSha256": "635285aa98895d6644b4f9cf00eb46e214fe0896bb1980b7d127e331f5e34961",
+      "metadataSha256": "479e9bd85e44b8921f6eeef5955de5cb671811ded30fe78a933a38e023ad80ea"
+    },
+    {
+      "id": "cone-shockwave",
+      "atlasSha256": "6070d5fac046ea01679bd0da2fdff6380c497159cc2f4f1052bcab7df47e2780",
+      "metadataSha256": "6970227ae37fdb922936870afe4b36ac365fa6668e0d4e0c0e3a67e26d2e2b81"
+    },
+    {
+      "id": "construction-dust",
+      "atlasSha256": "0861a199ab9ac522738de0096fa813f60549e54d6aeb8b2db06a493a6be906c5",
+      "metadataSha256": "390733c71fc0ed337000744cdf84c852d94c5731bad0feb5dbc29b2c97ab08e5"
+    },
+    {
+      "id": "directional-beam",
+      "atlasSha256": "17c70926af7c4ef2429f76f1583f8dc68cfee31409797294cdb92441c2d145a1",
+      "metadataSha256": "e2bd34900fb8bf5e22826d9bc3795c2e9a1308b2fe2e585dc565cbad4a38727b"
+    },
+    {
+      "id": "energy-barrier",
+      "atlasSha256": "5ac81991cbeced7c5dec0aa89359e230d6d21bc5659aa272b8a25cfd7c5997f4",
+      "metadataSha256": "4c1e2f13469277a8f9d12e9ade225138ff43e91ee9cf9b552d0c47dcca901cce"
+    },
+    {
+      "id": "floor-collapse",
+      "atlasSha256": "1041dc34402a38a5d760db0bef119906ef6121576fa5dae1b498a4902e61a247",
+      "metadataSha256": "a5e294809bbfd50eeed7aa7fb1f388b930bd1ff56fc4f0e4bb105bdc8349dff9"
+    },
+    {
+      "id": "heavy-impact",
+      "atlasSha256": "ae5f70f400f1e684b49d1736a4d74541cfa56a98dd5b13db801cc26845c6b0d6",
+      "metadataSha256": "2c4518887320aa5c8cefc5f9e2b172ded699b1094303b551ae0492255ce740c0"
+    },
+    {
+      "id": "kinetic-hit",
+      "atlasSha256": "bf8eff646d93791a1f15c697173a20b810822a8a5386031d5c744f73f16b3fde",
+      "metadataSha256": "a4054ccdf86c1e5349ca422a01734eaa58c9749eb3be498e62c3a333a6fbef80"
+    },
+    {
+      "id": "network-shield",
+      "atlasSha256": "0914652de103b0e0284f587c2316a9198399ca3453aa64324e4f29718e91a21b",
+      "metadataSha256": "fe404da3504b95a6c3697964d94d9c0ed1c5fcebc1a8c462ff160cb94dfe229a"
+    },
+    {
+      "id": "orbital-strike",
+      "atlasSha256": "bc8281f1800124dd758a88c6ad1923841515bd67b8542fb9e580e63d630bf54a",
+      "metadataSha256": "e42d73090e1ab20687365058d085383f134ae2d825451494be7808e248074b55"
+    },
+    {
+      "id": "plasma-hit",
+      "atlasSha256": "0e4711ba4772ee5c6d60150ae03499b1fcc973fa907e8a4a47055fd5130625e3",
+      "metadataSha256": "cdd2ec571b176eff2630883c71030916229e2dca2f337751712283769dc867ef"
+    },
+    {
+      "id": "power-arc",
+      "atlasSha256": "e0aff3345d5f9609973fa77a74f45bd8ca42fa171742828f3d9f50475b3c6dde",
+      "metadataSha256": "9acd1a2a8611965f1bba396e92f03358a8488447757424e09e23ada8c9c5ae61"
+    },
+    {
+      "id": "repair-field",
+      "atlasSha256": "626844c93f5e03146eb5987831bc0d38522a65902dbc20f5345f8d9dde195f03",
+      "metadataSha256": "025e3b6833c10b9f3fec1604cac9ce52dc5b7d00b81b2c281be22c4a5078c41a"
+    },
+    {
+      "id": "shield-hit",
+      "atlasSha256": "8d577ff386853bdef76d0764e4ce304a70d7524055aa2268df40dd85ab911926",
+      "metadataSha256": "671bc0d4a8ac95e4182fcf49d53a8ad39cfef4d0d52ec25c6bb244bb6b69176f"
+    },
+    {
+      "id": "upgrade",
+      "atlasSha256": "2a77d495db065fdb5d46cd921ad9794eeb16fa95968d3ebc73cf090147929083",
+      "metadataSha256": "20e71771e0480f1172ebf7e5d16471745e400a4f4268fcbc844e5a5ba61e1f03"
+    }
+  ],
+  "consumerSources": [
+    {
+      "repositoryFile": "crates/engine-host/src/sentinels_v6_render.rs",
+      "sha256": "1e1c324bcb0189b50ef4406522b89bbf05242913e38988efc9ec53daec4c9d4a"
+    },
+    {
+      "repositoryFile": "crates/engine-host/src/sentinels_v6_assets.rs",
+      "sha256": "c3dc818782682ce228ecde6f43ec17d2cb4cbdb6d51539fdaed6979c2009b7cd"
+    },
+    {
+      "repositoryFile": "crates/engine-host/src/sentinels_v6_pages.rs",
+      "sha256": "7591276bbc7e6c5eac23d4005e36746d9a38f6d9ff0911b0e8690061d6043991"
+    },
+    {
+      "repositoryFile": "crates/engine-host/src/sentinels_v6_clock.rs",
+      "sha256": "bf80f9f1f54d95a7440a86ef65d1cd2b3ea31d92ac0bf2d8ab8f0de683400d19"
+    },
+    {
+      "repositoryFile": "crates/engine-host/src/sentinels_v6.rs",
+      "sha256": "e0dfc946149fc483a18f1a17103a56a88cfa5f5694604e3f28ba8057571c75b3"
+    },
+    {
+      "repositoryFile": "crates/assetd/src/texture.rs",
+      "sha256": "424af9eb2c1aae69dbcbd3f769c72712668f91f5a243410e947d429e0823710e"
+    },
+    {
+      "repositoryFile": "vendor/rurix/src/rurix-rt/src/render_exec.rs",
+      "sha256": "f3a0375697ec1d84769be30cada68dcde27e0f8326755aa3860dbffe4dd53668"
+    }
+  ],
+  "rulesVersion": "v6.2",
+  "rulesFingerprint": "e235a0d03fba939d8ed658984ab6676f7b0609aeb92f63d664f9b5123ff6f5fa",
+  "previousVisualAcceptance": {
+    "engineSha256": "8b206d38368e3e55b1f12e9a380c2c9d574ccf65e8c8f354266b6d3ee3d0f60d",
+    "preservedAt": "pipeline/v6/runtime-frame-derivation-v1/published-history-before-3f3236df"
+  },
+  "runtimeFramePages": {
+    "format": "native-raster-pages-png-v1",
+    "index": "Content/Animations/v6/runtime-frames/index.json",
+    "indexSha256": "49af14ddc548993ad0944e2b9ca7de0ba5d6529ce20d843fced918e82e1d44a4",
+    "characterPages": 3584,
+    "effectPages": 704,
+    "totalPages": 4288,
+    "pngBytes": 200363059,
+    "allOriginalRgbaPagesEqualInActualRust": true,
+    "rustOracleSha256": "6c06fa48f509121e1867e49c099f723ae1091eace80316f92c2a9aafd634e6b0",
+    "gpuVerifiedCharacterFrames": 3584,
+    "gpuVerifiedActiveEffectFrames": 656,
+    "unmappedLegacyRepairFramesRustOnly": 48,
+    "originalAtlasAndMetadataPreserved": true,
+    "noTestingPrewarmUsed": true
+  }
+}

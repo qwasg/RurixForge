@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-labelledby="scan-grid-title scan-grid-desc"><title id="scan-grid-title">scan grid</title><desc id="scan-grid-desc">Original seamless 128-pixel tactical calibration grid. Designed for subtle repeated backgrounds.</desc>
+<path d="M0 0H128M0 32H128M0 64H128M0 96H128M0 0V128M32 0V128M64 0V128M96 0V128" stroke="#F2F0E9" stroke-opacity=".075"/>
+<path d="M0 0H128M0 0V128" stroke="#F2F0E9" stroke-opacity=".14"/>
+<path d="M60 64H68M64 60V68" stroke="#F2F0E9" stroke-opacity=".23"/><path d="M14 16H18M16 14V18M110 112H114M112 110V114" stroke="#F2F0E9" stroke-opacity=".11"/></svg>

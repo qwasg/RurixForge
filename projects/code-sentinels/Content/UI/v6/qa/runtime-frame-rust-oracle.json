@@ -1,0 +1,150 @@
+{
+  "actualRustExecution": true,
+  "atlases": [
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/claude.png",
+      "frames": 512,
+      "seconds": 11.2940131
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/deepseek.png",
+      "frames": 512,
+      "seconds": 10.1846506
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/gemini.png",
+      "frames": 512,
+      "seconds": 9.6216059
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/glm.png",
+      "frames": 512,
+      "seconds": 8.3948277
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/gpt.png",
+      "frames": 512,
+      "seconds": 7.6810381
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/kimi.png",
+      "frames": 512,
+      "seconds": 8.4460565
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/characters/minimax.png",
+      "frames": 512,
+      "seconds": 11.8370915
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/collapse-explosion.png",
+      "frames": 48,
+      "seconds": 1.3468717
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/cone-shockwave.png",
+      "frames": 48,
+      "seconds": 0.5870402
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/construction-dust.png",
+      "frames": 48,
+      "seconds": 0.8171383
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/directional-beam.png",
+      "frames": 48,
+      "seconds": 0.7767759
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/energy-barrier.png",
+      "frames": 48,
+      "seconds": 1.1375545
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/floor-collapse.png",
+      "frames": 48,
+      "seconds": 1.2378181
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/heavy-impact.png",
+      "frames": 48,
+      "seconds": 1.2083428999999999
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/kinetic-hit.png",
+      "frames": 32,
+      "seconds": 0.4995843
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/network-shield.png",
+      "frames": 48,
+      "seconds": 1.0259214
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/orbital-strike.png",
+      "frames": 48,
+      "seconds": 0.7766296
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/plasma-hit.png",
+      "frames": 32,
+      "seconds": 0.708573
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/power-arc.png",
+      "frames": 32,
+      "seconds": 0.537279
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/repair-field.png",
+      "frames": 48,
+      "seconds": 1.0315524
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/repair.png",
+      "frames": 48,
+      "seconds": 0.9126891
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/shield-hit.png",
+      "frames": 32,
+      "seconds": 0.5467709
+    },
+    {
+      "allRgbaBytesEqual": true,
+      "atlas": "Content/Animations/v6/effects/upgrade.png",
+      "frames": 48,
+      "seconds": 1.0014956
+    }
+  ],
+  "characters": 3584,
+  "effects": 704,
+  "kind": "native-raster-page-oracle",
+  "passed": true,
+  "scope": "Existing Rust raster_crop on original source atlas and metadata versus actual production derived-page consumer. Entire RGBA pages equal, including transparent RGB and512 padding. CPU correctness, not GPU/performance acceptance.",
+  "seconds": 81.6666242,
+  "totalFrames": 4288
+}

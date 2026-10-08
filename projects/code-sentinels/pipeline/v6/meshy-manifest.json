@@ -1,0 +1,608 @@
+{
+  "version": 1,
+  "batch": "meshy-batch-20260918",
+  "workspaceId": "ws_1788669812422_35134176",
+  "backend": "meshy",
+  "generation": {
+    "mode": "image-to-3d",
+    "modelType": "smart-topology",
+    "aiModel": "meshy-t2",
+    "texture": true,
+    "pbr": true,
+    "textureResolution": "2k",
+    "textureGuidance": "image",
+    "textureGuidanceNote": "image = Meshy textures from the reference render (no texture_prompt), which keeps the authored palette; prompt = manifest prompt sent as texture_prompt. The first 11 models of this batch (pilot + priorities 1..10) ran with 'prompt' and the concrete-base turrets came back washed-out white, so the default was switched to 'image' for the rest.",
+    "defaultPolycount": 8000,
+    "timeoutSec": 1800,
+    "creditsPerModel": 15,
+    "pricingSource": "https://docs.meshy.ai/en/api/pricing (Smart Topology T2 image-to-3d: 5 untextured / 15 textured)"
+  },
+  "reference": {
+    "source": "Content/Models/v6/<id>.blend (authored rough models, bake_models.py)",
+    "view": "front-right three-quarter, original bake direction 'se' (root z = -90 deg), orthographic camera from the saved .blend",
+    "size": 1024
+  },
+  "destFolder": "Models/v6-meshy",
+  "palette": "Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.",
+  "skipped": {
+    "structural-kit": [
+      "foundation",
+      "floor",
+      "roof",
+      "roof-corner",
+      "wall",
+      "window-wall",
+      "column",
+      "stairs",
+      "elevator",
+      "door",
+      "cuda-wall",
+      "physical-wall",
+      "ramp",
+      "bridge",
+      "moat"
+    ],
+    "structural-kit-reason": "Modular building kit pieces must keep exact 1x1 cell footprints and flush tiling edges; AI mesh generation cannot guarantee these dimensions, and the authored rough geometry is already final for flat slabs/walls.",
+    "plugin-cards": [
+      "plugin-speed-core",
+      "plugin-speed-attack",
+      "plugin-speed-support",
+      "plugin-security-core",
+      "plugin-security-attack",
+      "plugin-security-support",
+      "plugin-algorithm-core",
+      "plugin-algorithm-attack",
+      "plugin-algorithm-support",
+      "plugin-science-core",
+      "plugin-science-attack",
+      "plugin-science-support",
+      "plugin-lightweight-core",
+      "plugin-lightweight-attack",
+      "plugin-lightweight-support"
+    ],
+    "plugin-cards-reason": "Fifteen near-identical circuit-board variants (3 geometries x 5 recolors) used as card icons; not worth 225 credits of the 1000-credit budget."
+  },
+  "models": [
+    {
+      "id": "light-tank",
+      "group": "unit",
+      "category": "tank",
+      "tier": 2,
+      "priority": 0,
+      "prompt": "Tier-2 light main battle tank: graphite blue-gray armored hull with a sloped pale titanium glacis plate, small brass rivets, carbon-black rubber continuous tracks with brass road wheels, boxy graphite turret with a single kinetic cannon and dark muzzle brake, teal headlamps, dark rear engine grills, thin whip antenna."
+    },
+    {
+      "id": "command-core",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 1,
+      "prompt": "Command core headquarters: square light concrete dais, four tall graphite blue-gray command towers each with a vertical glowing teal light strip, central floating glowing teal hologram sphere."
+    },
+    {
+      "id": "vscode",
+      "group": "unit",
+      "category": "turret",
+      "tier": 1,
+      "priority": 2,
+      "hideObjects": [
+        "unmodified official icon"
+      ],
+      "prompt": "Tier-1 fixed defense turret on an octagonal light concrete emplacement with a dark azimuth bearing ring, boxy graphite blue-gray armored turret with a warm brass identification bar, twin pale titanium side armor modules, single kinetic cannon with a dark muzzle brake, small amber sensor dome. Bright blue accent trim on the front plate."
+    },
+    {
+      "id": "pycharm",
+      "group": "unit",
+      "category": "turret",
+      "tier": 1,
+      "priority": 3,
+      "hideObjects": [
+        "unmodified official icon"
+      ],
+      "prompt": "Tier-1 fixed mortar turret on an octagonal light concrete emplacement with a dark azimuth bearing ring, boxy graphite blue-gray armored turret with a warm brass identification bar, twin pale titanium side armor modules, short wide dark mortar tube with a pale titanium rim. Green and yellow accent trim on the front plate."
+    },
+    {
+      "id": "autocannon",
+      "group": "unit",
+      "category": "turret",
+      "tier": 1,
+      "priority": 4,
+      "prompt": "Tier-1 autocannon defense turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with a brass identification bar, pale titanium side armor modules, single kinetic autocannon barrel with dark muzzle brake, amber sensor dome."
+    },
+    {
+      "id": "mortar",
+      "group": "unit",
+      "category": "turret",
+      "tier": 1,
+      "priority": 5,
+      "prompt": "Tier-1 light mortar turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor modules, short wide dark mortar tube angled upward with a pale titanium rim."
+    },
+    {
+      "id": "pulse-turret",
+      "group": "unit",
+      "category": "turret",
+      "tier": 1,
+      "priority": 6,
+      "prompt": "Tier-1 energy pulse turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor, energy weapon made of two split pale titanium accelerator rails with three glowing blue magnetic coil rings and a glowing teal energy core, amber sensor dome."
+    },
+    {
+      "id": "shield-tank",
+      "group": "unit",
+      "category": "tank",
+      "tier": 2,
+      "priority": 7,
+      "prompt": "Tier-2 shield tank: graphite blue-gray armored hull with sloped pale titanium glacis, brass rivets, carbon-black rubber tracks with brass road wheels, boxy turret with kinetic cannon, extra thick pale titanium armor plating with faint blue shield-emitter glow lines, teal headlamps, whip antenna."
+    },
+    {
+      "id": "artillery",
+      "group": "unit",
+      "category": "tank",
+      "tier": 2,
+      "priority": 8,
+      "prompt": "Tier-2 self-propelled howitzer: graphite blue-gray tracked armored hull with sloped titanium glacis, brass rivets, carbon-black rubber tracks with brass road wheels, boxy turret with a long pale titanium howitzer tube angled upward, teal headlamps, dark engine grills, whip antenna."
+    },
+    {
+      "id": "laser-tank",
+      "group": "unit",
+      "category": "tank",
+      "tier": 2,
+      "priority": 9,
+      "prompt": "Tier-2 laser tank: graphite blue-gray tracked armored hull with sloped titanium glacis, brass rivets, carbon-black rubber tracks with brass road wheels, turret carrying an energy weapon of two split pale titanium accelerator rails with glowing blue magnetic coil rings and a glowing teal energy core, teal headlamps."
+    },
+    {
+      "id": "scout-buggy",
+      "group": "unit",
+      "category": "buggy",
+      "tier": 1,
+      "priority": 10,
+      "prompt": "Tier-1 wheeled scout buggy: four large carbon-black rubber tires with pale titanium hubs, low graphite blue-gray armored hull with sloped titanium glacis and brass rivets, small turret with a light kinetic gun, teal headlamps, whip antenna."
+    },
+    {
+      "id": "fighter",
+      "group": "unit",
+      "category": "air",
+      "tier": 3,
+      "priority": 11,
+      "prompt": "Tier-3 attack jet fighter: streamlined graphite blue-gray fuselage, deep cyan glass canopy, swept pale titanium wings with thin brass leading edges, orange-tipped underwing missiles, canted graphite tail fins, twin amber exhaust nozzles."
+    },
+    {
+      "id": "aa-turret",
+      "group": "unit",
+      "category": "turret",
+      "tier": 2,
+      "priority": 12,
+      "prompt": "Tier-2 anti-air missile turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor, four stacked rectangular missile cassettes with orange missile noses."
+    },
+    {
+      "id": "missile-truck",
+      "group": "unit",
+      "category": "truck",
+      "tier": 3,
+      "priority": 13,
+      "prompt": "Tier-3 missile launcher truck: six carbon-black rubber tires with pale titanium hubs, dark chassis, graphite blue-gray armored cab with a cyan glass status panel, four rectangular missile cassettes with orange missile noses mounted on the rear bed."
+    },
+    {
+      "id": "plasma-cannon",
+      "group": "unit",
+      "category": "turret",
+      "tier": 3,
+      "priority": 14,
+      "prompt": "Tier-3 plasma cannon turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray turret with brass identification bar, pale titanium side armor, long energy weapon with split titanium accelerator rails, glowing blue magnetic coil rings and a glowing teal plasma core, amber sensor dome."
+    },
+    {
+      "id": "micro-drone",
+      "group": "unit",
+      "category": "air",
+      "tier": 2,
+      "priority": 15,
+      "prompt": "Tier-2 quadcopter reconnaissance drone: compact graphite blue-gray body, glowing teal camera lens on the front, four pale titanium rotor struts, brass rotor hubs, dark carbon rotor blades."
+    },
+    {
+      "id": "rail-tank",
+      "group": "unit",
+      "category": "tank",
+      "tier": 4,
+      "priority": 16,
+      "prompt": "Tier-4 rail tank: heavy graphite blue-gray tracked armored hull with sloped titanium glacis and brass rivets, carbon-black rubber tracks with brass road wheels, turret with a very long energy railgun of split pale titanium accelerator rails with glowing blue magnetic coil rings and a teal energy core, glowing blue powerpack modules on the turret sides, teal headlamps."
+    },
+    {
+      "id": "fortress-tank",
+      "group": "unit",
+      "category": "tank",
+      "tier": 4,
+      "priority": 17,
+      "prompt": "Tier-4 fortress howitzer tank: heavy graphite blue-gray tracked armored hull with sloped titanium glacis and brass rivets, carbon-black rubber tracks with brass road wheels, large turret with a long pale titanium howitzer angled upward, warm brass powerpack modules on the turret sides, teal headlamps, whip antenna."
+    },
+    {
+      "id": "siege-launcher",
+      "group": "unit",
+      "category": "turret",
+      "tier": 4,
+      "priority": 18,
+      "prompt": "Tier-4 siege missile launcher turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor, four stacked heavy missile cassettes with orange missile noses."
+    },
+    {
+      "id": "particle-cannon",
+      "group": "unit",
+      "category": "turret",
+      "tier": 4,
+      "priority": 19,
+      "prompt": "Tier-4 particle cannon turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray turret with brass identification bar, pale titanium side armor, twin energy barrels each made of split titanium accelerator rails with glowing blue magnetic coil rings and glowing teal cores, amber sensor dome."
+    },
+    {
+      "id": "loiter-drone",
+      "group": "unit",
+      "category": "air",
+      "tier": 3,
+      "priority": 20,
+      "prompt": "Tier-3 loitering munition drone aircraft: slim graphite blue-gray fuselage, deep cyan glass canopy, swept pale titanium wings with thin brass leading edges, orange-tipped underwing munitions, canted tail fins, amber exhaust nozzles."
+    },
+    {
+      "id": "aerospace-fighter",
+      "group": "unit",
+      "category": "air",
+      "tier": 5,
+      "priority": 21,
+      "prompt": "Tier-5 aerospace fighter: sleek graphite blue-gray fuselage, deep cyan glass canopy, swept pale titanium wings with brass leading edges, orange-tipped underwing missiles, two glowing blue ion pods under the wings, canted tail fins, glowing blue exhaust nozzles."
+    },
+    {
+      "id": "aegis-array",
+      "group": "unit",
+      "category": "turret",
+      "tier": 5,
+      "priority": 22,
+      "prompt": "Tier-5 aegis orbital-defense array on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray turret with brass identification bar, pale titanium side armor, central glowing blue orbital lens disc surrounded by six angled pale titanium phased emitter arms tipped with glowing teal crystals."
+    },
+    {
+      "id": "precision-strike",
+      "group": "unit",
+      "category": "turret",
+      "tier": 5,
+      "priority": 23,
+      "prompt": "Tier-5 precision strike missile turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor, four stacked precision missile cassettes with orange missile noses and fine brass guidance markings."
+    },
+    {
+      "id": "orbital-lance",
+      "group": "unit",
+      "category": "turret",
+      "tier": 5,
+      "priority": 24,
+      "prompt": "Tier-5 orbital lance turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray turret with brass identification bar, pale titanium side armor, central glowing blue focusing lens surrounded by six angled pale titanium emitter arms tipped with glowing teal crystals."
+    },
+    {
+      "id": "distributed-array",
+      "group": "unit",
+      "category": "air",
+      "tier": 5,
+      "priority": 25,
+      "prompt": "Tier-5 distributed-array quadcopter drone: compact graphite blue-gray core body, glowing teal sensor eye, four pale titanium rotor struts, brass rotor hubs, dark carbon rotor blades, faint blue circuit glow lines."
+    },
+    {
+      "id": "stealth-wing",
+      "group": "unit",
+      "category": "air",
+      "tier": 4,
+      "priority": 26,
+      "prompt": "Tier-4 stealth wing aircraft: matte dark graphite low-observable fuselage, deep cyan glass canopy, swept pale titanium wings with thin brass leading edges, canted tail fins, glowing blue exhaust nozzles, no external weapons."
+    },
+    {
+      "id": "cargo-truck",
+      "group": "unit",
+      "category": "truck",
+      "tier": 1,
+      "priority": 27,
+      "prompt": "Tier-1 six-wheel cargo truck: carbon-black rubber tires with pale titanium hubs, dark chassis, graphite blue-gray armored cab with cyan glass status panel, large graphite armored cargo container with pale titanium reinforcement ribs and a rear cyan status panel."
+    },
+    {
+      "id": "cargo-aircraft",
+      "group": "unit",
+      "category": "air",
+      "tier": 2,
+      "priority": 28,
+      "prompt": "Tier-2 four-engine turboprop transport aircraft: wide graphite blue-gray pressurized cargo hold, rounded pale titanium flight deck with cyan windshield, high-mounted titanium wings with brass leading edges, four turboprop nacelles with brass spinners and dark propellers, tall vertical stabilizer with a brass strip, rear cargo ramp door, dark reinforced belly."
+    },
+    {
+      "id": "breach-tank",
+      "group": "unit",
+      "category": "tank",
+      "tier": 2,
+      "priority": 29,
+      "prompt": "Tier-2 breach tank: graphite blue-gray tracked armored hull with sloped titanium glacis and brass rivets, carbon-black rubber tracks with brass road wheels, turret with a short heavy pale titanium breaching howitzer angled upward, teal headlamps, dark engine grills."
+    },
+    {
+      "id": "rack",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 30,
+      "polycount": 6000,
+      "prompt": "Data center server cabinet: tall carbon-black cabinet with six horizontal pale titanium GPU blades, each with a row of small glowing teal status LEDs."
+    },
+    {
+      "id": "research-console",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 31,
+      "polycount": 6000,
+      "prompt": "Research lab console: pale titanium lab desk on a graphite pedestal, dark scientific monitor with a deep cyan glass screen showing glowing teal telemetry lines."
+    },
+    {
+      "id": "depot",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 32,
+      "polycount": 6000,
+      "prompt": "Supply depot: four graphite blue-gray armored supply crates arranged in a square, each with a warm brass strap band across the top.",
+      "cropRef": true,
+      "retryReason": "v1 merged the four crates into two oversized light-blue boxes; retry with the reference cropped to the object so Meshy sees the 2x2 gap at full resolution"
+    },
+    {
+      "id": "generator",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 33,
+      "prompt": "Diesel generator unit: light concrete skid, horizontal graphite blue-gray turbine housing cylinder with a warm brass end cap and a small cyan glass status panel."
+    },
+    {
+      "id": "wind-power",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 34,
+      "prompt": "Wind turbine: tapered pale titanium tower, graphite blue-gray nacelle, three slender pale titanium rotor blades."
+    },
+    {
+      "id": "hydro-power",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 35,
+      "prompt": "Hydroelectric intake station: light concrete intake block, glowing teal water turbine wheel with brass spokes on the front, blue water spillway, brass generator rotor with amber markers on top."
+    },
+    {
+      "id": "coal-power",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 36,
+      "prompt": "Coal power plant: low graphite blue-gray reactor hall block with two tall light concrete exhaust stacks each ringed with a warm brass safety stripe."
+    },
+    {
+      "id": "nuclear-power",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 37,
+      "prompt": "Nuclear power plant: low graphite blue-gray reactor hall block with two light concrete hyperbolic cooling towers with dark openings."
+    },
+    {
+      "id": "extractor",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 38,
+      "prompt": "Ore extractor mining rig: graphite blue-gray base block, central pale titanium drill cone, two angled warm brass derrick legs, pale titanium cross brace."
+    },
+    {
+      "id": "mobile-relay",
+      "group": "unit",
+      "category": "truck",
+      "tier": 1,
+      "priority": 39,
+      "prompt": "Mobile relay truck: six carbon-black rubber tires with titanium hubs, dark chassis, graphite blue-gray cab with cyan glass panel, armored cargo container, tall pale titanium relay mast with a glowing teal radome."
+    },
+    {
+      "id": "factory",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 40,
+      "prompt": "Vehicle factory robotic arm: graphite blue-gray machine base, warm brass shoulder segment, pale titanium forearm, dark carbon tool claw."
+    },
+    {
+      "id": "network-defense",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 41,
+      "prompt": "Network defense appliance: graphite blue-gray appliance box with a deep cyan glass panel showing teal telemetry lines, two thin pale titanium antennas topped with glowing teal nodes."
+    },
+    {
+      "id": "energy-defense",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 42,
+      "prompt": "Energy shield generator: round graphite blue-gray power base, three pale titanium emitter towers each topped with a glowing blue emitter sphere, central glowing teal energy core."
+    },
+    {
+      "id": "repair-bay",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 43,
+      "prompt": "Repair bay: light concrete maintenance pad, two warm brass repair arms with pale titanium tool heads, graphite blue-gray service locker with a cyan glass status panel."
+    },
+    {
+      "id": "orbital-control",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 44,
+      "prompt": "Orbital control station: pale titanium lab desk with dark monitor and cyan glass screen, tall pale titanium dish mast, tilted deep cyan glass orbital command dish with a warm brass feed arm."
+    },
+    {
+      "id": "airfield",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 45,
+      "prompt": "Military airfield: wide light concrete runway foundation with a dark asphalt runway strip, pale titanium center stripes, rows of small glowing teal runway beacons, graphite blue-gray control tower with a deep cyan glass radar dome."
+    },
+    {
+      "id": "missile-silo",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 46,
+      "prompt": "Missile silo: square light concrete foundation, round graphite blue-gray armored silo hatch with two warm brass hinges, cyan glass status panel."
+    },
+    {
+      "id": "ammunition-workshop",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 47,
+      "prompt": "Ammunition workshop: graphite blue-gray fabrication bench on pale titanium supports, five upright warm brass artillery shell casings with pale titanium tips."
+    },
+    {
+      "id": "drainage-pump",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 48,
+      "prompt": "Drainage pump station: light concrete skid, horizontal graphite blue-gray turbine housing with brass end cap and cyan panel, glowing blue drainage pipe and pale titanium intake pipe."
+    },
+    {
+      "id": "drilling-rig",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 49,
+      "prompt": "Rock drilling rig: graphite blue-gray base block, central pale titanium drill cone, two angled warm brass derrick legs, pale titanium cross brace, rock dust weathering."
+    },
+    {
+      "id": "radar-array",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 50,
+      "prompt": "Radar array: graphite blue-gray console with cyan glass panel, pale titanium pedestal, flat deep cyan glass phased radar face with glowing teal grid lines."
+    },
+    {
+      "id": "logistics-belt",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 51,
+      "prompt": "Logistics conveyor: graphite blue-gray transfer frame, row of pale titanium conveyor rollers, warm brass cargo crate in transit, thin glowing teal cargo guide rails."
+    },
+    {
+      "id": "secure-switch",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 52,
+      "polycount": 6000,
+      "prompt": "Secured network vault: tall graphite blue-gray vault cabinet with horizontal dark switch blades, a row of glowing blue encrypted link ports, warm brass tamper lock.",
+      "refAngle": -270,
+      "cropRef": true,
+      "retryReason": "v1 came out as a featureless light box because the se view showed the blank back; retry from the nw view (root z=-270) where the switch blades, link ports and tamper lock face the camera, cropped to the object"
+    },
+    {
+      "id": "fire-control",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 53,
+      "prompt": "Fire control post: graphite blue-gray tripod base, pale titanium rangefinder head with two dark optical tubes with glowing teal lenses, deep cyan glass tracking camera dome on top."
+    },
+    {
+      "id": "particle-foundry",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 54,
+      "prompt": "Particle foundry: graphite blue-gray furnace base, vertical deep cyan glass containment chamber with four warm brass accelerator coil rings, glowing blue suspended plasma inside, two pale titanium power conduits."
+    },
+    {
+      "id": "modular-workshop",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 55,
+      "prompt": "Modular workshop: pale titanium assembly table on graphite blue-gray legs, three warm brass swappable modules on top, glowing teal precision arm with a pale titanium probe."
+    },
+    {
+      "id": "launchpad",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 56,
+      "prompt": "Rocket launch pad: square light concrete foundation, graphite blue-gray launch mount, pale titanium launch vehicle with a warm brass nose cone, two graphite gantry towers with brass cross braces and a pale titanium upper bridge."
+    },
+    {
+      "id": "strategic-node",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 57,
+      "prompt": "Neutral strategic capture node: round light concrete platform ringed with warm brass capture markers, graphite blue-gray uplink cabinet with cyan glass panel and pale titanium side armor, beacon mast with a glowing amber capture beacon, two pale titanium communication forks with brass nodes, small access step."
+    },
+    {
+      "id": "ore-node",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 58,
+      "polycount": 6000,
+      "prompt": "Ore node: broken dark rock seam with clustered blue-gray metallic mineral crystals and three glowing teal rare-mineral prisms, rough natural stone surfaces."
+    },
+    {
+      "id": "coal-node",
+      "group": "facility",
+      "category": "module",
+      "tier": 0,
+      "priority": 59,
+      "polycount": 6000,
+      "prompt": "Coal node: broken dark rock seam covered with rough matte black coal fragments with a faint graphite sheen, natural stone surfaces, no glow."
+    },
+    {
+      "id": "interceptor",
+      "group": "unit",
+      "category": "turret",
+      "tier": 1,
+      "priority": 60,
+      "twinOf": "autocannon",
+      "prompt": "Tier-1 interceptor defense turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray turret with brass identification bar, pale titanium side armor modules, single fast kinetic barrel with dark muzzle brake, amber sensor dome, white and teal interceptor chevron markings.",
+      "textureGuidance": "prompt",
+      "textureGuidanceReason": "shares the rough-model reference render with autocannon; text-guided texturing carries the variant markings"
+    },
+    {
+      "id": "anti-air",
+      "group": "unit",
+      "category": "turret",
+      "tier": 2,
+      "priority": 61,
+      "twinOf": "aa-turret",
+      "prompt": "Tier-2 anti-air missile battery on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray turret with brass identification bar, pale titanium side armor, four stacked missile cassettes with orange missile noses, white and red anti-air chevron markings.",
+      "textureGuidance": "prompt",
+      "textureGuidanceReason": "shares the rough-model reference render with aa-turret; text-guided texturing carries the variant markings"
+    },
+    {
+      "id": "engineer-drone",
+      "group": "unit",
+      "category": "air",
+      "tier": 1,
+      "priority": 62,
+      "twinOf": "micro-drone",
+      "prompt": "Tier-1 engineer quadcopter drone: compact graphite blue-gray body, glowing teal camera lens, four pale titanium rotor struts, brass rotor hubs, dark carbon rotor blades, yellow and black hazard stripes on the body.",
+      "textureGuidance": "prompt",
+      "textureGuidanceReason": "shares the rough-model reference render with micro-drone; text-guided texturing carries the variant markings"
+    },
+    {
+      "id": "resource-hauler",
+      "group": "unit",
+      "category": "truck",
+      "tier": 1,
+      "priority": 63,
+      "twinOf": "cargo-truck",
+      "prompt": "Tier-1 resource hauler truck: six carbon-black rubber tires with titanium hubs, dark chassis, graphite blue-gray cab with cyan glass panel, armored ore container with pale titanium ribs, orange hazard stripes, ore dust weathering.",
+      "textureGuidance": "prompt",
+      "textureGuidanceReason": "shares the rough-model reference render with cargo-truck; text-guided texturing carries the variant markings"
+    }
+  ]
+}

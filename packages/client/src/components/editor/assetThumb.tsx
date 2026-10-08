@@ -13,12 +13,13 @@ import { useAssetStore, type AssetItem } from '@/lib/assetStore';
 
 /**
  * 资产缩略图共享件(F10 抽自 AssetsPanel:AssetInspectorPanel 复用):
- * 贴图原图直出;其他类型图标占位 + tooltip 如实标注(RD-F2-002)。
+ * 贴图原图直出;其他类型图标占位,tooltip 说明目前只有贴图提供缩略图。
  */
 
 export function typeIcon(type: string, size: number) {
   switch (type) {
     case 'mesh':
+    case 'model':
       return <Box size={size} strokeWidth={1.5} />;
     case 'texture':
       return <FileImage size={size} strokeWidth={1.5} />;
@@ -60,7 +61,7 @@ export default function Thumb({ item, size }: { item: AssetItem; size: number })
   const hint =
     item.type === 'texture'
       ? '缩略图不可用(源缺失或超 8MiB 上限)'
-      : '缩略图未实现:网格三视角离屏渲染 = RD-F2-002';
+      : '该类型暂无预览图(目前只有贴图提供缩略图)';
   return (
     <div
       className="flex h-full w-full items-center justify-center rounded-md bg-shell-sunk text-fg-3"

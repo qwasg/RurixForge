@@ -2,43 +2,86 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   BookOpen,
-  Box,
   Check,
   ChevronDown,
   ChevronUp,
   ListTodo,
   Plus,
-  Sparkles,
   Square,
   X,
 } from 'lucide-react';
 import { apiGet } from '@/lib/forgeApi';
 import { useChatStore } from '@/lib/chatStore';
 import { HOME_INPUT_MIN, type ChatVariant } from '@/lib/chatVariant';
-import { useComposerPrefillStore } from '@/lib/composerStore';
+import { useComposerPrefillStore, useComposerTextDraft } from '@/lib/composerStore';
+import { annotationDraftKey, decodeAnnotationDrop, EDITOR_REFERENCE_MIME, useEditorAnnotationStore } from '@/lib/editorReferences';
+import { useWorkspaceStore } from '@/lib/workspaceStore';
+import AnnotationChips from './AnnotationChips';
+import type { EditorAnnotation } from '@forge/protocol';
+import { flushEditorDocuments } from '@/lib/editorDocuments';
 import { useContextUsage } from '@/lib/contextUsage';
 import { useSessionStore } from '@/lib/sessionStore';
 import { useSettingsStore } from '@/lib/settingsStore';
 import { useSpeechInput } from '@/lib/speechInput';
 import { useToastStore } from '@/lib/toastStore';
+import type { UltraPlanStage } from '@/lib/ultraPlanStore';
 import { COMPOSER_INPUT_MIN, composerInputHeight } from '@/lib/inputHeight';
 import { cn } from '@/lib/cn';
-import { COMPOSER_MODES, composerModeMeta } from './composerModes';
+import { COMPOSER_MODES, composerModeMeta, modesForKind } from './composerModes';
+import AgentSwitcher from './AgentSwitcher';
+import GoalBar from './GoalBar';
+import UltraPlanBar from './UltraPlanBar';
+import DesignBar from './design/DesignBar';
+import { useDesignFlowStore, type DesignStage } from '@/lib/designFlowStore';
+import { useFlowContext } from './ultraplan/flowContext';
+import { useGoalStore } from '@/lib/goalStore';
+import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { ContextMeterButton, ContextMeterPanel } from './ContextMeter';
 import ModelPicker from './ModelPicker';
 import { VoiceInputButton } from './VoiceInput';
+import { useCollaborationStore } from '@/lib/collaborationStore';
+import TeamBoard from './TeamBoard';
 
-const AGENT_KINDS: Array<{ id: string; label: string; icon: typeof Box; hint: string }> = [
-  { id: 'coding', label: '编码', icon: Box, hint: '全量 MCP + 文件编辑' },
-  { id: 'general', label: '通用', icon: Sparkles, hint: '只读 + 对话' },
-  { id: 'document', label: '文档', icon: BookOpen, hint: '只读 + 写文件' },
+/** D-044:这四道关口上,ultraplan 模式的自由文本有明确去向(补充需求 / 重出问卷 / 改 Demo / 改计划)。 */
+const ULTRA_GATE_STAGES: readonly UltraPlanStage[] = [
+  'discovery',
+  'questionnaire',
+  'demo_review',
+  'plan_review',
 ];
 
-function modesForKind(kind: string) {
-  if (kind === 'general' || kind === 'document') {
-    return COMPOSER_MODES.filter((m) => m.id === 'ask' || m.id === 'build');
+/** D-044:ultraplan 模式下输入框的占位文案——在这道关口发一段文字会发生什么。 */
+/** D-045:Design 模式的输入提示随关口变(审阅时发文字 = 对选中稿提修改)。 */
+function designPlaceholder(stage: DesignStage | null): string {
+  switch (stage) {
+    case 'concept':
+      return '补充设计意图,会重新出图';
+    case 'design_review':
+      return '描述要修改的地方,会在选中的设计稿上改图';
+    case 'replication':
+      return '复刻进行中,请用状态条的「继续复刻」或结果卡的「提出修复」';
+    default:
+      return '描述要设计的场景或界面:风格、布局、元素与文字…';
   }
-  return COMPOSER_MODES;
+}
+
+function ultraPlaceholder(stage: UltraPlanStage | null): string {
+  switch (stage) {
+    case 'discovery':
+      return '补充你的设想,会据此继续梳理需求';
+    case 'questionnaire':
+      return '在此输入补充说明会重新生成问卷';
+    case 'demo_review':
+      return '描述要修改的地方,会重建 Demo';
+    case 'plan_review':
+      return '描述要调整的地方,会重写计划';
+    case 'production':
+      return '制作阶段不接收补充说明,请用上方的「继续制作」';
+    case 'acceptance':
+      return '验收阶段请在验收清单里提交结果';
+    default:
+      return '详细描述你想做的游戏…';
+  }
 }
 
 /**
@@ -61,13 +104,19 @@ function modesForKind(kind: string) {
  * 见 VoiceInput.tsx 与 lib/speechInput.ts 的能力边界留痕)/ 有文本无会话时右侧 warn 胶囊
  * 「先选择会话」。
  *
- * add menu:AgentKind 三节(PATCH agentKind)+ 按 kind 过滤模式。Plan/Todo 已接线。
+ * add menu:按现有会话的 kind / 引擎过滤模式。Plan/Todo 已接线。
  * 本组件的两个下拉统一 bottom-full 上弹,锚 rootRef(包住三层的 relative 壳);
  * 模型规格菜单自带锚与 outside-click,靠 onOpen 与这两个互斥。
  *
  * home 变体(全屏对话主页):去掉列内的顶部虚线与内边距(由主页壳给居中列宽),
  * 输入壳底高抬到 HOME_INPUT_MIN 直接以多行圆角盒起步;并且允许「没有会话直接发」——
  * 先建会话再发,首屏输入即开工(参考 Codex),不再把人堵在「先选择会话」。
+ *
+ * D-044 UltraPlan:GoalBar 旁挂 UltraPlanBar;模式是本地 state(不持久、不随会话),所以
+ * 会话的流程停在需求 / 问卷 / Demo / 计划关口时自动选中 ultraplan(刷新后在关口上输入的
+ * 修改意见不至于按 build 发出去),流程离开这些关口后把**自动选上的** ultraplan 退回 Agent
+ * (免得它留在一个没有流程的会话里,一条普通消息就新开一轮流程)。用户在没有流程的会话里
+ * 手动选的 ultraplan 不动。占位文案按关口说明「在这里输入会发生什么」。
  */
 
 interface SkillItem {
@@ -78,20 +127,36 @@ interface SkillItem {
 
 export default function Composer({ variant = 'column' }: { variant?: ChatVariant }) {
   const activeRunId = useChatStore((st) => st.activeRunId);
+  // 手动压缩上下文期间后端占着会话运行锁,这时发出去只会拿到 SESSION_BUSY。
+  const compacting = useChatStore(
+    (st) => st.compactingSessionId !== null && st.compactingSessionId === st.currentSessionId,
+  );
   const sendMessage = useChatStore((st) => st.sendMessage);
+  const steerAgent = useChatStore((st) => st.steerAgent);
+  const collaborationSupported = useCollaborationStore((st) => st.supported);
   const cancelRun = useChatStore((st) => st.cancelRun);
   const hasSession = useSessionStore((st) => st.activeSessionId !== null);
   const activeSessionId = useSessionStore((st) => st.activeSessionId);
+  const activeSession = useSessionStore((st) =>
+    st.sessions.find((session) => session.id === st.activeSessionId),
+  );
   const createSession = useSessionStore((st) => st.create);
+  const draftAgentEngine = useSessionStore((st) => st.draftAgentEngine);
+  const setDraftAgentEngine = useSessionStore((st) => st.setDraftAgentEngine);
+  const setAgentEngine = useSessionStore((st) => st.setAgentEngine);
   const home = variant === 'home';
   const agentKind = useSessionStore((st) => {
     const s = st.sessions.find((x) => x.id === st.activeSessionId);
     return s?.agentKind ?? 'coding';
   });
-  const setAgentKind = useSessionStore((st) => st.setAgentKind);
-  const visibleModes = modesForKind(agentKind);
+  const agentEngine = activeSession?.agentEngine ?? draftAgentEngine;
+  const visibleModes = modesForKind(agentKind, agentEngine);
 
-  const [text, setText] = useState('');
+  const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const draftKey = annotationDraftKey(activeSessionId, workspaceId);
+  const [text, setText] = useComposerTextDraft(draftKey);
+  const annotationDrafts = useEditorAnnotationStore((s) => s.drafts);
+  const annotations = annotationDrafts[draftKey] ?? [];
   const [mode, setMode] = useState('build');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
@@ -99,11 +164,71 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
   const [skills, setSkills] = useState<SkillItem[] | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [submittingTargets, setSubmittingTargets] = useState<Set<string>>(() => new Set());
+  const [engineSwitching, setEngineSwitching] = useState(false);
+  const [steering, setSteering] = useState(false);
+  const steeringAttempt = useRef<{ sessionId: string; text: string; id: string } | null>(null);
   const contextUsage = useContextUsage(selectedSkills, text);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const focus = () => inputRef.current?.focus();
+    window.addEventListener('forge:focus-composer', focus);
+    return () => window.removeEventListener('forge:focus-composer', focus);
+  }, []);
   const submitCtrlEnter = useSettingsStore((st) => st.submitCtrlEnter);
   const prefillToken = useComposerPrefillStore((st) => st.token);
+
+  useEffect(() => {
+    if (!modesForKind(agentKind, agentEngine).some((item) => item.id === mode)) setMode('build');
+  }, [agentEngine, agentKind, mode]);
+
+  // D-044:ultraplan 模式是否由流程托管(自动选上,或流程到关口时它已被选中)。
+  // 用户每次亲手改模式都清掉这个标记(见 pickMode),之后不再替他改回去。
+  const { flow } = useFlowContext();
+  const flowId = flow?.id ?? null;
+  const flowStage = flow?.stage ?? null;
+  const ultraAvailable = visibleModes.some((item) => item.id === 'ultraplan');
+  const ultraManaged = useRef(false);
+  useEffect(() => {
+    const atGate = flowStage !== null && ULTRA_GATE_STAGES.includes(flowStage);
+    if (atGate && ultraAvailable) {
+      ultraManaged.current = true;
+      setMode('ultraplan');
+      return;
+    }
+    // 没有流程 / 已完成 / 进了制作与验收(此时 ultraplan 自由文本会被后端 409)。
+    if (ultraManaged.current) {
+      ultraManaged.current = false;
+      setMode((current) => (current === 'ultraplan' ? 'build' : current));
+    }
+  }, [activeSessionId, flowId, flowStage, ultraAvailable]);
+
+  // D-045:Design 流程停在审阅关口时自动切到 Design(此时发文字 = 对选中稿提修改);
+  // 离开关口后若是流程替用户选的,退回 Agent。与 UltraPlan 同一纪律:用户亲手改过就不再干预。
+  const designSessionId = useDesignFlowStore((st) => st.sessionId);
+  const designStateRaw = useDesignFlowStore((st) => st.state);
+  const designStage = designStateRaw !== null && designSessionId === activeSessionId ? designStateRaw.stage : null;
+  const designAvailable = visibleModes.some((item) => item.id === 'design');
+  const designManaged = useRef(false);
+  useEffect(() => {
+    if (designStage === 'design_review' && designAvailable) {
+      designManaged.current = true;
+      setMode('design');
+      return;
+    }
+    if (designManaged.current) {
+      designManaged.current = false;
+      setMode((current) => (current === 'design' ? 'build' : current));
+    }
+  }, [activeSessionId, designStage, designAvailable]);
+
+  /** 用户亲手选模式:此后这个模式归用户,流程不再自动把它退回 Agent。 */
+  const pickMode = (next: string) => {
+    ultraManaged.current = false;
+    designManaged.current = false;
+    setMode(next);
+  };
 
   // 语音输入:开听时以当前草稿为底稿,识别文本(含未定稿片段)实时接在其后写回 textarea
   const textRef = useRef(text);
@@ -121,15 +246,20 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
   useEffect(() => {
     if (prefillToken === 0) return;
     const { draft, mode: m, clear } = useComposerPrefillStore.getState();
-    if (draft !== null) setText(draft);
-    if (m !== null && COMPOSER_MODES.some((x) => x.id === m)) setMode(m);
+    if (draft !== null) setText((current) => current.trim() ? `${current}\n\n${draft}` : draft);
+    if (m !== null && COMPOSER_MODES.some((x) => x.id === m)) pickMode(m);
     clear();
     inputRef.current?.focus();
   }, [prefillToken]);
 
-  const running = activeRunId !== null;
-  const hasText = text.trim() !== '';
-  const canSend = hasText && !running && (hasSession || home);
+  const draftTarget = '@draft';
+  const currentTarget = activeSessionId ?? draftTarget;
+  const submitting = submittingTargets.has(currentTarget);
+  const running = activeRunId !== null || submitting;
+  const hasText = text.trim() !== '' || annotations.length > 0;
+  const canSteer = activeRunId !== null && collaborationSupported;
+  const canSend =
+    hasText && !steering && (!running || canSteer) && !engineSwitching && !compacting && (hasSession || home);
 
   // 输入壳实测高:临时压平 textarea 读 scrollHeight(含自身 py-[3px]),再恢复 h-full。
   const [measuredHeight, setMeasuredHeight] = useState(0);
@@ -186,36 +316,125 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
     );
   };
 
+  const runGoalCommand = async (raw: string) => {
+    const command = raw.trim();
+    const goal = useGoalStore.getState();
+    if (command === '') {
+      useWorkbenchStore.getState().openTab('goal');
+      return;
+    }
+    if (command.toLowerCase() === 'pause') {
+      await goal.pauseGoal();
+      return;
+    }
+    if (command.toLowerCase() === 'resume') {
+      await goal.resumeGoal();
+      return;
+    }
+    if (command.toLowerCase() === 'clear') {
+      await goal.clearGoal();
+      return;
+    }
+    await goal.setGoal(command);
+  };
+
+  const markSubmitting = (target: string, on: boolean) => {
+    setSubmittingTargets((current) => {
+      const next = new Set(current);
+      if (on) next.add(target);
+      else next.delete(target);
+      return next;
+    });
+  };
+
+  const moveSubmitting = (from: string, to: string) => {
+    setSubmittingTargets((current) => {
+      const next = new Set(current);
+      next.delete(from);
+      next.add(to);
+      return next;
+    });
+  };
+
   const send = () => {
     if (!canSend) return;
     voice.stop();
+    const sentAnnotations = structuredClone(annotations);
+    const rawText = text.trim();
+    const messageText = rawText || '请根据这些批注检查并协助处理所引用的编辑器内容。';
+    const acknowledge = () => {
+      setText((current) => current === text ? '' : current);
+      useEditorAnnotationStore.getState().acknowledge(sentAnnotations, draftKey);
+    };
+    if (canSteer && activeSessionId) {
+      const body = messageText;
+      const sessionId = activeSessionId;
+      const attempt = steeringAttempt.current;
+      const identity = JSON.stringify([body, sentAnnotations]);
+      const id = attempt?.sessionId === sessionId && attempt.text === identity ? attempt.id : crypto.randomUUID();
+      steeringAttempt.current = { sessionId, text: identity, id };
+      setSteering(true);
+      const submitted = sentAnnotations.length ? flushEditorDocuments(sentAnnotations).then(() => steerAgent(body, undefined, id, sentAnnotations)) : steerAgent(body, undefined, id, sentAnnotations);
+      void submitted.then((accepted) => {
+        if (accepted) {
+          acknowledge();
+          steeringAttempt.current = null;
+        }
+      }).catch((error) => useToastStore.getState().push('error', `消息未提交，草稿已保留：${(error as Error).message}`)).finally(() => setSteering(false));
+      return;
+    }
     // F11 wave.5:选中技能作结构化字段下发(ask:execute skills[]),不再拼文本前缀——
     // 前缀服务端零解析,SKILL.md 全文从未进过模型上下文(E-06-002)。
     const picked = [...selectedSkills].sort();
     if (picked.length > 0) setSelectedSkills([]);
-    setText('');
     closeMenus();
-    const body = text.trim();
-    const args: [string, string, string[]?] =
-      picked.length > 0 ? [body, mode, picked] : [body, mode];
+    const body = messageText;
+    const goalCommand = /^\/goal(?:\s+(.*))?$/i.exec(body);
+    const args: [string, string, string[]?, { annotations?: EditorAnnotation[] }?] = sentAnnotations.length
+      ? [body, mode, picked.length ? picked : undefined, { annotations: sentAnnotations }]
+      : picked.length > 0 ? [body, mode, picked] : [body, mode];
     if (hasSession) {
-      void sendMessage(...args);
+      if (goalCommand) {
+        void runGoalCommand(goalCommand[1] ?? '');
+        acknowledge();
+        return;
+      }
+      const target = activeSessionId;
+      if (!target) return;
+      markSubmitting(target, true);
+      const submitted = sentAnnotations.length ? flushEditorDocuments(sentAnnotations).then(() => sendMessage(...args)) : Promise.resolve(sendMessage(...args));
+      void submitted.then((accepted) => { if (accepted !== false) acknowledge(); }).catch((error) => useToastStore.getState().push('error', `消息未提交，草稿已保留：${(error as Error).message}`)).finally(() => markSubmitting(target, false));
       return;
     }
     // 全屏主页无会话直发:建会话(带上 Composer 已勾的模型规格,否则 selectSession
     // 回放默认档会把 thinking 等冲掉)→ 主动订阅(ChatColumn 副作用见 currentSessionId
     // 已对齐会跳过,否则它的 reset() 会把下面这条乐观回显抹掉)→ 再发。
+    markSubmitting(draftTarget, true);
     void (async () => {
+      let target = draftTarget;
       const chat = useChatStore.getState();
-      const s = await createSession(undefined, {
-        selectedModelId: chat.selectedModelId,
-        thinkingEnabled: chat.thinkingEnabled,
-        reasoningEffort: chat.reasoningEffort,
-        contextOptionId: chat.contextOptionId,
-      });
-      if (!s) return;
-      await useChatStore.getState().selectSession(s.id);
-      await useChatStore.getState().sendMessage(...args);
+      try {
+        const s = await createSession(undefined, {
+          agentEngine,
+          selectedModelId: chat.selectedModelId,
+          thinkingEnabled: chat.thinkingEnabled,
+          reasoningEffort: chat.reasoningEffort,
+          contextOptionId: chat.contextOptionId,
+        });
+        if (!s) return;
+        moveSubmitting(draftTarget, s.id);
+        target = s.id;
+        await useChatStore.getState().selectSession(s.id);
+        if (goalCommand) {
+          await runGoalCommand(goalCommand[1] ?? '');
+          return;
+        }
+        if (sentAnnotations.length) await flushEditorDocuments(sentAnnotations);
+        const accepted = await useChatStore.getState().sendMessage(...args);
+        if (accepted !== false) acknowledge();
+      } finally {
+        markSubmitting(target, false);
+      }
     })();
   };
 
@@ -241,8 +460,15 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
         data-variant={variant}
         data-capsule={capsule ? '1' : undefined}
         className="relative flex flex-col gap-1.5"
+        onDragOver={(e) => { if (e.dataTransfer.types.includes(EDITOR_REFERENCE_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+        onDrop={(e) => { if (e.dataTransfer.types.includes(EDITOR_REFERENCE_MIME)) { e.preventDefault(); useEditorAnnotationStore.getState().add(decodeAnnotationDrop(e.dataTransfer), draftKey); } }}
       >
+        <GoalBar />
+        <UltraPlanBar />
+        <DesignBar />
+        <TeamBoard />
         <TodoStrip />
+        {annotations.length > 0 && <AnnotationChips annotations={annotations} onRemove={(id) => useEditorAnnotationStore.getState().remove(id, draftKey)} onNote={(id, note) => useEditorAnnotationStore.getState().update(id, note, draftKey)} />}
         {/* 技能 chip 行(胶囊外,上方;模式态已融进胶囊内的 [+] 钮) */}
         {hasChips && (
           <div data-testid="composer-chips" className="flex flex-wrap items-center gap-1.5 px-1">
@@ -270,12 +496,12 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
         {contextOpen && (
           <ContextMeterPanel usage={contextUsage} onClose={() => setContextOpen(false)} />
         )}
-        {/* 胶囊:[+] 输入 [发送] 单行;p-1 让边框紧贴 26px 圆钮,换行后转圆角矩形并底对齐 */}
+        {/* 首页文字占满第一行，模式与发送置于下一行；对话列保留紧凑输入。 */}
         <div
           data-testid="composer-capsule"
           className={cn(
-            'flex items-end gap-1.5 border border-edge bg-shell-panel shadow-sh1 transition-[border-radius,border-color,box-shadow] duration-150 focus-within:border-acc-ring focus-within:shadow-[0_0_0_3px_var(--accent-bg)]',
-            home ? 'p-2' : 'p-1',
+            'composer-glass border border-edge',
+            home ? 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 p-3' : 'flex items-end gap-1.5 p-1',
             capsule ? 'rounded-full' : 'rounded-2xl',
           )}
         >
@@ -286,8 +512,9 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
             data-mode={mode}
             className={cn(
               'flex h-[26px] shrink-0 items-stretch overflow-hidden rounded-full border transition-colors duration-150',
-              modeActive ? 'bg-acc-bg text-acc' : 'text-fg-2',
-              addMenuOpen ? 'border-acc-ring' : modeActive ? 'border-transparent' : 'border-edge',
+              home && 'col-start-1 row-start-2 justify-self-start',
+              modeActive ? 'bg-shell-active text-fg-2' : 'text-fg-2',
+              addMenuOpen ? 'border-edge-strong' : modeActive ? 'border-transparent' : 'border-edge',
             )}
           >
             <button
@@ -310,7 +537,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                   data-testid="composer-mode-chip"
                   className="flex items-center gap-1 whitespace-nowrap text-[11px]"
                 >
-                  <modeMeta.icon size={11} />
+                  <modeMeta.icon size={11} className={modeMeta.iconClassName} />
                   {modeMeta.label}
                 </span>
               )}
@@ -321,7 +548,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                 aria-label="复位为 Agent"
                 data-testid="composer-mode-reset"
                 onClick={() => {
-                  setMode('build');
+                  pickMode('build');
                   setAddMenuOpen(false);
                 }}
                 className="flex items-center pl-0.5 pr-1.5 hover:bg-shell-hover"
@@ -330,7 +557,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
               </button>
             )}
           </div>
-          <div className="min-w-0 flex-1" style={{ height: inputHeight }}>
+          <div className={cn('min-w-0 flex-1', home && 'col-span-2 col-start-1 row-start-1 w-full')} style={{ height: inputHeight }}>
             <textarea
               ref={inputRef}
               value={text}
@@ -361,14 +588,26 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                 }
               }}
               data-testid="composer-input"
-              placeholder={home ? '描述你要做的事，Enter 发送…' : '描述任务…'}
+              aria-label="任务描述"
+              placeholder={
+                canSteer
+                  ? '补充要求或调整当前任务…'
+                  : mode === 'ultraplan'
+                  ? ultraPlaceholder(flowStage)
+                  : mode === 'design'
+                  ? designPlaceholder(designStage)
+                  : home
+                    ? '描述你要做的事，Enter 发送…'
+                    : '描述任务…'
+              }
               className={cn(
                 'h-full w-full resize-none bg-transparent py-[3px] leading-[20px] text-fg outline-none placeholder:text-fg-4',
                 home ? 'text-[14px]' : 'text-[13.5px]',
               )}
             />
           </div>
-          {running ? (
+          <div data-testid="composer-actions" className={cn('flex shrink-0 items-center gap-1.5', home && 'col-start-2 row-start-2 justify-self-end')}>
+          {running && (
             <button
               type="button"
               aria-label="中止运行"
@@ -378,12 +617,22 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
             >
               <Square size={11} />
             </button>
-          ) : (
+          )}
+          {(!running || (canSteer && hasText)) && (
             <button
               type="button"
-              aria-label="发送"
+              aria-label={canSteer ? '发送引导' : '发送'}
               data-testid="composer-send"
               disabled={!canSend}
+              title={
+                engineSwitching
+                  ? '正在切换执行引擎，请稍候'
+                  : compacting
+                    ? '正在压缩上下文，完成后再发送'
+                    : canSteer
+                      ? '发送到当前 agent，运行继续'
+                      : undefined
+              }
               onClick={send}
               className={cn(
                 'flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full',
@@ -395,9 +644,11 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
               <ArrowUp size={13} />
             </button>
           )}
+          </div>
         </div>
         {/* 胶囊下方工具行:技能 / 模型 */}
-        <div data-testid="composer-tools" className="flex items-center gap-1.5 px-1">
+        {/* 工具行:只有模型选择器可收缩(模型名截断),其余不换行——最窄 300px 对话列也不挤坏 */}
+        <div data-testid="composer-tools" className="flex min-w-0 items-center gap-1.5 whitespace-nowrap px-1">
           <button
             type="button"
             aria-label="选择技能"
@@ -414,7 +665,51 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
           >
             <BookOpen size={11} className={selectedSkills.length > 0 ? 'text-acc' : 'text-fg-3'} />
           </button>
-          <ModelPicker onOpen={closeMenus} />
+          <AgentSwitcher
+            engine={agentEngine}
+            disabled={running}
+            onCheckingChange={setEngineSwitching}
+            onPick={async (next) => {
+              closeMenus();
+              if (activeSessionId) {
+                await setAgentEngine(activeSessionId, next);
+                const sessionState = useSessionStore.getState();
+                if (sessionState.activeSessionId !== activeSessionId) return;
+                const saved = sessionState.sessions.find((session) => session.id === activeSessionId);
+                if (saved?.agentEngine !== next) return;
+              } else {
+                setDraftAgentEngine(next);
+              }
+              let fresh = useChatStore.getState();
+              let candidates = fresh.models.filter((model) =>
+                next === 'codex' ? model.provider === 'codex' : model.provider !== 'codex',
+              );
+              if (candidates.length === 0) {
+                await fresh.ensureModels(true, next === 'codex' ? 'codex' : undefined);
+                fresh = useChatStore.getState();
+                candidates = fresh.models.filter((model) =>
+                  next === 'codex' ? model.provider === 'codex' : model.provider !== 'codex',
+                );
+              }
+              if (!candidates.some((model) => model.id === fresh.selectedModelId)) {
+                if (next === 'codex') {
+                  // selectedModelId=null 才是「使用 Codex 设置/app-server 默认」。
+                  // 不能把 model/list 第一项偷偷持久化，否则会覆盖设置页的默认模型。
+                  if (fresh.selectedModelId !== null) await fresh.pickModel(null);
+                  return;
+                }
+                const fallback =
+                  candidates.find((model) => model.availability === 'available') ?? candidates[0];
+                if (fallback) await fresh.pickModel(fallback.id);
+              }
+            }}
+          />
+          <ModelPicker
+            onOpen={closeMenus}
+            provider={agentEngine === 'codex' ? 'codex' : undefined}
+            excludeProvider={agentEngine === 'local' ? 'codex' : undefined}
+            disabled={running || engineSwitching}
+          />
           <ContextMeterButton
             usage={contextUsage}
             open={contextOpen}
@@ -451,38 +746,13 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
           )}
         </div>
 
-        {/* add menu:AgentKind 三节 + 模式 */}
+        {/* add menu:模式 */}
         {addMenuOpen && (
           <div
             role="menu"
             data-testid="composer-add-menu"
             className="absolute bottom-full left-0 z-40 mb-1.5 flex min-w-[196px] flex-col rounded-[10px] border border-edge bg-shell-float p-1 shadow-float"
           >
-            <div className="px-2 py-1 text-[9.5px] text-fg-4">代理类型</div>
-            {AGENT_KINDS.map((k) => (
-              <button
-                key={k.id}
-                type="button"
-                role="menuitem"
-                data-testid={`kind-item-${k.id}`}
-                title={k.hint}
-                onClick={() => {
-                  if (activeSessionId) void setAgentKind(activeSessionId, k.id);
-                  const nextModes = modesForKind(k.id);
-                  if (!nextModes.some((m) => m.id === mode)) setMode('build');
-                  closeMenus();
-                }}
-                className={cn(
-                  'flex h-[26px] items-center gap-2 rounded-md px-2 text-left text-[12px] hover:bg-shell-selection',
-                  k.id === agentKind ? 'text-acc' : 'text-fg-2',
-                )}
-              >
-                <k.icon size={12} />
-                <span className="min-w-0 flex-1 truncate">{k.label}</span>
-                {k.id === agentKind && <Check size={11} />}
-              </button>
-            ))}
-            <div className="my-1 h-px bg-edge" />
             <div className="px-2 py-1 text-[9.5px] text-fg-4">模式</div>
             {visibleModes.map((m) => (
               <button
@@ -491,7 +761,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                 role="menuitem"
                 data-testid={`mode-item-${m.id}`}
                 onClick={() => {
-                  setMode(m.id);
+                  pickMode(m.id);
                   closeMenus();
                 }}
                 className={cn(
@@ -499,7 +769,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                   m.id === mode ? 'text-acc' : 'text-fg-2',
                 )}
               >
-                <m.icon size={12} />
+                <m.icon size={12} className={m.iconClassName} />
                 <span className="min-w-0 flex-1 truncate">{m.label}</span>
                 {m.id === mode && <Check size={11} />}
               </button>

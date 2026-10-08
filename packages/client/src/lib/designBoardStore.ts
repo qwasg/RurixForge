@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { EntityCategory } from './entityCategory';
 import { CATEGORY_META } from './entityCategory';
 import { useComposerPrefillStore } from './composerStore';
+import { editorReference, makeAnnotation, useEditorAnnotationStore } from './editorReferences';
 
 /**
  * 画板设计 store v3(素材波):实体卡 + 特性子节点 + 挂载素材(图片/建模/纹理等资产引用)。
@@ -411,6 +412,7 @@ function persistBoard(doc: {
 export type KindDraft = Omit<EntityKindDef, 'id' | 'builtin'>;
 
 interface DesignBoardState {
+  bindings: Record<string, { sceneGuid: string; entityGuid?: string; entityId: number; assets?: unknown; changeSetId?: string }>;
   kinds: EntityKindDef[];
   nodes: BoardNode[];
   edges: BoardEdge[];
@@ -420,6 +422,7 @@ interface DesignBoardState {
   openNodeId: string | null;
   /** 选中的实体:键盘快捷键的作用对象(会话态,不持久化) */
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
   /** 展开中的卡上编辑 / 浮层(会话态,不持久化) */
   panel: BoardPanel | null;
 
@@ -434,7 +437,7 @@ interface DesignBoardState {
   /** 特性子节点在「铺开」与「收进卡片右缘端口列」之间切换(连线端点不变) */
   toggleCollapse: (id: string) => void;
 
-  selectNode: (id: string | null) => void;
+  selectNode: (id: string | null, additive?: boolean) => void;
   openPanel: (panel: BoardPanel) => void;
   closePanel: () => void;
 
@@ -514,9 +517,11 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
 
   return {
     ...loadBoard(),
+    bindings: {},
     pendingEdgeId: null,
     openNodeId: null,
     selectedNodeId: null,
+    selectedNodeIds: [],
     panel: null,
 
     addNode: (kindId, pos) => {
@@ -540,7 +545,7 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
         collapsed: false,
       };
       commit({ nodes: [...nodes, node], seq: nextSeq });
-      set({ selectedNodeId: id });
+      set({ selectedNodeId: id, selectedNodeIds: [id] });
       return id;
     },
 
@@ -564,7 +569,7 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
     removeNode: (id) => {
       // 正下钻在该实体时收敛回主画板(不留悬空详情页)
       if (get().openNodeId === id) set({ openNodeId: null });
-      if (get().selectedNodeId === id) set({ selectedNodeId: null });
+      set((state) => ({ selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId, selectedNodeIds: state.selectedNodeIds.filter((value) => value !== id) }));
       if (get().panel?.node === id) set({ panel: null });
       commit({
         nodes: get().nodes.filter((n) => n.id !== id),
@@ -607,7 +612,7 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
         collapsed: src.collapsed,
       };
       commit({ nodes: [...nodes, node], seq: next });
-      set({ selectedNodeId: newId });
+      set({ selectedNodeId: newId, selectedNodeIds: [newId] });
       return newId;
     },
 
@@ -616,9 +621,9 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
         nodes: get().nodes.map((n) => (n.id === id ? { ...n, collapsed: !n.collapsed } : n)),
       }),
 
-    selectNode: (id) => set({ selectedNodeId: id, ...(id === null ? { panel: null } : {}) }),
+    selectNode: (id, additive = false) => set((state) => { const selectedNodeIds = id === null ? [] : additive ? state.selectedNodeIds.includes(id) ? state.selectedNodeIds.filter((value) => value !== id) : [...state.selectedNodeIds, id] : [id]; return { selectedNodeId: selectedNodeIds.at(-1) ?? null, selectedNodeIds, ...(id === null ? { panel: null } : {}) }; }),
 
-    openPanel: (panel) => set({ panel, selectedNodeId: panel.node }),
+    openPanel: (panel) => set({ panel, selectedNodeId: panel.node, selectedNodeIds: [panel.node] }),
 
     closePanel: () => set({ panel: null }),
 
@@ -792,7 +797,7 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
 
     // seq 不回卷:自定义类型仍在档,重置会让后续 addKind 造出与之重复的 id
     clearBoard: () => {
-      set({ openNodeId: null, selectedNodeId: null, panel: null });
+      set({ openNodeId: null, selectedNodeId: null, selectedNodeIds: [], panel: null });
       commit({ nodes: [], edges: [] });
     },
 
@@ -896,7 +901,13 @@ export const useDesignBoardStore = create<DesignBoardState>((set, get) => {
     },
 
     handoffToAgent: () => {
-      useComposerPrefillStore.getState().prefill(get().buildPrompt(), 'build');
+      const selected = get().selectedNodeId;
+      const selectedIds = get().selectedNodeIds;
+      const reference = editorReference('blueprint', { resourceId: 'main', selection: selectedIds.length ? { nodeIds: selectedIds } : selected ? { nodeIds: [selected] } : undefined });
+      useEditorAnnotationStore.getState().add([makeAnnotation(reference, selected ? get().nodes.find((n) => n.id === selected)?.name ?? '选中蓝图' : '整张设计蓝图')]);
+      const scene = editorReference('scene');
+      if (scene.sceneGuid) useEditorAnnotationStore.getState().add([makeAnnotation(scene, '生成装配目标场景')]);
+      useComposerPrefillStore.getState().prefill('请根据所附设计蓝图制作素材和逻辑；生成候选后调用 editor_accept_and_assemble 完成入库、实体装配和蓝图绑定。保留发起时引用场景的 expected，冲突时停止并说明，不改投当前场景。已有实体请更新，避免重复创建。', 'build');
     },
   };
 });

@@ -135,7 +135,7 @@ fn material_create_rejects_unknown_texture_guid() {
 fn mesh_inspect_reads_real_rxmesh_stats() {
     let root = tmp_project("mesh_inspect");
     let project = ForgeProject::with_defaults(root.clone());
-    let src = PathBuf::from("H:/rurix/conformance/asset/gltf/accept/tri_min.gltf");
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tri_min.gltf");
     let dst = root.join("tri_min.gltf");
     std::fs::copy(&src, &dst).unwrap();
     let out = import_assets(&project, &[dst.to_string_lossy().into()], "Meshes", None).unwrap();

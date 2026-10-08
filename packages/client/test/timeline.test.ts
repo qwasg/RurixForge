@@ -73,6 +73,10 @@ describe('timeline 名称工具', () => {
     expect(toolVisual('read_file')).toBe('Read');
     expect(toolVisual('grep')).toBe('Grepped');
     expect(toolVisual('glob')).toBe('Searched files');
+    expect(toolVisual('shell')).toBe('Ran');
+    expect(toolVisual('web_search')).toBe('Searched web');
+    expect(toolVisual('mcp__computer-use__click')).toBe('Clicked');
+    expect(toolVisual('mcp__computer-use__type_text')).toBe('Typed text');
     // 未知 MCP 名 → server / tool
     expect(toolVisual('mcp__foo__bar_baz')).toBe('foo / bar_baz');
     // 非 MCP 未知名 → 原名
@@ -85,6 +89,75 @@ describe('timeline 名称工具', () => {
     expect(toolVisualRunning('glob')).toBe('Searching files');
     expect(toolVisualRunning('mcp__foo__bar_baz')).toBe('foo / bar_baz');
     expect(toolVisualRunning('some_tool')).toBe('some_tool');
+  });
+
+  /// D-044:UltraPlan 的出口工具 / Demo 探测 / 试玩回归——过程链英文两段式(E-07-008)。
+  it('UltraPlan 工具动词表:完成态 / 运行中 / 并组短语', () => {
+    const table: Array<[string, string, string]> = [
+      ['ultraplan_questionnaire', 'Drafted questionnaire', 'Drafting questionnaire'],
+      ['ultraplan_spec', 'Wrote spec', 'Writing spec'],
+      ['ultraplan_plan_doc', 'Wrote plan', 'Writing plan'],
+      ['ultraplan_plan_tasks', 'Wrote plan tasks', 'Writing plan tasks'],
+      ['web_demo_probe', 'Probed demo', 'Probing demo'],
+      ['playtest_run', 'Ran playtest', 'Running playtest'],
+    ];
+    for (const [name, done, running] of table) {
+      expect(toolVisual(name)).toBe(done);
+      expect(toolVisualRunning(name)).toBe(running);
+    }
+    expect(groupPhrase('ultraplan_questionnaire', 2)).toBe('Drafted 2 questionnaires');
+    expect(groupPhrase('ultraplan_spec', 2)).toBe('Wrote 2 specs');
+    expect(groupPhrase('ultraplan_plan_doc', 2)).toBe('Wrote plan 2 times');
+    expect(groupPhrase('ultraplan_plan_tasks', 3)).toBe('Wrote plan tasks 3 times');
+    expect(groupPhrase('web_demo_probe', 2)).toBe('Probed demo 2 times');
+    expect(groupPhrase('playtest_run', 2)).toBe('Ran 2 playtests');
+  });
+
+  /// 出口工具的参数是整份问卷 / 需求 / 计划:行尾只给标题或名字,绝不把 JSON 正文摘上去。
+  it('UltraPlan 工具行目标:只取 title / name / 任务数,不吐整份 JSON', () => {
+    const longText = '需求正文'.repeat(400);
+    const sections = [{ id: 's1', title: '玩法', questions: [{ id: 'q1', kind: 'text', question: '主题?' }] }];
+    expect(
+      toolLine(tool('u1', 'ultraplan_questionnaire', { title: '塔防问卷', understanding: longText, sections }, true)),
+    ).toBe('Drafted questionnaire 塔防问卷');
+    // 标题缺省时不落到 understanding / sections
+    expect(toolLine(tool('u2', 'ultraplan_questionnaire', { understanding: longText, sections }, true))).toBe(
+      'Drafted questionnaire',
+    );
+    expect(toolLine(tool('u3', 'ultraplan_spec', { title: '塔防 MVP 需求', spec: longText }, true))).toBe(
+      'Wrote spec 塔防 MVP 需求',
+    );
+    // description / prompt / name 等通用兜底键出现在正文里也不被摘走
+    expect(toolLine(tool('u4', 'ultraplan_spec', { spec: longText, description: longText, prompt: longText }, true))).toBe(
+      'Wrote spec',
+    );
+    expect(
+      toolLine(tool('u5', 'ultraplan_plan_doc', { name: '塔防 MVP', overview: longText, plan: longText, checks: {} }, true)),
+    ).toBe('Wrote plan 塔防 MVP');
+    const long = toolTarget(tool('u6', 'ultraplan_plan_doc', { name: 'x'.repeat(200), plan: longText }, true));
+    expect(long).toBe(`${'x'.repeat(48)}…`);
+    expect(
+      toolLine(tool('u7', 'ultraplan_plan_tasks', {
+        tasks: [
+          { id: 't1', title: '搭场景', role: 'scene-builder', prompt: longText },
+          { id: 't2', title: '写逻辑', role: 'logic-programmer', prompt: longText },
+        ],
+        done: true,
+      }, true)),
+    ).toBe('Wrote plan tasks 2 tasks');
+    expect(toolLine(tool('u8', 'ultraplan_plan_tasks', { tasks: [{ id: 't1', prompt: longText }], done: false }))).toBe(
+      'Writing plan tasks 1 task',
+    );
+    expect(toolLine(tool('u9', 'web_demo_probe', { script: [{ call: 'reset' }, { call: 'tick', args: [60] }], screenshot: true }, true))).toBe(
+      'Probed demo',
+    );
+    expect(toolLine(tool('u10', 'playtest_run', { matrixRef: 'tests/playtest/maze.json' }, true))).toBe(
+      'Ran playtest maze.json',
+    );
+    expect(toolLine(tool('u11', 'playtest_run', { matrix: { name: 'inline', cases: [] } }, true))).toBe('Ran playtest');
+    // 流式中 args 还是半截 JSON:解析不出 → 只剩动词
+    const streaming: ToolBlock = { ...tool('u12', 'ultraplan_spec', {}), args: '{"title":"塔防 MVP 需求","spec":"# 需求\\n' };
+    expect(toolLine(streaming)).toBe('Writing spec');
   });
 
   /// D-036:dispatch 不是里程碑 —— 里程碑工具块在 AssistantMessage 里渲染成待办行,
@@ -165,6 +238,56 @@ describe('build_timeline 段化规则', () => {
     expect(isMilestoneBlock({ kind: 'text', text: 'x', final: true })).toBe(true);
   });
 
+  it('Codex plan / approval 是独立 milestone', () => {
+    const blocks: ChatBlock[] = [
+      tool('c1', 'shell', { command: 'cargo test' }, true),
+      { kind: 'plan', text: '先审计，再修改', final: false },
+      {
+        kind: 'approval',
+        id: 'perm_1',
+        approvalKind: 'command',
+        command: 'cargo test',
+      },
+      tool('c2', 'apply_patch', { changes: [{ path: 'src/a.ts' }] }, true),
+    ];
+    expect(buildTimeline(blocks)).toEqual([
+      { type: 'activity', indices: [0] },
+      { type: 'block', index: 1 },
+      { type: 'block', index: 2 },
+      { type: 'activity', indices: [3] },
+    ]);
+  });
+
+  /// D-044:UltraPlan 关口卡与 plan / approval 同级,恒为独立 block,不并进活动段。
+  it('UltraPlan 关口卡是独立 milestone', () => {
+    const card: ChatBlock = {
+      kind: 'ultraplan',
+      step: 'questionnaire',
+      upId: 'up_a1',
+      rev: 1,
+      payload: { questionnaire: { title: '塔防问卷' } },
+    };
+    const blocks: ChatBlock[] = [
+      tool('t1', 'task', { prompt: '调研现有场景' }),
+      tool('t2', 'read_file', { path: 'a.ts' }, true),
+      tool('t3', 'ultraplan_questionnaire', { title: '塔防问卷', sections: [] }, true),
+      card,
+      { kind: 'ultraplan', step: 'done', upId: 'up_a1', rev: 0, payload: {} },
+    ];
+    expect(isMilestoneBlock(card)).toBe(true);
+    expect(isMilestoneBlock({ ...card, submitted: { answers: {} } })).toBe(true);
+    // 出口工具本身是普通工具行(并进活动段),卡片才断段
+    expect(isMilestoneBlock(blocks[2])).toBe(false);
+    expect(buildTimeline(blocks)).toEqual([
+      { type: 'block', index: 0 },
+      { type: 'activity', indices: [1, 2] },
+      { type: 'block', index: 3 },
+      { type: 'block', index: 4 },
+    ]);
+    // 子代理摘要里压成一行时不吐载荷
+    expect(subagentLiveSummary('', [card], 'running')).toBe('UltraPlan questionnaire');
+  });
+
   it('段内同类并组:连续同组非 running 成 run;running 单独', () => {
     const blocks: ChatBlock[] = [
       tool('t1', 'mcp__engine-scene__entity_list', {}, true),
@@ -243,6 +366,26 @@ describe('segment 统计与短语', () => {
     expect(toolDiffStats(JSON.stringify({ name: 'e1' }))).toEqual({ added: 0, removed: 0 });
     expect(diffCounts('', 'a\nb')).toEqual({ added: 2, removed: 0 });
     expect(diffCounts('a\nb', '')).toEqual({ added: 0, removed: 2 });
+  });
+
+  it('Codex command/fileChange/webSearch 分类与结构化 changes 汇总', () => {
+    const changes = {
+      changes: [
+        { path: 'src/a.ts', diff: '@@\n-old\n+new\n+line' },
+        { path: 'src/b.ts', diff: '@@\n+added' },
+      ],
+    };
+    const blocks: ChatBlock[] = [
+      tool('shell-1', 'shell', { command: 'pnpm test' }, true),
+      tool('file-1', 'apply_patch', changes, true),
+      tool('web-1', 'web_search', { query: 'Codex app server' }, true),
+    ];
+    expect(toolCategory('shell')).toBe('command');
+    expect(toolCategory('apply_patch')).toBe('edit');
+    expect(toolCategory('web_search')).toBe('search');
+    expect(editTargetFiles(JSON.stringify(changes))).toEqual(['src/a.ts', 'src/b.ts']);
+    expect(toolDiffStats(JSON.stringify(changes))).toEqual({ added: 3, removed: 1 });
+    expect(segmentStats(blocks, [0, 1, 2])).toMatchObject({ edits: 2, commands: 1, searches: 1 });
   });
 
   /// 留痕⑦:errors 仍如实统计(渲染层不再上屏,颜色与「n 失败」后缀一并下线)。

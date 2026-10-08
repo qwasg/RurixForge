@@ -43,9 +43,18 @@ pub fn decode_size(path: &Path) -> Result<(u32, u32)> {
 pub fn decode_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
     let img = image::open(path)
         .map_err(|e| AssetError::new("DECODE_ERR", format!("贴图解码失败 {}: {e}", path.display())))?;
-    let rgba = img.to_rgba8();
+    let rgba = img.into_rgba8();
     let (w, h) = rgba.dimensions();
     Ok((w, h, rgba.into_raw()))
+}
+
+/// Decode already-read image bytes without reopening a verified derived page.
+pub fn decode_rgba_bytes(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
+    let rgba=image::load_from_memory(bytes)
+        .map_err(|e|AssetError::new("DECODE_ERR",format!("贴图字节解码失败: {e}")))?
+        .into_rgba8();
+    let (w,h)=rgba.dimensions();
+    Ok((w,h,rgba.into_raw()))
 }
 
 /// texture_process 返回。

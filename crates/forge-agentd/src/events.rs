@@ -27,7 +27,7 @@ pub const DEFAULT_BUFFER_CAP: usize = 4096;
 /// 每会话实时广播通道容量(慢消费者 Lagged → SSE 侧合成 stream.gap,不阻塞发布方)。
 const BROADCAST_CAP: usize = 1024;
 
-/// type 前缀 → channel(session/agent/tool/todo/plan/goal/codex 同名,其余 logs)。
+/// type 前缀 → channel(session/agent/tool/todo/plan/goal/codex/memory/ultraplan 同名,其余 logs)。
 pub fn channel_for(event_type: &str) -> &'static str {
     let prefix = event_type.split('.').next().unwrap_or("");
     match prefix {
@@ -40,6 +40,13 @@ pub fn channel_for(event_type: &str) -> &'static str {
         "goal" => "goal",
         // Codex 引擎面(账户/额度推送);与 agent 事件分开,状态栏订它就够。
         "codex" => "codex",
+        // 记忆写入/删除(设置·记忆页订它刷新列表)。
+        "memory" => "memory",
+        // D-044:UltraPlan 流程面(阶段/问卷/Demo/计划/验收);流程条与流程卡片只订它,
+        // 不落进 logs 频道被当成杂项日志。
+        "ultraplan" => "ultraplan",
+        // D-045:Design 流程面(候选审阅 / 元素清单 / 验收)。
+        "design" => "design",
         _ => "logs",
     }
 }
@@ -140,7 +147,11 @@ pub struct EventDraft {
 }
 
 impl EventDraft {
-    pub fn new(session_id: impl Into<String>, event_type: impl Into<String>, domain: impl Into<String>) -> Self {
+    pub fn new(
+        session_id: impl Into<String>,
+        event_type: impl Into<String>,
+        domain: impl Into<String>,
+    ) -> Self {
         EventDraft {
             session_id: session_id.into(),
             event_type: event_type.into(),
@@ -159,6 +170,46 @@ impl EventDraft {
     pub fn correlation(mut self, id: Option<String>) -> Self {
         self.correlation_id = id;
         self
+    }
+}
+
+/// Trusted host attribution, independent of the display run used by legacy chat grouping.
+/// Construct this from the active participant/job, never from model tool arguments.
+#[derive(Debug, Clone, Default)]
+pub struct AgentEventContext {
+    pub agent_id: Option<String>,
+    pub agent_run_id: Option<String>,
+    pub parent_agent_id: Option<String>,
+    pub parent_tool_call_id: Option<String>,
+    pub team_id: Option<String>,
+    pub task_id: Option<String>,
+    pub agent_name: Option<String>,
+}
+
+impl AgentEventContext {
+    pub fn apply(&self, payload: &mut Value) {
+        let Some(fields) = payload.as_object_mut() else { return };
+        for (key, value) in [
+            ("agentId", &self.agent_id),
+            ("agentRunId", &self.agent_run_id),
+            ("parentAgentId", &self.parent_agent_id),
+            ("parentToolCallId", &self.parent_tool_call_id),
+            ("teamId", &self.team_id),
+            ("taskId", &self.task_id),
+            ("agentName", &self.agent_name),
+        ] {
+            if let Some(value) = value { fields.insert(key.into(), json!(value)); }
+        }
+        if self.agent_id.is_some() {
+            fields.insert("agentRole".into(), json!(if self.parent_agent_id.is_some() { "member" } else { "root" }));
+        }
+    }
+
+    pub fn event(&self, session_id: &str, event_type: &str, domain: &str, mut payload: Value) -> EventDraft {
+        self.apply(&mut payload);
+        let mut event = EventDraft::new(session_id, event_type, domain).payload(payload);
+        if let Some(agent_id) = &self.agent_id { event.actor = agent_id.clone(); }
+        event
     }
 }
 
@@ -271,7 +322,10 @@ impl EventBus {
         let event = {
             let mut inner = self.inner.lock().unwrap();
             let seq = {
-                let entry = inner.seq_by_session.entry(draft.session_id.clone()).or_insert(0);
+                let entry = inner
+                    .seq_by_session
+                    .entry(draft.session_id.clone())
+                    .or_insert(0);
                 *entry += 1;
                 *entry
             };
@@ -286,7 +340,10 @@ impl EventBus {
                 payload: draft.payload,
             };
             if persist {
-                let bucket = inner.per_session.entry(draft.session_id.clone()).or_default();
+                let bucket = inner
+                    .per_session
+                    .entry(draft.session_id.clone())
+                    .or_default();
                 bucket.push_back(event.clone());
                 while bucket.len() > self.cap {
                     bucket.pop_front();
@@ -313,7 +370,11 @@ impl EventBus {
         }
         let oldest = bucket.front().map(|e| e.seq).unwrap_or(0);
         let gap = from_seq + 1 < oldest;
-        let out: Vec<DebugEvent> = bucket.iter().filter(|e| e.seq > from_seq).cloned().collect();
+        let out: Vec<DebugEvent> = bucket
+            .iter()
+            .filter(|e| e.seq > from_seq)
+            .cloned()
+            .collect();
         (out, gap)
     }
 
@@ -408,7 +469,10 @@ fn append_jsonl(dir: &Path, path: &Path, event: &DebugEvent) -> std::io::Result<
     std::fs::create_dir_all(dir)?;
     let mut line = serde_json::to_string(event).map_err(std::io::Error::other)?;
     line.push('\n');
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
     f.write_all(line.as_bytes())
 }
 
@@ -456,6 +520,11 @@ mod tests {
         assert_eq!(channel_for("plan.generated"), "plan");
         assert_eq!(channel_for("stream.gap"), "logs");
         assert_eq!(channel_for("composer.user.message"), "logs");
+        // D-044:ultraplan.* 自成频道(多段类型名同样只看首段)。
+        assert_eq!(channel_for("ultraplan.stage"), "ultraplan");
+        assert_eq!(channel_for("ultraplan.context.injected"), "ultraplan");
+        assert_eq!(channel_for("ultraplan.acceptance.ready"), "ultraplan");
+        assert_eq!(channel_for("ultraplanx.stage"), "logs", "前缀须整段相等");
     }
 
     #[test]

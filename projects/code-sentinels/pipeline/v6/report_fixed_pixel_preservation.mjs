@@ -1,0 +1,43 @@
+/** Publish exact cross-host evidence after all immutable native captures exist. */
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {hash} from './frozen_pixel_cases.mjs';
+const project=path.resolve('projects/code-sentinels'),out=path.join(project,'pipeline/v6/pixel-recovery-20260912-2300/comparisons');
+assert.ok(!fs.existsSync(out),'Preserve previous final comparisons');
+const configs=[
+ ['characters','pipeline/v6/pixel-cases-64c-20260912/media-pixel-baseline-64c-20260912/cases.json','Logs/v6/media-pixel-candidate-4bf-20260912/cases.json',176,1920,1080],
+ ['effects','pipeline/v6/pixel-cases-64c-20260912/fx-pixel-baseline-64c-20260912/cases.json','Logs/v6/fx-pixel-candidate-4bf-20260912/cases.json',61,1920,1080],
+ ['foreground-walls','pipeline/v6/pixel-cases-64c-20260912/wall-pixel-baseline-64c-20260912/cases.json','Logs/v6/wall-pixel-candidate-4bf-20260912/cases.json',13,1920,1080],
+ ['pressure','Logs/v6/pressure-pixel-baseline-64c-20260912/cases.json','Logs/v6/pressure-pixel-candidate-4bf-20260912/cases.json',28,1280,720],
+];
+const reference=file=>({path:file,sha256:hash(fs.readFileSync(file))});
+const report={schemaVersion:1,at:new Date().toISOString(),scope:'Actual native GPU lossless PNG and original decoded RGBA comparisons between the preserved H64c3188e baseline and H4bf9973c optimized executable. Unearned fixed visual fixtures only; no gameplay, balance, network, pressure FPS or final release claim.',baselineEngineHash:'64c3188e738a4a1a3b84eccb04d974cbd54b87ee7491329295a179b40e2d60b9',candidateEngineHash:'4bf9973cb6bf0618e75e0fb3f9f494c9612aeed44a7ebe180f5dee4e6ecf5ef9',rulesFingerprint:'f3f576ef578a2268ec14a8259ba721a855e865289e76c1dd9e65bd595042b9a5',categories:[],evidence:[]};
+for(const [kind,aRel,bRel,count,width,height] of configs){
+ const aPath=path.join(project,aRel),bPath=path.join(project,bRel),a=JSON.parse(fs.readFileSync(aPath)),b=JSON.parse(fs.readFileSync(bPath));
+ assert.equal(a.engineHash,report.baselineEngineHash);assert.equal(b.engineHash,report.candidateEngineHash);assert.equal(b.rulesFingerprint,report.rulesFingerprint);assert.equal(b.completed,true);assert.equal(b.cases.length,count);assert.deepEqual(b.errors,[]);
+ for(const c of [...a.cases,...b.cases]){assert.equal(c.width,width);assert.equal(c.height,height);assert.equal(c.stability.exact,true);assert.equal(c.baselineRgbaSha256,c.repeatedRgbaSha256);}
+ const comparison=path.join(out,kind+'.json'),args=['projects/code-sentinels/pipeline/v6/compare_fixed_native_pixels.mjs','--baseline',aPath,'--candidate',bPath,'--out',comparison];if(kind==='characters')args.push('--allow-candidate-subset');
+ const ran=spawnSync(process.execPath,args,{cwd:process.cwd(),windowsHide:true,encoding:'utf8'});console.log(ran.stdout);assert.equal(ran.status,0,ran.stderr||'Strict pixel comparison failed');
+ const result=JSON.parse(fs.readFileSync(comparison));assert.equal(result.pass,true);assert.equal(result.exactCases,count);
+ report.categories.push({kind,baselineCases:a.cases.length,comparedCases:count,exactCases:result.exactCases,changedPixels:0,width,height,baseline:reference(aPath),candidate:reference(bPath),comparison:reference(comparison)});
+ const old=new Map(a.cases.map(c=>[c.id,c]));for(const c of b.cases){const previous=old.get(c.id);report.evidence.push({kind,id:c.id,tick:c.tick,view:c.view,width,height,snapshotSha256:c.snapshotSha256,baselinePng:{path:previous.baselinePng,sha256:previous.baselinePngSha256,rgbaSha256:previous.baselineRgbaSha256,repeatedRgbaSha256:previous.repeatedRgbaSha256},candidatePng:{path:c.baselinePng,sha256:c.baselinePngSha256,rgbaSha256:c.baselineRgbaSha256,repeatedRgbaSha256:c.repeatedRgbaSha256}});}
+}
+const wallCapture=JSON.parse(fs.readFileSync(path.join(project,'Logs/v6/wall-pixel-baseline-64c-20260912/capture-report.json')));assert.equal(wallCapture.checks.length,4);assert.ok(wallCapture.checks.every(c=>c.pass));assert.deepEqual(wallCapture.errors,[]);
+const fxCapture=JSON.parse(fs.readFileSync(path.join(project,'Logs/v6/fx-pixel-baseline-64c-20260912/capture-report.json')));assert.equal(fxCapture.persistentLoops.length,2);assert.ok(fxCapture.persistentLoops.every(c=>c.sourceStartAndNextLoopStartHaveIdenticalGpuPixels));assert.deepEqual(fxCapture.errors,[]);
+report.totalBaselineCases=report.categories.reduce((n,c)=>n+c.baselineCases,0);report.totalComparedCases=report.evidence.length;report.totalExactCases=report.categories.reduce((n,c)=>n+c.exactCases,0);report.totalChangedPixels=0;report.uncomparedAdditionalCharacterBaselines=280;
+assert.equal(report.totalBaselineCases,558);assert.equal(report.totalComparedCases,278);assert.equal(report.totalExactCases,278);
+report.validation={sameInputShaAndTickAndCamera:true,rgbaComparedWithZeroTolerance:true,pngCrcAndLosslessDecodedRawHashVerified:true,repeatedReadbacksDelayedAtLeast150ms:true,allRepeatedReadbacksExact:true,meshFallbacks:0,truncatedFrames:0,originalBytesOverwritten:false,characterRepresentativeUniqueFrames:1344,characterBaselineRecovery:reference(path.join(project,'pipeline/v6/pixel-recovery-20260912-2300/recovery-audit.json')),nativeRemainingExecution:reference(path.join(project,'pipeline/v6/pixel-recovery-20260912-2300/remaining-execution-resume-fx61/execution.json'))};
+report.stagePolicy='Every new capture closes/reopens a fresh replica per case, fixes playback.paused=true and winner=null, then applies the exact snapshot and view. The recovered original456 character baselines used sequential applySnapshot with paired stable readbacks; the176 matched fresh candidate captures prove no leftover-image difference within that selected subset. No play.pause timing approximation is used.';
+report.validation.runtimePageMapping=reference(path.join(project,'pipeline/v6/pixel-recovery-20260912-2300/representative-runtime-page-audit.json'));
+report.validation.baselineNativeBuild=reference(path.join(project,'game/v6/runtime-64c3188e-pixel-baseline-20260912/native-build-receipt.json'));
+report.validation.optimizedNativeBuild=reference(path.join(project,'game/v6/transparent-bounds-host-receipt-20260912.json'));
+report.validation.preservedExecutionCountFailure=reference(path.join(project,'pipeline/v6/pixel-recovery-20260912-2300/remaining-execution/execution.json'));
+report.validation.fxCountCorrection='The pre-execution55 estimate assumed equal FX clip lengths. The actual representative harness emitted61 because two four-effect groups mix32 and48 frames and need extra middle/last/expiry inputs. Native capture succeeded; the wrapper count assertion failed and remains preserved. Every61 old FX image was reused unchanged and matched by61 new captures. Totals are278 compared and558 preserved old baselines.';
+report.coverage={characters:'Seven operators x six actions x eight directions x first/middle/penultimate/last frames, plus empty baseline and seven expired deaths:176 captures,1344 source-frame keys.',effects:'61 captures including every active effect first/middle/last/expired, two persistent loop seams,16 beam/cone rotations,14 death world-vector captures.',foregroundWalls:'13 captures: empty baseline plus wall-only, character-only and combined for four fixtures; baseline occlusion and picking checks passed.',pressure:'28 captures: three original ticks x eight layers(-2..5), plus four zoomed/detail/edge views. Same unaltered static inputs on both hosts.'};
+report.pass=true;
+fs.writeFileSync(path.join(out,'pixel-preservation-report.json'),JSON.stringify(report,null,2));
+const lines=['# Native GPU pixel preservation: passed','',`H64c3188e to H4bf9973c; both Game ${report.rulesFingerprint}.`,'','All 278 matched fixed visual cases are byte-identical across complete RGBA images. No pixels were ignored or tolerated. Both captures for each case were independently stable after at least150ms.','',...report.categories.map(c=>`- ${c.kind}: ${c.exactCases}/${c.comparedCases} exact at ${c.width} x ${c.height}.`),'',`558 old-host cases are preserved;280 additional old character baselines were explicitly not compared. Every image and snapshot is linked with original PNG, decoded RGBA and snapshot SHA256 in pixel-preservation-report.json.`, '',report.stagePolicy,'','This is a fixed, unearned visual-fixture result. It does not accept gameplay, balance, LAN, pressure performance, or the final release.'];
+fs.writeFileSync(path.join(out,'REPORT.md'),lines.join('\n')+'\n');
+console.log(JSON.stringify({pass:report.pass,totalComparedCases:278,totalExactCases:278,totalChangedPixels:0,totalBaselineCases:558,report:path.join(out,'pixel-preservation-report.json')}));

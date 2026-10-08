@@ -1,0 +1,29 @@
+{
+  "upstreamRepository": "https://github.com/qwasg/Rurix",
+  "upstreamRevision": "1478859a8f2ea3a8e17abb06aa0211a6e0871cca",
+  "package": "rurix-rt",
+  "version": "1.0.0",
+  "packagePath": "vendor/rurix/src/rurix-rt",
+  "licenses": [
+    "MIT",
+    "Apache-2.0"
+  ],
+  "modifiedPackageFiles": [
+    {
+      "path": "Cargo.toml",
+      "upstreamSha256": "8a227ebdae375817445ac638bb633f1f51ed815aed15a4a4528491230bc4bb28",
+      "patchedSha256": "8defa2bd7d537b6440769a962df1a0f7b28ec6ddeefdb205e3c3a6ad0dd580b8"
+    },
+    {
+      "path": "src/render_exec.rs",
+      "upstreamSha256": "11ea223aace1f498f4ba4330bdba5c60bd526feb2360cb19c7661619ff7b792f",
+      "patchedSha256": "699387591327a7949cfc76f76437f2ffa95ef83f0ed34a7b92d451491736cd09"
+    }
+  ],
+  "supportInputs": [
+    "conformance/vulkan/accept",
+    "conformance/dxil/graphics/accept"
+  ],
+  "purpose": "Actual Vulkan straight-alpha and additive framebuffer blending; blend-aware PSO cache.",
+  "additionalPatch": "FORGE_GPU_SELECTION_PATCH.md"
+}

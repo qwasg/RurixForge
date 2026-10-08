@@ -1,0 +1,1498 @@
+{
+  "provenance": "Captured by real cs_reset/cs_input/cs_tick/cs_get exports, publisher mapping from actual Main.rxscene. No browser simulation.",
+  "commands": [
+    4000001,
+    1001159
+  ],
+  "ticks": 120,
+  "dt": 0.016666666666666666,
+  "nativeDll": "preview-12ba14176b1f82a2.dll",
+  "nativeSourceSha256": "9be8d9298235485a87901b2f78def3d80db45f20158426a1beb8bf4eb5f23b19",
+  "entities": [
+    {
+      "name": "CS_State",
+      "transform": {
+        "translation": [
+          24.000019073486328,
+          20.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Economy",
+      "transform": {
+        "translation": [
+          365.0,
+          12.0,
+          300.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_StateAux",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          0.0,
+          2.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Campaign",
+      "transform": {
+        "translation": [
+          1.0,
+          4.0,
+          1.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          169.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Meta",
+      "transform": {
+        "translation": [
+          10.0,
+          65.0,
+          1.9999988079071045
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit0",
+      "transform": {
+        "translation": [
+          1.0,
+          1.0,
+          159.0
+        ],
+        "scale": [
+          130.0,
+          0.0,
+          55.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux0",
+      "transform": {
+        "translation": [
+          3.0,
+          3.799999952316284,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost0",
+      "transform": {
+        "translation": [
+          55.0,
+          46.0,
+          65.0
+        ],
+        "scale": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit1",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux1",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost1",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit2",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux2",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost2",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit3",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux3",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost3",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit4",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux4",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost4",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit5",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux5",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost5",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit6",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux6",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost6",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit7",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux7",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost7",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit8",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux8",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost8",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit9",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux9",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost9",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit10",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux10",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost10",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit11",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux11",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost11",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit12",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux12",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost12",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit13",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux13",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost13",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit14",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux14",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost14",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit15",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux15",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost15",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit16",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux16",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost16",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit17",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux17",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost17",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit18",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux18",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost18",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit19",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux19",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost19",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit20",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux20",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost20",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit21",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux21",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost21",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit22",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux22",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost22",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_Unit23",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          -1.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitAux23",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_UnitCost23",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU0",
+      "transform": {
+        "translation": [
+          1.0,
+          1.0,
+          12.0
+        ],
+        "scale": [
+          130.0,
+          91.0,
+          91.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU1",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU2",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU3",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU4",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU5",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU6",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_GPU7",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow0",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          12288.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow1",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          32768.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow2",
+      "transform": {
+        "translation": [
+          147456.0,
+          4100.0,
+          32768.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow3",
+      "transform": {
+        "translation": [
+          147456.0,
+          4100.0,
+          32768.0
+        ],
+        "scale": [
+          98304.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow4",
+      "transform": {
+        "translation": [
+          147456.0,
+          4100.0,
+          32768.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow5",
+      "transform": {
+        "translation": [
+          2925.0,
+          4096.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow6",
+      "transform": {
+        "translation": [
+          113517.0,
+          112347.0,
+          112347.0
+        ],
+        "scale": [
+          112347.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow7",
+      "transform": {
+        "translation": [
+          2925.0,
+          4096.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow8",
+      "transform": {
+        "translation": [
+          2925.0,
+          74896.0,
+          74938.0
+        ],
+        "scale": [
+          1490.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow9",
+      "transform": {
+        "translation": [
+          0.0,
+          4096.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow10",
+      "transform": {
+        "translation": [
+          112347.0,
+          112347.0,
+          112347.0
+        ],
+        "scale": [
+          112347.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow11",
+      "transform": {
+        "translation": [
+          0.0,
+          4096.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow12",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "CS_MapRow13",
+      "transform": {
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0,
+          2.0,
+          1.0
+        ]
+      }
+    }
+  ]
+}

@@ -1,27 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Anvil,
-  Boxes,
-  Bug,
-  FileCode2,
+  FolderOpen,
   GitBranch,
-  Map,
   MoreHorizontal,
   PanelsTopLeft,
-  Sparkles,
 } from 'lucide-react';
 import { useChatStore } from '@/lib/chatStore';
 import { HOME_COL_MAX, type ChatVariant } from '@/lib/chatVariant';
 import { cn } from '@/lib/cn';
 import { runCommand } from '@/lib/commands';
-import { useComposerPrefillStore } from '@/lib/composerStore';
+import { useGitStore } from '@/lib/gitStore';
+import { greetingFor } from '@/lib/greeting';
+import { useOverlayStore } from '@/lib/overlayStore';
 import { useSessionStore } from '@/lib/sessionStore';
+import { useSystemStore } from '@/lib/systemStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
+import { useWorkspaceStore } from '@/lib/workspaceStore';
 import { ChatMiniBtn, IBtn, MenuItem, PaneToggleBtn } from './primitives';
 import { StatusDot } from './primitives';
 import MessageList from '../chat/MessageList';
 import Composer from '../chat/Composer';
 import SubagentOverlay from '../chat/SubagentOverlay';
+import ForgeMark from '../ForgeMark';
+import HomeRecommendations from './HomeRecommendations';
 
 /**
  * F7 wave.4 对话列(参考 ui/chat.rs render_chat_column):
@@ -193,9 +195,6 @@ export default function ChatColumn({ variant = 'column' }: { variant?: ChatVaria
         )}
       </div>
 
-      {/* 首屏氛围底:accent 微光 + 淡网格(样式在 index.css .home-ambient) */}
-      {hero && <div aria-hidden className="home-ambient" />}
-
       {/* 消息流(首屏时让位给 hero)+ Composer + 子代理浮层 */}
       {hero ? <HomeHero /> : <MessageList variant={variant} />}
       <div className={cn('shrink-0', home && 'px-6 pb-6')}>
@@ -208,7 +207,7 @@ export default function ChatColumn({ variant = 'column' }: { variant?: ChatVaria
           }
         >
           <Composer variant={variant} />
-          {hero && <QuickStarts />}
+          {hero && <HomeRecommendations />}
         </div>
       </div>
       {/* 首屏配平:上方 hero 撑 1、下方留白撑 0.8,输入盒落在略高于视觉中线处 */}
@@ -218,114 +217,63 @@ export default function ChatColumn({ variant = 'column' }: { variant?: ChatVaria
   );
 }
 
-/** 全屏主页首屏问候(贴在大输入盒正上方,整体略高于视觉中线)。 */
+/**
+ * 全屏主页首屏问候(贴在大输入盒正上方,整体略高于视觉中线)。
+ * 2026-10-07 改版(用户:欢迎字与泛蓝特效难看):撤 accent 微光 + 网格氛围底,净底;
+ * 问候由衬线改无衬线粗体并以品牌标领起,整组居中;副标题加深一档。
+ */
 function HomeHero() {
+  const userName = useSystemStore((st) => st.health?.user?.name?.trim() ?? '');
+  const project = useSystemStore((st) => st.project);
+  const git = useGitStore((st) => st.status);
+  const workspaceName = useWorkspaceStore(
+    (st) => st.workspaces.find((w) => w.id === st.activeWorkspaceId)?.name ?? null,
+  );
+  const [hour] = useState(() => new Date().getHours());
+
+  const scopeName = workspaceName ?? project?.name ?? null;
+  const mode = project?.mode === '2d' ? '2D' : project?.mode === '3d' ? '3D' : null;
+  const branch = git?.isRepo ? (git.detached ? 'HEAD' : git.branch) : null;
+
   return (
     <div
       data-testid="home-hero"
-      className="relative flex min-h-0 flex-1 flex-col items-center justify-end overflow-y-auto px-6 pb-7"
+      className="relative flex min-h-0 flex-1 flex-col items-center justify-end overflow-y-auto px-6 pb-4"
     >
-      <div className="forge-rise w-full" style={{ maxWidth: HOME_COL_MAX }}>
-        <span className="mb-5 flex w-fit items-center gap-1.5 rounded-full border border-edge bg-shell-panel py-1 pl-2.5 pr-3 shadow-sh1">
-          <Sparkles size={11} className="text-acc" />
-          <span className="text-[11px] tracking-wide text-fg-3">Forge Agent</span>
-          <span className="h-[5px] w-[5px] rounded-full bg-dot-done" />
-        </span>
-        <p className="font-serif text-[34px] font-semibold leading-[1.2] tracking-tight text-fg">
-          今天想搭点什么？
+      <div className="forge-rise flex w-full flex-col items-center text-center" style={{ maxWidth: HOME_COL_MAX }}>
+        <h1 className="flex items-center gap-3 text-[28px] font-semibold leading-[1.25] tracking-[-0.02em] text-fg">
+          <ForgeMark variant="folded" reveal size={26} />
+          {userName !== '' ? `${greetingFor(hour)}，${userName}` : '今天想搭点什么？'}
+        </h1>
+        <p className="mt-2.5 max-w-[560px] text-[14px] leading-[22px] text-fg-2">
+          {userName !== ''
+            ? '今天想搭点什么？直接描述目标，Agent 会拆成计划再动手。'
+            : '直接描述目标，Agent 会拆成计划再动手；需要看场景时随时打开编辑器。'}
         </p>
-        <p className="mt-2.5 max-w-[520px] text-[13px] leading-relaxed text-fg-3">
-          直接描述目标，Agent 会拆成计划再动手；需要看场景时随时打开编辑器。
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/** 起手式:点一下把话术灌进输入框(不直接发,留给人改)。 */
-const QUICK_STARTS: Array<{
-  id: string;
-  label: string;
-  desc: string;
-  draft: string;
-  mode: string;
-  icon: typeof Boxes;
-  tone: 'acc' | 'info' | 'warn';
-}> = [
-  {
-    id: 'greybox',
-    label: '搭一个灰盒关卡',
-    desc: '地面、三级平台和一个出生点',
-    draft: '搭一个灰盒关卡：地面、三级平台和一个出生点',
-    mode: 'build',
-    icon: Boxes,
-    tone: 'acc',
-  },
-  {
-    id: 'plan',
-    label: '先出一份计划',
-    desc: '从零到可玩 demo 的分步路线',
-    draft: '给我一份从零做出可玩 demo 的分步计划',
-    mode: 'plan',
-    icon: Map,
-    tone: 'info',
-  },
-  {
-    id: 'debug',
-    label: '排查视口没画面',
-    desc: '定位实体没有渲染的原因',
-    draft: '视口没有渲染出实体，帮我定位原因',
-    mode: 'debug',
-    icon: Bug,
-    tone: 'warn',
-  },
-];
-
-/** 卡片图标瓷砖的语义配色(acc=搭建 / info=规划 / warn=排查),静态类名供 Tailwind 扫描。 */
-const QUICK_TONES: Record<(typeof QUICK_STARTS)[number]['tone'], string> = {
-  acc: 'bg-acc-bg text-acc',
-  info: 'bg-info-bg text-info',
-  warn: 'bg-warn-bg text-warn',
-};
-
-function QuickStarts() {
-  const prefill = useComposerPrefillStore((st) => st.prefill);
-  return (
-    <div data-testid="home-quick-starts" className="mt-3 px-1">
-      <div className="grid grid-cols-3 gap-2 max-[560px]:grid-cols-1">
-        {QUICK_STARTS.map((q) => (
-          <button
-            key={q.id}
-            type="button"
-            data-testid={`home-quick-${q.id}`}
-            onClick={() => prefill(q.draft, q.mode)}
-            className="group flex flex-col gap-1.5 rounded-xl border border-edge bg-shell-panel p-3 text-left shadow-sh1 transition-all duration-150 hover:-translate-y-px hover:border-acc-ring hover:shadow-float"
-          >
-            <span
-              className={cn(
-                'flex h-[26px] w-[26px] items-center justify-center rounded-lg',
-                QUICK_TONES[q.tone],
-              )}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {scopeName && (
+            <button
+              type="button"
+              data-testid="home-workspace-chip"
+              title="切换工作区"
+              onClick={() => {
+                if (useWorkbenchStore.getState().collapsed.sessions) useWorkbenchStore.getState().togglePane('sessions');
+                useWorkspaceStore.getState().setPickerOpen(true);
+              }}
+              className="flex w-fit items-center gap-1.5 rounded-full border border-edge bg-shell-panel py-1 pl-2.5 pr-3 text-[11px] text-fg-3 shadow-sh1 transition-colors hover:border-edge-strong hover:text-fg-2"
             >
-              <q.icon size={13} />
-            </span>
-            <span className="text-[12.5px] font-medium text-fg-2 transition-colors group-hover:text-fg">
-              {q.label}
-            </span>
-            <span className="text-[11px] leading-snug text-fg-3">{q.desc}</span>
-          </button>
-        ))}
-      </div>
-      <div className="mt-2 flex justify-end">
-        <button
-          type="button"
-          data-testid="home-open-editor"
-          onClick={() => runCommand('tab.editor')}
-          className="flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-[11px] text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2"
-        >
-          <FileCode2 size={11} />
-          打开编辑器
-        </button>
+              <FolderOpen size={11} className="shrink-0" />
+              <span className="max-w-[200px] truncate">{scopeName}</span>
+              {mode && <span className="rounded bg-shell-sunk px-1 font-code text-[10px]">{mode}</span>}
+              {branch && (
+                <span className="flex items-center gap-0.5 font-code text-[10.5px]">
+                  <GitBranch size={10} />
+                  {branch}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

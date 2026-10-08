@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Local Model Gateway Playground</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 24px auto; padding: 0 16px; background: #fafafa; color: #1a1a1a; }
+  fieldset { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 14px; padding: 12px; }
+  label { display: block; margin: 6px 0 4px; font-weight: 600; }
+  input, select, textarea, button { font: inherit; padding: 6px 8px; }
+  input, select, textarea { width: 100%; box-sizing: border-box; }
+  button { margin-top: 8px; cursor: pointer; }
+  #status { margin-top: 8px; font-size: 14px; }
+  #output { white-space: pre-wrap; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px; min-height: 60px; }
+  #output img { max-width: 256px; display: block; margin-top: 8px; }
+  .ok { color: #1b7a2e; } .err { color: #b3261e; }
+</style>
+</head>
+<body>
+<h1>Local Model Gateway Playground</h1>
+
+<fieldset>
+  <legend>1. 鉴权</legend>
+  <label for="token">本地令牌 (LOCAL_API_KEY)</label>
+  <input id="token" type="password" autocomplete="off" data-testid="token">
+</fieldset>
+
+<fieldset>
+  <legend>2. 模型列表</legend>
+  <button id="load" data-testid="load-models">拉取模型列表</button>
+  <label for="model">模型</label>
+  <select id="model" data-testid="model"><option value="">(先拉取列表)</option></select>
+</fieldset>
+
+<fieldset>
+  <legend>3. 调用</legend>
+  <label for="prompt">提示词</label>
+  <textarea id="prompt" rows="3" data-testid="prompt">Reply with the single word: pong</textarea>
+  <button id="send" data-testid="send">发送</button>
+  <div id="status" role="status" aria-live="polite" data-testid="status"></div>
+</fieldset>
+
+<h2>输出</h2>
+<div id="output" data-testid="output"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const setStatus = (text, ok) => { const s = $('status'); s.textContent = text; s.className = ok ? 'ok' : 'err'; };
+const headers = () => ({ 'Authorization': 'Bearer ' + $('token').value.trim(), 'Content-Type': 'application/json' });
+
+async function call(path, init) {
+  const t0 = performance.now();
+  const r = await fetch(path, { ...init, headers: headers() });
+  const text = await r.text();
+  let body; try { body = JSON.parse(text); } catch { body = text; }
+  return { status: r.status, ms: Math.round(performance.now() - t0), body };
+}
+
+$('load').onclick = async () => {
+  setStatus('拉取中…', true);
+  try {
+    const { status, ms, body } = await call('/v1/models', { method: 'GET' });
+    if (status !== 200) { setStatus(`模型列表失败 HTTP ${status}`, false); $('output').textContent = JSON.stringify(body, null, 2); return; }
+    const ids = (body.data || []).map((m) => m.id).sort();
+    $('model').innerHTML = ids.map((id) => `<option value="${id}">${id}</option>`).join('');
+    setStatus(`模型列表 OK: ${ids.length} 个 (${ms} ms)`, true);
+    $('output').textContent = ids.join('\n');
+  } catch (e) { setStatus('网络错误: ' + e, false); }
+};
+
+$('send').onclick = async () => {
+  const model = $('model').value, prompt = $('prompt').value;
+  if (!model) { setStatus('请先选择模型', false); return; }
+  $('send').disabled = true; $('output').textContent = '';
+  setStatus(`调用 ${model} 中…`, true);
+  try {
+    const isImage = model.startsWith('gpt-image');
+    const res = isImage
+      ? await call('/v1/images/generations', { method: 'POST', body: JSON.stringify({ model, prompt, n: 1, size: '1024x1024', quality: 'low' }) })
+      : await call('/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 64 }) });
+    if (res.status !== 200) {
+      setStatus(`${model} 失败 HTTP ${res.status} (${res.ms} ms)`, false);
+      $('output').textContent = typeof res.body === 'string' ? res.body : JSON.stringify(res.body, null, 2);
+    } else if (isImage) {
+      const d = (res.body.data || [])[0] || {};
+      const src = d.b64_json ? 'data:image/png;base64,' + d.b64_json : d.url;
+      setStatus(`${model} OK (${res.ms} ms)`, true);
+      $('output').textContent = '图片已生成';
+      if (src) { const img = document.createElement('img'); img.src = src; img.alt = '生成结果: ' + prompt; $('output').appendChild(img); }
+    } else {
+      const text = res.body.choices?.[0]?.message?.content ?? JSON.stringify(res.body);
+      setStatus(`${model} OK (${res.ms} ms)`, true);
+      $('output').textContent = text;
+    }
+  } catch (e) { setStatus('网络错误: ' + e, false); }
+  finally { $('send').disabled = false; }
+};
+</script>
+</body>
+</html>

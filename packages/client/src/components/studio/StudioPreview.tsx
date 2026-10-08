@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { AudioLines, Boxes, Clapperboard, FileText, Image as ImageIcon, PersonStanding } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import type { AssetItem } from '@/lib/assetStore';
-import type { FrameAtlas } from '@/lib/forgeApi';
-import type { StudioKind, StudioVersion } from '@/lib/studioStore';
+import { apiGenVideoFileUrl, type FrameAtlas } from '@/lib/forgeApi';
+import { useStudioStore, type StudioKind, type StudioVersion } from '@/lib/studioStore';
 import Thumb from '../editor/assetThumb';
+import BlenderPreview from './BlenderPreview';
 
 /**
  * 创作产物预览(主画布卡片与详情画布共用):
  * - image:会话 dataUrl 直显;已入库走 Thumb(资产缩略链);仅 fileRef(重开会话)如实占位;
- * - video/audio:dataUrl 直接 <video>/<audio> 控件;仅 fileRef 如实占位;
+ * - video:dataUrl 或原项目 fileRef 流式播放;audio 保持会话 dataUrl 播放;
  * - model:glb 无浏览器内联渲染面;供应商回了缩略图(如 meshy thumbnail_url)就显示它——
  *   那是产物本身的渲染而非臆造;无缩略图则图标 + 文件名如实占位(入库后可在 Assets 面板查看);
  * - sprite(角色动画):截好的图集按 boxes 在 canvas 上逐帧循环播——这就是入库后
@@ -180,6 +181,26 @@ function SpriteFramePlayer({
   );
 }
 
+function VideoPlayer({ src, fileRef, className }: { src: string; fileRef?: string; className?: string }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (failedSrc === src) {
+    return (
+      <div data-testid="studio-video-unavailable" className={cn('flex flex-col items-center justify-center gap-1 text-fg-4', className)}>
+        <Clapperboard size={32} strokeWidth={1.4} />
+        <span className="text-2xs">视频文件暂不可用</span>
+        {fileRef && <span className="max-w-full truncate px-1 font-mono text-[9px]">{fileBase(fileRef)}</span>}
+      </div>
+    );
+  }
+  return (
+    <div className={cn('overflow-hidden bg-black/60', className)}>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video data-testid="studio-video-player" src={src} controls preload="metadata"
+        onError={() => setFailedSrc(src)} className="h-full w-full object-contain" />
+    </div>
+  );
+}
+
 export default function StudioPreview({
   kind,
   version,
@@ -193,6 +214,7 @@ export default function StudioPreview({
   compact?: boolean;
 }) {
   const Icon = KIND_ICON[kind];
+  const workspaceId = useStudioStore((s) => s.workspaceId);
 
   if (version === undefined) {
     return (
@@ -254,25 +276,13 @@ export default function StudioPreview({
         />
       );
     }
-    // 还没截帧(或重开会话丢了图集字节):退回源片,让人至少看得见生成了什么。
-    if (version.dataUrl !== undefined && !compact) {
-      return (
-        <div className={cn('overflow-hidden bg-black/60', className)}>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video src={version.dataUrl} controls className="h-full w-full object-contain" />
-        </div>
-      );
-    }
   }
 
-  if (kind === 'video' && version.dataUrl !== undefined && !compact) {
-    return (
-      <div className={cn('overflow-hidden bg-black/60', className)}>
-        {/* 生成候选直读 dataUrl(会话态);无字幕轨,产物本身无对白 */}
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <video src={version.dataUrl} controls className="h-full w-full object-contain" />
-      </div>
-    );
+  // 角色动画缺少会话图集字节时也可回看源视频;重开后不再依赖 base64。
+  if ((kind === 'video' || kind === 'sprite') && !compact) {
+    const fileRef = kind === 'sprite' ? version.videoFileRef ?? version.fileRef : version.fileRef;
+    const src = version.dataUrl || apiGenVideoFileUrl(fileRef, workspaceId);
+    if (src) return <VideoPlayer key={src} src={src} fileRef={fileRef} className={className} />;
   }
 
   if (kind === 'audio' && version.dataUrl !== undefined && !compact) {
@@ -285,6 +295,10 @@ export default function StudioPreview({
   }
 
   if (kind === 'model') {
+    if (version.blenderJobId && version.blenderWorkspaceId && version.blenderRevision) {
+      return <BlenderPreview jobId={version.blenderJobId} workspaceId={version.blenderWorkspaceId}
+        revision={version.blenderRevision} clips={version.animationClips} compact={compact} className={className} />;
+    }
     const views = version.previews ?? [];
     if (views.length > 0) {
       return <MeshViews views={views} className={className} compact={compact} />;

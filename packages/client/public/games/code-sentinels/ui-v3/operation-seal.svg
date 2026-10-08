@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" fill="none" role="img" aria-labelledby="operation-seal-title operation-seal-desc"><title id="operation-seal-title">operation seal</title><desc id="operation-seal-desc">Original Code Sentinels tactical vector artwork.</desc>
+<path d="M92 10H228L310 92V228L228 310H92L10 228V92Z" stroke="#F2F0E9" stroke-width="2"/>
+<path d="M100 25H220L295 100V220L220 295H100L25 220V100Z" stroke="#F2F0E9" stroke-opacity=".35" stroke-dasharray="4 9"/>
+<path d="M160 64L243 112V208L160 256L77 208V112Z" stroke="#EDB63B" stroke-width="3"/>
+<path d="M160 80L229 120V200L160 240L91 200V120Z" fill="#101316" fill-opacity=".56" stroke="#F2F0E9" stroke-opacity=".3"/>
+<path d="M138 120L110 160L138 200M182 120L210 160L182 200" stroke="#F2F0E9" stroke-width="9" stroke-linejoin="miter"/>
+<path d="M173 122L147 198" stroke="#EDB63B" stroke-width="6"/>
+<path d="M101 12H132M188 308H219M12 188V219M308 101V132" stroke="#EDB63B" stroke-width="6"/>
+<path d="M146 38H174M146 282H174M38 146V174M282 146V174" stroke="#F2F0E9" stroke-width="3"/>
+<g fill="#7F878A"><circle cx="48" cy="104" r="3"/><circle cx="272" cy="216" r="3"/><circle cx="104" cy="272" r="3"/><circle cx="216" cy="48" r="3"/></g></svg>

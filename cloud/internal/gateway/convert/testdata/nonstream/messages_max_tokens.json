@@ -1,0 +1,8 @@
+{
+  "id": "msg_ns3",
+  "type": "message",
+  "role": "assistant",
+  "content": [{"type": "text", "text": "Truncated"}],
+  "stop_reason": "max_tokens",
+  "usage": {"input_tokens": 5, "output_tokens": 8}
+}

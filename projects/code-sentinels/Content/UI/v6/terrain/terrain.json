@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 2,
+  "id": "terrain-v6",
+  "image": "terrain.png",
+  "width": 2080,
+  "height": 1560,
+  "frameCount": 10,
+  "boxes": [
+    [
+      4,
+      4,
+      512,
+      512
+    ],
+    [
+      524,
+      4,
+      512,
+      512
+    ],
+    [
+      1044,
+      4,
+      512,
+      512
+    ],
+    [
+      1564,
+      4,
+      512,
+      512
+    ],
+    [
+      4,
+      524,
+      512,
+      512
+    ],
+    [
+      524,
+      524,
+      512,
+      512
+    ],
+    [
+      1044,
+      524,
+      512,
+      512
+    ],
+    [
+      1564,
+      524,
+      512,
+      512
+    ],
+    [
+      4,
+      1044,
+      512,
+      512
+    ],
+    [
+      524,
+      1044,
+      512,
+      512
+    ]
+  ],
+  "keys": [
+    "grass",
+    "dirt",
+    "rock",
+    "water",
+    "road",
+    "ore",
+    "coal",
+    "highland",
+    "soil",
+    "bedrock"
+  ],
+  "frameSize": [
+    512,
+    512
+  ],
+  "gutter": 4,
+  "sampling": "repeat UV within selected frame with half-texel inset; atlas itself is not one ground image",
+  "sourceAtlas": "Content/Textures/terrain-tiles.png",
+  "sourceAtlasSha256": "0d1164e37db035500723050e872074114d4e1e7874a77a4ce06907e7d9c33216",
+  "bitmapPixelsUnmodified": true,
+  "materialAliases": {
+    "coal": "rock",
+    "highland": "grass",
+    "soil": "dirt",
+    "bedrock": "rock"
+  },
+  "materialTints": {
+    "coal": [
+      0.52,
+      0.5,
+      0.48,
+      1.0
+    ],
+    "highland": [
+      1.08,
+      1.04,
+      0.91,
+      1.0
+    ],
+    "soil": [
+      1.12,
+      0.92,
+      0.75,
+      1.0
+    ],
+    "bedrock": [
+      0.7,
+      0.72,
+      0.75,
+      1.0
+    ]
+  }
+}

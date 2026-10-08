@@ -115,7 +115,7 @@ describe('<StudioComposer /> 后端清单诚实面', () => {
     await waitFor(() => expect(screen.queryByTestId('studio-backends-error')).toBeNull());
     fireEvent.click(screen.getByTestId('studio-model-btn'));
     const picker2 = await screen.findByTestId('studio-model-picker');
-    expect(picker2).toHaveTextContent('remote-openai-compatible');
+    expect(picker2).toHaveTextContent('OpenAI 兼容图像');
   });
 
   it('清单正常但无已配置后端 → 维持「未配置」提示(不冒充失败)', async () => {

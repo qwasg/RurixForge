@@ -1,4 +1,5 @@
 import http from 'node:http';
+import type { AgentdProbe } from '@forge/protocol';
 import type { PluginFn } from '../ctx.js';
 import type { Logger } from './logger.js';
 
@@ -9,7 +10,8 @@ import type { Logger } from './logger.js';
  * F7 wave.1:agent 会话事实源移到 agentd(事件基座)——/api/forge/sessions、
  * /api/forge/chat-folders、/api/forge/design-snapshot 加入代理前缀;host 自有 F0 stub
  * (sessions.ts/eventlog.ts 的 /api/forge/sessions 路由)在运行时被遮蔽(F0 已 closed,契约留痕)。
- * SSE 长连接(/events/stream)豁免 15s 上游超时(setTimeout(0)),保持 pipe 流式;普通请求维持 15s。
+ * SSE 长连接(/events/stream)豁免上游超时(setTimeout(0)),保持 pipe 流式;
+ * Codex 控制面给冷启动/RPC 60s，其余普通请求维持 15s。
  * mcp/call 按体内 tool 名豁免长时生成工具(gen_image 等,真实远程分钟级;agentd 360s 兜底)。
  * 方法与 body 透传;上游不可达 → 502 {error:{code:"UPSTREAM_UNREACHABLE"}}。
  * host 自有 /api/forge/health 不走代理(前缀不重叠)。
@@ -17,12 +19,21 @@ import type { Logger } from './logger.js';
 export interface ForgeProxy {
   /** 命中代理前缀时转发并返回 true;否则返回 false 交给 host 自有路由 */
   handle(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<boolean>;
+  /** D-040:探测上游 agentd `/health`(版本 + 运行时长);超时/不可达 → {ok:false},不抛错。 */
+  probeHealth(): Promise<AgentdProbe>;
 }
+
+/** 健康探测超时:host 健康接口每 5s 被轮询一次,不能被挂起的上游拖住。 */
+const PROBE_TIMEOUT_MS = 800;
 
 const DEFAULT_UPSTREAM = 'http://127.0.0.1:8103';
 const PROXY_PREFIXES = [
+  '/api/forge/agent',
+  '/api/forge/account',
+  '/api/forge/memory',
   '/api/forge/mcp',
   '/api/forge/llm',
+  '/api/forge/channels',
   // F3:agentd REST 面(skills 管理 / subagent 清单 / swarm 分片 / F2 proposals)
   '/api/forge/skills',
   '/api/forge/subagents',
@@ -30,6 +41,7 @@ const PROXY_PREFIXES = [
   '/api/forge/proposals',
   // F5 wave.3:gen 配置 REST 面(backends 清单 / configure;密钥经此面写 keystore,不出)
   '/api/forge/gen',
+  '/api/forge/blender',
   // F6:playtest 矩阵执行器(Console 报告行注入链)
   '/api/forge/playtest',
   // F7 wave.1:agent 事件基座(会话 CRUD/fork/revert + SSE 流 + chat-folders + design-snapshot)
@@ -40,6 +52,9 @@ const PROXY_PREFIXES = [
   // F7 wave.2:turn 执行事件化(runs 控制 + todos REST;ask:execute 在 sessions 前缀内)
   '/api/forge/runs',
   '/api/forge/todos',
+  // Codex 设置/账户/模型/MCP 状态，以及服务端审批卡片的 approve/deny 动作。
+  '/api/forge/codex',
+  '/api/forge/permissions',
   // F7 wave.5:工作区文件树只读面(Inspector;llm/key 在已有 /api/forge/llm 前缀内,无需新增)
   '/api/forge/workspace',
   // F9(D5):project 面(pack 引用闭包打包;agentd 已注册路由,host 代理补前缀缺口)
@@ -52,6 +67,13 @@ const PROXY_PREFIXES = [
   '/api/forge/tools',
 ];
 const UPSTREAM_TIMEOUT_MS = 15_000;
+/**
+ * D-044:代理出去的 API 响应一律禁止被框住(UltraPlan 试玩 Demo iframe 不得把 API 当文档加载)。
+ * 上游头只透传 Content-Type 等少数几个,这里在出口补上;只加 frame-ancestors,不加其他 CSP 指令。
+ */
+const FRAME_ANCESTORS_NONE = "frame-ancestors 'none'";
+/** Codex control-plane RPCs may include a cold app-server start and network-backed reads. */
+const CODEX_UPSTREAM_TIMEOUT_MS = 60_000;
 
 /**
  * MCP 长生命周期工具(/api/forge/mcp/call 体内 tool 字段判定)。
@@ -107,12 +129,18 @@ export function isLongLivedPath(pathname: string): boolean {
   );
 }
 
-/** 上游超时毫秒:长生命周期端点与 MCP 长时工具 0(不限时),其余 15s(导出供单测)。 */
+/** 上游超时毫秒：引擎 MCP 预留冷启动 + 响应预算，暖调用仍由 agentd 保持 10/40s 上限。 */
 export function upstreamTimeoutMs(pathname: string, mcpTool?: string | null): number {
   if (isLongLivedPath(pathname)) return 0;
+  // Godot runtime 校验/GPU 重试最多 90s，工具响应最多 40s，再留 5s 传输余量。
+  if (pathname === '/api/forge/mcp/call' && mcpTool?.startsWith('mcp__engine-scene__')) return 135_000;
   if (pathname === '/api/forge/mcp/call' && mcpTool != null && LONG_LIVED_MCP_TOOLS.has(mcpTool)) {
     return 0;
   }
+  if (pathname === '/api/forge/codex' || pathname.startsWith('/api/forge/codex/')) {
+    return CODEX_UPSTREAM_TIMEOUT_MS;
+  }
+  if (pathname === '/api/forge/channels' || pathname.startsWith('/api/forge/channels/')) return CODEX_UPSTREAM_TIMEOUT_MS;
   return UPSTREAM_TIMEOUT_MS;
 }
 
@@ -146,9 +174,40 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
         const v = req.headers[name];
         if (typeof v === 'string') headers[name] = v;
       }
+      // Persisted video playback must retain the browser's byte-range request.
+      if (pathname === '/api/forge/gen/video/file' && typeof req.headers.range === 'string') {
+        headers.range = req.headers.range;
+      }
       if (body.length > 0) headers['content-length'] = String(body.length);
 
       await new Promise<void>((resolve) => {
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const failUpstream = (err: Error) => {
+          if (settled) return;
+          logger.warn(`forgeProxy upstream failure: ${err.message}`);
+          if (!res.headersSent) {
+            const data = JSON.stringify({
+              error: { code: 'UPSTREAM_UNREACHABLE', message: `agentd 不可达: ${origin}` },
+            });
+            res.writeHead(502, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Content-Security-Policy': FRAME_ANCESTORS_NONE,
+            });
+            res.end(data);
+          } else if (!res.writableEnded) {
+            // The upstream may disappear after an SSE/streaming response has already
+            // started. Readable.pipe does not end the downstream on an aborted source;
+            // destroy it explicitly so fetch/EventSource observes a disconnect and
+            // can reconnect instead of waiting forever on a half-open host response.
+            res.destroy(err);
+          }
+          settle();
+        };
         const out = http.request(
           {
             hostname: target.hostname,
@@ -159,7 +218,16 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
           },
           (up) => {
             const contentType = up.headers['content-type'] ?? 'application/json; charset=utf-8';
-            const headers: Record<string, string> = { 'Content-Type': contentType };
+            const headers: Record<string, string> = {
+              'Content-Type': contentType,
+              'Content-Security-Policy': FRAME_ANCESTORS_NONE,
+            };
+            if (pathname === '/api/forge/gen/video/file') {
+              for (const name of ['content-range', 'accept-ranges', 'content-length', 'cache-control']) {
+                const value = up.headers[name];
+                if (typeof value === 'string') headers[name] = value;
+              }
+            }
             // F8 wave.3 浏览器 SSE 兼容:text/event-stream 透传禁缓冲语义——
             // Cache-Control 透传(上游缺省则 no-cache)+ X-Accel-Buffering: no。
             // host 自身为 node:http 裸管,无 gzip/压缩中间件,SSE 流不被压缩破坏。
@@ -169,25 +237,19 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
               headers['X-Accel-Buffering'] = 'no';
             }
             res.writeHead(up.statusCode ?? 502, headers);
+            up.on('aborted', () => failUpstream(new Error('upstream response aborted')));
+            up.on('error', failUpstream);
+            up.on('close', () => {
+              if (!up.complete) failUpstream(new Error('upstream response closed prematurely'));
+            });
             up.pipe(res);
-            res.on('finish', () => resolve());
+            res.on('finish', settle);
           },
         );
-        out.on('error', (err) => {
-          logger.warn(`forgeProxy upstream unreachable: ${err.message}`);
-          if (!res.headersSent) {
-            const data = JSON.stringify({
-              error: { code: 'UPSTREAM_UNREACHABLE', message: `agentd 不可达: ${origin}` },
-            });
-            res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(data);
-          } else if (!res.writableEnded) {
-            res.end();
-          }
-          resolve();
-        });
+        out.on('error', failUpstream);
         // F7 wave.1/2:长生命周期端点(SSE 流 / ask:execute turn)豁免 15s 不活动超时;
-        // 普通请求维持原超时防挂死。F10-RAG 修复:mcp/call 按体内 tool 名豁免
+        // 普通请求维持原超时防挂死，Codex 控制面单独给 60s。
+        // F10-RAG 修复:mcp/call 按体内 tool 名豁免
         // 长时生成工具(gen_image 真实远程分钟级,15s 必断;agentd 360s 预算兜底)。
         const mcpTool = pathname === '/api/forge/mcp/call' ? mcpCallTool(body) : null;
         const timeoutMs = upstreamTimeoutMs(pathname, mcpTool);
@@ -202,12 +264,43 @@ export function forgeProxyPlugin(upstream?: string): PluginFn {
         // 不留 agentd 侧孤儿长连接;正常 finish 后 writableEnded=true 不误伤。
         res.on('close', () => {
           if (!res.writableEnded) out.destroy();
+          settle();
         });
         out.end(body);
       });
       return true;
     }
 
-    ctx.provide('forgeProxy', { handle } satisfies ForgeProxy);
+    function probeHealth(): Promise<AgentdProbe> {
+      return new Promise((resolve) => {
+        const req = http.get(
+          { hostname: target.hostname, port: target.port, path: '/health', timeout: PROBE_TIMEOUT_MS },
+          (up) => {
+            const chunks: Buffer[] = [];
+            up.on('data', (c: Buffer) => chunks.push(c));
+            up.on('error', () => resolve({ ok: false }));
+            up.on('end', () => {
+              try {
+                const v = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+                resolve({
+                  ok: up.statusCode === 200,
+                  version: typeof v.version === 'string' ? v.version : undefined,
+                  uptimeSec: typeof v.uptimeSec === 'number' ? v.uptimeSec : undefined,
+                });
+              } catch {
+                resolve({ ok: false });
+              }
+            });
+          },
+        );
+        req.on('timeout', () => {
+          req.destroy();
+          resolve({ ok: false });
+        });
+        req.on('error', () => resolve({ ok: false }));
+      });
+    }
+
+    ctx.provide('forgeProxy', { handle, probeHealth } satisfies ForgeProxy);
   };
 }

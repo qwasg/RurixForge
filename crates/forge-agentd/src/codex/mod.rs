@@ -22,7 +22,9 @@
 pub mod approvals;
 pub mod bin;
 pub mod config;
+pub mod imagegen;
 pub mod map;
+pub mod managed;
 pub mod mcp_config;
 pub mod rest;
 pub mod rpc;
@@ -42,25 +44,89 @@ pub async fn goal_set(
     goal: &crate::goals::Goal,
 ) -> Result<Value, CodexError> {
     let client = state.codex.ready_client().await?;
-    let mut params = json!({
+    let params = json!({
         "threadId": thread_id,
-        "goal": { "objective": goal.objective },
+        "objective": goal.objective,
+        "status": codex_goal_status(&goal.status),
+        // Forge 用 0 表示不限；Codex 用 null 清除预算。省略会错误地保留旧预算。
+        "tokenBudget": if goal.token_budget == 0 { Value::Null } else { json!(goal.token_budget) },
     });
-    if goal.token_budget > 0 {
-        params["goal"]["tokenBudget"] = json!(goal.token_budget);
-    }
     client.request("thread/goal/set", params).await
 }
 
-pub async fn goal_read(
-    state: &Arc<crate::AppState>,
-    thread_id: &str,
-) -> Result<Value, CodexError> {
+pub async fn goal_read(state: &Arc<crate::AppState>, thread_id: &str) -> Result<Value, CodexError> {
     let client = state.codex.ready_client().await?;
     let v = client
         .request("thread/goal/get", json!({ "threadId": thread_id }))
         .await?;
-    Ok(v.get("goal").cloned().unwrap_or(v))
+    Ok(normalize_goal_value(v.get("goal").cloned().unwrap_or(v)))
+}
+
+/// 只改已有原生 Goal 的状态。pause/resume 必须透传；仅改本地镜像会让 app-server
+/// 继续在后台自动起 turn。
+pub async fn goal_status_set(
+    state: &Arc<crate::AppState>,
+    thread_id: &str,
+    status: &str,
+) -> Result<Value, CodexError> {
+    let client = state.codex.ready_client().await?;
+    client
+        .request(
+            "thread/goal/set",
+            json!({ "threadId": thread_id, "status": codex_goal_status(status) }),
+        )
+        .await
+}
+
+fn codex_goal_status(status: &str) -> &str {
+    match status {
+        // app-server 的终态枚举是 `complete`，Forge 的统一 UI/本地引擎使用 `completed`。
+        crate::goals::STATUS_COMPLETED => "complete",
+        other => other,
+    }
+}
+
+pub(crate) fn normalize_goal_value(mut goal: Value) -> Value {
+    if goal.get("tokenBudget") == Some(&Value::Null) {
+        // Forge Goal UI/持久层用 0 表示不限；不让 nullable 上游字段穿透成不兼容形态。
+        goal["tokenBudget"] = json!(0);
+    }
+    match goal.get("status").and_then(Value::as_str) {
+        Some("complete") => goal["status"] = json!(crate::goals::STATUS_COMPLETED),
+        Some(status @ ("usageLimited" | "budgetLimited")) => {
+            // Forge UI 只有 active/paused/blocked/completed 四态；额度终止是可恢复暂停，
+            // 同时保留 Codex 原始状态，供 GoalBar 给出准确原因。
+            let codex_status = status.to_string();
+            goal["status"] = json!(crate::goals::STATUS_PAUSED);
+            goal["codexStatus"] = json!(codex_status);
+            goal["budgetExhausted"] = json!(true);
+        }
+        _ => {}
+    }
+    goal
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn goal_status_vocabulary_is_normalized() {
+        assert_eq!(codex_goal_status("completed"), "complete");
+        assert_eq!(codex_goal_status("paused"), "paused");
+        assert_eq!(
+            normalize_goal_value(json!({ "status": "complete" }))["status"],
+            "completed"
+        );
+        let limited = normalize_goal_value(json!({ "status": "budgetLimited" }));
+        assert_eq!(limited["status"], "paused");
+        assert_eq!(limited["codexStatus"], "budgetLimited");
+        assert_eq!(limited["budgetExhausted"], true);
+        assert_eq!(
+            normalize_goal_value(json!({ "status": "active", "tokenBudget": null }))["tokenBudget"],
+            0
+        );
+    }
 }
 
 pub async fn goal_clear(

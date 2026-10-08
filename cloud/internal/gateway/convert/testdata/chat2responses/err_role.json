@@ -1,0 +1,5 @@
+{
+  "options": {"model": "gpt-5"},
+  "request": {"model": "forge-gpt-5", "messages": [{"role": "function", "name": "f", "content": "legacy"}]},
+  "wantError": "不受支持"
+}

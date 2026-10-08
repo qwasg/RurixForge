@@ -70,6 +70,46 @@ pub fn mcp_servers_json(project_root: &Path, auto_register: bool) -> Value {
     Value::Object(map)
 }
 
+/// Host collaboration is infrastructure, independent from the project MCP
+/// auto-registration preference. The capability is runtime-only and never
+/// appears in status JSON, events, command arguments, or global Codex config.
+pub fn collaboration_server(endpoint: &str, token: &str) -> Result<Value, String> {
+    let command =
+        std::env::current_exe().map_err(|_| "无法确定 Forge 协作桥可执行文件".to_string())?;
+    Ok(json!({
+        "command": command.to_string_lossy(),
+        "args": ["collaboration-stdio"],
+        "env": {
+            (crate::collaboration_stdio::ENDPOINT_ENV): endpoint,
+            (crate::collaboration_stdio::TOKEN_ENV): token,
+        },
+        "required": true,
+        "enabled": true,
+        // These are host routing operations. Actual child tools continue through
+        // Forge's existing permission service; a second Codex MCP gate would
+        // reject even agent_list when the session uses approvalPolicy=never.
+        "default_tools_approval_mode": "approve",
+        "startup_timeout_sec": 15,
+        "tool_timeout_sec": TOOL_TIMEOUT_SECS,
+    }))
+}
+
+/// Replace each project MCP process with a capability-bound host transport.
+pub fn scoped_servers(endpoint: &str, token: &str, auto_register: bool) -> Result<Value, String> {
+    if !auto_register { return Ok(json!({})); }
+    let command = std::env::current_exe().map_err(|e|e.to_string())?;
+    let mut map = serde_json::Map::new();
+    for kind in ServerKind::active() {
+        map.insert(kind.server_name().into(), json!({
+            "command":command.to_string_lossy(),"args":["editor-stdio"],
+            "env":{"FORGE_EDITOR_ENDPOINT":endpoint,"FORGE_EDITOR_TOKEN":token,"FORGE_EDITOR_SERVER":kind.server_name()},
+            "startup_timeout_sec":STARTUP_TIMEOUT_SECS,"tool_timeout_sec":TOOL_TIMEOUT_SECS,
+            "default_tools_approval_mode":"approve"
+        }));
+    }
+    Ok(Value::Object(map))
+}
+
 /// 设置页的 MCP 状态表(服务名 + 命令 + 二进制是否就位;无 env)。
 pub fn status_json(project_root: &Path) -> Value {
     let auto = crate::codex::config::load().auto_register_mcp;
@@ -98,6 +138,16 @@ pub fn status_json(project_root: &Path) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn editor_servers_are_host_transports_and_never_spawn_another_engine() {
+        let servers=scoped_servers("http://127.0.0.1:8123","opaque-test-capability",true).unwrap();
+        for spec in servers.as_object().unwrap().values(){
+            assert_eq!(spec["args"],json!(["editor-stdio"]));
+            assert_eq!(spec["env"]["FORGE_EDITOR_TOKEN"],"opaque-test-capability");
+            assert!(spec["env"].get("FORGE_ASSET_PROJECT_ROOT").is_none());
+        }
+        assert_eq!(scoped_servers("unused","unused",false).unwrap(),json!({}));
+    }
 
     /// 注入表覆盖七工、路径与参数取自 spawn_spec、engine-scene 的项目根经 env 传。
     #[test]
@@ -138,6 +188,25 @@ mod tests {
     #[test]
     fn auto_register_off_yields_empty_table() {
         assert_eq!(mcp_servers_json(Path::new("/p"), false), json!({}));
+    }
+
+    #[test]
+    fn collaboration_bridge_is_required_and_uses_only_scoped_environment() {
+        let config =
+            collaboration_server("http://127.0.0.1:8103", "private-test-capability").unwrap();
+        assert_eq!(config["required"], true);
+        assert_eq!(config["default_tools_approval_mode"], "approve");
+        assert_eq!(config["args"], json!(["collaboration-stdio"]));
+        assert_eq!(
+            config["env"][crate::collaboration_stdio::TOKEN_ENV],
+            "private-test-capability"
+        );
+        assert!(!config["args"]
+            .to_string()
+            .contains("private-test-capability"));
+        assert!(!status_json(Path::new("/p"))
+            .to_string()
+            .contains("private-test-capability"));
     }
 
     /// 状态面只报服务名/命令/可用性与 env 的**键名**,绝不回显 env 值。

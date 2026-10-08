@@ -108,6 +108,8 @@ pub enum ChromaKey {
     Auto,
     /// 与视口色键/assetd 自动切帧同一规则(alpha 低或品红族 2g<min(r,b))。
     Magenta,
+    /// 黑底发光特效:最大颜色通道转透明度,反预乘 RGB 保留亮度与彩色辉光。
+    Black,
     /// 不抠(整帧不透明进图集)。
     None,
 }
@@ -117,6 +119,7 @@ impl ChromaKey {
         match s {
             "auto" => Some(ChromaKey::Auto),
             "magenta" => Some(ChromaKey::Magenta),
+            "black" => Some(ChromaKey::Black),
             "none" => Some(ChromaKey::None),
             _ => None,
         }
@@ -126,6 +129,7 @@ impl ChromaKey {
         match self {
             ChromaKey::Auto => "auto",
             ChromaKey::Magenta => "magenta",
+            ChromaKey::Black => "black",
             ChromaKey::None => "none",
         }
     }
@@ -384,6 +388,23 @@ pub fn apply_chroma_key(frames: &mut [Frame], mode: ChromaKey) {
                 for px in f.rgba.chunks_exact_mut(4) {
                     if is_magenta_bg(px) {
                         px[3] = 0;
+                    }
+                }
+            }
+        }
+        ChromaKey::Black => {
+            for frame in frames.iter_mut() {
+                for px in frame.rgba.chunks_exact_mut(4) {
+                    let peak = px[0].max(px[1]).max(px[2]) as u32;
+                    if peak <= 3 || px[3] == 0 {
+                        // Near-black codec noise is not an opaque rectangular backdrop.
+                        px.fill(0);
+                    } else {
+                        let alpha = (px[3] as u32 * peak + 127) / 255;
+                        for color in &mut px[..3] {
+                            *color = ((*color as u32 * 255 + peak / 2) / peak).min(255) as u8;
+                        }
+                        px[3] = alpha as u8;
                     }
                 }
             }
@@ -658,6 +679,26 @@ mod tests {
         let t = pack_atlas(&frames, CropMode::Tight, 0).unwrap();
         assert_eq!(t.boxes[0][2..], [4, 4], "tight 下逐帧紧致");
         assert_eq!(t.boxes[1][2..], [6, 6]);
+    }
+
+    #[test]
+    fn black_key_preserves_emissive_colors_after_compositing_and_clears_black() {
+        let originals = [[0, 0, 0, 255], [3, 2, 1, 255], [12, 48, 120, 255],
+            [100, 10, 150, 255], [20, 130, 40, 128], [255, 255, 255, 255]];
+        let mut frame = Frame::new(6, 1, originals.into_iter().flatten().collect()).unwrap();
+        apply_chroma_key(std::slice::from_mut(&mut frame), ChromaKey::Black);
+        assert_eq!(frame.px(0, 0), &[0, 0, 0, 0]);
+        assert_eq!(frame.px(1, 0), &[0, 0, 0, 0]);
+        for (index, original) in originals.iter().enumerate().skip(2) {
+            let actual = frame.px(index as u32, 0);
+            for channel in 0..3 {
+                let expected = original[channel] as i32 * original[3] as i32 / 255;
+                let composited = actual[channel] as i32 * actual[3] as i32 / 255;
+                assert!((expected - composited).abs() <= 1, "emissive color changed at {index}/{channel}");
+            }
+        }
+        assert_eq!(ChromaKey::parse("black"), Some(ChromaKey::Black));
+        assert_eq!(ChromaKey::Black.as_str(), "black");
     }
 
     #[test]

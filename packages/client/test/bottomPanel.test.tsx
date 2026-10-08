@@ -126,11 +126,25 @@ describe('BottomPanel · Metrics', () => {
       ],
       activeRunId: null,
     });
+    const base = { status: 'idle', agentKind: 'coding', agentEngine: 'local' as const, selectedModelId: null,
+      thinkingEnabled: false, reasoningEffort: null, contextOptionId: null, webSearchEnabled: false,
+      createdAt: '', updatedAt: '', pinned: false, titleManuallySet: false };
+    useSessionStore.setState({
+      sessions: [
+        { ...base, id: 's1', title: 'a', activeRunId: 'run_x' },
+        { ...base, id: 's2', title: 'b', activeRunId: null },
+        { ...base, id: 's3', title: 'c', activeRunId: null },
+      ],
+    });
     useWorkbenchStore.setState({ bottomOpen: true, bottomTab: 'metrics' });
     render(<BottomPanel />);
     expect(screen.getByTestId('metric-tokens')).toHaveTextContent('121');
     expect(screen.getByTestId('metric-toolcalls')).toHaveTextContent('2');
-    expect(screen.getByTestId('metric-sessions')).toHaveTextContent('1/2');
+    // 待办进度与会话数分开:原「Sessions」卡实际是待办进度,改名 Todos;Sessions 为真实会话数
+    expect(screen.getByTestId('metric-todos')).toHaveTextContent('Todos');
+    expect(screen.getByTestId('metric-todos')).toHaveTextContent('1/2');
+    expect(screen.getByTestId('metric-sessions')).toHaveTextContent('3');
+    expect(screen.getByTestId('metric-sessions')).toHaveTextContent('1 运行中');
     expect(screen.getByTestId('metric-run')).toHaveTextContent('idle');
   });
 });

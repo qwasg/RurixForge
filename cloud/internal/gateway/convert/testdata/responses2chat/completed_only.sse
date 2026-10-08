@@ -1,0 +1,3 @@
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_fake1","status":"completed","output":[{"id":"rs_f","type":"reasoning","summary":[{"type":"summary_text","text":"Thinking briefly."}]},{"id":"msg_f","type":"message","role":"assistant","content":[{"type":"output_text","text":"Answer "},{"type":"output_text","text":"text."}]},{"id":"fc_f","type":"function_call","call_id":"call_f","name":"lookup","arguments":"{\"id\":7}"}],"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":0},"output_tokens":30,"output_tokens_details":{"reasoning_tokens":10},"total_tokens":50}}}
+

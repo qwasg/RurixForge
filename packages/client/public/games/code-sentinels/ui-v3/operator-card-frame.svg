@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900" fill="none" role="img" aria-labelledby="operator-card-frame-title operator-card-frame-desc"><title id="operator-card-frame-title">operator card frame</title><desc id="operator-card-frame-desc">Original Code Sentinels tactical vector artwork.</desc>
+<defs><linearGradient id="oc-shade" x1="300" y1="658" x2="300" y2="898" gradientUnits="userSpaceOnUse"><stop stop-color="#101316" stop-opacity="0"/><stop offset=".38" stop-color="#101316" stop-opacity=".75"/><stop offset="1" stop-color="#101316" stop-opacity=".98"/></linearGradient><pattern id="oc-grain" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 8L8 0" stroke="#F2F0E9" stroke-opacity=".05"/></pattern></defs>
+<path d="M24 2H573L598 27V874L574 898H2V24Z" stroke="#F2F0E9" stroke-width="3"/>
+<path d="M25 12H568L587 31V869L569 888H12V29Z" stroke="#F2F0E9" stroke-opacity=".23"/>
+<path d="M3 653H598V874L574 898H3Z" fill="url(#oc-shade)"/><path d="M14 760H586V869L569 887H14Z" fill="url(#oc-grain)"/>
+<path d="M2 24L24 2H193L184 11H28L11 28V162L2 171Z" fill="#F2F0E9"/>
+<path d="M402 2H573L598 27V91L587 102V31L568 12H391Z" fill="#EDB63B"/>
+<path d="M598 669V874L574 898H438L448 887H569L587 869V680Z" fill="#F2F0E9"/>
+<path d="M24 739H538L562 715H586" stroke="#EDB63B" stroke-width="3"/><path d="M24 746H308" stroke="#F2F0E9" stroke-opacity=".3"/>
+<path d="M31 709V685H55M547 38H570V61" stroke="#F2F0E9" stroke-width="2"/>
+<path d="M27 774H35V842H27Z" fill="#EDB63B"/>
+<path d="M561 771V843M554 771V809M547 771V829M539 771V797M531 771V843M522 771V829" stroke="#F2F0E9" stroke-opacity=".48" stroke-width="2"/>
+<path d="M48 867H152M164 867H194M206 867H218" stroke="#F2F0E9" stroke-opacity=".48" stroke-width="2"/>
+<path d="M18 239H27M18 259H23M18 279H23M18 299H27M18 319H23M18 339H23M18 359H27" stroke="#F2F0E9" stroke-opacity=".6"/>
+<path d="M560 698L569 689L578 698L569 707Z" stroke="#EDB63B" stroke-width="2"/></svg>

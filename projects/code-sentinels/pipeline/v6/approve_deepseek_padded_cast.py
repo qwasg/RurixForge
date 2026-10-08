@@ -1,0 +1,4 @@
+"""Approve full rear casting replacement after independent original-video body-boundary review."""
+from media import *
+folder=HERE/'jobs/deepseek-n-cast-padded-v3';receipt=read(folder/'video.json')
+save(folder/'source-review.json',{'id':folder.name,'approved':True,'reviewedAt':stamp(),'reviewer':'Codex independent asset_contract_audit, complete original RGB contact and key dense frames','notes':'Strict rear view throughout. Arms rise/open duringf20-32, hold, then lower duringaboutf72-96 with neutral recovery bythe end. Whale-tail tip remains fully inside the512 capture throughout, repairing originalf100 truncation. Actual physical arm/tail motion, no new spell graphics, no scene change or visible body enlargement.','segments':{'cast':[16,116,32,False]},'videoSha256':receipt['sha256']});extract(folder,True)

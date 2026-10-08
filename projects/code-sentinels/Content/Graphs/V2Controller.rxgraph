@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "id": "V2Controller",
+  "name": "V2Controller",
+  "exposedProps": [],
+  "nodes": [
+    {
+      "id": "n0",
+      "type": "event.on_start",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {}
+    },
+    {
+      "id": "n1",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_reset"
+        },
+        "args": {
+          "const": []
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "type": "event.on_update",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {}
+    },
+    {
+      "id": "n3",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_tick"
+        },
+        "args": {
+          "node": "n2",
+          "pin": "dt"
+        }
+      }
+    },
+    {
+      "id": "n4",
+      "type": "event.on_input",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {}
+    },
+    {
+      "id": "n5",
+      "type": "var.set",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "name": {
+          "node": "n4",
+          "pin": "action"
+        },
+        "value": {
+          "node": "n4",
+          "pin": "value"
+        }
+      }
+    },
+    {
+      "id": "n6",
+      "type": "var.get",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "name": {
+          "const": "cs"
+        }
+      }
+    },
+    {
+      "id": "n7",
+      "type": "call.call_function",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "module": {
+          "const": "Content/Scripts/sentinels_v2.rs"
+        },
+        "fn": {
+          "const": "cs_input"
+        },
+        "args": {
+          "node": "n6",
+          "pin": "out"
+        }
+      }
+    },
+    {
+      "id": "n8",
+      "type": "var.set",
+      "pos": [
+        0,
+        0
+      ],
+      "inputs": {
+        "name": {
+          "const": "cs"
+        },
+        "value": {
+          "const": 0.0
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "n0",
+        "exec"
+      ],
+      "to": [
+        "n1",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n2",
+        "exec"
+      ],
+      "to": [
+        "n3",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n4",
+        "exec"
+      ],
+      "to": [
+        "n5",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n5",
+        "exec"
+      ],
+      "to": [
+        "n7",
+        "exec"
+      ]
+    },
+    {
+      "from": [
+        "n7",
+        "exec"
+      ],
+      "to": [
+        "n8",
+        "exec"
+      ]
+    }
+  ]
+}

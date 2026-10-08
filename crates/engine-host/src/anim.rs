@@ -95,10 +95,15 @@ impl AnimSystem {
         let mut changed = false;
         let mut seen: BTreeSet<u64> = BTreeSet::new();
         // 实体 id 升序(确定性,与图解释器同纪律)。
-        let mut ids: Vec<u64> = scene.entities.iter().map(|e| e.id).collect();
-        ids.sort_unstable();
-        for eid in ids {
-            let Some(entity) = scene.entity(eid) else { continue };
+        // The entity vector is not resized by animation evaluation. Retain its
+        // indices instead of linearly searching the whole scene for every id;
+        // large native publication scenes contain many non-Sprite entities.
+        let mut ids: Vec<(u64, usize)> = scene.entities.iter().enumerate()
+            .filter(|(_, e)| e.components.iter().any(|c| c.ctype == "Sprite" && c.enabled))
+            .map(|(index, e)| (e.id, index)).collect();
+        ids.sort_unstable_by_key(|(id, _)| *id);
+        for (eid, entity_index) in ids {
+            let entity = &scene.entities[entity_index];
             let Some(sp) = entity
                 .components
                 .iter()
@@ -319,7 +324,7 @@ impl AnimSystem {
 
             // ── 回写组件 props(唯一写者;渲染/点选/流媒体自然拾取) ──
             let (clip_v, frame_v) = (st.clip.clone(), st.frame_idx as f64);
-            if let Some(e) = scene.entity_mut(eid) {
+            if let Some(e) = scene.entities.get_mut(entity_index) {
                 if let Some(c) = e.component_mut("Sprite") {
                     if let Some(obj) = c.props.as_object_mut() {
                         let new_clip = Value::String(clip_v);
@@ -393,7 +398,7 @@ mod tests {
 
         let mut scene = Scene::new("t");
         let id = scene.alloc_id();
-        scene.entities.push(Entity {
+        scene.entities.push(Entity { entity_guid: None,
             id,
             name: "hero".into(),
             transform: Transform::default(),

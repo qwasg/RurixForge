@@ -1,0 +1,26 @@
+guid: ed9e0dc0-e78a-406f-b0aa-070472545834
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T11:57:21Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b45e-be0b-7424-94db-a21dc0de9f21
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b45e-be0b-7424-94db-a21dc0de9f21/output/preview.png?Expires=1789991832&Signature=QnCbVz~173mxDNUObYH2k1JVm~McGD59zbRz8LOWG8Lz2tImdgBETWN-M2pFZKFMXAa6m8KjLMIujGaSbWMcFrE03QnQWz8r6E0faDYrQv3ELcCTE9YWFq6C~JWZIHrUPKdLACFXIRepWvWwlHhi45-WjKBL5XsjUuc7YKZHjtl-3Tun~105nUcnsjg4UpJByDweamfbu423bjQTWH560fHG0GqmoNMOk5exNrGD3LcXU43VrnWLX4ty9dqOmp9qvBM9RIiulev4CRPXjtfEiNuJv9GOfyPL-X5Inq1dhQWPE9uARwJF8olcN8hm~JfL7mnr2NAvB2wwQowtQ5g75w__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: 'Tier-2 anti-air missile turret on an octagonal light concrete emplacement, dark azimuth bearing ring, boxy graphite blue-gray armored turret with brass identification bar, pale titanium side armor, four stacked rectangular missile cassettes with orange missile noses. Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.'
+build_state: current

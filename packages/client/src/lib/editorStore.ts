@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { apiPost, callTool } from './forgeApi';
+import { apiPost, callTool, getForgeRenderConfig, renderConfigMismatch, type RenderBackendInfo, type RenderCapabilities } from './forgeApi';
+import { readActiveWorkspaceId } from './activeWorkspace';
 import { useToastStore } from './toastStore';
 import { useWorkbenchStore } from './workbenchStore';
 import type { EntityCategory } from './entityCategory';
@@ -28,6 +29,9 @@ export interface ComponentData {
 }
 
 export interface EntityData {
+  identityPersisted?: boolean;
+  guid?: string;
+  entityGuid?: string;
   id: number;
   name: string;
   transform: TransformData;
@@ -60,7 +64,7 @@ export interface PlaytestReport {
 }
 
 /** 中央区同位页签(画板波 2026-08-24:+design 画板设计;素材创作波:+studio 素材创作) */
-export type CenterTab = 'viewport' | 'nodegraph' | 'design' | 'studio';
+export type CenterTab = 'viewport' | 'nodegraph' | 'design' | 'studio' | 'shadergraph';
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
 
 /**
@@ -168,6 +172,10 @@ function quatMul(a: number[], b: number[]): number[] {
 }
 
 interface SceneSummary {
+  identityPersisted?: boolean;
+  sceneGuid?: string;
+  hostEpoch?: string;
+  contentRevision?: number;
   name: string;
   entityCount: number;
   playState: PlayState;
@@ -177,8 +185,13 @@ interface SceneSummary {
 }
 
 interface EditorState {
+  identityPersisted: boolean | null;
+  sceneGuid: string | null;
+  hostEpoch: string | null;
+  contentRevision: number | null;
   entities: EntityData[];
   selectedId: number | null;
+  selectedIds: number[];
   playState: PlayState;
   stats: RenderStats | null;
   sceneName: string;
@@ -203,6 +216,13 @@ interface EditorState {
   viewportDegraded: string | null;
   /** 最近一次 viewport_frame 诊断 */
   viewportInfo: ViewportInfo | null;
+  /** 当前工作区 engine-host 返回的真实渲染后端 / 能力面。 */
+  renderBackendInfo: RenderBackendInfo | null;
+  renderCapabilities: RenderCapabilities | null;
+  renderConfigMismatch: string | null;
+  renderStatusError: string | null;
+  renderStatusWorkspaceId: string | null;
+  renderStatusLoaded: boolean;
 
   loadEntities: () => Promise<void>;
   refreshSummary: () => Promise<void>;
@@ -211,7 +231,7 @@ interface EditorState {
   /** 跑 playtest 矩阵,汇总行 + 失败用例走 toast(红绿如实) */
   runPlaytest: (matrixRef: string) => Promise<void>;
 
-  selectEntity: (id: number | null) => void;
+  selectEntity: (id: number | null, additive?: boolean) => void;
   createEntity: (name?: string) => Promise<void>;
   destroyEntity: (id: number) => Promise<void>;
   renameEntity: (id: number, name: string) => Promise<void>;
@@ -219,6 +239,8 @@ interface EditorState {
   addComponent: (id: number, type: string) => Promise<void>;
   removeComponent: (id: number, type: string) => Promise<void>;
   setComponentEnabled: (id: number, type: string, enabled: boolean) => Promise<void>;
+  /** D-045:整份替换组件 props(component_set 语义;调用方负责合并)。 */
+  setComponentProps: (id: number, type: string, props: Record<string, unknown>) => Promise<void>;
   /** 设置实体分类(写 Category 组件;可 undo) */
   setCategory: (id: number, category: EntityCategory) => Promise<void>;
 
@@ -261,6 +283,8 @@ interface EditorState {
   /** gizmo 拖拽提交(拖拽结束一次性 transform_set,可 undo);F-GAME-3:snap=false 临时禁用 2D 网格吸附(Ctrl) */
   gizmoDragSelected: (dxPx: number, dyPx: number, viewH: number, snap?: boolean) => Promise<void>;
   setViewportStatus: (degraded: string | null, info: ViewportInfo | null) => void;
+  /** 读取当前 engine-host 的后端/能力；仅展示状态，不修改 forge.toml 或切换后端。 */
+  refreshRenderBackend: (workspaceId: string | null) => Promise<void>;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => {
@@ -281,14 +305,23 @@ export const useEditorStore = create<EditorState>((set, get) => {
   }
 
   /** 变更成功后局部刷新实体列表 */
+  let entityRequest = 0;
+  let summaryRequest = 0;
   async function reload(): Promise<void> {
+    const workspaceId = readActiveWorkspaceId();
+    const request = ++entityRequest;
     const data = await callTool<{ entities: EntityData[] }>('entity_list');
-    set({ entities: data.entities });
+    if (readActiveWorkspaceId() === workspaceId && request === entityRequest) set((state) => ({ entities: data.entities, selectedId: data.entities.some((e) => e.id === state.selectedId) ? state.selectedId : null, selectedIds: state.selectedIds.filter((id) => data.entities.some((e) => e.id === id)) }));
   }
 
   return {
+    identityPersisted: null,
+    sceneGuid: null,
+    hostEpoch: null,
+    contentRevision: null,
     entities: [],
     selectedId: null,
+    selectedIds: [],
     playState: 'edit',
     stats: null,
     sceneName: '',
@@ -306,16 +339,28 @@ export const useEditorStore = create<EditorState>((set, get) => {
     camera: null,
     viewportDegraded: null,
     viewportInfo: null,
+    renderBackendInfo: null,
+    renderCapabilities: null,
+    renderConfigMismatch: null,
+    renderStatusError: null,
+    renderStatusWorkspaceId: null,
+    renderStatusLoaded: false,
 
     loadEntities: () => run(reload),
 
     refreshSummary: () =>
       run(async () => {
+        const workspaceId = readActiveWorkspaceId();
+        const request = ++summaryRequest;
         const s = await callTool<SceneSummary>('scene_summary');
+        if (workspaceId !== readActiveWorkspaceId() || request !== summaryRequest) return;
+        if (s.hostEpoch === get().hostEpoch && s.sceneGuid === get().sceneGuid && typeof s.contentRevision === 'number' && typeof get().contentRevision === 'number' && s.contentRevision < get().contentRevision!) return;
+        const changed = (s.contentRevision !== undefined && s.contentRevision !== get().contentRevision) || (s.hostEpoch !== undefined && s.hostEpoch !== get().hostEpoch) || (s.sceneGuid !== undefined && s.sceneGuid !== get().sceneGuid);
+        set({ sceneGuid: s.sceneGuid ?? null, hostEpoch: s.hostEpoch ?? null, contentRevision: s.contentRevision ?? null, identityPersisted: s.identityPersisted ?? null });
         set({ stats: s.render, sceneName: s.name, playState: s.playState, sceneMode: s.mode === '2d' ? '2d' : '3d' });
         // F9(D1):entityCount 与本地清单漂移 = 外部(MCP/agent)实体变更 → 真实 entity_list 重拉。
         // 不伪造同步:漂移只作触发信号,面板数据始终来自后端 entity_list 实返。
-        if (s.entityCount !== get().entities.length) await reload();
+        if (changed || s.entityCount !== get().entities.length) await reload();
       }),
 
     refreshPlayState: () =>
@@ -344,7 +389,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
         }
       }),
 
-    selectEntity: (id) => set({ selectedId: id }),
+    selectEntity: (id, additive = false) => set((state) => {
+      const selectedIds = id === null ? [] : additive ? state.selectedIds.includes(id) ? state.selectedIds.filter((value) => value !== id) : [...state.selectedIds, id] : [id];
+      return { selectedIds, selectedId: selectedIds.at(-1) ?? null };
+    }),
 
     createEntity: (name) =>
       run(async () => {
@@ -352,7 +400,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         const r = await callTool<{ id: number; entity: EntityData }>('entity_create', {
           name: finalName,
         });
-        set((s) => ({ entities: [...s.entities, r.entity], selectedId: r.id }));
+        set((s) => ({ entities: [...s.entities, r.entity], selectedId: r.id, selectedIds: [r.id] }));
       }),
 
     destroyEntity: (id) =>
@@ -361,6 +409,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         set((s) => ({
           entities: s.entities.filter((e) => e.id !== id),
           selectedId: s.selectedId === id ? null : s.selectedId,
+          selectedIds: s.selectedIds.filter((value) => value !== id),
         }));
       }),
 
@@ -408,6 +457,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
                   ...e,
                   components: e.components.map((c) => (c.type === type ? { ...c, enabled } : c)),
                 }
+              : e,
+          ),
+        }));
+      }),
+
+    setComponentProps: (id, type, props) =>
+      run(async () => {
+        await callTool('component_set', { id, type, props });
+        set((s) => ({
+          entities: s.entities.map((e) =>
+            e.id === id
+              ? { ...e, components: e.components.map((c) => (c.type === type ? { ...c, props } : c)) }
               : e,
           ),
         }));
@@ -479,21 +540,22 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     undo: () =>
       run(async () => {
-        await callTool('edit_undo');
+        await apiPost('/api/forge/editor/undo', { workspaceId: readActiveWorkspaceId() });
         await reload();
       }),
 
     redo: () =>
       run(async () => {
-        await callTool('edit_redo');
+        await apiPost('/api/forge/editor/redo', { workspaceId: readActiveWorkspaceId() });
         await reload();
       }),
 
     saveScene: () =>
       run(
         async () => {
-          const r = await callTool<{ path: string; bytes: number }>('scene_save');
-          set({ scenePath: r.path });
+          const r = await callTool<{ path: string; bytes: number; savedCopy?: boolean }>('scene_save');
+          if (r.savedCopy) useToastStore.getState().push('success', `已保存场景副本：${r.path}`);
+          else set({ scenePath: r.path });
         },
         { toast: '保存场景失败' },
       ),
@@ -525,6 +587,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
             playState: s.playState,
             scenePath: path,
             selectedId: null,
+            selectedIds: [],
             sceneMode: s.mode === '2d' ? '2d' : '3d',
           });
           await get().loadCamera();
@@ -645,7 +708,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     pickAt: (x, y, w, h) =>
       run(async () => {
         const r = await callTool<PickResult>('viewport_pick', { x, y, width: w, height: h });
-        set({ selectedId: r.hit ? (r.entityId ?? null) : null });
+        get().selectEntity(r.hit ? (r.entityId ?? null) : null);
         if (r.hit) useWorkbenchStore.getState().setRightTab('properties');
       }),
 
@@ -693,5 +756,38 @@ export const useEditorStore = create<EditorState>((set, get) => {
         viewportDegraded: degraded,
         viewportInfo: info ?? s.viewportInfo,
       })),
+
+    refreshRenderBackend: async (workspaceId) => {
+      const cached = get();
+      const sameWorkspace = cached.renderStatusLoaded && cached.renderStatusWorkspaceId === workspaceId;
+      const infoTask = callTool<RenderBackendInfo>('render_backend_info');
+      const capsTask = sameWorkspace
+        ? Promise.resolve(cached.renderCapabilities)
+        : callTool<RenderCapabilities>('render_capabilities');
+      const configTask = getForgeRenderConfig(workspaceId).catch(() => null);
+      const [infoResult, capsResult, configResult] = await Promise.allSettled([infoTask, capsTask, configTask]);
+      // MCP 请求已带工作区作用域；旧工作区慢响应不能覆盖新工作区状态。
+      if (readActiveWorkspaceId() !== workspaceId) return;
+
+      const info = infoResult.status === 'fulfilled'
+        ? infoResult.value
+        : sameWorkspace ? cached.renderBackendInfo : null;
+      const capabilities = capsResult.status === 'fulfilled'
+        ? capsResult.value
+        : sameWorkspace ? cached.renderCapabilities : null;
+      const config = configResult.status === 'fulfilled' ? configResult.value : null;
+      const errors = [infoResult, capsResult]
+        .filter((result) => result.status === 'rejected')
+        .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+      const loaded = info !== null && capabilities !== null;
+      set({
+        renderBackendInfo: info,
+        renderCapabilities: capabilities,
+        renderConfigMismatch: info && config ? renderConfigMismatch(info, config) : null,
+        renderStatusError: errors.length > 0 ? errors.join(' · ') : null,
+        renderStatusWorkspaceId: workspaceId,
+        renderStatusLoaded: loaded,
+      });
+    },
   };
 });

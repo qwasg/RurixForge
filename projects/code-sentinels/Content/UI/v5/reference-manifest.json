@@ -1,0 +1,119 @@
+{
+  "version": 5,
+  "tool": "built-in image_gen",
+  "referenceCount": 10,
+  "vfxReferenceCount": 8,
+  "buildingReferenceCount": 2,
+  "assets": [
+    {
+      "key": "kinetic-hit",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/kinetic-hit.png",
+      "web": "/games/code-sentinels/ui-v5/references/kinetic-hit.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "plasma-hit",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/plasma-hit.png",
+      "web": "/games/code-sentinels/ui-v5/references/plasma-hit.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "heavy-impact",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/heavy-impact.png",
+      "web": "/games/code-sentinels/ui-v5/references/heavy-impact.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "magenta chroma color, approximately rgb(237,13,240)",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "shield-hit",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/shield-hit.png",
+      "web": "/games/code-sentinels/ui-v5/references/shield-hit.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "power-arc",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/power-arc.png",
+      "web": "/games/code-sentinels/ui-v5/references/power-arc.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "repair",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/repair.png",
+      "web": "/games/code-sentinels/ui-v5/references/repair.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "upgrade",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/upgrade.png",
+      "web": "/games/code-sentinels/ui-v5/references/upgrade.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "collapse-explosion",
+      "kind": "vfx-starting-reference",
+      "reference": "Content/UI/v5/vfx-references/collapse-explosion.png",
+      "web": "/games/code-sentinels/ui-v5/references/collapse-explosion.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "background": "transparent alpha returned by tool; media pipeline composites onto solid magenta before I2V",
+      "promptManifest": "vfx-reference-prompts.json"
+    },
+    {
+      "key": "vscode-turret",
+      "kind": "building-i2v-reference",
+      "nativeBuildingId": 11,
+      "reference": "Content/UI/v5/building-references/vscode-turret.png",
+      "web": "/games/code-sentinels/ui-v5/building-references/vscode-turret.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "promptManifest": "building-reference-prompts.json"
+    },
+    {
+      "key": "pycharm-turret",
+      "kind": "building-i2v-reference",
+      "nativeBuildingId": 12,
+      "reference": "Content/UI/v5/building-references/pycharm-turret.png",
+      "web": "/games/code-sentinels/ui-v5/building-references/pycharm-turret.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "promptManifest": "building-reference-prompts.json"
+    }
+  ]
+}

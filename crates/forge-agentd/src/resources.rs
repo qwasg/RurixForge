@@ -72,7 +72,12 @@ pub fn tool_specs() -> Vec<Value> {
     ]
 }
 
-pub async fn dispatch(workspaces: &WorkspaceStore, scope: &ScopeContext, name: &str, args: &Value) -> (bool, String) {
+pub async fn dispatch(
+    workspaces: &WorkspaceStore,
+    scope: &ScopeContext,
+    name: &str,
+    args: &Value,
+) -> (bool, String) {
     match name {
         "project_list" => (true, project_list(workspaces, scope)),
         "resource_search" => resource_search(scope, args).await,
@@ -181,7 +186,11 @@ async fn resource_search(scope: &ScopeContext, args: &Value) -> (bool, String) {
     } else {
         hits[cursor..end].to_vec()
     };
-    let next = if end < total { Some(end.to_string()) } else { None };
+    let next = if end < total {
+        Some(end.to_string())
+    } else {
+        None
+    };
     (
         true,
         json!({
@@ -194,7 +203,12 @@ async fn resource_search(scope: &ScopeContext, args: &Value) -> (bool, String) {
     )
 }
 
-async fn search_project(project_id: &str, root: &std::path::Path, query: &str, kinds: &[String]) -> Vec<Value> {
+async fn search_project(
+    project_id: &str,
+    root: &std::path::Path,
+    query: &str,
+    kinds: &[String],
+) -> Vec<Value> {
     let ctx_kinds: Vec<&str> = kinds
         .iter()
         .map(String::as_str)
@@ -208,7 +222,9 @@ async fn search_project(project_id: &str, root: &std::path::Path, query: &str, k
         "topK": 8,
         "kinds": ctx_kinds,
     });
-    let Ok(result) = crate::mcp::call_tool_in(root, "mcp__context__context_search", Some(args)).await else {
+    let Ok(result) =
+        crate::mcp::call_tool_in(root, "mcp__context__context_search", Some(args)).await
+    else {
         return Vec::new();
     };
     let text = envelope_text(&result);
@@ -247,7 +263,8 @@ async fn search_library(root: &std::path::Path, query: &str, kinds: &[String]) -
         return Vec::new();
     }
     let args = json!({ "query": query, "limit": 8 });
-    let Ok(result) = crate::mcp::call_tool_in(root, "mcp__store__library_search", Some(args)).await else {
+    let Ok(result) = crate::mcp::call_tool_in(root, "mcp__store__library_search", Some(args)).await
+    else {
         return Vec::new();
     };
     let text = envelope_text(&result);
@@ -278,7 +295,8 @@ async fn search_store(root: &std::path::Path, query: &str, kinds: &[String]) -> 
         return Vec::new();
     }
     let args = json!({ "query": query, "pageSize": 8 });
-    let Ok(result) = crate::mcp::call_tool_in(root, "mcp__store__store_search", Some(args)).await else {
+    let Ok(result) = crate::mcp::call_tool_in(root, "mcp__store__store_search", Some(args)).await
+    else {
         return Vec::new();
     };
     let text = envelope_text(&result);
@@ -351,10 +369,10 @@ async fn resource_get(scope: &ScopeContext, args: &Value) -> (bool, String) {
         let Ok(v) = serde_json::from_str::<Value>(&text) else {
             return (false, text);
         };
-        let hit = v
-            .get("items")
-            .and_then(Value::as_array)
-            .and_then(|a| a.iter().find(|i| i.get("id").and_then(Value::as_str) == Some(id)));
+        let hit = v.get("items").and_then(Value::as_array).and_then(|a| {
+            a.iter()
+                .find(|i| i.get("id").and_then(Value::as_str) == Some(id))
+        });
         return match hit {
             Some(h) => (true, h.to_string()),
             None => (false, format!("LIBRARY_NOT_FOUND: {id}")),
@@ -378,7 +396,11 @@ async fn resource_get(scope: &ScopeContext, args: &Value) -> (bool, String) {
     (false, format!("UNKNOWN_LOCATOR: {locator}"))
 }
 
-fn read_doc_fragment(project: &crate::scope::ScopeProject, id: &str, args: &Value) -> (bool, String) {
+fn read_doc_fragment(
+    project: &crate::scope::ScopeProject,
+    id: &str,
+    args: &Value,
+) -> (bool, String) {
     // id 可能是 context 文档 id(doc:rel#n)或相对路径。
     let rel = id
         .strip_prefix("doc:")

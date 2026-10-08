@@ -23,6 +23,7 @@ import Thumb from './assetThumb';
 const TYPE_FILTERS: Array<{ key: AssetTypeFilter; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'mesh', label: 'Mesh' },
+  { key: 'model', label: '3D Model' },
   { key: 'texture', label: 'Texture' },
   { key: 'material', label: 'Material' },
   { key: 'sprite', label: 'Sprite' },
@@ -103,12 +104,14 @@ function AssetGridItem({
         e.dataTransfer.setData('forge/asset-guid', item.guid);
         e.dataTransfer.setData('forge/asset-type', item.type);
         e.dataTransfer.setData('forge/asset-path', item.path);
+        e.dataTransfer.setData(EDITOR_REFERENCE_MIME, JSON.stringify([makeAnnotation(editorReference('asset', { resourceId: item.guid, path: item.path }), item.path)]));
       }}
       data-asset-guid={item.guid}
       data-asset-path={item.path}
       data-selected={selected || undefined}
     >
       <BuildBadge state={status} />
+      <AnnotationHandle reference={editorReference('asset', { resourceId: item.guid, path: item.path })} label={item.path} />
       <div className="h-10 w-10">
         <Thumb item={item} size={20} />
       </div>
@@ -146,12 +149,14 @@ function AssetListItem({
         e.dataTransfer.setData('forge/asset-guid', item.guid);
         e.dataTransfer.setData('forge/asset-type', item.type);
         e.dataTransfer.setData('forge/asset-path', item.path);
+        e.dataTransfer.setData(EDITOR_REFERENCE_MIME, JSON.stringify([makeAnnotation(editorReference('asset', { resourceId: item.guid, path: item.path }), item.path)]));
       }}
       data-asset-guid={item.guid}
       data-asset-path={item.path}
       data-selected={selected || undefined}
     >
       <BuildBadge state={status} />
+      <AnnotationHandle reference={editorReference('asset', { resourceId: item.guid, path: item.path })} label={item.path} />
       <div className="h-6 w-6">
         <Thumb item={item} size={14} />
       </div>
@@ -263,9 +268,12 @@ export default function AssetsPanel() {
       case 'reimport':
         store.reimport(item.path).catch(() => {});
         break;
-      case 'show-in-folder':
-        showInFolder?.(item.path);
+      case 'show-in-folder': {
+        const ws = useWorkspaceStore.getState();
+        const root = ws.workspaces.find((w) => w.id === ws.activeWorkspaceId)?.root;
+        showInFolder?.(item.path, root);
         break;
+      }
       case 'find-refs':
         store.queryRefs(item.path).catch(() => {});
         break;
@@ -525,3 +533,5 @@ export default function AssetsPanel() {
 
 const iconBtn =
   'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2';
+import AnnotationHandle from './AnnotationHandle';
+import { editorReference, EDITOR_REFERENCE_MIME, makeAnnotation } from '@/lib/editorReferences';

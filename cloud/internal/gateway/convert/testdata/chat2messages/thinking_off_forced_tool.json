@@ -1,0 +1,11 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [{"role": "user", "content": "Extract the entities."}],
+    "reasoning_effort": "medium",
+    "temperature": 1.5,
+    "tools": [{"type": "function", "function": {"name": "extract", "parameters": {"type": "object", "properties": {}}}}],
+    "tool_choice": {"type": "function", "function": {"name": "extract"}}
+  }
+}

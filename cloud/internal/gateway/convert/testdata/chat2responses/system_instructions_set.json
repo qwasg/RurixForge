@@ -1,0 +1,14 @@
+{
+  "options": {"model": "gpt-5-codex", "instructions": "You are Codex, a coding agent."},
+  "request": {
+    "model": "forge-codex",
+    "messages": [
+      {"role": "system", "content": "Rule one."},
+      {"role": "developer", "content": [{"type": "text", "text": "Rule two."}]},
+      {"role": "user", "content": "Hi"},
+      {"role": "system", "content": "Late rule three."},
+      {"role": "system", "content": ""},
+      {"role": "user", "content": "Again"}
+    ]
+  }
+}

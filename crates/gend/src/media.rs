@@ -1,7 +1,8 @@
 //! media — 素材创作媒体生成适配器层(素材创作波:视频/音频/3D 网格)。
 //!
 //! 平行于 backends.rs 的 text2img 面,不动现有 GenBackend trait(不波及 gen-image-mcp)。
-//! 一条真实供应商实现 + 三条 OpenAI 兼容风格远程骨架:
+//! 本地 ComfyUI H3、真实远程供应商及 OpenAI 兼容风格适配器:
+//! - comfyui-minimax-h3: 本机 ComfyUI 原生 H3 工作流，单次提交 → 轮询 → 下载 MP4；无需 key。
 //! - meshy(3D 默认供应商,真实 API):POST {endpoint}/openapi/v2/text-to-3d(preview→refine
 //!   两阶段)/ POST {endpoint}/openapi/v1/image-to-3d,建任务 → 轮询 status → 下载 model_urls.glb
 //! - remote-video-compatible: POST {endpoint}/v1/videos/generations → data[] b64_json/url(mp4);
@@ -10,12 +11,20 @@
 //!   music POST {endpoint}/v1/music/generations → data[](mp3)
 //! - remote-mesh-compatible: POST {endpoint}/v1/meshes/generations → data[](glb),自建/兼容端点兜底
 //! 配置复用 gen-backends.json(BackendEntry)与 keystore(键 = 适配器 id);
-//! 条目缺失 / endpoint / key 未配 → configured=false,调用显式 GEN_BACKEND_NOT_CONFIGURED
+//! 条目缺失或所需连接信息未配 → configured=false,调用显式 GEN_BACKEND_NOT_CONFIGURED
+//! 本地 H3 configured 仅表示已启用且地址有效，生成前另行检查服务节点和权重文件名。
 //! (诚实占位,不伪造产物)。错误映射照 remote.rs:429 → GEN_RATE_LIMITED,其余 → GEN_BACKEND_ERROR。
 //! 红线 R-5:密钥只进 Authorization 头,错误信息不回显密钥/请求头(供应商错误体回显前经 redact_key)。
 
 use base64::Engine;
 use serde_json::{json, Value};
+
+mod aliyun_minimax;
+pub use aliyun_minimax::{AliyunMiniMaxVideo, ALIYUN_MINIMAX_VIDEO_ID};
+mod xzapi;
+pub use xzapi::{XzapiVideo, XZAPI_VIDEO_ID};
+mod comfyui_h3;
+pub use comfyui_h3::{ComfyuiMiniMaxH3, COMFYUI_MINIMAX_H3_ID};
 
 use crate::config::GenConfig;
 use crate::keystore::Keystore;
@@ -95,7 +104,7 @@ impl MediaArtifact {
 /// 媒体后端适配器接口(平行 GenBackend;capabilities.kinds 如实)。
 pub trait MediaBackend {
     fn id(&self) -> &str;
-    /// local | remote(当前仅 remote 骨架)。
+    /// local | remote。
     fn kind(&self) -> &str;
     fn configured(&self, cfg: &GenConfig, keys: &Keystore) -> bool;
     fn capabilities(&self) -> Value;
@@ -114,7 +123,15 @@ pub const REMOTE_MESH_ID: &str = "remote-mesh-compatible";
 /// media 注册表。顺序即优先级:resolve_backend 无显式 id 时取首个已配置者,
 /// 故 meshy 排在 remote-mesh-compatible 之前 = 3D 生成默认供应商。
 pub fn media_registry() -> Vec<Box<dyn MediaBackend>> {
-    vec![Box::new(RemoteVideo), Box::new(RemoteAudio), Box::new(MeshyMesh), Box::new(RemoteMesh)]
+    let mut backends = builtin_media_registry();
+    if let Ok(profiles) = crate::profiles::Profiles::load() {
+        backends.extend(profiles.profiles.iter().filter_map(crate::profiles::media_backend));
+    }
+    backends
+}
+
+pub fn builtin_media_registry() -> Vec<Box<dyn MediaBackend>> {
+    vec![Box::new(ComfyuiMiniMaxH3), Box::new(XzapiVideo), Box::new(AliyunMiniMaxVideo), Box::new(RemoteVideo), Box::new(RemoteAudio), Box::new(MeshyMesh), Box::new(RemoteMesh)]
 }
 
 /// 按 id 查 media 适配器。
@@ -155,7 +172,7 @@ pub fn resolve_backend(
         if !b.configured(cfg, keys) {
             return Err(GenError::new(
                 GEN_BACKEND_NOT_CONFIGURED,
-                format!("后端 {id} 未配置(需 enabled + endpoint + key)"),
+                format!("后端 {id} 未配置(需启用并完成该后端的连接设置)"),
             ));
         }
         return Ok(b);
@@ -1351,7 +1368,10 @@ mod tests {
         let ids = |kind| {
             backends_for_kind(kind).iter().map(|b| b.id().to_string()).collect::<Vec<_>>()
         };
-        assert_eq!(ids(MediaKind::Video), vec![REMOTE_VIDEO_ID.to_string()]);
+        assert_eq!(
+            ids(MediaKind::Video),
+            vec![COMFYUI_MINIMAX_H3_ID.to_string(), XZAPI_VIDEO_ID.to_string(), ALIYUN_MINIMAX_VIDEO_ID.to_string(), REMOTE_VIDEO_ID.to_string()]
+        );
         assert_eq!(ids(MediaKind::Tts), vec![REMOTE_AUDIO_ID.to_string()]);
         assert_eq!(ids(MediaKind::Music), vec![REMOTE_AUDIO_ID.to_string()]);
         // meshy 在前 = mesh 类默认供应商(resolve_backend 取首个已配置者)。

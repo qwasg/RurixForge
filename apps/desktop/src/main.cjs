@@ -1,20 +1,24 @@
 'use strict';
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const { isAllowedSubframeUrl } = require('./frameGuard.cjs');
 
-const HOST_ORIGIN = 'http://127.0.0.1:3080';
+const desktopHostPort = Number(process.env.FORGE_HOST_PORT);
+const HOST_ORIGIN = `http://127.0.0.1:${Number.isInteger(desktopHostPort) && desktopHostPort > 0 && desktopHostPort < 65536 ? desktopHostPort : 3080}`;
 const HEALTH_URL = `${HOST_ORIGIN}/api/forge/health`;
 const HEALTH_INTERVAL_MS = 250;
 const HEALTH_TIMEOUT_MS = 30_000;
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const hostEntry = path.join(repoRoot, 'packages', 'host', 'dist', 'index.js');
-const evidenceDir = path.join(__dirname, '..', 'evidence');
 const isSmoke = process.env.FORGE_SMOKE === '1';
+const evidenceDir = isSmoke && process.env.FORGE_SMOKE_EVIDENCE_DIR
+  ? path.resolve(process.env.FORGE_SMOKE_EVIDENCE_DIR)
+  : path.join(__dirname, '..', 'evidence');
 // 冒烟场景:shell(默认,F7 wave.3 新壳)| chat(F7 wave.4 聊天)| settings(F7 wave.5 设置体系)
 // | workbench(F7 wave.5 workbench)| editor | assets | nodegraph | gen | console-metrics
 // F7 wave.3 留痕:home 场景退役(旧 Home 视图随 D-F7-D 下线);
@@ -184,14 +188,22 @@ const OS_CAPTURE_DONE_FLAG = path.join(evidenceDir, 'os-capture-done.flag');
 const presenter = {
   proc: null,
   ready: false,
+  // texW/texH = 共享 buffer 的实际尺寸(engine-host 会钳到 1920×1080);reqW/reqH = 请求的共享尺寸(= 推流尺寸,CSS px);
+  // winW/winH = presenter 子窗口尺寸(设备像素)。
   texW: 0,
   texH: 0,
+  reqW: 0,
+  reqH: 0,
+  winW: 0,
+  winH: 0,
   x: 0,
   y: 0,
   statTimer: null,
   evidenceWritten: false,
   presented: 0,
   rect: null,
+  workspaceId: null,
+  shareOpen: false,
   chain: Promise.resolve(),
   readyWaiters: [],
 };
@@ -201,9 +213,13 @@ function presenterExe() {
 }
 
 /** host(3080)MCP 调用(本机代理,无需 JWT);返回 content[0].text 二次解析结果。 */
-function mcpCallHost(tool, args) {
+function mcpCallHost(tool, args, workspaceId) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ tool, arguments: args });
+    const body = JSON.stringify({
+      tool,
+      arguments: args,
+      ...(typeof workspaceId === 'string' && workspaceId !== '' ? { workspaceId } : {}),
+    });
     const req = http.request(
       `${HOST_ORIGIN}/api/forge/mcp/call`,
       {
@@ -234,7 +250,8 @@ function mcpCallHost(tool, args) {
       }
     );
     req.on('error', reject);
-    req.setTimeout(15000, () => req.destroy(new Error('mcp call timed out')));
+    // 引擎 MCP 冷启动最多 90s + 工具响应最多 40s，与 host 代理预算一致。
+    req.setTimeout(tool.startsWith('mcp__engine-scene__') ? 135000 : 15000, () => req.destroy(new Error('mcp call timed out')));
     req.write(body);
     req.end();
   });
@@ -246,6 +263,18 @@ function presenterWrite(line) {
   } catch {
     // 进程已退,静默(canvas 腿兜底)
   }
+}
+
+/**
+ * 02 §8.4:presenter 只认 7 段 `bind buf <buffer> <fence> <w> <h> <rowPitch>`(viewport-presenter main.rs parse_cmd);
+ * 旧的 6 段 `bind tex|heap …` 已随纹理共享退役。尺寸必须用 engine-host 实际建的 share.width/height
+ * (请求尺寸超过 1920×1080 时会被钳,presenter 按它校验行距)。
+ */
+function presenterBind(share) {
+  if (share.handleKind !== 'buffer') throw new Error(`unexpected handleKind ${share.handleKind}`);
+  presenterWrite(`bind buf ${share.texHandle} ${share.fenceHandle} ${share.width} ${share.height} ${share.rowPitch}`);
+  presenter.texW = share.width;
+  presenter.texH = share.height;
 }
 
 /** 解析 presenter stdout 行:PRESENTER_READY / STAT presented=N rect=x,y,w,h */
@@ -272,7 +301,7 @@ async function maybeWriteRectEvidence() {
     const f = await mcpCallHost('mcp__engine-scene__viewport_frame', {
       width: presenter.texW,
       height: presenter.texH,
-    });
+    }, presenter.workspaceId);
     const bin = Buffer.from(f.pixelsB64, 'base64');
     const cx = Math.floor(f.width / 2);
     const cy = Math.floor(f.height / 2);
@@ -298,17 +327,32 @@ async function maybeWriteRectEvidence() {
 async function syncPresenterInner(b) {
   if (quitting || !mainWindow || useOffscreen) return;
   if (!b || b.visible === false || !(b.w > 0) || !(b.h > 0)) {
-    stopPresenter();
+    await stopPresenter();
     return;
   }
   const exe = presenterExe();
   if (!exe) return; // 未构建:canvas 腿独立可用,不噪声
 
+  const workspaceId = typeof b.workspaceId === 'string' && b.workspaceId !== '' ? b.workspaceId : null;
+  if (presenter.proc && presenter.workspaceId !== workspaceId) {
+    // 工作区切换必须先释放旧项目的共享缓冲，再为新项目建立 presenter。
+    await stopPresenter();
+  }
   const dpr = b.dpr > 0 ? b.dpr : 1;
   const x = Math.round(b.x * dpr);
   const y = Math.round(b.y * dpr);
   const w = Math.max(16, Math.round(b.w * dpr));
   const h = Math.max(16, Math.round(b.h * dpr));
+  // 优先使用 renderer 按当前真实能力计算出的推流尺寸；兼容旧 preload 时再按协议上限推导。
+  const streamScale = Math.min(1, 1280 / Math.max(1, b.w), 720 / Math.max(1, b.h));
+  const reportedW = Number(b.streamW);
+  const reportedH = Number(b.streamH);
+  const sw = Number.isFinite(reportedW) && reportedW > 0
+    ? Math.min(1280, Math.max(16, Math.round(reportedW)))
+    : Math.min(1280, Math.max(16, Math.round(b.w * streamScale)));
+  const sh = Number.isFinite(reportedH) && reportedH > 0
+    ? Math.min(720, Math.max(16, Math.round(reportedH)))
+    : Math.min(720, Math.max(16, Math.round(b.h * streamScale)));
 
   if (!presenter.proc) {
     const hwnd = mainWindow.getNativeWindowHandle().readBigUInt64LE(0).toString();
@@ -325,7 +369,7 @@ async function syncPresenterInner(b) {
       while (i !== -1) {
         const line = outBuf.slice(0, i).replace(/\r$/, '').trim();
         outBuf = outBuf.slice(i + 1);
-        if (line) onPresenterLine(line);
+        if (line && presenter.proc === proc) onPresenterLine(line);
         i = outBuf.indexOf('\n');
       }
     });
@@ -333,34 +377,43 @@ async function syncPresenterInner(b) {
     proc.on('exit', (code) => {
       smokeLog(`presenter exited code=${code}`);
       if (presenter.proc === proc) {
-        presenter.proc = null;
         presenter.ready = false;
+        presenter.readyWaiters.splice(0).forEach((resolve) => resolve(false));
+        // Keep ownership until queued cleanup finishes. Closing outside the chain
+        // can race a new shareOpen in the same workspace and close its new buffer.
+        presenter.chain = presenter.chain.then(async () => {
+          if (presenter.proc === proc) await stopPresenter();
+        }).catch((err) => smokeLog(`presenter exit cleanup: ${err.message}`));
       }
     });
     // 等 PRESENTER_READY(有界 10s)
     const ok = await new Promise((resolve) => {
       const timer = setTimeout(() => resolve(false), 10_000);
-      presenter.readyWaiters.push(() => {
+      presenter.readyWaiters.push((ready = true) => {
         clearTimeout(timer);
-        resolve(true);
+        resolve(ready);
       });
     });
     if (!ok || presenter.proc !== proc) {
       smokeLog('presenter 就绪超时,回退 canvas 腿');
-      stopPresenter();
+      await stopPresenter();
       return;
     }
     const share = await mcpCallHost('mcp__engine-scene__viewport_share_open', {
       pid: proc.pid,
-      width: w,
-      height: h,
-    });
-    presenterWrite(`bind ${share.handleKind === 'heap' ? 'heap' : 'tex'} ${share.texHandle} ${share.fenceHandle} ${w} ${h}`);
-    presenter.texW = w;
-    presenter.texH = h;
+      width: sw,
+      height: sh,
+    }, workspaceId);
+    presenter.workspaceId = workspaceId;
+    presenter.shareOpen = true;
+    presenterBind(share);
+    presenter.reqW = sw;
+    presenter.reqH = sh;
+    presenter.winW = w;
+    presenter.winH = h;
     presenter.x = x;
     presenter.y = y;
-    smokeLog(`presenter embedded: pid=${proc.pid} ${w}x${h} tex=${share.texHandle} kind=${share.handleKind || '?'}`);
+    smokeLog(`presenter embedded: pid=${proc.pid} window=${w}x${h} share=${share.width}x${share.height} pitch=${share.rowPitch} tex=${share.texHandle} kind=${share.handleKind || '?'}`);
     // 可见冒烟:轮询 stat 直至 presented>=3 写证据
     if (isSmokeVisible && !presenter.statTimer) {
       presenter.statTimer = setInterval(() => presenterWrite('stat'), 500);
@@ -369,41 +422,64 @@ async function syncPresenterInner(b) {
   }
 
   if (!presenter.ready) return; // 正在启动,下轮 bounds 再同步
-  if (w !== presenter.texW || h !== presenter.texH) {
-    // 尺寸变化:重建共享纹理 + 重 bind(presenter 侧 swapchain 随 bind 重建)
-    await mcpCallHost('mcp__engine-scene__viewport_share_close', {}).catch(() => {});
+  if (sw !== presenter.reqW || sh !== presenter.reqH) {
+    // 尺寸变化:重建共享 buffer + 重 bind(presenter 侧 swapchain 随 bind 重建)
+    if (presenter.shareOpen) {
+      await mcpCallHost('mcp__engine-scene__viewport_share_close', {}, presenter.workspaceId).catch(() => {});
+      presenter.shareOpen = false;
+    }
     const share = await mcpCallHost('mcp__engine-scene__viewport_share_open', {
       pid: presenter.proc.pid,
-      width: w,
-      height: h,
-    });
-    presenterWrite(`bind ${share.handleKind === 'heap' ? 'heap' : 'tex'} ${share.texHandle} ${share.fenceHandle} ${w} ${h}`);
-    presenter.texW = w;
-    presenter.texH = h;
+      width: sw,
+      height: sh,
+    }, workspaceId);
+    presenter.workspaceId = workspaceId;
+    presenter.shareOpen = true;
+    presenterBind(share);
+    presenter.reqW = sw;
+    presenter.reqH = sh;
   }
-  if (x !== presenter.x || y !== presenter.y) {
-    presenterWrite(`move ${x} ${y} ${presenter.texW} ${presenter.texH}`);
+  if (x !== presenter.x || y !== presenter.y || w !== presenter.winW || h !== presenter.winH) {
+    // 子窗口按设备像素覆盖视口面板;共享 buffer 尺寸不同时由 swapchain 拉伸。
+    presenterWrite(`move ${x} ${y} ${w} ${h}`);
     presenter.x = x;
     presenter.y = y;
+    presenter.winW = w;
+    presenter.winH = h;
   }
 }
 
 function syncPresenter(b) {
   presenter.chain = presenter.chain
     .then(() => syncPresenterInner(b))
-    .catch((err) => smokeLog(`syncPresenter: ${err.message}`));
+    .catch(async (err) => {
+      smokeLog(`syncPresenter: ${err.message}`);
+      await stopPresenter();
+    });
 }
 
-function stopPresenter() {
+async function stopPresenter() {
   if (presenter.statTimer) {
     clearInterval(presenter.statTimer);
     presenter.statTimer = null;
   }
   const p = presenter.proc;
+  const shareOpen = presenter.shareOpen;
+  const workspaceId = presenter.workspaceId;
   presenter.proc = null;
   presenter.ready = false;
+  presenter.readyWaiters.splice(0).forEach((resolve) => resolve(false));
+  presenter.presented = 0;
+  presenter.rect = null;
+  presenter.evidenceWritten = false;
   presenter.texW = 0;
   presenter.texH = 0;
+  presenter.reqW = 0;
+  presenter.reqH = 0;
+  presenter.winW = 0;
+  presenter.winH = 0;
+  presenter.workspaceId = null;
+  presenter.shareOpen = false;
   if (p && p.exitCode === null && p.signalCode === null) {
     try {
       p.stdin.write('close\n');
@@ -418,8 +494,10 @@ function stopPresenter() {
       }
     }, 800);
   }
-  // 共享纹理关闭幂等(host 不在则静默)
-  mcpCallHost('mcp__engine-scene__viewport_share_close', {}).catch(() => {});
+  // 只关闭本 presenter 所属工作区的共享 buffer；无已打开 buffer 时不触碰其它工作区。
+  if (shareOpen) {
+    await mcpCallHost('mcp__engine-scene__viewport_share_close', {}, workspaceId).catch(() => {});
+  }
 }
 
 function smokeLog(msg) {
@@ -1064,6 +1142,30 @@ async function runSmokeScenario() {
     return;
   }
   if (smokeScenario !== 'editor') return;
+  if (process.env.FORGE_SMOKE_USER_DATA) {
+    // 独立测试账户没有登录态：仅走产品已有的 BYO 入口，不伪造账户或修改持久凭据。
+    const localEntry = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const account = window.__forgeShell?.stores?.account;
+      if (!account) throw new Error('account smoke seam unavailable');
+      await account.getState().refreshStatus();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const button = document.querySelector('[data-testid="auth-byo"]');
+      if (button) { button.click(); return 'byo'; }
+      const status = account.getState().status;
+      if (status?.loggedIn || status?.byoConfigured || status?.devMock) return 'configured';
+      throw new Error('本地测试入口不可用，保留登录限制');
+    })()`);
+    if (localEntry === 'byo') {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const closed = await mainWindow.webContents.executeJavaScript(`(() => {
+        const back = document.querySelector('[data-testid="settings-back"]');
+        if (!back) return false;
+        back.click(); return true;
+      })()`);
+      if (!closed) throw new Error('BYO 设置页没有返回按钮');
+    }
+    smokeLog(`scenario=editor isolated profile entry: ${localEntry}`);
+  }
   const clicked = await mainWindow.webContents.executeJavaScript(OPEN_EDITOR_JS);
   smokeLog(`scenario=editor openEditor seam: ${clicked}`);
   if (!clicked) throw new Error('__forgeShell.openEditor seam 不存在');
@@ -1071,12 +1173,65 @@ async function runSmokeScenario() {
   await new Promise((resolve) => setTimeout(resolve, 4000));
 }
 
+// 窗口外框:隐藏系统标题栏与默认菜单,只留 renderer 自绘的 36px TitleBar。
+// Windows/Linux 走 titleBarOverlay(系统绘制三钮,保留贴靠布局),颜色由 renderer 随主题下发;
+// macOS 走 hiddenInset 红绿灯。renderer 经 preload 的 win.chrome 得知当前形态。
+const TITLEBAR_H = 36;
+const IS_MAC = process.platform === 'darwin';
+// 首帧前 renderer 还没下发主题,先按系统明暗取 forge 预设的标题栏底色/次级字色。
+const OVERLAY_LIGHT = { color: '#F4F4F4', symbolColor: '#595A5D', height: TITLEBAR_H };
+const OVERLAY_DARK = { color: '#17181B', symbolColor: '#B1B2B5', height: TITLEBAR_H };
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+
+function installAppMenu() {
+  // macOS 没有 Edit 菜单时 Cmd+C/V 在输入框里失效,留最小角色菜单;其余平台整条去掉。
+  if (IS_MAC) {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }])
+    );
+  } else {
+    Menu.setApplicationMenu(null);
+  }
+}
+
+// agentd canonicalize 出的 Windows 根带 \\?\ 扩展前缀,资源管理器不认,展示/定位前摘掉。
+function stripExtendedPrefix(p) {
+  if (p.startsWith('\\\\?\\UNC\\')) return `\\\\${p.slice(8)}`;
+  if (p.startsWith('\\\\?\\')) return p.slice(4);
+  return p;
+}
+
+function isDirectory(p) {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isExternalHttpUrl(raw) {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    const appOrigin = new URL(process.env.FORGE_DEV_URL || HOST_ORIGIN).origin;
+    return url.origin !== appOrigin;
+  } catch {
+    return false;
+  }
+}
+
 function createWindow() {
+  const dark = nativeTheme.shouldUseDarkColors;
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
+    icon: path.join(repoRoot, 'packages', 'client', 'public', process.platform === 'win32' ? 'favicon.ico' : 'logo.png'),
     show: !isSmoke || isSmokeVisible,
-    backgroundColor: '#1e1e1e',
+    backgroundColor: dark ? '#191A1D' : '#FFFFFF',
+    titleBarStyle: IS_MAC ? 'hiddenInset' : 'hidden',
+    ...(IS_MAC
+      ? { trafficLightPosition: { x: 12, y: 11 } }
+      : { titleBarOverlay: dark ? OVERLAY_DARK : OVERLAY_LIGHT }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -1097,6 +1252,45 @@ function createWindow() {
   // 窗口控制 IPC(对齐旧 apps/ide preload 契约 win.*)
   mainWindow.on('maximize', () => mainWindow.webContents.send('win:maximized-changed', true));
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('win:maximized-changed', false));
+
+  // 外链(Markdown 链接、Codex 登录页、资料来源)一律交给系统浏览器,不在应用内开新窗口;
+  // 同源导航(重载)照常,跨源导航拦下转外部打开。
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalHttpUrl(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isExternalHttpUrl(url)) return;
+    event.preventDefault();
+    void shell.openExternal(url);
+  });
+  // D-044:子框架(UltraPlan 试玩 Demo iframe)只许留在回环 demo host 的 /u/… 上;主框架仍归上面的
+  // will-navigate。拦下即止,不转 shell.openExternal——生成的 Demo 不得借此拉起系统浏览器或在页签里开任意站点。
+  // 开发态应用源是 Vite,但 host(HOST_ORIGIN)仍托管构建壳与代理 API,两个源都不许进子框架。
+  // 服务端 30x 不发 will-frame-navigate,只发 will-redirect(preventDefault 取消整次导航),同一判定再挡一道。
+  const guardSubframeNavigation = (details) => {
+    if (details.isMainFrame) return;
+    if (isAllowedSubframeUrl(details.url, [process.env.FORGE_DEV_URL || HOST_ORIGIN, HOST_ORIGIN])) return;
+    details.preventDefault();
+  };
+  mainWindow.webContents.on('will-frame-navigate', guardSubframeNavigation);
+  mainWindow.webContents.on('will-redirect', guardSubframeNavigation);
+
+  // 默认菜单去掉后开发态补回调试键:F12 / Ctrl+Shift+I 开关 DevTools,Ctrl+R / F5 重载。
+  if (!app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const key = input.key.toLowerCase();
+      const mod = input.control || input.meta;
+      if (key === 'f12' || (mod && input.shift && key === 'i')) {
+        event.preventDefault();
+        mainWindow.webContents.toggleDevTools();
+      } else if (key === 'f5' || (mod && !input.shift && key === 'r')) {
+        event.preventDefault();
+        mainWindow.webContents.reload();
+      }
+    });
+  }
 
   if (isSmoke) {
     let settled = false;
@@ -1144,6 +1338,32 @@ async function main() {
   if (isSmoke) smokeLog('main() enter');
   if (isSmoke) smokeLog(`flags: isSmoke=${isSmoke} visible=${isSmokeVisible} offscreen=${useOffscreen} presenterExe=${presenterExe() || 'none'}`);
   ipcMain.handle('forge:health', () => httpGetJson(HEALTH_URL));
+  ipcMain.handle('auth:open-external', async (event, channel, raw) => {
+    const hosts = {
+      codex: ['auth.openai.com', 'login.openai.com', 'chatgpt.com', 'www.chatgpt.com'],
+      antigravity: ['accounts.google.com', 'antigravity.google'],
+      kimi: ['kimi.com', 'www.kimi.com', 'kimi.ai', 'www.kimi.ai', 'auth.kimi.com', 'auth.kimi.ai'],
+      glm: ['bigmodel.cn', 'www.bigmodel.cn', 'open.bigmodel.cn'],
+    };
+    if (!mainWindow || event.sender !== mainWindow.webContents || typeof raw !== 'string' ||
+        !Object.hasOwn(hosts, channel)) throw new Error('Invalid official authorization request');
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+        !hosts[channel].includes(url.hostname)) throw new Error('Invalid official authorization URL');
+    await shell.openExternal(url.href);
+  });
+  ipcMain.handle('codex:open-task', async (event, raw) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || typeof raw !== 'string') {
+      throw new Error('Invalid Codex task request');
+    }
+    const url = new URL(raw);
+    if (url.protocol !== 'codex:' || url.hostname !== 'threads' || url.pathname !== '/new' ||
+        url.username || url.password || url.port || !url.searchParams.get('path') ||
+        !url.searchParams.get('prompt')) {
+      throw new Error('Only a Codex new-task link is supported');
+    }
+    await shell.openExternal(url.href);
+  });
   ipcMain.on('win:minimize', () => mainWindow && mainWindow.minimize());
   ipcMain.on('win:toggle-maximize', () => {
     if (!mainWindow) return;
@@ -1151,7 +1371,35 @@ async function main() {
     else mainWindow.maximize();
   });
   ipcMain.on('win:close', () => mainWindow && mainWindow.close());
-  ipcMain.on('viewport:bounds', (_e, b) => syncPresenter(b));
+  // 主题切换时 renderer 下发标题栏底色与符号色,系统三钮跟着换色(macOS 红绿灯无需配色)。
+  ipcMain.on('win:set-overlay-theme', (event, theme) => {
+    if (!mainWindow || IS_MAC || event.sender !== mainWindow.webContents) return;
+    if (!theme || !HEX6.test(theme.color) || !HEX6.test(theme.symbolColor)) return;
+    try {
+      mainWindow.setTitleBarOverlay({
+        color: theme.color,
+        symbolColor: theme.symbolColor,
+        height: TITLEBAR_H,
+      });
+    } catch {
+      // 离屏冒烟窗口等不支持 overlay 的形态:保持系统默认色
+    }
+  });
+  ipcMain.on('viewport:bounds', (event, b) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !b || typeof b !== 'object') return;
+    const finite = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
+    syncPresenter({
+      x: finite(b.x),
+      y: finite(b.y),
+      w: finite(b.w),
+      h: finite(b.h),
+      dpr: finite(b.dpr, 1),
+      streamW: finite(b.streamW),
+      streamH: finite(b.streamH),
+      workspaceId: typeof b.workspaceId === 'string' ? b.workspaceId : null,
+      visible: b.visible === true,
+    });
+  });
 
   // F2 wave.3:Assets 面板右键菜单桌面能力(仅桌面端可用;web 端菜单项如实禁用)。
   // 导入到此处:系统文件对话框选源文件(多选),返回绝对路径列表,renderer 再走 asset_import。
@@ -1178,10 +1426,23 @@ async function main() {
     return r.canceled || r.filePaths.length === 0 ? null : r.filePaths[0];
   });
 
-  // 在文件夹中显示:rel = Content 相对路径,主进程拼项目根(demo)后 showItemInFolder。
-  ipcMain.on('assets:show-in-folder', (_e, rel) => {
+  // 在文件夹中显示:rel = Content 相对路径;workspaceRoot = renderer 当前工作区根(可缺省)。
+  // 项目根判定与 agentd scope::project_root_of 同规则:工作区含 forge.toml 或 Content/ 即项目本身,
+  // 否则回落 projects/demo。拼出的路径必须仍在该项目的 Content 之内。
+  ipcMain.on('assets:show-in-folder', (_e, rel, workspaceRoot) => {
     if (typeof rel !== 'string' || rel.includes('..') || rel.includes(':')) return;
-    const abs = path.join(repoRoot, 'projects', 'demo', 'Content', rel);
+    const demoRoot = path.join(repoRoot, 'projects', 'demo');
+    let projectRoot = demoRoot;
+    if (typeof workspaceRoot === 'string' && workspaceRoot.trim() !== '') {
+      const root = stripExtendedPrefix(workspaceRoot.trim());
+      const looksLikeProject =
+        path.isAbsolute(root) &&
+        (fs.existsSync(path.join(root, 'forge.toml')) || isDirectory(path.join(root, 'Content')));
+      if (looksLikeProject) projectRoot = root;
+    }
+    const contentRoot = path.resolve(projectRoot, 'Content');
+    const abs = path.resolve(contentRoot, rel);
+    if (!abs.startsWith(contentRoot + path.sep)) return;
     if (fs.existsSync(abs)) shell.showItemInFolder(abs);
   });
 
@@ -1206,9 +1467,15 @@ async function main() {
     return;
   }
 
+  installAppMenu();
   createWindow();
 }
 
+// Isolated smoke instances must not acquire the interactive user's singleton lock
+// or modify their cookies, workspace selection and local storage.
+if (isSmoke && process.env.FORGE_SMOKE_USER_DATA) {
+  app.setPath('userData', path.resolve(process.env.FORGE_SMOKE_USER_DATA));
+}
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   quitting = true;

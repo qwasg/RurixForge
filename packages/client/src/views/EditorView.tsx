@@ -19,9 +19,11 @@ import { ViewportCanvas } from '@/components/editor/ViewportCanvas';
 import AssetsPanel from '@/components/editor/AssetsPanel';
 import DesignBoardView from '@/components/editor/DesignBoardView';
 import NodeGraphView from '@/components/editor/NodeGraphView';
+import ShaderGraphView from '@/components/editor/ShaderGraphView';
+import EditorChanges from '@/components/editor/EditorChanges';
 import StudioBoardView from '@/components/studio/StudioBoardView';
 import { useGraphStore } from '@/lib/graphStore';
-import { useEditorStore, type CenterTab, type GizmoMode, type PlayState } from '@/lib/editorStore';
+import { useEditorStore, type CenterTab, type GizmoMode } from '@/lib/editorStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
 
 /**
@@ -64,6 +66,7 @@ function SceneActions() {
       <button type="button" title="Redo" className={iconBtn} onClick={() => void redo()}>
         <Redo2 size={13} strokeWidth={1.8} />
       </button>
+      <EditorChanges />
       <span className="mx-0.5 h-4 w-px bg-edge-strong" />
       <button type="button" title="Save Scene" className={iconBtn} onClick={() => void saveScene()}>
         <Save size={13} strokeWidth={1.8} />
@@ -140,16 +143,11 @@ function PlayControls() {
   );
 }
 
-const PIE_DOT: Record<PlayState, string> = {
-  edit: 'bg-dot-idle',
-  play_running: 'bg-dot-done',
-  play_paused: 'bg-info',
-};
-
 /** 中央区同位页签(画板波:+「画板」自由流程图;素材创作波:+「素材创作」AI 创作板) */
 const CENTER_TABS: Array<{ id: CenterTab; label: string }> = [
   { id: 'viewport', label: 'Viewport' },
   { id: 'nodegraph', label: 'NodeGraph' },
+  { id: 'shadergraph', label: 'Shader Graph' },
   { id: 'design', label: '画板' },
   { id: 'studio', label: '素材创作' },
 ];
@@ -160,7 +158,6 @@ function ViewportPanel() {
   const gizmo = useEditorStore((s) => s.gizmo);
   const setGizmo = useEditorStore((s) => s.setGizmo);
   const playState = useEditorStore((s) => s.playState);
-  const sceneName = useEditorStore((s) => s.sceneName);
   const panes = useEditorStore((s) => s.editorPanes);
   const togglePane = useEditorStore((s) => s.toggleEditorPane);
 
@@ -219,17 +216,12 @@ function ViewportPanel() {
         <div className="relative min-h-0 flex-1 bg-ink">
           {/* GPU 场景实渲染帧 + 点选/相机/gizmo(wave.2,RD-F1-001 回填) */}
           <ViewportCanvas />
-          {/* PIE 状态条(play_state 实测) */}
-          <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-black/40 px-2 py-1">
-            <span className={cn('h-1.5 w-1.5 rounded-full', PIE_DOT[playState])} />
-            <span className="font-mono text-2xs text-white/70">{playState}</span>
-            <span className="flex-1" />
-            <span className="truncate text-2xs text-white/40">{sceneName || 'Untitled'}</span>
-          </div>
         </div>
       ) : centerTab === 'nodegraph' ? (
         /* G NodeGraph 同位页签(F4 wave.4):图查看/微调/保存 */
         <NodeGraphView />
+      ) : centerTab === 'shadergraph' ? (
+        <ShaderGraphView />
       ) : centerTab === 'design' ? (
         /* 画板同位页签(画板波):角色/地图节点拉线,交互在线上,交给 AI 制作 */
         <DesignBoardView />
@@ -256,8 +248,41 @@ export default function EditorView() {
   // 进视图即拉一次真实数据;空场景 → 默认加载迷宫(打开即见真实工程,非空壳)。
   // 工作区切换 = 视口所连 engine-host 换成新项目的实例,场景/实体/相机/选中全部按新项目重拉。
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const documentStatus = useEditorDocumentSync((s) => s.status);
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    const disposeDocuments = bindEditorDocuments(activeWorkspaceId);
+    useGraphStore.getState().bindWorkspace(activeWorkspaceId);
+    const disposeGraphs = bindEditorGraphDocuments(activeWorkspaceId);
+    const disposeSelection = bindEditorSelection(activeWorkspaceId);
+    const dispose = () => { disposeSelection(); disposeGraphs(); disposeDocuments(); };
+    if (typeof EventSource === 'undefined') return dispose;
+    const stream = new EventSource(`/api/forge/editor/events?workspaceId=${encodeURIComponent(activeWorkspaceId)}`);
+    const accept = editorEventCursor();
+    const changed = (event: MessageEvent) => {
+      if (useWorkspaceStore.getState().activeWorkspaceId !== activeWorkspaceId) return;
+      try {
+        const data = JSON.parse(event.data);
+        const payload = data.payload ?? data;
+        if (data.workspaceId && data.workspaceId !== activeWorkspaceId) return;
+        const disposition = accept(data);
+        if (disposition === 'ignore') return;
+        window.dispatchEvent(new Event('forge:editor-changes'));
+        const domains: string[] = disposition === 'reset' ? ['scene', 'assets', 'blueprint', 'studio', 'shaderGraph', 'logicGraph', 'graphs'] : payload.domains ?? [];
+        if (domains.includes('scene')) { void refreshSummary(); void loadEntities(); }
+        if (domains.includes('assets')) void useAssetStore.getState().load();
+        for (const kind of ['blueprint', 'studio', 'shaderGraph', 'logicGraph']) if (domains.includes(kind) || payload.kind === kind || (domains.includes('graphs') && kind.endsWith('Graph'))) window.dispatchEvent(new Event(`forge:editor-document:${kind}`));
+        if (domains.includes('graphs')) { const state = useGraphStore.getState(); if (state.graphPath && !state.dirty) void state.loadByPath(state.graphPath); }
+        if (payload.reference) void revealAnnotation({ id: 'editor-reveal', reference: payload.reference });
+      } catch { /* Malformed event cannot mutate the editor. The revision poll recovers gaps. */ }
+    };
+    stream.addEventListener('editor.changed', changed); stream.addEventListener('editor.reset', changed); stream.addEventListener('editor.reveal', changed);
+    stream.onmessage = changed;
+    return () => { stream.close(); dispose(); };
+  }, [activeWorkspaceId, refreshSummary, loadEntities]);
   useEffect(() => {
     useEditorStore.getState().selectEntity(null);
+    useEditorStore.setState({ sceneGuid: null, hostEpoch: null, contentRevision: null });
     void ensureDefaultScene().then(() => loadEntities());
     void refreshSummary();
     void refreshPlayState();
@@ -281,6 +306,7 @@ export default function EditorView() {
     <div className="flex h-full min-h-0 min-w-[320px] flex-col overflow-x-auto bg-shell-bg">
       {/* C Viewport(G NodeGraph 同位) */}
       <ViewportPanel />
+      {Object.entries(documentStatus).filter(([key, state]) => key.startsWith(`${activeWorkspaceId}:`) && state.error).map(([key, state]) => <p key={key} role="alert" className="px-2 py-1 text-xs text-warn">编辑器文档同步失败，草稿已保留：{state.error}</p>)}
 
       {/* B Assets 底栏(占旧 Workbench 位;工具条 PanelBottom 钮开合,偏好持久化) */}
       {panes.assets && (
@@ -294,3 +320,9 @@ export default function EditorView() {
     </div>
   );
 }
+import { bindEditorDocuments, useEditorDocumentSync } from '@/lib/editorDocuments';
+import { revealAnnotation } from '@/lib/editorReferences';
+import { bindEditorSelection } from '@/lib/editorSelection';
+import { editorEventCursor } from '@/lib/editorSync';
+import { bindEditorGraphDocuments } from '@/lib/editorGraphDocuments';
+import { useAssetStore } from '@/lib/assetStore';

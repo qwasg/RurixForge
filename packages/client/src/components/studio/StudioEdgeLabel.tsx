@@ -45,6 +45,7 @@ export default function StudioEdgeLabel({
       className="group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-acc/40 bg-shell-panel px-1.5 py-0.5 shadow-sm"
       style={{ left: x, top: y }}
     >
+      <AnnotationHandle reference={editorReference('studio', { resourceId: 'main', selection: { edgeIds: [edge.id] } })} label={edge.label || '创作引用连线'} />
       <Link2 size={10} strokeWidth={2} className="shrink-0 text-acc" />
       {editing ? (
         <input
@@ -92,3 +93,5 @@ export default function StudioEdgeLabel({
     </div>
   );
 }
+import AnnotationHandle from '../editor/AnnotationHandle';
+import { editorReference } from '@/lib/editorReferences';

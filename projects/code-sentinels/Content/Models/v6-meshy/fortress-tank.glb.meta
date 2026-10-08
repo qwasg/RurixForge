@@ -1,0 +1,26 @@
+guid: c80f8281-172a-4ee3-9642-f52898bcec95
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T12:05:20Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b466-767b-71f1-9894-3a633004543e
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b466-767b-71f1-9894-3a633004543e/output/preview.png?Expires=1789992314&Signature=m4Gd51gxpEXkGI8wjxNk99kETRYZOScY-oa78RATvZ3jiLnG6bOG-eQbiqueAY7MFzYpqGPK~fyK55tOwrjfGK1Vo71u6GJ9P3D4To9fKXAG2ouwhtSvBSqNmcjy65N3DH7X9sZLWvuChBmmLEuJOD6jteQ526~sbowFn2m5oQuW4K24UOhwhb4fxZwIH6zF2WPwGFHeDsXsM7IF5JSYp~lvdPcg3vTpF49tmYc~Bu~qufTO4PeQbHiFpgq1~e6H3mst1ELQ8CRJr2eLM~vj9Otn-DTBDYJD1dDeTQdGM0I6kkaaggE~kTz9yokz02HEoqNW8ABhg7tMMjSwduGblw__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: ''
+build_state: current

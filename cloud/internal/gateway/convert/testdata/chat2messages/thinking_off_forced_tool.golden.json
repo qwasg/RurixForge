@@ -1,0 +1,29 @@
+{
+  "model": "claude-sonnet-4-5",
+  "max_tokens": 8192,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Extract the entities."
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "extract",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "tool",
+    "name": "extract"
+  },
+  "temperature": 1
+}

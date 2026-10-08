@@ -1,0 +1,8 @@
+data: {"id":"chatcmpl-resp_err1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_err1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}
+
+data: {"error":{"message":"Too many requests","type":"upstream_error","code":"429"}}
+
+data: [DONE]
+

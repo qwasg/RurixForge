@@ -9,14 +9,30 @@ import { create } from 'zustand';
  *
  * 差异留痕:参考九页(通用/外观/套餐与用量/Agent/自动补全/模型/规则·技能/工具与 MCP/记忆),
  * 本仓落地五页——套餐/auth(RD-F7-001)、自动补全/工具 MCP/记忆(RD-F7-002)无后端面,不造空页。
+ * D-041 云账户面落地后补上「账户」(套餐/用量/密钥)与「记忆」两页(15 §8.2/§8.3)。
  */
 
-export type SettingsPage = 'appearance' | 'agent' | 'models' | 'skills' | 'about';
+export type SettingsPage =
+  | 'appearance'
+  | 'account'
+  | 'billing'
+  | 'memory'
+  | 'agent'
+  | 'codex'
+  | 'models'
+  | 'generation'
+  | 'skills'
+  | 'about';
 
 export const SETTINGS_PAGES: Array<{ id: SettingsPage; label: string }> = [
   { id: 'appearance', label: '外观' },
+  { id: 'account', label: '账户' },
+  { id: 'billing', label: '套餐与用量' },
+  { id: 'memory', label: '记忆' },
   { id: 'agent', label: 'Agent' },
+  { id: 'codex', label: 'Codex' },
   { id: 'models', label: '模型' },
+  { id: 'generation', label: '生成服务' },
   { id: 'skills', label: '技能' },
   { id: 'about', label: '关于' },
 ];

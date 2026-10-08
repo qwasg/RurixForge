@@ -1,0 +1,40 @@
+{
+  "generator": "Built-in image_gen",
+  "outputs": {
+    "level": "D:/RurixForge/packages/client/public/recommendations/level.png",
+    "plan": "D:/RurixForge/packages/client/public/recommendations/plan.png",
+    "debug": "D:/RurixForge/packages/client/public/recommendations/debug.png",
+    "defense": "D:/RurixForge/packages/client/public/recommendations/defense.png",
+    "logo": "D:/RurixForge/packages/client/public/logo-transparent.png"
+  },
+  "prompts": [
+    {
+      "key": "level",
+      "prompt": "Create one polished landscape illustration for a game-creation app's recommendation card, 1536x1024 composition. Premium tactile miniature diorama, beautifully crafted matte ceramic and soft paper surfaces, subtle fine detail, gentle studio lighting, clean crisp silhouettes, airy muted palette, quiet off-white background extending to all edges. Image must fill a single scene. Keep all important objects within the central 70 percent vertically so a wide card crop still reads well. No text, letters, numbers, logos, watermarks, borders, UI panels or infographic labels. Cohesive with a calm refined creative-tool homepage. Subject: a charming playable side-scrolling platform level as a floating cutaway island, three stepped grassy platforms, ivory stone blocks, a tiny coral flag marking the spawn point, a small winding stream and stylized sage trees. Soft mint, moss and sand with a restrained coral detail. A clear side-on view with subtle dimensional depth. Thoughtful level design, luminous dawn atmosphere.",
+      "transparent_background": false
+    },
+    {
+      "key": "plan",
+      "prompt": "Create one polished landscape illustration for a game-creation app's recommendation card, 1536x1024 composition. Premium tactile miniature diorama, beautifully crafted matte ceramic and soft paper surfaces, subtle fine detail, gentle studio lighting, clean crisp silhouettes, airy muted palette, quiet off-white background extending to all edges. Image must fill a single scene. Keep all important objects within the central 70 percent vertically so a wide card crop still reads well. No text, letters, numbers, logos, watermarks, borders, UI panels or infographic labels. Cohesive with a calm refined creative-tool homepage. Subject: a beautiful tabletop game-design planning diorama: layered cream architectural blueprint sheets, a miniature lavender-and-ivory game world with three distinct stages connected by a thin winding path, small wooden milestone markers and a delicate drafting pencil. Elegant composition seen at a three-quarter angle. Muted lavender, stone gray and warm paper with a tiny amber accent. Clear story of a plan becoming a playable game.",
+      "transparent_background": false
+    },
+    {
+      "key": "debug",
+      "prompt": "Create one polished landscape illustration for a game-creation app's recommendation card, 1536x1024 composition. Premium tactile miniature diorama, beautifully crafted matte ceramic and soft paper surfaces, subtle fine detail, gentle studio lighting, clean crisp silhouettes, airy muted palette, quiet off-white background extending to all edges. Image must fill a single scene. Keep all important objects within the central 70 percent vertically so a wide card crop still reads well. No text, letters, numbers, logos, watermarks, borders, UI panels or infographic labels. Cohesive with a calm refined creative-tool homepage. Subject: a delicate glass magnifying lens hovering over a tiny game scene, revealing a bright coral character sprite on layered teal platforms; beside it a few separated scene layers and neatly aligned component cubes hint at diagnosing rendering. A premium miniature crafted from matte clay and translucent glass, not a computer screen. Muted teal, peach, pale sand, gentle analytical calm. Three-quarter view, elegantly balanced.",
+      "transparent_background": false
+    },
+    {
+      "key": "logo",
+      "prompt": "Precise background-removal edit of the attached RurixForge logo. Extract ONLY the existing black intertwined folded-ribbon symbol. Preserve its exact silhouette, geometry, internal black shading and relative proportions. Remove ALL white pixels of the white rounded square tile, all white background, pale tile outline, outer cast shadow and white fringes, including the white triangular holes inside the ribbon. Those holes and all surrounding space must be truly transparent alpha. No white halo, no white tile, no new shapes, no redesign, no color changes, no text. Center the black ribbon with a narrow transparent margin suitable for a tiny app icon; keep the mark sharp and complete. Output PNG with actual transparent background.",
+      "referenced_image_paths": [
+        "D:/RurixForge/packages/client/public/logo.png"
+      ],
+      "transparent_background": true
+    },
+    {
+      "key": "defense",
+      "prompt": "Create one polished 1536x1024 landscape illustration for a game-creation app's recommendation card. A beautiful miniature clay diorama of a friendly plant-defense game: a floating rectangular lawn with five very clearly separated horizontal defense lanes, several tiny whimsical sage-green plant defenders with rounded seed-pod heads on the left, two friendly non-scary stone-gray wandering creatures at the far right, warm ivory path tiles, a small terracotta flowerpot, a coral flag and small sun token. Completely original creature designs, no branded game characters. Premium tactile matte ceramic and soft paper materials, gentle studio daylight, crisp silhouettes, airy off-white backdrop extending to all edges, muted mint and moss, sand and a tiny coral accent. Low three-quarter view, elegant balanced composition, important subjects within the central 70 percent vertically so a wide card crop works. Cohesive with soft miniature floating-platform and architectural planning illustrations in a calm creative-tool homepage. No text, letters, numbers, logos, labels, borders, watermarks or computer UI. Single image filling a single scene.",
+      "transparent_background": false
+    }
+  ]
+}

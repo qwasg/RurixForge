@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bundleUltraPlanRuntime } from './ultraplan-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -23,4 +24,7 @@ console.log('[build] OK: 上游产物齐备');
 for (const p of requiredArtifacts) {
   console.log(`  - ${p}`);
 }
+const runtime = await bundleUltraPlanRuntime({ repoRoot,
+  outputDir: path.join(repoRoot, 'apps/desktop/dist/ultraplan-runtime') });
+console.log(`[build] UltraPlan runtime: ${runtime.outputDir}`);
 process.exit(0);

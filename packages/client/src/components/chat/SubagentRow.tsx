@@ -1,3 +1,4 @@
+import { cn } from '@/lib/cn';
 import { useChatStore } from '@/lib/chatStore';
 import {
   subagentDispatchSummary,
@@ -5,6 +6,7 @@ import {
   type ChatBlock,
 } from '@/lib/timeline';
 import SubagentParticles from './SubagentParticles';
+import { useCollaborationStore } from '@/lib/collaborationStore';
 
 /**
  * F7 wave.4 子代理极简行(参考 render_subagent_card):状态粒子 + 双行摘要
@@ -22,12 +24,13 @@ export default function SubagentRow({
   const openSubagent = useChatStore((st) => st.openSubagent);
   const cancelRun = useChatStore((st) => st.cancelRun);
   const cancelSubagent = useChatStore((st) => st.cancelSubagent);
+  const member = useCollaborationStore((state) => state.agents.find((agent) => agent.id === block.agentId));
   const top = subagentDispatchSummary(block.label, block.prompt ?? '');
   const bottom = subagentLiveSummary(block.summary, block.work, block.status);
   const running = block.status === 'running';
   // D-036:后台子代理有自己的 run,Stop 只打它一个;同步子代理没有,维持中止父轮原语义。
   const stop = () =>
-    block.detachedRunId ? cancelSubagent(block.detachedRunId) : cancelRun();
+    member?.activeRunId ? cancelSubagent(member.activeRunId) : block.agentId && block.agentRunId ? cancelSubagent(block.agentRunId) : block.detachedRunId ? cancelSubagent(block.detachedRunId) : cancelRun();
 
   return (
     <div
@@ -40,7 +43,10 @@ export default function SubagentRow({
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-px">
         <span className="text-[12.5px] text-fg-2">{top}</span>
-        <span className="text-[11.5px] text-fg-4">{bottom}</span>
+        {/* D-047:运行中末行(实时进展)扫光;self-start 让行宽贴字,亮带不扫空白 */}
+        <span className={cn('max-w-full self-start text-[11.5px]', running ? 'forge-shimmer' : 'text-fg-4')}>
+          {bottom}
+        </span>
       </span>
       {running && (
         <button

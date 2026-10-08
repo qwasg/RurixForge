@@ -1,0 +1,10 @@
+[package]
+name = "forge-shader"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"] }

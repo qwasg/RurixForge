@@ -1,0 +1,17 @@
+{
+  "tool": "built-in image_gen",
+  "effects": [
+    {
+      "key": "tidal-field",
+      "prompt": "Production visual-effect source keyframe for a high-quality 2D sci-fi strategy/tower-defense game. Entire image is pure solid BLACK (#000000), NO environment or ground. In the CENTRAL 65% of the square canvas only, a beautiful circular azure and cyan water-energy vortex is viewed from directly ABOVE in perfect orthographic top-down perspective. Two slender curling tidal wave crescents interlock into a spiral around a small bright blue-white nucleus, delicate curling spray, luminous glassy liquid strands, thin concentric circular ripples, clear readable circular silhouette and generous completely black margin at least18% on every side. Hand-painted high-end anime VFX, elegant pearlescent cyan highlights, detailed but not noisy, saturated blue perimeter and softer white-cyan center, magical DeepSeek tidal reasoning field. This is one VFX object on black suitable for luminance extraction and image-to-video animation. No character, no person, no words, no letters, no icons, no logo, no interface, no frame, no polygon grid, no landscape, no cast shadow. Avoid any elements that touch the image edges. 1:1 square."
+    },
+    {
+      "key": "starburst",
+      "prompt": "One production animation keyframe of an exquisite 2D magic-energy detonation for a sci-fi strategy game, pure solid BLACK #000000 background. Perfect overhead orthographic top-down view. In the central sixty percent of the canvas, an intense white-violet star core wrapped by three thin graceful lavender orbit arcs, with transparent-looking violet light shards and a circular expanding purple shockwave rim. A polished anime spell VFX rendered with fine detail, white-hot core, controlled lavender bloom, a few gold spark accents, curved wisps and tiny crystalline stars. Compact and radially balanced so the next image-to-video model can expand it while keeping everything inside frame. Keep 20% fully black margin on all four sides. Dark areas must be pure black, no gray rectangle or background wash. NO human, NO creature, NO symbol, NO text, NO geometry grid, NO UI, NO floor, NO terrain. Single standalone VFX only, not a sprite sheet. Square canvas. Designed for GPT dragon girl's star-core ultimate and alpha compositing after actual video frame extraction."
+    },
+    {
+      "key": "debug-matrix",
+      "prompt": "A single high-end 2D science-fiction spell VFX keyframe on a perfectly solid BLACK background for native tower defense. Perfect top-down orthographic overhead view. In the central 65% square region, a thin neon lime-green and emerald circular diagnostic field contains a few luminous floating translucent rectangular data panels and precise scanning rays, surrounded by two incomplete concentric rings made from tiny distinct bright green segments. The center is a small brilliant mint-white light bead with a clean cross-shaped flash. The effect reads as an elegant debugging matrix shockwave that will animate into an expanding scan and fracture surrounding errors. Fine shimmering pixel motes, sophisticated anime game VFX lighting, crisp shapes with soft restrained bloom; even and contained radius. No literal text, no letters, no numbers, no real software logo, no characters, no figure, no ground, no scene, no interface. Absolutely preserve 18% empty pure black margin on every side, every effect part fully inside. One source pose for real image-to-video VFX, not a sprite sheet. 1:1 square composition."
+    }
+  ]
+}

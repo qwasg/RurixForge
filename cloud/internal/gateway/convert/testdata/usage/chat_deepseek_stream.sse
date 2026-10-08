@@ -1,0 +1,1 @@
+data: {"id":"chatcmpl-ds","object":"chat.completion.chunk","choices":[{"index":0,"delta":{}}],"usage":{"prompt_tokens":100,"completion_tokens":10,"prompt_cache_hit_tokens":60,"prompt_cache_miss_tokens":40}}

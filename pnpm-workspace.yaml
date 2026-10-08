@@ -3,6 +3,7 @@ packages:
   - "apps/*"
   - "!apps/ide"
   - "tools/*"
+  - "cloud/web"
 allowBuilds:
   electron: true
   esbuild: true

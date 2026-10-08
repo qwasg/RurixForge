@@ -1,27 +1,38 @@
 import { useState } from 'react';
-import { ArrowLeft, BookOpen, Boxes, Info, Palette, Search, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bot, Boxes, Brain, CircleUserRound, Gauge, Info, Palette, Search, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useOverlayStore } from '@/lib/overlayStore';
 import { SETTINGS_PAGES, useSettingsStore, type SettingsPage } from '@/lib/settingsStore';
 import AboutPage from './AboutPage';
+import AccountPage from './AccountPage';
 import AgentPage from './AgentPage';
 import AppearancePage from './AppearancePage';
+import BillingPage from './BillingPage';
+import MemoryPage from './MemoryPage';
 import ModelsPage from './ModelsPage';
+import GenerationPage from './GenerationPage';
+import SettingsAccountChip from './SettingsAccountChip';
 import SkillsPage from './SkillsPage';
+import CodexPage from './CodexPage';
 
 /**
  * F7 wave.5 设置全屏覆盖(参考 ui/settings.rs render_settings):
  * 盖在 36px titlebar 之下(absolute top-9 inset-x-0 bottom-0,bg 实体);
- * 左 240 导航(搜索框 + 返回 + 五页行[激活 accent_bg + accent 文] + 底部用户卡);
+ * 左 240 导航(搜索框 + 返回 + 五页行[激活 accent_bg + accent 文] + 底部账户卡[D-040 真实用户名/Codex 套餐]);
  * 内容区滚动居中,max-w 720(外观页 900)。当前页持久化 forge:settingsPage。
  * 开关:overlayStore.settings(Esc 全关互斥既有)。
  */
 
 const PAGE_ICONS: Record<SettingsPage, typeof Palette> = {
   appearance: Palette,
+  account: CircleUserRound,
+  billing: Gauge,
+  memory: Brain,
   agent: Sparkles,
   models: Boxes,
+  generation: Sparkles,
   skills: BookOpen,
+  codex: Bot,
   about: Info,
 };
 
@@ -97,26 +108,25 @@ export default function SettingsOverlay() {
           ))}
           {pages.length === 0 && <div className="px-2 py-1 text-[11px] text-fg-4">无匹配设置页</div>}
         </div>
-        <div className="mt-2 flex items-center gap-2 border-t border-edge pt-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-acc text-[12px] text-fg-inv">
-            本
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate text-[12px] text-fg">我的空间</span>
-            <span className="truncate text-[10.5px] text-fg-4">本地用户</span>
-          </span>
+        <div className="mt-2 flex items-center gap-2 border-t border-edge px-1 pt-2">
+          <SettingsAccountChip />
         </div>
       </div>
       {/* 内容区 */}
       <div className="relative min-w-0 flex-1">
         <div className="flex h-full flex-col items-center overflow-y-auto">
           <div
-            className={cn('flex w-full flex-col px-8 pb-20 pt-8', page === 'appearance' ? 'max-w-[900px]' : 'max-w-[720px]')}
+            className={cn('flex w-full flex-col px-8 pb-20 pt-8', page === 'account' ? 'max-w-[1480px]' : page === 'billing' ? 'max-w-[1280px]' : page === 'models' || page === 'generation' ? 'max-w-[1120px]' : page === 'appearance' ? 'max-w-[900px]' : 'max-w-[720px]')}
           >
             {page === 'appearance' && <AppearancePage />}
+            {page === 'account' && <AccountPage />}
+            {page === 'billing' && <BillingPage />}
+            {page === 'memory' && <MemoryPage />}
             {page === 'agent' && <AgentPage />}
             {page === 'models' && <ModelsPage />}
+            {page === 'generation' && <GenerationPage />}
             {page === 'skills' && <SkillsPage />}
+            {page === 'codex' && <CodexPage />}
             {page === 'about' && <AboutPage />}
           </div>
         </div>

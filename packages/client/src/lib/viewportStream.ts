@@ -55,13 +55,13 @@ export interface ViewportStreamOptions {
 }
 
 export interface ViewportStreamHandle {
-  /** play 态实时输入({action,value} 直入引擎 input_queue) */
-  sendInput(action: string, value: number): void;
+  /** play 态实时输入。true 表示当前 socket 已接受发送，不等于引擎执行成功；false 表示未发送。 */
+  sendInput(action: string, value: number): boolean;
   /**
    * play 态指针点击:x/y 为归一化视口坐标(0..1,左上原点)。引擎按游戏相机反投影到游戏平面,
    * 依次派发 `<action>_x/_y/_z`(世界坐标)与 `<action>`(value 1)——图侧可按格子/实体位置响应。
    */
-  sendPointer(action: string, x: number, y: number): void;
+  sendPointer(action: string, x: number, y: number): boolean;
   /** 编辑器相机绝对量(与 viewport_set_camera 同字段;服务端同套钳制) */
   sendCamera(cam: Record<string, unknown>): void;
   /** 选中高亮(null 清除) */
@@ -124,9 +124,8 @@ export function mapKeyToInput(key: string): { action: string; value: number } | 
   }
 }
 
-/** 重连退避(ms):三连败后回调 onChannel(false) 交回退腿,后台仍按 5s 限速续试。 */
+/** 重连退避(ms):断线立即回调 onChannel(false),后台最多按 5s 间隔续试。 */
 const BACKOFF_MS = [500, 1000, 2000, 5000];
-const DOWN_AFTER_FAILS = 3;
 
 interface StreamInfoResp {
   wsUrl: string;
@@ -134,8 +133,8 @@ interface StreamInfoResp {
 }
 
 /**
- * 打开视口推流通道。返回句柄立即可用(消息在通道未就绪时静默丢弃——输入/相机
- * 都是幂等状态量,丢弃后下一条自然补齐;真正的通路状态经 onChannel 如实回调)。
+ * 打开视口推流通道。输入可能是购买/施法等一次性命令，断线时返回 false，
+ * 不缓存或重放。调用方应提示重新操作；选中与分辨率配置会随订阅恢复。
  */
 export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamHandle {
   let ws: WebSocket | null = null;
@@ -152,16 +151,27 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
     opts.onChannel?.(next, reason);
   };
 
-  const sendJson = (msg: Record<string, unknown>) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
+  const sendJson = (msg: Record<string, unknown>): boolean => {
+    const sock = ws;
+    if (closed || !sock || sock.readyState !== WebSocket.OPEN) {
+      setUp(false, '连接不可用');
+      return false;
+    }
+    try {
+      sock.send(JSON.stringify(msg));
+      return true;
+    } catch {
+      setUp(false, '发送失败');
+      // 由 onclose 安排重连，失败的一次性输入不自动补发。
+      sock.close();
+      return false;
     }
   };
 
   const scheduleRetry = (reason: string) => {
     if (closed) return;
     fails += 1;
-    if (fails >= DOWN_AFTER_FAILS) setUp(false, reason);
+    setUp(false, reason);
     const wait = BACKOFF_MS[Math.min(fails - 1, BACKOFF_MS.length - 1)];
     retryTimer = window.setTimeout(() => void connect(), wait);
   };
@@ -187,9 +197,9 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
     ws = sock;
     sock.onopen = () => {
       if (closed || ws !== sock) return;
-      sendJson({ type: 'subscribe', ...cfg });
+      if (!sendJson({ type: 'subscribe', ...cfg })) return;
       // 订阅即带上当前选中(高亮跨重连保持)。
-      if (selected != null) sendJson({ type: 'select', id: selected });
+      if (selected != null && !sendJson({ type: 'select', id: selected })) return;
       fails = 0;
       setUp(true, 'connected');
     };
@@ -213,6 +223,7 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
     sock.onclose = () => {
       if (closed || ws !== sock) return;
       ws = null;
+      setUp(false, '连接断开');
       scheduleRetry('连接断开');
     };
     // onerror 后必有 onclose,统一在 onclose 走重连,避免双计失败。
@@ -223,13 +234,13 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
 
   return {
     get up() {
-      return up;
+      return up && !closed && ws?.readyState === WebSocket.OPEN;
     },
     sendInput(action, value) {
-      sendJson({ type: 'input', action, value });
+      return sendJson({ type: 'input', action, value });
     },
     sendPointer(action, x, y) {
-      sendJson({ type: 'pointer', action, x, y });
+      return sendJson({ type: 'pointer', action, x, y });
     },
     sendCamera(cam) {
       sendJson({ type: 'camera', ...cam });
@@ -244,6 +255,7 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
     },
     close() {
       closed = true;
+      setUp(false, 'closed');
       window.clearTimeout(retryTimer);
       const sock = ws;
       ws = null;

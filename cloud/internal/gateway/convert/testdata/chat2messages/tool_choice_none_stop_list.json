@@ -1,0 +1,11 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [{"role": "user", "content": "Just talk."}],
+    "tools": [{"type": "function", "function": {"name": "calc"}}],
+    "tool_choice": "none",
+    "parallel_tool_calls": false,
+    "stop": ["STOP", "  ", "\n", "END"]
+  }
+}

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { callAssetTool, callTool } from './forgeApi';
+import { blenderJobAction, blenderWorkspace, type BlenderJob } from './blenderApi';
+import { apiGet } from './forgeApi';
 
 /** 资产条目(与 asset_list 返回对齐;F10 语义化:description/tags 来自 .meta semantic 段)。 */
 export interface AssetItem {
@@ -40,6 +42,7 @@ export type AssetViewMode = 'grid' | 'list';
 export type AssetTypeFilter =
   | 'all'
   | 'mesh'
+  | 'model'
   | 'texture'
   | 'material'
   | 'sprite'
@@ -173,8 +176,19 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   instantiate: async (guid, translation) => {
     const item = get().items.find((i) => i.guid === guid);
     if (!item) throw new Error(`资产不存在: ${guid}`);
-    if (item.type !== 'mesh' && item.type !== 'prefab') {
-      throw new Error(`仅 mesh/prefab 可实例化,当前类型: ${item.type}`);
+    if (item.type !== 'mesh' && item.type !== 'model' && item.type !== 'prefab') {
+      throw new Error(`仅 mesh/model/prefab 可实例化,当前类型: ${item.type}`);
+    }
+    if (item.type === 'prefab') {
+      await callTool('prefab_instantiate', { prefabRef: guid, translation });
+      return;
+    }
+    if (item.type === 'model') {
+      await callTool('entity_create', {
+        name: item.path.split('/').pop() ?? guid, translation,
+        components: [{ type: 'ModelRenderer', enabled: true, props: { model: guid } }],
+      });
+      return;
     }
     // 经 engine-scene 创建实体,MeshRenderer.mesh = 资产 GUID。
     await callTool('entity_create', {
@@ -192,7 +206,23 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   },
 
   reimport: async (assetPath) => {
+    const item = get().items.find((asset) => asset.path === assetPath);
+    if (item?.type === 'model' || item?.type === 'prefab' || assetPath.startsWith('Models/')) {
+      const result = await callAssetTool<{ meta?: { provenance?: { origin?: string; detail?: { sourceId?: string } } } }>('asset_get_meta', { assetPath });
+      if (result.meta?.provenance?.origin === 'blender') {
+        const workspaceId = blenderWorkspace();
+        const { jobs } = await apiGet<{ jobs: BlenderJob[] }>(`/api/forge/blender/jobs?${new URLSearchParams({ workspaceId })}`);
+        const job = jobs.find((candidate) => candidate.sourceId === result.meta?.provenance?.detail?.sourceId);
+        if (!job) throw new Error('此 Blender 资产尚未绑定制作源，请在 Blender 制作面板重新绑定源工程。');
+        await blenderJobAction(job.id, 'retry', workspaceId);
+        set((s) => ({ status: { ...s.status, [assetPath]: 'building' } }));
+        return;
+      }
+    }
     await callAssetTool('asset_reimport', { assetPaths: [assetPath] });
+    const guid = get().items.find((item) => item.path === assetPath)?.guid;
+    await callTool('asset_reload', { guids: guid ? [guid] : [] });
+    set({ thumbs: {} });
     await get().load();
   },
 

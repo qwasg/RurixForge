@@ -1,0 +1,5 @@
+web/node_modules
+web/dist
+internal/webui/dist
+deploy/.env
+**/*.exe

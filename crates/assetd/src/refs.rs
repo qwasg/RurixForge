@@ -105,7 +105,7 @@ impl RefGraph {
     /// 重建引用图:扫 Content/ 下 .rxscene(JSON)与 .rxmat,凡出现已知资产 GUID 的
     /// 字符串字段即建边(scene→asset / material→texture)。GUID 强引用,不解析路径。
     pub fn rebuild(project: &ForgeProject) -> Result<Self> {
-        let mut graph = RefGraph::default();
+        let mut graph = RefGraph { edges: Vec::new(), redirectors: Self::load(project)?.redirectors };
         let content = project.content_root();
         // 先收全部已知 GUID → (path, type)。
         let mut known: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
@@ -133,13 +133,19 @@ impl RefGraph {
                         ("scene", "prefab") => "scene→prefab",
                         ("scene", t) => match t {
                             "mesh" => "scene→mesh",
+                            "model" => "scene→model",
                             "material" => "scene→material",
                             "sprite" => "scene→sprite",
                             _ => "scene→asset",
                         },
                         ("prefab", "mesh") => "prefab→mesh",
+                        ("prefab", "model") => "prefab→model",
                         ("prefab", "material") => "prefab→material",
+                        ("model", "material") => "model→material",
+                        ("model", "texture") => "model→texture",
                         ("material", "texture") => "material→texture",
+                        ("material", "shadergraph") => "material→shadergraph",
+                        ("shadergraph", "texture") => "shadergraph→texture",
                         // F-GAME-4:.rxsprite 引用贴图(删除阻断链:scene→sprite→texture)。
                         ("sprite", "texture") => "sprite→texture",
                         (a, b) => match (a, b) {

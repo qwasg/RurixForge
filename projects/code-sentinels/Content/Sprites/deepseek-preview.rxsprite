@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "texture": "882a3f04-eae3-54b1-a7af-5fc9c10c7caa",
+  "pivot": [
+    0.5,
+    1
+  ],
+  "frames": {
+    "frame_0": {
+      "bbox": [
+        0,
+        0,
+        1254,
+        1254
+      ]
+    }
+  },
+  "clips": {
+    "idle": {
+      "frames": [
+        "frame_0"
+      ],
+      "fps": 1,
+      "loop": true
+    }
+  }
+}

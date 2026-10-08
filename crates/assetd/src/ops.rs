@@ -29,7 +29,8 @@ pub fn delete_assets(
     paths: &[String],
     force: bool,
 ) -> Result<DeleteOutcome> {
-    let mut graph = RefGraph::load(project)?;
+    // Publication and scene.save can change references without warming asset_refs first.
+    let mut graph = RefGraph::rebuild(project)?;
     let mut deleted = Vec::new();
     let mut blocked = Vec::new();
 
@@ -77,6 +78,9 @@ pub fn move_asset(
         return Err(AssetError::new("NO_META", format!("缺 .meta: {rel}")));
     }
     let meta = MetaDoc::load(&src_meta)?;
+    if meta.provenance.as_ref().is_some_and(|p|p.origin=="blender") {
+        return Err(AssetError::new("MODEL_MANAGED_ASSET","Blender-generated files belong to one model package; move or rebind the authoring source through its Blender task instead of moving individual derivatives"));
+    }
 
     let file_name = match new_name {
         Some(n) => {
@@ -132,9 +136,12 @@ pub fn reimport_assets(project: &ForgeProject, paths: &[String]) -> Result<Vec<S
         }
         let mut meta = MetaDoc::load(&meta_path)?;
         let source_abs = project.content_root().join(&rel);
-        if meta.atype == "mesh" {
-            let _art = crate::build::build_mesh(&source_abs, &meta, &project.cache_root())?;
-        }
+        let validation=if meta.atype == "mesh" {
+            crate::build::build_mesh(&source_abs, &meta, &project.cache_root()).map(|_|())
+        } else if matches!(meta.atype.as_str(),"model"|"prefab"|"texture"|"material") {
+            crate::model::validate_asset_document(project,&rel)
+        } else {Ok(())};
+        if let Err(error)=validation {meta.build_state=Some("failed".into());meta.save(&meta_path)?;return Err(error);}
         meta.build_state = Some("current".into());
         meta.save(&meta_path)?;
         rebuilt.push(rel);

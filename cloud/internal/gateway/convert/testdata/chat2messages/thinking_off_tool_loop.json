@@ -1,0 +1,13 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [
+      {"role": "user", "content": "What's 2+2? Use calc."},
+      {"role": "assistant", "content": null, "tool_calls": [{"id": "toolu_1", "type": "function", "function": {"name": "calc", "arguments": "{\"expr\":\"2+2\"}"}}]},
+      {"role": "tool", "tool_call_id": "toolu_1", "content": "4"}
+    ],
+    "reasoning_effort": "low",
+    "tools": [{"type": "function", "function": {"name": "calc", "parameters": {"type": "object", "properties": {"expr": {"type": "string"}}}}}]
+  }
+}

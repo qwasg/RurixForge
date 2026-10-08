@@ -1,0 +1,6 @@
+data: {"type":"response.created","response":{"id":"resp_nu1"}}
+
+data: {"type":"response.output_text.delta","item_id":"m","output_index":0,"delta":"ok"}
+
+data: {"type":"response.completed","response":{"id":"resp_nu1","status":"completed","usage":{"input_tokens":5,"output_tokens":1,"total_tokens":6}}}
+

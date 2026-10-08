@@ -1,0 +1,18 @@
+{
+  "guid": "273c739c-a2a0-5a13-af60-93df6caf8c8f",
+  "type": "texture",
+  "importer": "png",
+  "provenance": {
+    "origin": "gen-video",
+    "detail": {
+      "backend": "aliyun-minimax-video",
+      "method": "image-to-video-extracted-frames",
+      "videoSha256": "0f5c504554813e61b6e7045229ff33f2cb7d134168a5cf029e07982f30f15c81",
+      "sourceImage": "Content/Concepts/deepseek-maid.png",
+      "taskId": "98e65d0e-e908-403d-851d-c2c51d232dcb",
+      "videoFileRef": "SourceMedia/deepseek.mp4",
+      "temporaryVideoFileRef": ".forge/tmp/gen/gen-1788670902299-7801334057231033693-0.mp4"
+    }
+  },
+  "build_state": "current"
+}

@@ -1,0 +1,116 @@
+{
+  "version": 5,
+  "tool": "built-in image_gen",
+  "purpose": "Single starting reference frames for real image-to-video game VFX. Not animation frames or a sprite sheet.",
+  "styleReferences": [
+    "Content/Concepts/v2/debug-matrix.png",
+    "Content/UI/v4/art/data-center.png"
+  ],
+  "coordinateConvention": "square, fixed overhead orthographic, center, small starting seed with generous expansion margin",
+  "assets": [
+    {
+      "key": "kinetic-hit",
+      "title": "机械命中",
+      "prompt": "Create a single STARTING KEYFRAME for a real image-to-video 2D RTS game impact effect. Square 1:1 canvas, fixed perfect overhead orthographic camera. Pure solid BLACK #000000 background across the entire image. At the exact center, a VERY SMALL amber-white contact spark just beginning, 6 delicate short golden spark streaks and 3 tiny charcoal metal flecks outlined by amber light, all confined to the central 18 percent of the canvas. This is the first instant before a mechanical bullet impact expands and fades, not a full explosion. Crisp sophisticated hand-painted game VFX matching ivory/charcoal/amber industrial buildings. Restrained highlights, almost all canvas empty pure black; no environment, no ground, no target, no gun, no character, no smoke background, no words, no UI, no grid, no frame, no sprite sheet. No element anywhere near an image edge.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-06ffcdac-2ec0-466a-8fd9-ecb0066d5add.png",
+      "reference": "Content/UI/v5/vfx-references/kinetic-hit.png",
+      "web": "/games/code-sentinels/ui-v5/references/kinetic-hit.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "intendedComposite": "additive after black background extraction"
+    },
+    {
+      "key": "plasma-hit",
+      "title": "算力脉冲命中",
+      "prompt": "Create a single STARTING KEYFRAME for real image-to-video 2D RTS game VFX. Square 1:1, fixed perfect overhead orthographic camera, perfectly solid BLACK #000000 background. At the exact center only, a tiny cyan-blue plasma spark is just beginning to ignite: one small turquoise energy bead, a very thin incomplete azure circular rim, three short sharp electric filaments. Entire effect fits within central 20 percent of canvas; at least 35 percent absolutely empty black margin on every side. Keep the center readable and lightly luminous, no huge white bloom. Polished fine hand-painted science-fiction VFX, cyan matching computation energy of ivory/charcoal industrial game buildings. First instant of a pulse that will later expand then disappear. No scenery, no ground, no unit, no object struck, no UI, no text, no frame, no checkerboard, no sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-3fb9884a-6bee-4d2c-b9f6-4a3d2b02458e.png",
+      "reference": "Content/UI/v5/vfx-references/plasma-hit.png",
+      "web": "/games/code-sentinels/ui-v5/references/plasma-hit.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "intendedComposite": "additive after black background extraction"
+    },
+    {
+      "key": "heavy-impact",
+      "title": "重击尘浪",
+      "prompt": "Single STARTING KEYFRAME for real image-to-video 2D RTS heavy landing / artillery dust effect. SQUARE 1:1 canvas. Entire background is perfectly FLAT SOLID MAGENTA #FF00FF chroma key, absolutely no gradient, no light spill and no checkerboard. Fixed perfect overhead orthographic camera. Only at the exact center, a VERY SMALL dense brown-gray contact dust puff is beginning to form, with 5 tiny dark stone chips and a faint short amber contact spark. All actual effect pixels fit within the central 20 percent of the canvas. This is the first millisecond of an impact, not a fully spread blast; later video will produce the expanding circular dust wave and falling fragments. Fine textured stylized industrial game VFX, preserve charcoal dark smoke, no magenta reflections in dust. Huge empty flat magenta margins. No surface, crater, terrain, building, unit, text, frame, sequence or sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-dc7aee0c-39c0-4657-bfef-1d59c9012b6b.png",
+      "reference": "Content/UI/v5/vfx-references/heavy-impact.png",
+      "web": "/games/code-sentinels/ui-v5/references/heavy-impact.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "magenta chroma color, approximately rgb(237,13,240)",
+      "intendedComposite": "alpha after magenta chroma extraction; preserve dark smoke"
+    },
+    {
+      "key": "shield-hit",
+      "title": "拓扑护盾接触",
+      "prompt": "Create ONE starting image-to-video VFX keyframe for an industrial 2D RTS game: a tiny topology shield contact ripple at the exact center. Perfectly solid BLACK #000000 background, square 1:1, fixed perfect overhead orthographic camera. A small thin CYAN curved ring fragment just beginning around a tiny warm AMBER contact spark; only three faint connected hexagonal cells appear near it, delicate gold flecks. Entire nascent shield ripple fits within central 20 percent of canvas, very fine translucent-looking outlines and restrained bloom. First instant before a protective ripple expands and dissolves, no large finished shield dome. Almost all canvas empty pure black with absolutely no background haze. No character, terrain, wall, building, UI, words, icon, logo, full grid, border, multiple frames or sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-b3f980cb-3312-4aea-abe8-f3315bdc9ea1.png",
+      "reference": "Content/UI/v5/vfx-references/shield-hit.png",
+      "web": "/games/code-sentinels/ui-v5/references/shield-hit.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "intendedComposite": "additive after black background extraction"
+    },
+    {
+      "key": "power-arc",
+      "title": "断线电弧",
+      "prompt": "Single STARTING KEYFRAME for a real image-to-video 2D RTS electrical disconnect effect. Fixed perfect overhead orthographic camera, square 1:1 image on absolutely pure BLACK #000000. At the exact center, one tiny forked CYAN electric arc has just appeared between two very close amber spark points, with five blue pinprick sparks. Total effect footprint less than 18 percent of the canvas; at least 35 percent pure empty black around every side. This is the first tiny spark before the arc briefly flares and extinguishes, not a full lightning storm. Fine crisp hand-painted science-fiction VFX, restrained brightness and thin filaments. No actual cable, plugs, hardware, scenery, floor, unit, lightning reaching an edge, text, letters, icons, UI, border, grid or sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-013cc430-ddfd-4397-81a1-18e8b8663d11.png",
+      "reference": "Content/UI/v5/vfx-references/power-arc.png",
+      "web": "/games/code-sentinels/ui-v5/references/power-arc.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "intendedComposite": "additive after black background extraction"
+    },
+    {
+      "key": "repair",
+      "title": "纳米维修",
+      "prompt": "Single STARTING KEYFRAME for real image-to-video repair VFX in a high-end 2D industrial RTS game. Square 1:1, fixed perfect overhead orthographic camera, perfectly pure BLACK #000000 background. At exact center only, a small sparse cluster of MINT-GREEN and CYAN nanoscopic light motes just beginning to assemble: seven bright tiny particles and two very delicate incomplete green orbit arcs around a dim turquoise center. Entire initial seed fits within central 18 percent of the square. Elegant restrained glow, thin precise filaments, airy negative space, no huge bloom. This is the first instant before nanite particles swirl into a repair ring then dissipate. At least 35 percent completely empty black margin on all four sides. No target, wrench, cross icon, building, character, terrain, interface, text, logo, complete large rings, frame or sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-45fc8b1b-e977-4766-8422-4149d5e58698.png",
+      "reference": "Content/UI/v5/vfx-references/repair.png",
+      "web": "/games/code-sentinels/ui-v5/references/repair.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "intendedComposite": "additive after black background extraction"
+    },
+    {
+      "key": "upgrade",
+      "title": "科技升级",
+      "prompt": "One single STARTING KEYFRAME for a real image-to-video technology upgrade game VFX. Square 1:1, fixed perfect overhead orthographic view, pure solid BLACK #000000 backdrop everywhere. At exact center only, a tiny AMBER-GOLD and CYAN activation seed: two delicate incomplete circular bands with a few small rectangular gold light segments, a restrained small cyan central glimmer. The whole nascent effect occupies central 20 percent of canvas. Fine sophisticated industrial sci-fi VFX, elegant and precise, no huge white core. The actual video will expand these into a brief technology unlock halo and dissolve them, so this frame is only the small beginning. Leave at least 35 percent absolutely empty black margin on every side. No object, building, character, floor, arrow icon, literal symbols, letters, digits, words, UI, logo, frame, full-screen grid or sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-c793b9ff-96d1-4442-86d2-d7f9802e364d.png",
+      "reference": "Content/UI/v5/vfx-references/upgrade.png",
+      "web": "/games/code-sentinels/ui-v5/references/upgrade.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "background": "solid black",
+      "intendedComposite": "additive after black background extraction"
+    },
+    {
+      "key": "collapse-explosion",
+      "title": "建筑毁灭爆发",
+      "prompt": "Create ONE STARTING KEYFRAME for a real image-to-video collapsing-building explosion VFX, fixed perfect overhead orthographic camera. SQUARE 1:1 canvas, entirely FLAT SOLID MAGENTA #FF00FF chroma-key background, no gradient, checkerboard, shadow or reflected magenta. Exact center holds only a VERY SMALL beginning of a demolition blast: a compact orange ember cluster with one tiny amber-white spark, three charcoal dark concrete chips and a small dense black-gray smoke puff barely forming around them. Total footprint no more than central 20 percent of the canvas. First instant BEFORE fire and debris burst outward, not a fully bloomed explosion. Detailed restrained hand-painted industrial game VFX with believable solid debris and dark smoke, strong alpha silhouette, no giant white flash. At least 35 percent completely empty pure magenta margin on every side. No building, ground, crater, terrain, target, character, words, frame, UI, multiple frames or sprite sheet.",
+      "generatedSource": "C:\\Users\\wcj20\\.codex\\generated_images\\01a07f69-f80a-77c2-ac32-6eee1b1757af\\exec-efa16552-d9ce-4cb5-a5ce-216d958e6acd.png",
+      "reference": "Content/UI/v5/vfx-references/collapse-explosion.png",
+      "web": "/games/code-sentinels/ui-v5/references/collapse-explosion.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "background": "transparent alpha returned by tool; media pipeline composites onto solid magenta before I2V",
+      "intendedComposite": "alpha after magenta chroma extraction; preserve dark smoke"
+    }
+  ]
+}

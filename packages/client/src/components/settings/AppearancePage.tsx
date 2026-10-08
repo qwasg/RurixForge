@@ -16,10 +16,10 @@ import { SetCard, SetH1, SetRow, SetSectionLabel, SetSelect, SetSlider, SetStepp
 /**
  * F7 wave.5 外观页(旗舰;参考 ui/appearance_controls.rs appearance_page):
  * 主题模式三卡(系统/浅色/深色,72px 缩略窗,选中 2px accent 边);
- * 预设下拉(10 预设 Aa 色板行);「浅色主题」「深色主题」两块各:强调色/背景/前景
+ * 预设下拉(THEME_PRESETS 全量 Aa 色板行);「浅色主题」「深色主题」两块各:强调色/背景/前景
  * (18px 圆色板 + 116px hex 输入,非法 toast 不应用)+ 半透明侧边栏 toggle + 对比度
  * slider(0–100 + 读数);UI/代码字体输入;UI 字号 stepper(11–18)/代码字号 stepper(10–20);
- * 差异标记 seg(Color / +/-)。全部即改即存(themeStore 已持久化)即改即预览。
+ * 差异标记 seg(Color / +/-,D-040 起驱动右栏文件树的 git 改动标记)。全部即改即存即改即预览。
  *
  * 差异留痕:参考预设按侧(light/dark 各自 apply_preset(side));本仓 themeStore.applyPreset
  * 为整块双表替换(wave.3 既有语义),预设选择器做单列全局行,双侧块内不再各挂预设下拉。
@@ -198,7 +198,7 @@ function ThemeBlock({ side, title }: { side: 'light' | 'dark'; title: string }) 
   );
 }
 
-// ---------- 预设选择(10 预设 Aa 色板行;参考 theme_preset_select) ----------
+// ---------- 预设选择(全量预设 Aa 色板行;参考 theme_preset_select) ----------
 
 function PresetSelect() {
   const presetId = useThemeStore((st) => st.presetId);
@@ -274,7 +274,7 @@ export default function AppearancePage() {
       <SetCard>
         <SetRow
           title="主题预设"
-          desc="整套替换浅色/深色双侧配色(10 预设)"
+          desc={`整套替换浅色/深色双侧配色(${THEME_PRESETS.length} 个预设)`}
           last
           testId="preset-row"
           control={
@@ -342,7 +342,7 @@ export default function AppearancePage() {
       <SetCard>
         <SetRow
           title="差异标记"
-          desc="差异/提案着色的呈现方式"
+          desc="右栏文件树的 git 改动标记:Color = 文件名按状态着色 + 状态字母;+/- = 显示每个文件的增删行数"
           last
           testId="diff-markers-row"
           control={<DiffMarkerSeg />}

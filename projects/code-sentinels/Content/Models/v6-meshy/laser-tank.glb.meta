@@ -1,0 +1,26 @@
+guid: ff6a2e5a-4405-4d1a-9dc5-9f5a00b6f7ea
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T11:55:33Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b45c-781c-724c-aba6-395667c38a1c
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b45c-781c-724c-aba6-395667c38a1c/output/preview.png?Expires=1789991722&Signature=Y2qlCOVeqjry-oJAmxVv1WWXMKQx1pyZmhsr8SFCqzUQq88wx2MEb-QI5DAX5UPrTxMYWmH-RIu7L69l1XJpprL9~LyETPLFr9RirzrWbG7ZRxCSfOUgV6syFz8jjKyu~dMqhSRc0RsqozLqZHAtAkPCtxeSgRKYBN99jjfbbFBTKEUwtpaAbxaeCbkBg1-P6TjeuU6yfNNtp5cb3x9fRb7D5pf0Mj9CMHZXB1n2SJiorDe7FAMOgDCKAbwena9UvckgwiPXEvmoDpO4Y3tDQatk79nNYHki-8jQVMAw8D7~lN8yhMTA-h6Wa~hhPtYEtoNOayOvr7dSZ~OT1qKEvw__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: 'Tier-2 laser tank: graphite blue-gray tracked armored hull with sloped titanium glacis, brass rivets, carbon-black rubber tracks with brass road wheels, turret carrying an energy weapon of two split pale titanium accelerator rails with glowing blue magnetic coil rings and a glowing teal energy core, teal headlamps. Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.'
+build_state: current

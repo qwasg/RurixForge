@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="skill-diamond-frame-title skill-diamond-frame-desc"><title id="skill-diamond-frame-title">skill diamond frame</title><desc id="skill-diamond-frame-desc">Original Code Sentinels tactical vector artwork.</desc>
+<path d="M128 4L252 128L128 252L4 128Z" fill="#101316" fill-opacity="0" stroke="#F2F0E9" stroke-width="3"/>
+<path d="M128 18L238 128L128 238L18 128Z" stroke="#F2F0E9" stroke-opacity=".26"/>
+<path d="M128 31L225 128L128 225L31 128Z" stroke="#EDB63B" stroke-width="2" stroke-dasharray="5 10"/>
+<path d="M100 20L128 4L156 20L128 35ZM236 100L252 128L236 156L221 128Z" fill="#EDB63B"/>
+<path d="M20 100L4 128L20 156M100 236L128 252L156 236" stroke="#F2F0E9" stroke-width="6"/>
+<path d="M74 82V74H82M174 74H182V82M182 174V182H174M82 182H74V174" stroke="#F2F0E9" stroke-opacity=".7" stroke-width="2"/>
+<path d="M90 198H166" stroke="#F2F0E9" stroke-opacity=".28"/></svg>

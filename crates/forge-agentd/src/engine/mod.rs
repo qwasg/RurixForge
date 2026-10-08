@@ -33,6 +33,9 @@ pub const NATIVE_TOOLS: &[&str] = &[
     "write_file",
     "str_replace_edit",
     "apply_patch",
+    crate::memory::MEMORY_WRITE_TOOL,
+    crate::memory::MEMORY_SEARCH_TOOL,
+    crate::memory::MEMORY_DELETE_TOOL,
 ];
 
 pub fn is_native_tool(name: &str) -> bool {
@@ -40,10 +43,14 @@ pub fn is_native_tool(name: &str) -> bool {
 }
 
 pub fn is_native_write_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "write_file" | "str_replace_edit" | "apply_patch"
-    )
+    matches!(name, "write_file" | "str_replace_edit" | "apply_patch")
+}
+
+/// D-044:待办 / 计划写入类原生工具(含别名 `write_todos`)。它们只动会话待办面、不碰工作区文件,
+/// 所以不算「写工具」(权限门按读放行)——只读轮次(plan / ultraplan 的 leader 与它派出的子代理)
+/// 工具面里本就不给,调用侧要按这个判据单独再拦一道。
+pub fn is_native_todo_tool(name: &str) -> bool {
+    matches!(name, "todo_write" | "write_todos" | "todo_update" | "plan_write")
 }
 
 fn spec(name: &str, desc: &str, params: Value) -> Value {
@@ -155,14 +162,21 @@ fn create_plan_schema() -> Value {
 /// D-036:multitask 从「空工具面 + 服务端模板链」改为「只读侦察 + 异步派发」——
 /// 拿 todo 工具与全部只读工具,但写工具一律不给(写入交子代理),`task` 换成 `dispatch`
 /// (同步委派会把主轮拖住,与异步语义冲突)。
+///
+/// D-044:ultraplan 的 leader 是「只读侦察 + 同步委派」:留 `task`(同一轮并行派 explore,
+/// 结果要当轮拿到,所以不是 dispatch)、全部只读工具与记忆工具;不给 todo/plan_write
+/// (待办到制作阶段才由服务端物化)、不给 create_plan(流程的计划走自己的出口工具,
+/// 不能落成一份游离的普通计划)、不给任何编辑工具。阶段出口工具不在这里——每类轮次
+/// 只有自己的那一个,由 agent.rs 按轮次种类追加。
 pub fn runtime_tool_specs(kind: &str, mode: &str) -> Vec<Value> {
     let profile = crate::profile::AgentProfile::from_kind_str(kind);
     if mode == "ask" {
         return Vec::new();
     }
     let multitask = mode == "multitask";
+    let ultraplan = mode == crate::ultraplan::MODE;
     let mut out = Vec::new();
-    if profile.wants_todo_tools() {
+    if profile.wants_todo_tools() && !ultraplan {
         if mode == "plan" {
             // D-035:plan 模式不再给 plan_write/todo_update——计划(设计正文 + 待办)整体
             // 落成工作区文件,待办到 Build 时才物化进 TodoStore,调研阶段不污染会话待办面。
@@ -204,7 +218,8 @@ pub fn runtime_tool_specs(kind: &str, mode: &str) -> Vec<Value> {
     }
     if profile.wants_task_tool() {
         // 动态列磁盘 profile:leader(尤其 team 模式)得知道有哪些工种可派。
-        let (profiles, _errs) = crate::subagents::list_subagents(&crate::subagents::agents_dir());
+        // D-044:内建 agents/ + 个人 data/agents/ 合并清单。
+        let (profiles, _errs) = crate::subagents::list_all_subagents();
         let pairs: Vec<(String, String)> = profiles
             .into_iter()
             .map(|p| (p.name, p.description))
@@ -284,7 +299,7 @@ pub fn runtime_tool_specs(kind: &str, mode: &str) -> Vec<Value> {
             ),
         ));
     }
-    if profile.wants_edit_tools() && mode != "plan" && !multitask {
+    if profile.wants_edit_tools() && mode != "plan" && !multitask && !ultraplan {
         out.push(spec(
             "write_file",
             "写入或创建工作区文本文件。",
@@ -314,9 +329,12 @@ pub fn runtime_tool_specs(kind: &str, mode: &str) -> Vec<Value> {
             "应用 Codex 风格补丁（*** Begin Patch / Add|Update|Delete File）。",
             obj_props(json!({ "patch": { "type": "string" } }), &["patch"]),
         ));
-    } else if matches!(profile.kind, crate::profile::AgentKind::Document | crate::profile::AgentKind::Studio)
-        && mode != "plan"
+    } else if matches!(
+        profile.kind,
+        crate::profile::AgentKind::Document | crate::profile::AgentKind::Studio
+    ) && mode != "plan"
         && !multitask
+        && !ultraplan
     {
         out.push(spec(
             "write_file",
@@ -330,6 +348,8 @@ pub fn runtime_tool_specs(kind: &str, mode: &str) -> Vec<Value> {
             ),
         ));
     }
+    // 记忆工具:全部 agent 种类、全部非 ask 模式(执行在 agent.rs 主循环闭包,要用 AppState)。
+    out.extend(crate::memory::tool_specs());
     out
 }
 
@@ -353,13 +373,26 @@ mod tests {
     fn team_mode_tools_are_build_plus_plan_write() {
         let team = names(&runtime_tool_specs("coding", "team"));
         let build = names(&runtime_tool_specs("coding", "build"));
-        let team_minus_plan: Vec<String> =
-            team.iter().filter(|n| n.as_str() != "plan_write").cloned().collect();
+        let team_minus_plan: Vec<String> = team
+            .iter()
+            .filter(|n| n.as_str() != "plan_write")
+            .cloned()
+            .collect();
         assert_eq!(team_minus_plan, build, "team 应为 build 全量 + plan_write");
-        for need in ["todo_write", "plan_write", "task", "read_file", "write_file", "apply_patch"] {
+        for need in [
+            "todo_write",
+            "plan_write",
+            "task",
+            "read_file",
+            "write_file",
+            "apply_patch",
+        ] {
             assert!(team.iter().any(|n| n == need), "team 缺 {need}");
         }
-        assert!(!build.iter().any(|n| n == "plan_write"), "build 不该带 plan_write");
+        assert!(
+            !build.iter().any(|n| n == "plan_write"),
+            "build 不该带 plan_write"
+        );
     }
 
     /// F-GAME-4 wave.3:todo/plan 条目 schema 携带 Plan DAG 五字段(旧字段原样保留)。
@@ -367,10 +400,22 @@ mod tests {
     fn todo_items_schema_carries_plan_dag_fields() {
         let schema = todo_items_schema();
         let props = &schema["todos"]["items"]["properties"];
-        for k in ["title", "description", "kind", "stage", "deps", "role", "prompt", "verify"] {
+        for k in [
+            "title",
+            "description",
+            "kind",
+            "stage",
+            "deps",
+            "role",
+            "prompt",
+            "verify",
+        ] {
             assert!(props.get(k).is_some(), "schema 缺 {k}: {props}");
         }
-        assert_eq!(schema["todos"]["items"]["required"][0], "title", "仅 title 必填(旧调用兼容)");
+        assert_eq!(
+            schema["todos"]["items"]["required"][0], "title",
+            "仅 title 必填(旧调用兼容)"
+        );
         assert_eq!(props["verify"]["enum"], json!(["none", "qa", "reviewer"]));
         assert_eq!(props["deps"]["type"], "array");
     }
@@ -379,10 +424,24 @@ mod tests {
     #[test]
     fn multitask_mode_tools_are_readonly_plus_dispatch() {
         let mt = names(&runtime_tool_specs("coding", "multitask"));
-        for need in [DISPATCH_TOOL, "todo_write", "todo_update", "read_file", "grep", "list_dir"] {
+        for need in [
+            DISPATCH_TOOL,
+            "todo_write",
+            "todo_update",
+            "read_file",
+            "grep",
+            "list_dir",
+        ] {
             assert!(mt.iter().any(|n| n == need), "multitask 缺 {need}: {mt:?}");
         }
-        for banned in ["task", "plan_write", CREATE_PLAN_TOOL, "write_file", "str_replace_edit", "apply_patch"] {
+        for banned in [
+            "task",
+            "plan_write",
+            CREATE_PLAN_TOOL,
+            "write_file",
+            "str_replace_edit",
+            "apply_patch",
+        ] {
             assert!(!mt.iter().any(|n| n == banned), "multitask 不该有 {banned}");
         }
         // ask 仍是空工具面(纯对话);build 仍是同步 task,两者不受本波影响。
@@ -390,6 +449,91 @@ mod tests {
         let build = names(&runtime_tool_specs("coding", "build"));
         assert!(build.iter().any(|n| n == "task"));
         assert!(!build.iter().any(|n| n == DISPATCH_TOOL));
+    }
+
+    /// D-044:ultraplan 工具面 = 只读侦察 + 同步 task(并行 explore)+ 记忆;
+    /// 无 todo/plan_write/create_plan/dispatch/编辑工具,也不含阶段出口工具(agent.rs 按轮次追加)。
+    #[test]
+    fn ultraplan_mode_tools_are_readonly_plus_task() {
+        let up = names(&runtime_tool_specs("coding", crate::ultraplan::MODE));
+        assert_eq!(
+            up,
+            [
+                "task",
+                "read_file",
+                "list_dir",
+                "glob",
+                "grep",
+                "read_skill",
+                crate::memory::MEMORY_WRITE_TOOL,
+                crate::memory::MEMORY_SEARCH_TOOL,
+                crate::memory::MEMORY_DELETE_TOOL,
+            ],
+            "ultraplan 工具面须恰为这九个"
+        );
+        for banned in [
+            "todo_write",
+            "write_todos",
+            "todo_update",
+            "plan_write",
+            CREATE_PLAN_TOOL,
+            DISPATCH_TOOL,
+            "write_file",
+            "str_replace_edit",
+            "apply_patch",
+        ] {
+            assert!(!up.iter().any(|n| n == banned), "ultraplan 不该有 {banned}");
+        }
+        assert!(
+            !up.iter().any(|n| crate::ultraplan::is_exit_tool(n)),
+            "出口工具由 agent.rs 按轮次种类追加,不在通用工具面里: {up:?}"
+        );
+        // 没有任何原生写工具混进来(写工具判据与工具面互相印证)。
+        assert!(!up.iter().any(|n| is_native_write_tool(n)));
+        // task 描述照常列出磁盘工种:leader 得知道有 explore 可派。
+        let task_spec = runtime_tool_specs("coding", crate::ultraplan::MODE)
+            .into_iter()
+            .find(|t| t.pointer("/function/name").and_then(Value::as_str) == Some("task"))
+            .expect("task spec");
+        let desc = task_spec
+            .pointer("/function/description")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(desc.contains("- explore:"), "task 描述应列出 explore 工种: {desc}");
+        // 其它模式不受这条分支影响:plan 仍有 create_plan,build 仍有写工具。
+        assert!(names(&runtime_tool_specs("coding", "plan"))
+            .iter()
+            .any(|n| n == CREATE_PLAN_TOOL));
+        assert!(names(&runtime_tool_specs("coding", "build"))
+            .iter()
+            .any(|n| n == "write_file"));
+        // 非 coding 种类即便误传该模式也拿不到写工具(document 的 write_file 分支同样短路)。
+        let doc = names(&runtime_tool_specs("document", crate::ultraplan::MODE));
+        assert!(!doc.iter().any(|n| n == "write_file" || n == "todo_write"), "{doc:?}");
+    }
+
+    /// D-044:每个原生工具都得落进只读门认得的一类——ultraplan 工具面给出的、写工具、待办 / 计划
+    /// 写入、或另有专门门的 create_plan / dispatch。新增原生工具(或别名)没归类 → 本测试红,
+    /// 逼着同步更新只读门(write_todos 当初就是这样从 leader 的调用侧门漏过去的)。
+    #[test]
+    fn every_native_tool_is_classified_for_readonly_gates() {
+        let up = names(&runtime_tool_specs("coding", crate::ultraplan::MODE));
+        for n in NATIVE_TOOLS {
+            assert!(
+                up.iter().any(|u| u == n)
+                    || is_native_write_tool(n)
+                    || is_native_todo_tool(n)
+                    || *n == CREATE_PLAN_TOOL
+                    || *n == DISPATCH_TOOL,
+                "原生工具 {n} 未归类:只读 leader / 子代理的门认不出它"
+            );
+        }
+        for n in ["todo_write", "write_todos", "todo_update", "plan_write"] {
+            assert!(is_native_todo_tool(n), "{n}");
+            assert!(!up.iter().any(|u| u == n), "ultraplan 工具面不该有 {n}");
+        }
+        assert!(!is_native_todo_tool("read_file"));
+        assert!(!is_native_todo_tool("write_file"), "写工具另有判据");
     }
 
     /// dispatch 描述必须写死异步语义:模型得知道调完就返回、结果不在本轮。

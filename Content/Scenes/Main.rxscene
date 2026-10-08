@@ -1,0 +1,49 @@
+{
+  "entities": [
+    {
+      "components": [
+        {
+          "enabled": true,
+          "props": {
+            "far": 100.0,
+            "fov": 60.0,
+            "near": 0.1,
+            "orthoSize": 5.0,
+            "projection": "orthographic"
+          },
+          "type": "Camera"
+        },
+        {
+          "enabled": true,
+          "props": {
+            "category": "map"
+          },
+          "type": "Category"
+        }
+      ],
+      "id": 1,
+      "name": "MainCamera",
+      "transform": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          10.0
+        ]
+      }
+    }
+  ],
+  "mode": "2d",
+  "name": "默认工作区",
+  "next_id": 2
+}

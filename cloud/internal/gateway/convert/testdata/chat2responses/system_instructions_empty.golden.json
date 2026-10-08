@@ -1,0 +1,27 @@
+{
+  "model": "gpt-5-codex",
+  "instructions": "Rule one.\n\nRule two.\n\nLate rule three.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Hi"
+        }
+      ]
+    },
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "Again"
+        }
+      ]
+    }
+  ],
+  "stream": false
+}

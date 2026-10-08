@@ -7,6 +7,7 @@ import { useSessionStore } from '@/lib/sessionStore';
 import { useThemeStore } from '@/lib/themeStore';
 import { PANE_CLAMP, useWorkbenchStore } from '@/lib/workbenchStore';
 import { mockForgeBackend } from './forgeMock';
+import StatusBar from '@/components/shell/StatusBar';
 
 /**
  * F7 wave.3 壳组件测试:三栏渲染 / 折叠 / clamp / 分隔条拖拽模拟 / 编辑器 tab 嵌入。
@@ -34,6 +35,7 @@ function stubShellFetch() {
         title: body.title ?? '',
         status: 'idle',
         agentKind: 'coding',
+        agentEngine: 'local',
         selectedModelId: null,
         webSearchEnabled: true,
         activeRunId: null,
@@ -116,6 +118,36 @@ afterEach(() => {
 });
 
 describe('<App /> 新壳', () => {
+  it('StatusBar 的 Codex Live 取登录态，并显示 plan 与剩余额度', async () => {
+    useSessionStore.setState({
+      activeSessionId: 'sess_codex',
+      sessions: [{
+        id: 'sess_codex', title: 'Codex 会话', status: 'idle', agentKind: 'coding', agentEngine: 'codex',
+        selectedModelId: 'codex:gpt-5', thinkingEnabled: true, reasoningEffort: 'high',
+        contextOptionId: null, webSearchEnabled: false, activeRunId: null,
+        createdAt: '', updatedAt: '', pinned: false, titleManuallySet: false,
+      }],
+    });
+    vi.stubGlobal('fetch', mockForgeBackend({}, {
+      '/api/forge/health': { status: 'ok' },
+      '/api/forge/design-snapshot': {
+        activeSession: { selectedModelId: 'codex:gpt-5', agentEngine: 'codex' },
+        models: { models: [{ id: 'codex:gpt-5', label: 'gpt-5', provider: 'codex', availability: 'available' }] },
+        agents: {
+          defaultEngine: 'local',
+          engines: [{
+            id: 'codex', authMode: 'chatgpt', planType: 'Plus', running: true,
+            rateLimits: { primary: { usedPercent: 35 } },
+          }],
+        },
+        todos: [],
+      },
+    }));
+    render(<StatusBar />);
+    expect(await screen.findByTestId('statusbar-engine')).toHaveTextContent('Codex · Plus');
+    expect(screen.getByTestId('statusbar-codex-limit')).toHaveTextContent('额度 65%');
+  });
+
   it('默认空态:全屏对话主页接管主区(titlebar/侧栏/statusbar 在位,主区与右栏让位)', async () => {
     render(<App />);
     expect(screen.getByTestId('shell-titlebar')).toBeInTheDocument();
@@ -162,6 +194,30 @@ describe('<App /> 新壳', () => {
     fireEvent.click(screen.getByLabelText('切换会话栏'));
     expect(useWorkbenchStore.getState().collapsed.sessions).toBe(false);
     expect(screen.getByTestId('pane-sessions')).toBeInTheDocument();
+  });
+
+  it('/ 聚焦会话搜索(侧栏收起先展开);输入框里按 / 不抢键', async () => {
+    useWorkbenchStore.setState({ collapsed: { sessions: true, chat: false, inspector: false } });
+    render(<App />);
+    fireEvent.keyDown(window, { key: '/' });
+    expect(useWorkbenchStore.getState().collapsed.sessions).toBe(false);
+    await vi.waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('sidebar-search')));
+    const input = screen.getByTestId('sidebar-search');
+    input.blur();
+    const composer = screen.getByTestId('composer-input');
+    composer.focus();
+    fireEvent.keyDown(composer, { key: '/' });
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it('Ctrl+B 开关会话栏,Ctrl+Alt+B 开关右栏(按物理键位认 B)', () => {
+    render(<App />);
+    const was = useWorkbenchStore.getState().collapsed;
+    fireEvent.keyDown(window, { key: 'b', code: 'KeyB', ctrlKey: true });
+    expect(useWorkbenchStore.getState().collapsed.sessions).toBe(!was.sessions);
+    fireEvent.keyDown(window, { key: '∫', code: 'KeyB', ctrlKey: true, altKey: true });
+    expect(useWorkbenchStore.getState().collapsed.inspector).toBe(!was.inspector);
+    expect(useWorkbenchStore.getState().collapsed.sessions).toBe(!was.sessions);
   });
 
   it('栏宽 clamp(200–360 / 300–560 / 240–420)', () => {

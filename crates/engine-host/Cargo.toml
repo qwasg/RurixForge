@@ -4,28 +4,54 @@ description = "Forge 引擎宿主:JSON-RPC 2.0 over TCP 控制通道 + rurix-phy
 version.workspace = true
 edition.workspace = true
 
+# 02 §5.2-§5.3:lib(核心 + 渲染接缝,godot-host 依赖它)+ bin(rurix 宿主;名字 engine-host 是测试契约)。
+[lib]
+name = "engine_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "engine-host"
+path = "src/main.rs"
+required-features = ["backend-rurix"]
+
+# Stage 3(step 6 遗留):f3_start_core 用到 RurixBackend,无 backend-rurix 时不参与构建,
+# 让 `cargo check --no-default-features --tests` 能编译(测试文件本身不改)。
+[[test]]
+name = "f3_start_core"
+required-features = ["backend-rurix"]
+
+# 02 §5.2:rurix 渲染后端(GPU 会话、WGSL→SPIR-V)是缺省 feature;godot-host 以 default-features = false 依赖核心。
+[features]
+default = ["backend-rurix"]
+backend-rurix = ["dep:rurix-rt", "dep:naga"]
+
 [dependencies]
 forge-util = { path = "../forge-util" }
 forge-scene = { path = "../forge-scene" }
+forge-shader = { path = "../forge-shader" }
 # F4 wave.3:图解释执行运行时(play 态逻辑帧调度 + 热重载)。
 forge-logic = { path = "../forge-logic" }
 rurix-physics.workspace = true
 soft-raster.workspace = true
 # wave.2 Viewport:rurix-rt vulkan 档 render_exec(场景实渲染 + Readback);loader 运行时
 # 动态装载 vulkan-1.dll,编译期零原生依赖,无设备环境可编译、运行期诚实 DEV_ENV_DEGRADE。
-rurix-rt = { workspace = true, features = ["vulkan"] }
+rurix-rt = { workspace = true, features = ["vulkan"], optional = true }
 # 2026-08-28 资产→视口断链接线:RXGB .rxmesh 反序列化(read_dag)+ assetd 项目面
 # (ForgeProject/.meta/cache_key——与构建链同一缓存键事实源)。
 rurix-geom-build.workspace = true
 assetd = { path = "../assetd" }
 # WGSL→SPIR-V 纯 Rust 编译(naga 缓存钉版;仅着色器翻译,不含 GPU 调用)。
-naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"] }
+naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"], optional = true }
 # H.264 编码(F1 wave.4 流腿;Cisco OpenH264 纯 Rust/BSD,CPU 编码无原生依赖)。
 openh264 = "0.6"
 base64 = "0.22"
 serde.workspace = true
 serde_json.workspace = true
 tungstenite = "0.24"
+sentinels-v6 = { path = "../../projects/code-sentinels/native-v6" }
+sha2 = "0.10"
+# D-045:Text 组件 CPU 光栅化(纯 Rust,支持 .ttc 集合;无原生依赖)。
+fontdue = "0.9"
 # D3D12 共享纹理生产者(wave.2 G-F1-9;仅 Windows 目标参与编译)。
 [target.'cfg(windows)'.dependencies]
 windows.workspace = true

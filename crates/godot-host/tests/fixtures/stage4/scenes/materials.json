@@ -1,0 +1,15 @@
+{
+  "name": "materials",
+  "project": "models",
+  "entities": [
+    {"name": "checker", "translation": [-1.8, 0.7, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/checker.rxmodel"}}]},
+    {"name": "normal_y", "translation": [-0.6, 0.7, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/normal_y.rxmodel"}}]},
+    {"name": "ao", "translation": [1.8, 0.7, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/ao.rxmodel"}}]},
+    {"name": "mats", "translation": [0.0, -0.7, 0.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/mats.rxmodel"}}]}
+  ],
+  "camera": {"target": [0.0, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0, "dist": 6.0, "fovY": 50.0, "ortho": false},
+  "width": 640,
+  "height": 360,
+  "probes": [[188, 119], [220, 119], [188, 151], [220, 151], [281, 135], [359, 135], [420, 135], [452, 135], [127, 225], [188, 225], [220, 225], [281, 225], [359, 225], [436, 225], [513, 225]],
+  "probeLabels": ["checker.red", "checker.blue", "checker.green", "checker.white", "normal_y.up", "normal_y.down", "ao.r0", "ao.r255", "mats.emissive", "mats.mask.a0", "mats.mask.a255", "mats.blend", "mats.unlit", "mats.metal", "mats.doubleSidedBack"]
+}

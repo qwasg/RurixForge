@@ -1,0 +1,14 @@
+data: {"id":"chatcmpl-resp_fake1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_fake1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"reasoning_content":"Thinking briefly."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_fake1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"content":"Answer text."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_fake1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_f","type":"function","function":{"name":"lookup","arguments":"{\"id\":7}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-resp_fake1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-resp_fake1","object":"chat.completion.chunk","created":1700000000,"model":"forge-test","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":30,"total_tokens":50,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":10}}}
+
+data: [DONE]
+

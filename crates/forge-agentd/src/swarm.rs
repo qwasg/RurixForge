@@ -292,7 +292,9 @@ mod tests {
         let c = SwarmCoordinator::default();
         c.create_shards("scene-partition", ids(10), 2).unwrap();
         // 与 pending 分片相交 → Overlap。
-        let err = c.create_shards("scene-partition", vec!["5".into()], 1).unwrap_err();
+        let err = c
+            .create_shards("scene-partition", vec!["5".into()], 1)
+            .unwrap_err();
         assert!(matches!(err, ShardError::Overlap(_)));
         // 不同类型不相干(asset-batch 与 scene-partition 命名空间独立)。
         c.create_shards("asset-batch", vec!["5".into()], 1).unwrap();

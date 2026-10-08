@@ -1,0 +1,5 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {"model": "forge-claude", "messages": [{"role": "user", "content": "hi"}], "n": 3},
+  "wantError": "n > 1"
+}

@@ -98,3 +98,97 @@ describe('<CommandPalette />', () => {
     expect(await screen.findByTestId('command-palette-input')).toBeInTheDocument();
   });
 });
+
+describe('<CommandPalette /> D-040 会话与文件', () => {
+  const session = (id: string, title: string, updatedAt: string) => ({
+    id,
+    title,
+    status: 'idle',
+    agentKind: 'coding',
+    agentEngine: 'local' as const,
+    selectedModelId: null,
+    thinkingEnabled: false,
+    reasoningEffort: null,
+    contextOptionId: null,
+    webSearchEnabled: false,
+    activeRunId: null,
+    createdAt: updatedAt,
+    updatedAt,
+    pinned: false,
+    titleManuallySet: true,
+  });
+
+  function stubSearch(searchCalls: string[], sessions: unknown[] = []) {
+    vi.stubGlobal(
+      'fetch',
+      mockForgeBackend(
+        {},
+        {
+          '/api/forge/sessions': { sessions },
+          '/api/forge/chat-folders': { folders: [] },
+          '/api/forge/health': { status: 'ok' },
+          '/api/forge/design-snapshot': { models: { models: [] }, todos: [] },
+          '/api/forge/workspace/search': () => {
+            const url = String((globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1)?.[0]);
+            const q = new URL(url, 'http://x').searchParams.get('q') ?? '';
+            searchCalls.push(q);
+            return q === ''
+              ? { query: '', results: [], total: 0, truncated: false, source: 'git', scanned: 3, scanTruncated: false }
+              : {
+                  query: q,
+                  results: [{ path: 'src/shell/Sidebar.tsx', name: 'Sidebar.tsx', dir: 'src/shell' }],
+                  total: 1,
+                  truncated: false,
+                  source: 'git',
+                  scanned: 3,
+                  scanTruncated: false,
+                };
+          },
+        },
+      ),
+    );
+  }
+
+  it('空查询列最近会话;按标题过滤后 Enter 切到该会话', async () => {
+    stubSearch(
+      [],
+      [session('s_old', '旧的会话', '2026-09-01T00:00:00Z'), session('s_new', '搭灰盒关卡', '2026-09-20T00:00:00Z')],
+    );
+    render(<App />);
+    await vi.waitFor(() => expect(useSessionStore.getState().sessions).toHaveLength(2));
+    useOverlayStore.getState().open('palette');
+    const input = await screen.findByTestId('command-palette-input');
+    expect(screen.getByText('最近会话')).toBeInTheDocument();
+    const rows = screen.getAllByTestId(/^palette-session-/).map((el) => el.getAttribute('data-testid'));
+    expect(rows).toEqual(['palette-session-s_new', 'palette-session-s_old']);
+    fireEvent.change(input, { target: { value: '灰盒' } });
+    expect(screen.getAllByTestId(/^palette-session-/)).toHaveLength(1);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useSessionStore.getState().activeSessionId).toBe('s_new');
+    expect(useOverlayStore.getState().palette).toBe(false);
+  });
+
+  it('打开即预热;输入后防抖搜文件,Enter 在工作台打开文件', async () => {
+    const calls: string[] = [];
+    stubSearch(calls);
+    render(<App />);
+    useOverlayStore.getState().open('palette');
+    const input = await screen.findByTestId('command-palette-input');
+    await vi.waitFor(() => expect(calls).toContain(''));
+    fireEvent.change(input, { target: { value: 'sidebar' } });
+    const row = await screen.findByTestId('palette-file-src/shell/Sidebar.tsx');
+    expect(row).toHaveTextContent('Sidebar.tsx');
+    expect(calls).toContain('sidebar');
+    fireEvent.click(row);
+    expect(useWorkbenchStore.getState().activeTabId).toBe('file:src/shell/Sidebar.tsx');
+  });
+
+  it('文件搜索失败如实提示,命令照常可执行', async () => {
+    render(<App />);
+    useOverlayStore.getState().open('palette');
+    const input = await screen.findByTestId('command-palette-input');
+    fireEvent.change(input, { target: { value: '主题' } });
+    expect(await screen.findByTestId('palette-files-empty')).toHaveTextContent('文件搜索不可用');
+    expect(screen.getByTestId('command-row-theme.toggle')).toBeInTheDocument();
+  });
+});

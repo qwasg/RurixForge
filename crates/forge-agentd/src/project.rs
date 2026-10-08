@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use assetd::project::{ForgeProject, GameMode};
+use assetd::project::{ForgeProject, GameMode, RenderConfig};
 use forge_scene::{Component, Entity, Scene, Transform};
 
 use crate::AppState;
@@ -21,13 +21,17 @@ use crate::AppState;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInitRequest {
-    /// 项目根(不存在则创建;已含 forge.toml 则拒绝覆盖)。
+    /// 项目根(留空则分配默认目录;不存在则创建;已含 forge.toml 则拒绝覆盖)。
+    #[serde(default)]
     root: String,
     /// 项目名(缺省 = 目录名)。
     #[serde(default)]
     name: String,
     /// 游戏维度模式:"2d" | "3d"(必填——选型即本端点的存在意义)。
     mode: String,
+    /// 实现后端：2D 缺省 Godot；3D 缺省 rurix，也可选择 Godot。
+    #[serde(default)]
+    backend: Option<String>,
 }
 
 fn err_response(status: StatusCode, code: &str, message: String) -> Response {
@@ -45,6 +49,7 @@ fn starter_scene(name: &str, mode: GameMode) -> Scene {
             let mut s = Scene::with_mode(name, "2d");
             let id = s.alloc_id();
             s.entities.push(Entity {
+                entity_guid: None,
                 id,
                 name: "MainCamera".into(),
                 // 2D 约定:XY 平面,相机在 +Z 朝 -Z(恒等旋转),正交。
@@ -73,6 +78,7 @@ fn starter_scene(name: &str, mode: GameMode) -> Scene {
             let mut s = Scene::new(name);
             let cam_id = s.alloc_id();
             s.entities.push(Entity {
+                entity_guid: None,
                 id: cam_id,
                 name: "MainCamera".into(),
                 transform: Transform {
@@ -96,6 +102,7 @@ fn starter_scene(name: &str, mode: GameMode) -> Scene {
             });
             let light_id = s.alloc_id();
             s.entities.push(Entity {
+                entity_guid: None,
                 id: light_id,
                 name: "Sun".into(),
                 transform: Transform {
@@ -115,6 +122,7 @@ fn starter_scene(name: &str, mode: GameMode) -> Scene {
             });
             let ground_id = s.alloc_id();
             s.entities.push(Entity {
+                entity_guid: None,
                 id: ground_id,
                 name: "Ground".into(),
                 transform: Transform {
@@ -136,19 +144,37 @@ fn starter_scene(name: &str, mode: GameMode) -> Scene {
 /// 项目初始化核心(纯函数式,便于测试):建目录树 + forge.toml + 起始场景。
 /// 已含 forge.toml → Err(PROJECT_ALREADY_INITIALIZED);mode 非法 → Err(INVALID_MODE)。
 pub fn init_project(root: &Path, name: &str, mode: &str) -> Result<Value, (String, String)> {
-    let mode = GameMode::parse(mode)
-        .ok_or_else(|| ("INVALID_MODE".to_string(), format!("mode 须为 \"2d\"|\"3d\",实际 {mode:?}")))?;
+    init_project_with_backend(root, name, mode, None)
+}
+
+pub fn init_project_with_backend(
+    root: &Path,
+    name: &str,
+    mode: &str,
+    backend: Option<&str>,
+) -> Result<Value, (String, String)> {
+    let mode = GameMode::parse(mode).ok_or_else(|| {
+        (
+            "INVALID_MODE".to_string(),
+            format!("mode 须为 \"2d\"|\"3d\",实际 {mode:?}"),
+        )
+    })?;
     if root.join("forge.toml").is_file() {
         return Err((
             "PROJECT_ALREADY_INITIALIZED".to_string(),
             format!("{} 已含 forge.toml(如需改模式请编辑该文件)", root.display()),
         ));
     }
+    let render = RenderConfig::for_mode(mode, backend)
+        .map_err(|e| ("INVALID_BACKEND".to_string(), e.message))?;
     std::fs::create_dir_all(root)
         .map_err(|e| ("IO_ERR".to_string(), format!("创建项目根失败: {e}")))?;
-    let root = root
-        .canonicalize()
-        .map_err(|e| ("IO_ERR".to_string(), format!("项目根 canonicalize 失败: {e}")))?;
+    let root = root.canonicalize().map_err(|e| {
+        (
+            "IO_ERR".to_string(),
+            format!("项目根 canonicalize 失败: {e}"),
+        )
+    })?;
     let name = if name.trim().is_empty() {
         root.file_name()
             .map(|s| s.to_string_lossy().into_owned())
@@ -160,10 +186,15 @@ pub fn init_project(root: &Path, name: &str, mode: &str) -> Result<Value, (Strin
     let mut proj = ForgeProject::with_defaults(root.clone());
     proj.name = name.clone();
     proj.mode = mode;
+    proj.render = render;
     proj.save_manifest()
         .map_err(|e| ("IO_ERR".to_string(), format!("forge.toml 写入失败: {e}")))?;
-    proj.ensure_dirs()
-        .map_err(|e| ("IO_ERR".to_string(), format!("Content 目录骨架创建失败: {e}")))?;
+    proj.ensure_dirs().map_err(|e| {
+        (
+            "IO_ERR".to_string(),
+            format!("Content 目录骨架创建失败: {e}"),
+        )
+    })?;
     // Graphs 目录(demo 惯例;ensure_dirs 不含)。
     std::fs::create_dir_all(proj.content_root().join("Graphs"))
         .map_err(|e| ("IO_ERR".to_string(), format!("Graphs 目录创建失败: {e}")))?;
@@ -183,28 +214,42 @@ pub fn init_project(root: &Path, name: &str, mode: &str) -> Result<Value, (Strin
         "root": root.to_string_lossy(),
         "name": name,
         "mode": mode.as_str(),
+        "backend": render.as_strs().0,
         "entryScene": scene_rel,
     }))
 }
 
-/// POST /api/forge/project/init {root, name?, mode} → {project:{root,name,mode,entryScene}}。
+/// POST /api/forge/project/init {root?, name?, mode, backend?} → {project:{root,name,mode,backend,entryScene}}。
 pub async fn project_init(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<ProjectInitRequest>,
 ) -> Response {
-    if req.root.trim().is_empty() {
+    let root = if req.root.trim().is_empty() {
+        match state.workspaces.allocate_project_root() {
+            Ok(root) => root,
+            Err(e) => {
+                return err_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "IO_ERR",
+                    format!("分配项目目录失败:{e}"),
+                )
+            }
+        }
+    } else {
+        PathBuf::from(req.root.trim())
+    };
+    if !root.is_absolute() {
         return err_response(
             StatusCode::BAD_REQUEST,
             "INVALID_ROOT",
-            "root 不可为空".into(),
+            "root 须为绝对目录路径".into(),
         );
     }
-    let root = PathBuf::from(req.root.trim());
-    match init_project(&root, &req.name, &req.mode) {
+    match init_project_with_backend(&root, &req.name, &req.mode, req.backend.as_deref()) {
         Ok(project) => Json(json!({ "project": project })).into_response(),
         Err((code, message)) => {
             let status = match code.as_str() {
-                "INVALID_MODE" | "INVALID_ROOT" => StatusCode::BAD_REQUEST,
+                "INVALID_MODE" | "INVALID_ROOT" | "INVALID_BACKEND" => StatusCode::BAD_REQUEST,
                 "PROJECT_ALREADY_INITIALIZED" => StatusCode::CONFLICT,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
@@ -226,6 +271,62 @@ mod tests {
         dir
     }
 
+    #[tokio::test]
+    async fn init_without_root_allocates_distinct_2d_projects() {
+        let (state, dir) = crate::test_app_state("project-default-root");
+        let mut roots = Vec::new();
+        for root in [None, Some("   ")] {
+            let mut req = json!({ "name": "../新游戏", "mode": "2d" });
+            if let Some(root) = root {
+                req["root"] = json!(root);
+            }
+            let response = project_init(
+                State(state.clone()),
+                Json(serde_json::from_value(req).unwrap()),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let doc: Value = serde_json::from_slice(&body).unwrap();
+            let root = PathBuf::from(doc["project"]["root"].as_str().unwrap());
+            assert!(root.starts_with(dir.join("workspaces").canonicalize().unwrap()));
+            let proj = ForgeProject::load(&root).unwrap();
+            assert_eq!(proj.mode, GameMode::TwoD);
+            assert_eq!(proj.render.as_strs().0, "godot");
+            assert!(root.join("Content/Scenes/Main.rxscene").is_file());
+            roots.push(root);
+        }
+        assert_ne!(
+            roots[0], roots[1],
+            "same project name must not overwrite a prior project"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn init_rejects_a_relative_root_before_writing() {
+        let (state, dir) = crate::test_app_state("project-relative-root");
+        let relative = crate::events::new_id("relative-project");
+        let response = project_init(
+            State(state),
+            Json(
+                serde_json::from_value(json!({
+                    "root": relative, "name": "x", "mode": "2d"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(!Path::new(&relative).exists());
+        assert!(
+            !dir.exists(),
+            "rejected input must not create a data directory"
+        );
+    }
+
     #[test]
     fn init_2d_project_scaffolds_manifest_and_ortho_scene() {
         let dir = temp_dir("2d");
@@ -235,6 +336,8 @@ mod tests {
         // forge.toml 回读:mode=2d。
         let proj = ForgeProject::load(&dir).unwrap();
         assert_eq!(proj.mode, GameMode::TwoD);
+        assert_eq!(r["backend"], json!("godot"));
+        assert_eq!(proj.render.as_strs().0, "godot");
         // 起始场景:mode=2d + 正交相机实体。
         let scene = Scene::load(dir.join("Content/Scenes/Main.rxscene")).unwrap();
         assert!(scene.is_2d());
@@ -264,6 +367,7 @@ mod tests {
         let r = init_project(&dir, "", "3d").expect("3d 初始化须成功");
         // 缺省名 = 目录名。
         assert!(r["name"].as_str().unwrap().len() > 0);
+        assert_eq!(r["backend"], json!("rurix"));
         let scene = Scene::load(dir.join("Content/Scenes/Main.rxscene")).unwrap();
         assert!(!scene.is_2d());
         assert_eq!(scene.entities.len(), 3, "3D 起始场景 = 相机+光+地面");
@@ -279,5 +383,23 @@ mod tests {
         assert_eq!(code, "INVALID_MODE");
         std::fs::remove_dir_all(&dir).ok();
         std::fs::remove_dir_all(&dir2).ok();
+    }
+
+    #[test]
+    fn init_explicit_backend_persists_and_invalid_backend_does_not_create_root() {
+        for (mode, backend) in [("3d", "godot"), ("3d", "rurix"), ("2d", "rurix")] {
+            let dir = temp_dir(&format!("{mode}-{backend}"));
+            let r = init_project_with_backend(&dir, "choice", mode, Some(backend)).unwrap();
+            assert_eq!(r["backend"], json!(backend));
+            assert_eq!(
+                ForgeProject::load(&dir).unwrap().render.as_strs().0,
+                backend
+            );
+            std::fs::remove_dir_all(dir).ok();
+        }
+        let dir = temp_dir("invalid-backend");
+        let (code, _) = init_project_with_backend(&dir, "bad", "3d", Some("unity")).unwrap_err();
+        assert_eq!(code, "INVALID_BACKEND");
+        assert!(!dir.exists(), "校验失败不得创建项目目录");
     }
 }

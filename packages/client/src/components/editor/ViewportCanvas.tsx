@@ -4,6 +4,9 @@ import { bridge } from '@/lib/bridge';
 import { useEditorStore, type ViewportInfo } from '@/lib/editorStore';
 import { useAssetStore } from '@/lib/assetStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
+import ViewportAnnotation from './ViewportAnnotation';
+import AnnotationHandle from './AnnotationHandle';
+import { editorReference, useEditorAnnotationStore } from '@/lib/editorReferences';
 import {
   mapKeyToInput,
   openViewportStream,
@@ -59,6 +62,13 @@ export function ViewportCanvas() {
   const selectedId = useEditorStore((s) => s.selectedId);
   const degraded = useEditorStore((s) => s.viewportDegraded);
   const info = useEditorStore((s) => s.viewportInfo);
+  const renderBackendInfo = useEditorStore((s) => s.renderBackendInfo);
+  const renderCapabilities = useEditorStore((s) => s.renderCapabilities);
+  const renderConfigMismatch = useEditorStore((s) => s.renderConfigMismatch);
+  const renderStatusError = useEditorStore((s) => s.renderStatusError);
+  const renderStatusWorkspaceId = useEditorStore((s) => s.renderStatusWorkspaceId);
+  const renderStatusLoaded = useEditorStore((s) => s.renderStatusLoaded);
+  const sceneName = useEditorStore((s) => s.sceneName);
   const gizmo = useEditorStore((s) => s.gizmo);
   const playState = useEditorStore((s) => s.playState);
   // F-GAME-3:2D 场景模式 → 视口手势切换(平移/正交缩放/网格;禁用环绕)
@@ -97,60 +107,130 @@ export function ViewportCanvas() {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    let timer: number | undefined;
-    const apply = (w: number, h: number) =>
-      setSize({
+    const apply = (w: number, h: number) => {
+      const next = {
         w: clamp(Math.round(w), 16, 1920),
         h: clamp(Math.round(h), 16, 1080),
         dpr: window.devicePixelRatio || 1,
-      });
-    const rect = el.getBoundingClientRect();
-    apply(rect.width, rect.height);
+      };
+      setSize((prev) => prev.w === next.w && prev.h === next.h && prev.dpr === next.dpr ? prev : next);
+    };
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      apply(r.width || size.w, r.height || size.h);
+    };
+    measure();
+    let timer: number | undefined;
     const ro = new ResizeObserver((entries) => {
       const r = entries[0]?.contentRect;
       if (!r) return;
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => apply(r.width, r.height), 200);
+      timer = window.setTimeout(() => apply(r.width || size.w, r.height || size.h), 200);
     });
     ro.observe(el);
+    window.addEventListener('resize', measure);
+    let resolutionQuery: MediaQueryList | null = typeof window.matchMedia === 'function'
+      ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+      : null;
+    const onResolutionChange = () => {
+      resolutionQuery?.removeEventListener('change', onResolutionChange);
+      measure();
+      resolutionQuery = typeof window.matchMedia === 'function'
+        ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+        : null;
+      resolutionQuery?.addEventListener('change', onResolutionChange);
+    };
+    resolutionQuery?.addEventListener('change', onResolutionChange);
     return () => {
       ro.disconnect();
       window.clearTimeout(timer);
+      window.removeEventListener('resize', measure);
+      resolutionQuery?.removeEventListener('change', onResolutionChange);
     };
   }, []);
 
-  // G-F1-9:向 desktop 主进程上报视口 bounds(CSS px + dpr),驱动 presenter 子窗口
-  // 嵌入与共享纹理尺寸协商;卸载时 visible=false 收回原生呈现层。web/测试环境
-  // bridge 无 viewport 段,自然 no-op。
+  // 后端/能力数据来自活动工作区 engine-host RPC。启动中的 Godot 后端按实际 ready 状态轮询；
+  // workspaceId 变化时，store 丢弃旧工作区的迟到结果，不对运行后端发起切换。
   useEffect(() => {
-    const report = bridge().viewport?.reportBounds;
-    if (!report) return;
-    const el = containerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    report({
-      x: rect.left,
-      y: rect.top,
-      w: size.w,
-      h: size.h,
-      dpr: size.dpr,
-      visible: true,
-    });
-    return () => {
-      report({ x: 0, y: 0, w: 0, h: 0, dpr: 1, visible: false });
+    let alive = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      await useEditorStore.getState().refreshRenderBackend(activeWorkspaceId);
+      if (!alive) return;
+      const state = useEditorStore.getState();
+      const current = state.renderStatusWorkspaceId === activeWorkspaceId;
+      const delay = current && state.renderBackendInfo?.ready ? 4000 : 1000;
+      timer = window.setTimeout(() => void poll(), delay);
     };
-  }, [size.w, size.h, size.dpr]);
+    void poll();
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [activeWorkspaceId]);
 
   // 相机首拉
   useEffect(() => {
     void useEditorStore.getState().loadCamera();
   }, []);
 
-  // 流分辨率:CSS 尺寸封顶 1280×720(不乘 dpr)——面板内视觉无损,canvas 拉伸呈现;
-  // 与服务端推流上限一致(遗留 MCP 腿按流尺寸出帧时 base64 响应也稳在 8MB 帧限内)。
-  const scale = Math.min(1, 1280 / Math.max(1, size.w));
-  const physW = clamp(Math.round(size.w * scale), 16, 1280);
-  const physH = clamp(Math.round(size.h * scale), 16, 720);
+  // 推流分辨率按真实能力面限幅(CSS px，不乘 DPR)；保持宽高比且与 presenter 共享尺寸完全一致。
+  const streamLimits = renderCapabilities?.maxSize.stream ?? [1280, 720];
+  const streamMaxW = Math.max(16, streamLimits[0]);
+  const streamMaxH = Math.max(16, streamLimits[1]);
+  const scale = Math.min(1, streamMaxW / Math.max(1, size.w), streamMaxH / Math.max(1, size.h));
+  const physW = clamp(Math.round(size.w * scale), 16, streamMaxW);
+  const physH = clamp(Math.round(size.h * scale), 16, streamMaxH);
+
+  const st = useEditorStore.getState;
+  const isPlaying = playState === 'play_running';
+  const renderStatusForWorkspace = renderStatusWorkspaceId === activeWorkspaceId;
+  // Godot 原生 presenter 是不透明子窗口：网页网格需要单独的 canvas 显示路径，故此时走网页帧，
+  // 编辑辅助仅叠在本地 canvas 上，不写入推流、RPC 或共享帧。其它情况下按后端真实共享能力选 presenter。
+  const showGrid = sceneMode === '2d' && !isPlaying && !degraded && camera?.ortho === true;
+  const viewportOverlayOpen = useEditorAnnotationStore((state) => state.viewportOverlayOpen);
+  const useNativePresenter = renderStatusForWorkspace
+    && !viewportOverlayOpen
+    && renderBackendInfo != null
+    && renderCapabilities != null
+    && renderCapabilities.frameExits.sharedD3d12 === true
+    && !showGrid
+    && !degraded;
+
+  // Bounds 只覆盖实际画布：状态 / 帧统计 / PIE 状态 / 操作提示都位于 presenter 矩形之外。
+  // 同时把最终协商出的流分辨率传给桌面端，避免 DPI 缩放后二次推导尺寸不一致。
+  useEffect(() => {
+    const report = bridge().viewport?.reportBounds;
+    const el = containerRef.current;
+    if (!report || !el) return;
+    const send = (visible: boolean) => {
+      const rect = el.getBoundingClientRect();
+      report({
+        x: rect.left,
+        y: rect.top,
+        w: size.w,
+        h: size.h,
+        dpr: size.dpr,
+        streamW: physW,
+        streamH: physH,
+        workspaceId: activeWorkspaceId,
+        visible: visible && rect.width > 0 && rect.height > 0,
+      });
+    };
+    send(useNativePresenter);
+    const onResize = () => send(useNativePresenter);
+    const onScroll = () => send(useNativePresenter);
+    const ro = new ResizeObserver(() => send(useNativePresenter));
+    ro.observe(el);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onScroll, true);
+      send(false);
+    };
+  }, [size.w, size.h, size.dpr, physW, physH, useNativePresenter, activeWorkspaceId]);
 
   // ── 直连流通道:挂载建连,尺寸变化走 resize 消息(服务端有重建防抖);
   //    工作区切换 → 关旧连新(新工作区的 engine-host 是另一个进程/另一条 WS) ──
@@ -264,6 +344,7 @@ export function ViewportCanvas() {
   // WS 直连优先(毫秒级);流断走 HTTP 注入兜底(丢 auto-repeat 限流,可玩性降档不失能)。
   useEffect(() => {
     if (playState !== 'play_running') return;
+    const held = new Map<string, string>();
     const send = (action: string, value: number, repeat: boolean) => {
       const h = streamRef.current;
       if (h?.up) {
@@ -279,20 +360,35 @@ export function ViewportCanvas() {
       const m = mapKeyToInput(e.key);
       if (!m) return;
       e.preventDefault();
+      held.set(e.code || e.key, m.action);
       send(m.action, m.value, e.repeat);
     };
     const up = (e: KeyboardEvent) => {
-      if (isInteractiveTarget(e.target)) return;
       const m = mapKeyToInput(e.key);
       if (!m) return;
+      const key = e.code || e.key;
+      if (!held.has(key) && isInteractiveTarget(e.target)) return;
+      held.delete(key);
+      // W and ArrowUp can both hold the same action; releasing one must not stop the other.
+      if ([...held.values()].includes(m.action)) return;
       e.preventDefault();
       send(m.action, 0, false);
     };
+    const release = () => {
+      for (const action of new Set(held.values())) send(action, 0, false);
+      held.clear();
+    };
+    const visibility = () => { if (document.hidden) release(); };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    window.addEventListener('blur', release);
+    document.addEventListener('visibilitychange', visibility);
     return () => {
+      release();
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', release);
+      document.removeEventListener('visibilitychange', visibility);
     };
   }, [playState]);
 
@@ -358,12 +454,9 @@ export function ViewportCanvas() {
     };
   }, [channel, physW, physH, selectedId, playState]);
 
-  const st = useEditorStore.getState;
-  const isPlaying = playState === 'play_running';
-
-  // ── F-GAME-3:2D 网格叠加层(编辑态 + 2D 场景 + 正交相机;客户端 canvas 叠加,
-  // 不动引擎 pass 图)。世界→屏幕:yaw0/pitch0 正交下 ndc=(w-target)/half,屏外 y 翻转。 ──
-  const showGrid = sceneMode === '2d' && !isPlaying && !degraded && camera?.ortho === true;
+  // ── F-GAME-3:2D 网格只绘制在网页 canvas 回退通道上(编辑态 + 2D + 正交)。
+  // 使用原生 presenter 时 bounds 会关闭，避免网页辅助层被不透明 HWND 覆盖；绝不改写引擎帧。
+  // 世界→屏幕:yaw0/pitch0 正交下 ndc=(w-target)/half,屏外 y 翻转。 ──
   useEffect(() => {
     const canvas = gridRef.current;
     if (!canvas || !showGrid || !camera) return;
@@ -531,72 +624,124 @@ export function ViewportCanvas() {
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-ink outline-none"
-      tabIndex={0}
-      role="application"
-      aria-label="Viewport 画布"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onWheel={onWheel}
-      onDragOver={(e) => {
-        e.preventDefault(); // 允许 drop
-        e.dataTransfer.dropEffect = 'copy';
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        const guid = e.dataTransfer.getData('forge/asset-guid');
-        const atype = e.dataTransfer.getData('forge/asset-type');
-        if (!guid || (atype !== 'mesh' && atype !== 'prefab')) return;
-        // 实例化到相机目标点前方 2m(或原点)。
-        const cam = st().camera;
-        const pos: [number, number, number] = cam
-          ? [cam.target[0], cam.target[1], cam.target[2]]
-          : [0, 0, 0];
-        void useAssetStore.getState().instantiate(guid, pos).then(() => st().loadEntities());
-      }}
-      onKeyDown={(e) => {
-        if (isPlaying) return; // play 运行态键盘归游戏输入(window 级监听),编辑器快捷键避让
-        if (e.key === 'f' || e.key === 'F') void st().focusSelected();
-        if (e.key === 'w' || e.key === 'W') st().setGizmo('translate');
-        if (e.key === 'e' || e.key === 'E') st().setGizmo('rotate');
-        if (e.key === 'r' || e.key === 'R') st().setGizmo('scale');
-      }}
-    >
-      <canvas ref={canvasRef} className="h-full w-full" style={{ display: degraded ? 'none' : 'block' }} />
-      {/* F-GAME-3:2D 网格叠加(编辑态 2D 场景;不拦截指针) */}
-      {showGrid && (
-        <canvas
-          ref={gridRef}
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          aria-hidden
-        />
-      )}
-      {degraded && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <p className="max-w-md text-center text-xs text-white/40">
-            Viewport 帧通道降级(如实上报,非伪造帧)
-            <br />
-            <span className="text-white/55">{degraded}</span>
-          </p>
+    <div className="flex h-full w-full min-h-0 flex-col bg-ink">
+      {/* 这些信息位于原生 presenter 边界之外，确保子窗口显示时仍可见。 */}
+      <header className="shrink-0 border-b border-edge bg-shell-sunk px-2 py-1 text-2xs text-fg-3" data-testid="viewport-render-status">
+        <div className="flex min-h-5 min-w-0 items-center gap-2">
+          <ViewportAnnotation />
+          <AnnotationHandle reference={editorReference('scene')} label={sceneName || '当前场景'} />
+          <span className="shrink-0 font-mono text-fg" data-testid="render-backend-label">
+            {renderStatusForWorkspace && renderBackendInfo
+              ? [renderBackendInfo.renderBackend, renderBackendInfo.method, renderBackendInfo.driver,
+                  renderBackendInfo.deviceName ?? '设备待首帧', renderBackendInfo.ready ? '就绪' : '等待首帧']
+                  .filter(Boolean).join(' · ')
+              : renderStatusError ? '渲染后端不可用' : '正在读取渲染后端…'}
+          </span>
+          {renderStatusForWorkspace && renderCapabilities && (
+            <span className="min-w-0 flex-1 truncate" data-testid="render-capability-summary">
+              腿 {renderCapabilities.legs.join(', ') || '无'} ·
+              CPU 回读 {renderCapabilities.frameExits.cpuRgba8 ? '支持' : '不支持'} ·
+              D3D12 共享 {renderCapabilities.frameExits.sharedD3d12 ? '支持' : '不支持'} ·
+              零拷贝 {renderCapabilities.frameExits.zeroCopy ? '支持' : '不支持'}
+            </span>
+          )}
+          {renderStatusForWorkspace && renderCapabilities && (
+            <details className="relative shrink-0" data-testid="render-capability-details">
+              <summary className="cursor-pointer select-none rounded px-1.5 py-0.5 hover:bg-shell-hover">限制与细节</summary>
+              {/* 保持普通文档流，展开时增加 header 高度；不能浮到原生子窗口覆盖的区域。 */}
+              <div className="mt-1 max-h-[45vh] w-[min(420px,80vw)] overflow-auto rounded-md border border-edge bg-shell-float p-2 text-fg-2 shadow-lg">
+                <p>渲染腿：{renderCapabilities.legs.join(', ') || '无'}</p>
+                <p>帧上限：RPC {renderCapabilities.maxSize.rpc.join('×')}；推流 {renderCapabilities.maxSize.stream.join('×')}</p>
+                <p>绘制上限：网格 {renderCapabilities.maxDraws.spriteMesh ?? '无固定上限'}；模型 {renderCapabilities.maxDraws.model ?? '无固定上限'}；V6 {renderCapabilities.maxDraws.sentinelsV6 ?? '无固定上限'}</p>
+                <p>统计：{Object.entries(renderCapabilities.stats).map(([key, supported]) => `${key} ${supported ? '支持' : '不支持'}`).join(' · ')}</p>
+                {renderBackendInfo?.versions && (
+                  <p>版本：engine-host {renderBackendInfo.versions.engineHost ?? '?'} · Godot {renderBackendInfo.versions.godot ?? '—'} · gdext {renderBackendInfo.versions.gdext ?? '—'}</p>
+                )}
+                {renderBackendInfo?.frameChannels && (
+                  <p>帧通道：L2 {renderBackendInfo.frameChannels.l2 ?? '—'}；L1 {renderBackendInfo.frameChannels.l1Active ? '工作中' : renderBackendInfo.frameChannels.l1Available ? '可用' : '不可用'}{renderBackendInfo.frameChannels.l1Reason ? `（${renderBackendInfo.frameChannels.l1Reason}）` : ''}</p>
+                )}
+                {renderCapabilities.coverage?.skipped?.map((item) => <p key={`skip-${item}`}>未接入：{item}</p>)}
+                {renderCapabilities.coverage?.unsupported?.map((item) => <p key={`unsupported-${item.feature}`}>不支持：{item.feature} — {item.reason}</p>)}
+                {renderCapabilities.coverage?.limited?.map((item) => <p key={`limited-${item.feature}`}>受限：{item.feature} — {item.reason}</p>)}
+              </div>
+            </details>
+          )}
+          {renderStatusError && <span className="truncate text-warn" title={renderStatusError} data-testid="render-status-error">能力查询暂不可用</span>}
         </div>
-      )}
-      {/* 右上:帧统计(直连流 = 服务端 1Hz status;轮询回退 = viewport_frame 实测) */}
-      <div className="absolute right-2 top-2 rounded-md bg-black/40 px-2 py-1 font-mono text-2xs text-white/70">
-        {info
-          ? `${info.deviceName} · draws ${info.draws}${info.fps != null ? ` · ${info.fps}fps` : ''}${info.nonZeroPixels != null ? ` · px ${info.nonZeroPixels}` : ''}${info.truncated ? ' · 截断!' : ''} · ${(info.channel ?? channel) === 'stream' ? '直连流' : '轮询回退'}`
-          : '帧统计待首帧'}
+        {renderConfigMismatch && (
+          <p role="status" className="mt-1 text-warn" data-testid="render-config-mismatch">{renderConfigMismatch}</p>
+        )}
+      </header>
+      <div
+        ref={containerRef}
+        className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-ink outline-none"
+        tabIndex={0}
+        role="application"
+        aria-label="Viewport 画布"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onWheel={onWheel}
+        onDragOver={(e) => {
+          e.preventDefault(); // 允许 drop
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const guid = e.dataTransfer.getData('forge/asset-guid');
+          const atype = e.dataTransfer.getData('forge/asset-type');
+          if (!guid || (atype !== 'mesh' && atype !== 'model' && atype !== 'prefab')) return;
+          // 实例化到相机目标点前方 2m(或原点)。
+          const cam = st().camera;
+          const pos: [number, number, number] = cam
+            ? [cam.target[0], cam.target[1], cam.target[2]]
+            : [0, 0, 0];
+          void useAssetStore.getState().instantiate(guid, pos).then(() => st().loadEntities());
+        }}
+        onKeyDown={(e) => {
+          if (isPlaying) return; // play 运行态键盘归游戏输入(window 级监听),编辑器快捷键避让
+          if (e.key === 'f' || e.key === 'F') void st().focusSelected();
+          if (e.key === 'w' || e.key === 'W') st().setGizmo('translate');
+          if (e.key === 'e' || e.key === 'E') st().setGizmo('rotate');
+          if (e.key === 'r' || e.key === 'R') st().setGizmo('scale');
+        }}
+      >
+        <canvas ref={canvasRef} className="h-full w-full" style={{ display: degraded ? 'none' : 'block' }} />
+        {/* 网格为纯网页显示辅助层；显示它时原生 presenter 被关闭，不写入引擎/RPC帧。 */}
+        {showGrid && (
+          <canvas
+            ref={gridRef}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            aria-hidden
+            data-testid="viewport-grid-overlay"
+          />
+        )}
+        {degraded && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="max-w-md text-center text-xs text-white/40">
+              Viewport 帧通道降级(如实上报,非伪造帧)
+              <br />
+              <span className="text-white/55">{degraded}</span>
+            </p>
+          </div>
+        )}
       </div>
-      {/* 左下:交互提示(编辑 = gizmo 操作;play 运行 = 游戏输入契约;2D/3D 手势分叉) */}
-      <div className="absolute bottom-2 left-2 rounded-md bg-black/40 px-2 py-1 text-2xs text-white/50">
-        {isPlaying
-          ? '方向键/WASD 移动 · 空格 动作 · 单击 = 带坐标的 click 输入'
-          : sceneMode === '2d'
-            ? `2D · 单击点选 · 左键/中键拖拽空白平移 · 滚轮缩放 · F 聚焦 · ${gizmo === 'translate' ? 'W 平移(0.5 吸附,Ctrl 禁用)' : gizmo === 'rotate' ? 'E 旋转(绕 Z)' : 'R 缩放'}`
-            : `单击点选 · Alt+左键环绕 · 中键平移 · 滚轮缩放 · F 聚焦 · ${gizmo === 'translate' ? 'W 平移' : gizmo === 'rotate' ? 'E 旋转' : 'R 缩放'}(选中后拖拽)`}
-      </div>
+      <footer className="flex min-h-6 shrink-0 items-center gap-2 border-t border-edge bg-shell-sunk px-2 py-1 text-2xs text-fg-3">
+        <span className="truncate font-mono" data-testid="viewport-play-status">{playState}</span>
+        <span className="min-w-0 flex-1 truncate text-fg-4">{sceneName || 'Untitled'}</span>
+        <span className="max-w-[55%] truncate font-mono text-fg-4" data-testid="viewport-frame-stats">
+          {info
+            ? `${info.deviceName} · draws ${info.draws}${info.fps != null ? ` · ${info.fps}fps` : ''}${info.nonZeroPixels != null ? ` · px ${info.nonZeroPixels}` : ''}${info.truncated ? ' · 截断!' : ''} · ${(info.channel ?? channel) === 'stream' ? '直连流' : '轮询回退'}`
+            : '帧统计待首帧'}
+        </span>
+        <span className="max-w-[55%] truncate text-fg-4" data-testid="viewport-input-hint">
+          {isPlaying
+            ? '方向键/WASD 移动 · 空格 动作 · 单击 = 带坐标的 click 输入'
+            : sceneMode === '2d'
+              ? `2D · 单击点选 · 左键/中键拖拽空白平移 · 滚轮缩放 · F 聚焦 · ${gizmo === 'translate' ? 'W 平移(0.5 吸附,Ctrl 禁用)' : gizmo === 'rotate' ? 'E 旋转(绕 Z)' : 'R 缩放'}`
+              : `单击点选 · Alt+左键环绕 · 中键平移 · 滚轮缩放 · F 聚焦 · ${gizmo === 'translate' ? 'W 平移' : gizmo === 'rotate' ? 'E 旋转' : 'R 缩放'}(选中后拖拽)`}
+        </span>
+      </footer>
     </div>
   );
 }

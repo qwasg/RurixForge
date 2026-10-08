@@ -1,0 +1,275 @@
+{
+ "name": "volumes",
+ "doc": "ReflectionProbe (mirror reflects a red lamp behind the camera) / Decal (red) / FogVolume (red emission); Forward+ shows all three",
+ "project": "models",
+ "entities": [
+  {
+   "name": "mirror",
+   "translation": [
+    -0.2,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.6,
+    1.6,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/mirror.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "lamp",
+   "translation": [
+    0.0,
+    0.0,
+    15.0
+   ],
+   "rotation": [
+    0.0,
+    1.0,
+    0.0,
+    6.123233995736766e-17
+   ],
+   "scale": [
+    40.0,
+    40.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/redlamp.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "panel",
+   "translation": [
+    2.4,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.6,
+    1.6,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "decal",
+   "translation": [
+    2.4,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.7071067811865476,
+    0.0,
+    0.0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "Decal",
+     "enabled": true,
+     "props": {
+      "size": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "textureAlbedo": "5e5e5e5e-0000-4000-8000-f5dec0000001"
+     }
+    }
+   ]
+  },
+  {
+   "name": "back",
+   "translation": [
+    -2.6,
+    0.0,
+    -2.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.8,
+    1.8,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "ModelRenderer",
+     "enabled": true,
+     "props": {
+      "model": "Models/white.rxmodel"
+     }
+    }
+   ]
+  },
+  {
+   "name": "fogvol",
+   "translation": [
+    -2.6,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "FogVolume",
+     "enabled": true,
+     "props": {
+      "size": [
+       1.2,
+       1.2,
+       1.2
+      ],
+      "density": 2.0,
+      "emission": [
+       1.0,
+       0.0,
+       0.0,
+       1.0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "env",
+   "translation": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rotation": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "components": [
+    {
+     "type": "Environment",
+     "enabled": true,
+     "props": {
+      "ambientSource": "color",
+      "ambientColor": [
+       0.5,
+       0.5,
+       0.5,
+       1.0
+      ],
+      "reflectionSource": "disabled",
+      "volumetricFogEnabled": true,
+      "volumetricFogDensity": 0.0,
+      "volumetricFogTemporalReprojection": false
+     }
+    },
+    {
+     "type": "ReflectionProbe",
+     "enabled": true,
+     "props": {
+      "size": [
+       60.0,
+       60.0,
+       60.0
+      ],
+      "updateMode": "always"
+     }
+    }
+   ]
+  }
+ ],
+ "camera": {
+  "target": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "yaw": 0.0,
+  "pitch": 0.0,
+  "dist": 10.0,
+  "ortho": true,
+  "orthoSize": 2.0
+ },
+ "width": 640,
+ "height": 360,
+ "probes": [
+  [
+   296,
+   180
+  ],
+  [
+   464,
+   180
+  ],
+  [
+   112,
+   180
+  ]
+ ],
+ "probeLabels": [
+  "mirror",
+  "decal",
+  "fogvol"
+ ],
+ "warmFrames": 8
+}

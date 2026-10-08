@@ -36,8 +36,13 @@ description: 交互逻辑生成(节点图)。当任务涉及「做交互 / 触�
 
 ## 输出约束
 - 图必须可解释执行;挂载后人工在图上改常量(props 覆盖)须生效。
-- 未实现节点(physics.*/audio.*/spawn/destroy/look_at/lerp/for_each/gate/draw_debug_line/
-  call_function)不得在图中当已实现使用;运行出现 logic.unsupported 必须写进报告。
+- 未实现节点(physics.*/audio.*/spawn/destroy/look_at/lerp/for_each/gate/draw_debug_line)
+  不得在图中当已实现使用;运行出现 logic.unsupported 必须写进报告。
+- `call.call_function` 已实现(RD-F4-004),是图调用 .rx 代码的唯一入口:module = 项目根相对的
+  .rx 路径、fn = 脚本里 `#[export(c)] pub fn` 的函数名(两者须为常量),args 为数组,返回值从
+  result pin 取;graph_validate 会核对 module 文件存在、fn 已导出、签名相符。运行期构建/加载/
+  调用失败发 logic.call_error(该次调用未生效,链继续),同样必须写进报告。
+- 运行时只加载 Script.graphRef:只填 module、不填 graphRef 的 Script 在 play 态不会执行。
 
 ## 失败回退策略
 - 校验/playtest 失败:卸载组件(component_remove Script),报告失败断言详情,不遗留半截图。

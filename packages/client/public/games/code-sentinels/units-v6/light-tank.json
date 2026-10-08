@@ -1,0 +1,936 @@
+{
+  "schemaVersion": 2,
+  "id": "light-tank",
+  "image": "light-tank.png",
+  "width": 1024,
+  "height": 6656,
+  "frameCount": 104,
+  "frameSize": [
+    256,
+    256
+  ],
+  "pivot": [
+    0.5,
+    0.88
+  ],
+  "boxes": [
+    [
+      0,
+      0,
+      256,
+      256
+    ],
+    [
+      256,
+      0,
+      256,
+      256
+    ],
+    [
+      512,
+      0,
+      256,
+      256
+    ],
+    [
+      768,
+      0,
+      256,
+      256
+    ],
+    [
+      0,
+      256,
+      256,
+      256
+    ],
+    [
+      256,
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      256,
+      256,
+      256
+    ],
+    [
+      768,
+      256,
+      256,
+      256
+    ],
+    [
+      0,
+      512,
+      256,
+      256
+    ],
+    [
+      256,
+      512,
+      256,
+      256
+    ],
+    [
+      512,
+      512,
+      256,
+      256
+    ],
+    [
+      768,
+      512,
+      256,
+      256
+    ],
+    [
+      0,
+      768,
+      256,
+      256
+    ],
+    [
+      256,
+      768,
+      256,
+      256
+    ],
+    [
+      512,
+      768,
+      256,
+      256
+    ],
+    [
+      768,
+      768,
+      256,
+      256
+    ],
+    [
+      0,
+      1024,
+      256,
+      256
+    ],
+    [
+      256,
+      1024,
+      256,
+      256
+    ],
+    [
+      512,
+      1024,
+      256,
+      256
+    ],
+    [
+      768,
+      1024,
+      256,
+      256
+    ],
+    [
+      0,
+      1280,
+      256,
+      256
+    ],
+    [
+      256,
+      1280,
+      256,
+      256
+    ],
+    [
+      512,
+      1280,
+      256,
+      256
+    ],
+    [
+      768,
+      1280,
+      256,
+      256
+    ],
+    [
+      0,
+      1536,
+      256,
+      256
+    ],
+    [
+      256,
+      1536,
+      256,
+      256
+    ],
+    [
+      512,
+      1536,
+      256,
+      256
+    ],
+    [
+      768,
+      1536,
+      256,
+      256
+    ],
+    [
+      0,
+      1792,
+      256,
+      256
+    ],
+    [
+      256,
+      1792,
+      256,
+      256
+    ],
+    [
+      512,
+      1792,
+      256,
+      256
+    ],
+    [
+      768,
+      1792,
+      256,
+      256
+    ],
+    [
+      0,
+      2048,
+      256,
+      256
+    ],
+    [
+      256,
+      2048,
+      256,
+      256
+    ],
+    [
+      512,
+      2048,
+      256,
+      256
+    ],
+    [
+      768,
+      2048,
+      256,
+      256
+    ],
+    [
+      0,
+      2304,
+      256,
+      256
+    ],
+    [
+      256,
+      2304,
+      256,
+      256
+    ],
+    [
+      512,
+      2304,
+      256,
+      256
+    ],
+    [
+      768,
+      2304,
+      256,
+      256
+    ],
+    [
+      0,
+      2560,
+      256,
+      256
+    ],
+    [
+      256,
+      2560,
+      256,
+      256
+    ],
+    [
+      512,
+      2560,
+      256,
+      256
+    ],
+    [
+      768,
+      2560,
+      256,
+      256
+    ],
+    [
+      0,
+      2816,
+      256,
+      256
+    ],
+    [
+      256,
+      2816,
+      256,
+      256
+    ],
+    [
+      512,
+      2816,
+      256,
+      256
+    ],
+    [
+      768,
+      2816,
+      256,
+      256
+    ],
+    [
+      0,
+      3072,
+      256,
+      256
+    ],
+    [
+      256,
+      3072,
+      256,
+      256
+    ],
+    [
+      512,
+      3072,
+      256,
+      256
+    ],
+    [
+      768,
+      3072,
+      256,
+      256
+    ],
+    [
+      0,
+      3328,
+      256,
+      256
+    ],
+    [
+      256,
+      3328,
+      256,
+      256
+    ],
+    [
+      512,
+      3328,
+      256,
+      256
+    ],
+    [
+      768,
+      3328,
+      256,
+      256
+    ],
+    [
+      0,
+      3584,
+      256,
+      256
+    ],
+    [
+      256,
+      3584,
+      256,
+      256
+    ],
+    [
+      512,
+      3584,
+      256,
+      256
+    ],
+    [
+      768,
+      3584,
+      256,
+      256
+    ],
+    [
+      0,
+      3840,
+      256,
+      256
+    ],
+    [
+      256,
+      3840,
+      256,
+      256
+    ],
+    [
+      512,
+      3840,
+      256,
+      256
+    ],
+    [
+      768,
+      3840,
+      256,
+      256
+    ],
+    [
+      0,
+      4096,
+      256,
+      256
+    ],
+    [
+      256,
+      4096,
+      256,
+      256
+    ],
+    [
+      512,
+      4096,
+      256,
+      256
+    ],
+    [
+      768,
+      4096,
+      256,
+      256
+    ],
+    [
+      0,
+      4352,
+      256,
+      256
+    ],
+    [
+      256,
+      4352,
+      256,
+      256
+    ],
+    [
+      512,
+      4352,
+      256,
+      256
+    ],
+    [
+      768,
+      4352,
+      256,
+      256
+    ],
+    [
+      0,
+      4608,
+      256,
+      256
+    ],
+    [
+      256,
+      4608,
+      256,
+      256
+    ],
+    [
+      512,
+      4608,
+      256,
+      256
+    ],
+    [
+      768,
+      4608,
+      256,
+      256
+    ],
+    [
+      0,
+      4864,
+      256,
+      256
+    ],
+    [
+      256,
+      4864,
+      256,
+      256
+    ],
+    [
+      512,
+      4864,
+      256,
+      256
+    ],
+    [
+      768,
+      4864,
+      256,
+      256
+    ],
+    [
+      0,
+      5120,
+      256,
+      256
+    ],
+    [
+      256,
+      5120,
+      256,
+      256
+    ],
+    [
+      512,
+      5120,
+      256,
+      256
+    ],
+    [
+      768,
+      5120,
+      256,
+      256
+    ],
+    [
+      0,
+      5376,
+      256,
+      256
+    ],
+    [
+      256,
+      5376,
+      256,
+      256
+    ],
+    [
+      512,
+      5376,
+      256,
+      256
+    ],
+    [
+      768,
+      5376,
+      256,
+      256
+    ],
+    [
+      0,
+      5632,
+      256,
+      256
+    ],
+    [
+      256,
+      5632,
+      256,
+      256
+    ],
+    [
+      512,
+      5632,
+      256,
+      256
+    ],
+    [
+      768,
+      5632,
+      256,
+      256
+    ],
+    [
+      0,
+      5888,
+      256,
+      256
+    ],
+    [
+      256,
+      5888,
+      256,
+      256
+    ],
+    [
+      512,
+      5888,
+      256,
+      256
+    ],
+    [
+      768,
+      5888,
+      256,
+      256
+    ],
+    [
+      0,
+      6144,
+      256,
+      256
+    ],
+    [
+      256,
+      6144,
+      256,
+      256
+    ],
+    [
+      512,
+      6144,
+      256,
+      256
+    ],
+    [
+      768,
+      6144,
+      256,
+      256
+    ],
+    [
+      0,
+      6400,
+      256,
+      256
+    ],
+    [
+      256,
+      6400,
+      256,
+      256
+    ],
+    [
+      512,
+      6400,
+      256,
+      256
+    ],
+    [
+      768,
+      6400,
+      256,
+      256
+    ]
+  ],
+  "directions": [
+    "s",
+    "sw",
+    "w",
+    "nw",
+    "n",
+    "ne",
+    "e",
+    "se"
+  ],
+  "clips": {
+    "idle": {
+      "s": {
+        "start": 0,
+        "endExclusive": 1,
+        "fps": 1,
+        "loop": true
+      },
+      "sw": {
+        "start": 1,
+        "endExclusive": 2,
+        "fps": 1,
+        "loop": true
+      },
+      "w": {
+        "start": 2,
+        "endExclusive": 3,
+        "fps": 1,
+        "loop": true
+      },
+      "nw": {
+        "start": 3,
+        "endExclusive": 4,
+        "fps": 1,
+        "loop": true
+      },
+      "n": {
+        "start": 4,
+        "endExclusive": 5,
+        "fps": 1,
+        "loop": true
+      },
+      "ne": {
+        "start": 5,
+        "endExclusive": 6,
+        "fps": 1,
+        "loop": true
+      },
+      "e": {
+        "start": 6,
+        "endExclusive": 7,
+        "fps": 1,
+        "loop": true
+      },
+      "se": {
+        "start": 7,
+        "endExclusive": 8,
+        "fps": 1,
+        "loop": true
+      }
+    },
+    "attack": {
+      "s": {
+        "start": 8,
+        "endExclusive": 20,
+        "fps": 18,
+        "loop": false
+      },
+      "sw": {
+        "start": 20,
+        "endExclusive": 32,
+        "fps": 18,
+        "loop": false
+      },
+      "w": {
+        "start": 32,
+        "endExclusive": 44,
+        "fps": 18,
+        "loop": false
+      },
+      "nw": {
+        "start": 44,
+        "endExclusive": 56,
+        "fps": 18,
+        "loop": false
+      },
+      "n": {
+        "start": 56,
+        "endExclusive": 68,
+        "fps": 18,
+        "loop": false
+      },
+      "ne": {
+        "start": 68,
+        "endExclusive": 80,
+        "fps": 18,
+        "loop": false
+      },
+      "e": {
+        "start": 80,
+        "endExclusive": 92,
+        "fps": 18,
+        "loop": false
+      },
+      "se": {
+        "start": 92,
+        "endExclusive": 104,
+        "fps": 18,
+        "loop": false
+      }
+    }
+  },
+  "provenance": {
+    "id": "light-tank",
+    "category": "tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "frameSize": [
+      384,
+      384
+    ],
+    "pivot": [
+      0.5,
+      0.7
+    ],
+    "sourceModel": "Content/Models/v6/light-tank.blend",
+    "glb": "Content/Models/v6/light-tank.glb",
+    "method": "Blender Cycles CPU render from authored 3D geometry",
+    "samples": 12,
+    "camera": "orthographic 30-degree isometric",
+    "status": "rendered-needs-review",
+    "sourceModelSha256": "4744388e764ef0848a20f5457149a077e1acda60400813fe1f370189b71a723a",
+    "glbSha256": "dbcd6321e5b14324c401f0344decdec157775fededdfef5dc055adf055d3153e"
+  },
+  "attackProvenance": {
+    "id": "light-tank",
+    "directions": [
+      "s",
+      "sw",
+      "w",
+      "nw",
+      "n",
+      "ne",
+      "e",
+      "se"
+    ],
+    "framesPerDirection": 12,
+    "fps": 18,
+    "loop": false,
+    "sourceModel": "Content/Models/v6/light-tank-attack.blend",
+    "method": "Actual Blender barrel recoil / launcher and emitter mechanism motion / energized physical material, CPU render",
+    "recoilingMeshes": [
+      "main cannon",
+      "muzzle brake"
+    ],
+    "actuatedMeshes": [],
+    "emissiveMaterials": 3,
+    "wholeImageRotation": false,
+    "projectileAndImpact": "External separately verified true-video VFX and actual native ballistic entities",
+    "startFrame": 8,
+    "sourceModelSha256": "607de19c2478a50a57f2af65400ae6b4d03a5fb774a90bbdae0a39a031893bfb"
+  },
+  "orthographicSpan": 3.6,
+  "projection": "isometric-2:1",
+  "nativePlaneSpan": 3.6338564172123373,
+  "bakeFitScale": 0.7005187107046956,
+  "sourcePivot": [
+    0.5,
+    0.6563656979055237
+  ],
+  "anchorMeaning": "exact projected model world origin at ground z=0",
+  "directionConvention": {
+    "labels": "screen directions on the isometric map",
+    "worldAxes": "map +x,+y; screenX=(x-y)*.5, screenDown=(x+y)*.25",
+    "mapping": [
+      {
+        "index": 0,
+        "label": "s",
+        "worldDelta": [
+          1,
+          1
+        ],
+        "screenDelta": [
+          0.0,
+          0.5
+        ],
+        "blenderYawDegrees": -135
+      },
+      {
+        "index": 1,
+        "label": "sw",
+        "worldDelta": [
+          0,
+          1
+        ],
+        "screenDelta": [
+          -0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -180
+      },
+      {
+        "index": 2,
+        "label": "w",
+        "worldDelta": [
+          -1,
+          1
+        ],
+        "screenDelta": [
+          -1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -225
+      },
+      {
+        "index": 3,
+        "label": "nw",
+        "worldDelta": [
+          -1,
+          0
+        ],
+        "screenDelta": [
+          -0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -270
+      },
+      {
+        "index": 4,
+        "label": "n",
+        "worldDelta": [
+          -1,
+          -1
+        ],
+        "screenDelta": [
+          0.0,
+          -0.5
+        ],
+        "blenderYawDegrees": -315
+      },
+      {
+        "index": 5,
+        "label": "ne",
+        "worldDelta": [
+          0,
+          -1
+        ],
+        "screenDelta": [
+          0.5,
+          -0.25
+        ],
+        "blenderYawDegrees": -360
+      },
+      {
+        "index": 6,
+        "label": "e",
+        "worldDelta": [
+          1,
+          -1
+        ],
+        "screenDelta": [
+          1.0,
+          0.0
+        ],
+        "blenderYawDegrees": -405
+      },
+      {
+        "index": 7,
+        "label": "se",
+        "worldDelta": [
+          1,
+          0
+        ],
+        "screenDelta": [
+          0.5,
+          0.25
+        ],
+        "blenderYawDegrees": -450
+      }
+    ],
+    "indexFormula": "positive_mod(round((atan2(dy,dx)-pi/4)/(pi/4)),8)",
+    "zeroMovement": "retain previous direction",
+    "blenderModelBasis": "mapX=modelX; mapY=-modelY; baked root yaw=-135-index*45 degrees"
+  },
+  "defaultDirection": "s",
+  "frontModelAxis": "+Y"
+}

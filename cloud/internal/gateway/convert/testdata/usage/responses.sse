@@ -1,0 +1,2 @@
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_u1","status":"completed","usage":{"input_tokens":500,"input_tokens_details":{"cached_tokens":200},"output_tokens":30,"total_tokens":530}}}

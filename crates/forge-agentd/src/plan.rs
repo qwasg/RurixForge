@@ -42,13 +42,22 @@ pub(crate) struct TeamFlowCtx<'a> {
     pub cancelled: &'a (dyn Fn() -> bool + Send + Sync),
     /// 修复轮上限(qa 复测失败与 reviewer REJECT 共用计数;超限如实 failed)。
     pub max_fix_rounds: usize,
+    /// UltraPlan owns a subset of the session todos; unrelated work must not run or gate it.
+    pub source_filter: Option<&'a str>,
+    /// Shared editor/PIE state may only be used by one production worker at a time.
+    pub serialize_engine: bool,
+    /// Server-side evidence gate. QA_RESULT/VERDICT alone cannot satisfy UltraPlan.
+    pub validate: Option<&'a (dyn Fn() -> Result<(), String> + Send + Sync)>,
 }
 
 // ---------- 纯函数调度核心 ----------
 
 /// 可被编排器派发 = 带非空 role。无 role 的待办是 leader/用户自留项,调度器不碰。
 pub(crate) fn is_schedulable(t: &TodoItem) -> bool {
-    t.role.as_deref().map(|r| !r.trim().is_empty()).unwrap_or(false)
+    t.role
+        .as_deref()
+        .map(|r| !r.trim().is_empty())
+        .unwrap_or(false)
 }
 
 /// 解析一条 dep 引用:优先按 id 精确匹配,其次按 title 匹配(排除自身;同名取创建序
@@ -115,7 +124,10 @@ pub(crate) fn failed_dependents(all: &[TodoItem]) -> Vec<(String, String)> {
 /// (依赖悬空 / 依赖不可调度 / 循环依赖)。
 pub(crate) fn stall_reason(all: &[TodoItem]) -> String {
     let mut lines = Vec::new();
-    for t in all.iter().filter(|t| is_schedulable(t) && t.status == "queued") {
+    for t in all
+        .iter()
+        .filter(|t| is_schedulable(t) && t.status == "queued")
+    {
         for d in &t.deps {
             match dep_resolved(all, &t.id, d) {
                 None => lines.push(format!("任务「{}」依赖「{d}」不存在(引用悬空)", t.title)),
@@ -175,7 +187,48 @@ fn mark(ctx: &TeamFlowCtx<'_>, id: &str, status: &str, summary: Option<String>) 
 
 /// 会话内可调度任务快照。
 fn schedulable_tasks(ctx: &TeamFlowCtx<'_>) -> Vec<TodoItem> {
-    ctx.todos.list_by_session(ctx.session_id)
+    ctx.todos
+        .list_by_session(ctx.session_id)
+        .into_iter()
+        .filter(|t| {
+            ctx.source_filter.map_or_else(
+                || !t.source.starts_with("ultraplan:"),
+                |source| t.source == source,
+            )
+        })
+        .collect()
+}
+
+fn uses_shared_engine(role: &str) -> bool {
+    matches!(
+        role,
+        "scene-builder"
+            | "logic-programmer"
+            | "gameplay-scripter"
+            | "material-smith"
+            | "qa-tester"
+            | "reviewer"
+    )
+}
+
+/// Independent asset/file workers can share a wave. Engine workers use a dedicated
+/// one-item wave, including material workers whose tools can adjust the live scene.
+fn execution_wave(all: &[TodoItem], serialize_engine: bool) -> Vec<String> {
+    let wave = next_wave(all);
+    if !serialize_engine {
+        return wave;
+    }
+    let engine = |id: &str| {
+        all.iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.role.as_deref())
+            .is_some_and(uses_shared_engine)
+    };
+    if wave.first().is_some_and(|id| engine(id)) {
+        wave.into_iter().take(1).collect()
+    } else {
+        wave.into_iter().filter(|id| !engine(id)).collect()
+    }
 }
 
 /// 波次推进:按 deps 分层,同阶段就绪任务并行派发(≤4 并发),直到无波可派。
@@ -201,9 +254,12 @@ where
             }
             continue;
         }
-        let wave = next_wave(&all);
+        let wave = execution_wave(&all, ctx.serialize_engine);
         if wave.is_empty() {
-            if all.iter().any(|t| is_schedulable(t) && t.status == "queued") {
+            if all
+                .iter()
+                .any(|t| is_schedulable(t) && t.status == "queued")
+            {
                 report.stalled = Some(stall_reason(&all));
             }
             return report;
@@ -221,11 +277,17 @@ where
                 mark(ctx, id, "running", None);
                 let req = DispatchReq {
                     subagent_type: t.role.clone().unwrap_or_default(),
-                    prompt: t
-                        .prompt
-                        .clone()
-                        .filter(|p| !p.trim().is_empty())
-                        .unwrap_or_else(|| t.title.clone()),
+                    prompt: format!(
+                        "{}{}",
+                        t.prompt
+                            .clone()
+                            .filter(|p| !p.trim().is_empty())
+                            .unwrap_or_else(|| t.title.clone()),
+                        t.summary
+                            .as_ref()
+                            .map(|s| format!("\n上次执行记录（本轮需实际修复并重新执行）：{s}"))
+                            .unwrap_or_default()
+                    ),
                     description: t.title.clone(),
                     tool_call_id: format!("team-{}", t.id),
                 };
@@ -336,7 +398,7 @@ fn fix_prompt(problems: &[String]) -> String {
 /// team 模式编排主流程(execute_turn 的 team 分支在 leader 首轮后调用)。
 ///
 /// 返回 (status, text, error) 三元组,与 execute_turn 的 outcome 同形态:
-/// - leader 轮后没有任何带 role 的 queued 任务 → 维持现状路径直接收束(mock 恒绿);
+/// - 没有任何带 role 的任务 → 如实失败;恢复全 completed 任务时仍复测、终审并验证证据;
 /// - 波次执行 → verify=qa 完成后自动复测 → 问题回注 leader 修复轮(共享上限);
 /// - 全部完成 → reviewer 终审:APPROVE 收束 completed;REJECT 回修复轮;
 /// - 修复轮超限 / 修复轮未产出新任务 / 调度停摆 → 如实 failed(不伪装通过)。
@@ -357,9 +419,12 @@ where
             .iter()
             .any(|t| is_schedulable(t) && t.status == "queued")
     };
-    if !has_queued(&schedulable_tasks(ctx)) {
-        // 情形 5:leader 没落结构化计划(如 mock provider 不产工具调用)→ 现状路径。
-        return ("completed".to_string(), leader_text, None);
+    if !schedulable_tasks(ctx).iter().any(is_schedulable) {
+        return (
+            "failed".to_string(),
+            leader_text,
+            Some("team 没有可执行任务，不能判定游戏完成".into()),
+        );
     }
     let mut last_text = leader_text;
     let mut fix_rounds = 0usize;
@@ -370,6 +435,9 @@ where
             return ("cancelled".to_string(), String::new(), None);
         }
         let wave = run_ready_waves(ctx, &dispatch).await;
+        for id in &wave.completed {
+            qa_done.remove(id);
+        }
         if wave.cancelled {
             return ("cancelled".to_string(), String::new(), None);
         }
@@ -412,6 +480,13 @@ where
                 problems.push(format!("任务「{}」qa 复测未通过:{why}", t.title));
             }
         }
+        if problems.is_empty() {
+            if let Some(validate) = ctx.validate {
+                if let Err(error) = validate() {
+                    problems.push(format!("服务端自动验证未通过:{error}"));
+                }
+            }
+        }
         // 无问题 → reviewer 终审(计划非空即终审,verify=reviewer 任务也归口于此)。
         if problems.is_empty() {
             if (ctx.cancelled)() {
@@ -434,15 +509,22 @@ where
             }
             match parse_verdict(&text) {
                 Verdict::Approve => {
-                    let done = tasks
-                        .iter()
-                        .filter(|t| is_schedulable(t) && t.status == "completed")
-                        .count();
-                    let final_text = format!(
-                        "{last_text}\n\n[team 编排] 计划任务 {done} 项全部完成;\
+                    if let Some(validate) = ctx.validate {
+                        if let Err(error) = validate() {
+                            problems.push(format!("终审后的服务端证据复核未通过:{error}"));
+                        }
+                    }
+                    if problems.is_empty() {
+                        let done = tasks
+                            .iter()
+                            .filter(|t| is_schedulable(t) && t.status == "completed")
+                            .count();
+                        let final_text = format!(
+                            "{last_text}\n\n[team 编排] 计划任务 {done} 项全部完成;\
                          修复轮 {fix_rounds} 次;reviewer 终审 APPROVE。"
-                    );
-                    return ("completed".to_string(), final_text, None);
+                        );
+                        return ("completed".to_string(), final_text, None);
+                    }
                 }
                 Verdict::Reject(reason) => {
                     problems.push(format!("reviewer 终审 REJECT:{reason}"));
@@ -477,6 +559,20 @@ where
                 }
             }
         }
+        if ctx.source_filter.is_some() {
+            // Any production repair can change shared behavior. An earlier QA
+            // failure (or PASS against old code) must be rerun after repairs.
+            qa_done.clear();
+            // A failed approved task remains part of the accepted scope. A new
+            // repair task cannot silently replace it; rerun it with its failure
+            // evidence so only the scheduler can confirm completion.
+            for task in schedulable_tasks(ctx)
+                .into_iter()
+                .filter(|t| t.status == "failed" && is_schedulable(t))
+            {
+                mark(ctx, &task.id, "queued", None);
+            }
+        }
         if !has_queued(&schedulable_tasks(ctx)) {
             return (
                 "failed".to_string(),
@@ -507,7 +603,15 @@ mod tests {
         (todos, events, dir)
     }
 
-    fn seed(todos: &TodoStore, sid: &str, title: &str, role: Option<&str>, deps: &[&str], stage: Option<&str>, verify: Option<&str>) -> TodoItem {
+    fn seed(
+        todos: &TodoStore,
+        sid: &str,
+        title: &str,
+        role: Option<&str>,
+        deps: &[&str],
+        stage: Option<&str>,
+        verify: Option<&str>,
+    ) -> TodoItem {
         todos
             .create(
                 sid,
@@ -535,23 +639,83 @@ mod tests {
     fn scheduler_topo_progression() {
         let (todos, _ev, dir) = test_env("topo");
         let sid = "s1";
-        let a = seed(&todos, sid, "素材", Some("material-smith"), &[], Some("素材"), None);
-        let b = seed(&todos, sid, "搭场景", Some("scene-builder"), &["素材"], Some("场景"), None);
-        let c = seed(&todos, sid, "写逻辑", Some("logic-programmer"), &[&a.id], Some("场景"), None);
-        let d = seed(&todos, sid, "验收", Some("qa-tester"), &["搭场景", &c.id], Some("测试"), None);
+        let a = seed(
+            &todos,
+            sid,
+            "素材",
+            Some("material-smith"),
+            &[],
+            Some("素材"),
+            None,
+        );
+        let b = seed(
+            &todos,
+            sid,
+            "搭场景",
+            Some("scene-builder"),
+            &["素材"],
+            Some("场景"),
+            None,
+        );
+        let c = seed(
+            &todos,
+            sid,
+            "写逻辑",
+            Some("logic-programmer"),
+            &[&a.id],
+            Some("场景"),
+            None,
+        );
+        let d = seed(
+            &todos,
+            sid,
+            "验收",
+            Some("qa-tester"),
+            &["搭场景", &c.id],
+            Some("测试"),
+            None,
+        );
         let all = todos.list_by_session(sid);
         assert_eq!(ready_ids(&all), vec![a.id.clone()], "仅无依赖的 A 就绪");
         assert_eq!(next_wave(&all), vec![a.id.clone()]);
         // A 完成 → B、C 同阶段并行就绪;D 仍等待。
-        todos.patch(&a.id, &PatchTodoRequest { status: Some("completed".into()), ..Default::default() }).unwrap();
+        todos
+            .patch(
+                &a.id,
+                &PatchTodoRequest {
+                    status: Some("completed".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         let all = todos.list_by_session(sid);
         assert_eq!(ready_ids(&all), vec![b.id.clone(), c.id.clone()]);
-        assert_eq!(next_wave(&all), vec![b.id.clone(), c.id.clone()], "同阶段就绪任务同波");
+        assert_eq!(
+            next_wave(&all),
+            vec![b.id.clone(), c.id.clone()],
+            "同阶段就绪任务同波"
+        );
         // B 完成、C 未完 → D 未就绪(deps 全 completed 才行)。
-        todos.patch(&b.id, &PatchTodoRequest { status: Some("completed".into()), ..Default::default() }).unwrap();
+        todos
+            .patch(
+                &b.id,
+                &PatchTodoRequest {
+                    status: Some("completed".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         let all = todos.list_by_session(sid);
         assert!(ready_ids(&all).is_empty() || ready_ids(&all) == vec![c.id.clone()]);
-        todos.patch(&c.id, &PatchTodoRequest { status: Some("completed".into()), ..Default::default() }).unwrap();
+        todos
+            .patch(
+                &c.id,
+                &PatchTodoRequest {
+                    status: Some("completed".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         let all = todos.list_by_session(sid);
         assert_eq!(next_wave(&all), vec![d.id.clone()], "B、C 全完成后 D 就绪");
         std::fs::remove_dir_all(&dir).ok();
@@ -563,11 +727,31 @@ mod tests {
         let (todos, _ev, dir) = test_env("stage");
         let sid = "s1";
         let _leader_note = seed(&todos, sid, "自留项", None, &[], None, None);
-        let a = seed(&todos, sid, "任务甲", Some("scene-builder"), &[], Some("一期"), None);
-        let _b = seed(&todos, sid, "任务乙", Some("scene-builder"), &[], Some("二期"), None);
+        let a = seed(
+            &todos,
+            sid,
+            "任务甲",
+            Some("scene-builder"),
+            &[],
+            Some("一期"),
+            None,
+        );
+        let _b = seed(
+            &todos,
+            sid,
+            "任务乙",
+            Some("scene-builder"),
+            &[],
+            Some("二期"),
+            None,
+        );
         let all = todos.list_by_session(sid);
         assert_eq!(ready_ids(&all).len(), 2, "无 role 项不进就绪集");
-        assert_eq!(next_wave(&all), vec![a.id.clone()], "首波只含首个就绪任务的阶段");
+        assert_eq!(
+            next_wave(&all),
+            vec![a.id.clone()],
+            "首波只含首个就绪任务的阶段"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -576,8 +760,24 @@ mod tests {
     async fn scheduler_cycle_and_dangling_dep_reported_honestly() {
         let (todos, events, dir) = test_env("cycle");
         let sid = "s1";
-        let _a = seed(&todos, sid, "甲", Some("scene-builder"), &["乙"], None, None);
-        let _b = seed(&todos, sid, "乙", Some("scene-builder"), &["甲"], None, None);
+        let _a = seed(
+            &todos,
+            sid,
+            "甲",
+            Some("scene-builder"),
+            &["乙"],
+            None,
+            None,
+        );
+        let _b = seed(
+            &todos,
+            sid,
+            "乙",
+            Some("scene-builder"),
+            &["甲"],
+            None,
+            None,
+        );
         let all = todos.list_by_session(sid);
         assert!(ready_ids(&all).is_empty());
         assert!(next_wave(&all).is_empty());
@@ -589,6 +789,9 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let dispatched = Arc::new(Mutex::new(0usize));
         let d2 = dispatched.clone();
@@ -606,7 +809,15 @@ mod tests {
         assert_eq!(*dispatched.lock().unwrap(), 0);
         // 悬空依赖:引用不存在的任务名。
         let sid2 = "s2";
-        let _c = seed(&todos, sid2, "丙", Some("scene-builder"), &["不存在的任务"], None, None);
+        let _c = seed(
+            &todos,
+            sid2,
+            "丙",
+            Some("scene-builder"),
+            &["不存在的任务"],
+            None,
+            None,
+        );
         let all2 = todos.list_by_session(sid2);
         let stall2 = stall_reason(&all2);
         assert!(stall2.contains("不存在"), "诊断应点名悬空依赖: {stall2}");
@@ -619,10 +830,42 @@ mod tests {
     async fn scheduler_failure_propagates_downstream() {
         let (todos, events, dir) = test_env("failprop");
         let sid = "s1";
-        let a = seed(&todos, sid, "会失败的活", Some("scene-builder"), &[], None, None);
-        let b = seed(&todos, sid, "下游一", Some("scene-builder"), &[&a.id], None, None);
-        let c = seed(&todos, sid, "下游二", Some("scene-builder"), &["下游一"], None, None);
-        let ok_task = seed(&todos, sid, "无关分支", Some("scene-builder"), &[], None, None);
+        let a = seed(
+            &todos,
+            sid,
+            "会失败的活",
+            Some("scene-builder"),
+            &[],
+            None,
+            None,
+        );
+        let b = seed(
+            &todos,
+            sid,
+            "下游一",
+            Some("scene-builder"),
+            &[&a.id],
+            None,
+            None,
+        );
+        let c = seed(
+            &todos,
+            sid,
+            "下游二",
+            Some("scene-builder"),
+            &["下游一"],
+            None,
+            None,
+        );
+        let ok_task = seed(
+            &todos,
+            sid,
+            "无关分支",
+            Some("scene-builder"),
+            &[],
+            None,
+            None,
+        );
         let cancelled = never_cancel();
         let ctx = TeamFlowCtx {
             todos: &todos,
@@ -631,6 +874,9 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let a_id = a.id.clone();
         let dispatch = move |req: DispatchReq| {
@@ -645,7 +891,11 @@ mod tests {
         };
         let report = run_ready_waves(&ctx, &dispatch).await;
         assert!(report.stalled.is_none());
-        assert_eq!(report.completed, vec![ok_task.id.clone()], "无关分支照常完成");
+        assert_eq!(
+            report.completed,
+            vec![ok_task.id.clone()],
+            "无关分支照常完成"
+        );
         let failed_ids: Vec<&str> = report.failed.iter().map(|(id, _)| id.as_str()).collect();
         assert!(failed_ids.contains(&a.id.as_str()), "A 执行失败入账");
         assert!(failed_ids.contains(&b.id.as_str()), "B 因依赖失败被传播");
@@ -656,8 +906,17 @@ mod tests {
         assert_eq!(status_of(&b.id), "failed");
         assert_eq!(status_of(&c.id), "failed");
         assert_eq!(status_of(&ok_task.id), "completed");
-        let b_summary = all.iter().find(|t| t.id == b.id).unwrap().summary.clone().unwrap();
-        assert!(b_summary.contains("依赖"), "传播原因如实入 summary: {b_summary}");
+        let b_summary = all
+            .iter()
+            .find(|t| t.id == b.id)
+            .unwrap()
+            .summary
+            .clone()
+            .unwrap();
+        assert!(
+            b_summary.contains("依赖"),
+            "传播原因如实入 summary: {b_summary}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -667,7 +926,15 @@ mod tests {
         let (todos, events, dir) = test_env("wavepar");
         let sid = "s1";
         for i in 0..5 {
-            seed(&todos, sid, &format!("并行任务{i}"), Some("scene-builder"), &[], None, None);
+            seed(
+                &todos,
+                sid,
+                &format!("并行任务{i}"),
+                Some("scene-builder"),
+                &[],
+                None,
+                None,
+            );
         }
         let cancelled = never_cancel();
         let ctx = TeamFlowCtx {
@@ -677,6 +944,9 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         type Span = (std::time::Instant, std::time::Instant);
         let spans: Arc<Mutex<Vec<Span>>> = Default::default();
@@ -701,7 +971,10 @@ mod tests {
         );
         let spans = spans.lock().unwrap();
         // 首段 4 条的时间窗应互相重叠(取前两条抽查)。
-        assert!(spans[0].0 < spans[1].1 && spans[1].0 < spans[0].1, "同段任务应并发");
+        assert!(
+            spans[0].0 < spans[1].1 && spans[1].0 < spans[0].1,
+            "同段任务应并发"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -709,7 +982,10 @@ mod tests {
 
     #[test]
     fn verdict_and_qa_parsing_honest() {
-        assert_eq!(parse_verdict("检查完毕\nVERDICT: APPROVE"), Verdict::Approve);
+        assert_eq!(
+            parse_verdict("检查完毕\nVERDICT: APPROVE"),
+            Verdict::Approve
+        );
         match parse_verdict("有问题\nVERDICT: REJECT(缺相机)") {
             Verdict::Reject(r) => assert!(r.contains("缺相机")),
             v => panic!("应 REJECT: {v:?}"),
@@ -725,9 +1001,15 @@ mod tests {
             v => panic!("缺标记应 REJECT: {v:?}"),
         }
         assert!(parse_qa_result(true, "全部通过 QA_RESULT: PASS").is_ok());
-        assert!(parse_qa_result(true, "QA_RESULT: FAIL 挡板不动").unwrap_err().contains("挡板"));
-        assert!(parse_qa_result(true, "我觉得行").unwrap_err().contains("未按格式"));
-        assert!(parse_qa_result(false, "网络炸了").unwrap_err().contains("派发失败"));
+        assert!(parse_qa_result(true, "QA_RESULT: FAIL 挡板不动")
+            .unwrap_err()
+            .contains("挡板"));
+        assert!(parse_qa_result(true, "我觉得行")
+            .unwrap_err()
+            .contains("未按格式"));
+        assert!(parse_qa_result(false, "网络炸了")
+            .unwrap_err()
+            .contains("派发失败"));
     }
 
     // ---------- team 编排循环 ----------
@@ -756,8 +1038,11 @@ mod tests {
         }
         fn dispatch_fn(
             &self,
-        ) -> impl Fn(DispatchReq) -> std::pin::Pin<Box<dyn std::future::Future<Output = (bool, String)> + Send>>
-        {
+        ) -> impl Fn(
+            DispatchReq,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = (bool, String)> + Send>,
+        > {
             let dispatches = self.dispatches.clone();
             let reviewer = self.reviewer_script.clone();
             let qa = self.qa_script.clone();
@@ -791,10 +1076,29 @@ mod tests {
     async fn team_flow_reject_then_approve_triggers_one_fix_round() {
         let (todos, events, dir) = test_env("flow");
         let sid = "s1";
-        seed(&todos, sid, "搭场景", Some("scene-builder"), &[], None, None);
-        seed(&todos, sid, "写逻辑", Some("logic-programmer"), &["搭场景"], None, Some("reviewer"));
+        seed(
+            &todos,
+            sid,
+            "搭场景",
+            Some("scene-builder"),
+            &[],
+            None,
+            None,
+        );
+        seed(
+            &todos,
+            sid,
+            "写逻辑",
+            Some("logic-programmer"),
+            &["搭场景"],
+            None,
+            Some("reviewer"),
+        );
         let h = FlowHarness::new(
-            vec!["检查发现挡板缺失\nVERDICT: REJECT(挡板缺失)", "复核通过\nVERDICT: APPROVE"],
+            vec![
+                "检查发现挡板缺失\nVERDICT: REJECT(挡板缺失)",
+                "复核通过\nVERDICT: APPROVE",
+            ],
             vec![],
         );
         let cancelled = never_cancel();
@@ -805,6 +1109,9 @@ mod tests {
             user_goal: "做个打砖块",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let leader_calls = h.leader_calls.clone();
         let todos2 = todos.clone();
@@ -856,7 +1163,15 @@ mod tests {
     async fn team_flow_fix_rounds_capped_and_honest_failed() {
         let (todos, events, dir) = test_env("flowcap");
         let sid = "s1";
-        seed(&todos, sid, "搭场景", Some("scene-builder"), &[], None, None);
+        seed(
+            &todos,
+            sid,
+            "搭场景",
+            Some("scene-builder"),
+            &[],
+            None,
+            None,
+        );
         let h = FlowHarness::new(
             vec![
                 "VERDICT: REJECT(问题1)",
@@ -874,6 +1189,9 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let leader_calls = h.leader_calls.clone();
         let todos2 = todos.clone();
@@ -917,7 +1235,15 @@ mod tests {
     async fn team_flow_qa_gate_fail_then_fixed() {
         let (todos, events, dir) = test_env("flowqa");
         let sid = "s1";
-        let t = seed(&todos, sid, "写逻辑", Some("logic-programmer"), &[], None, Some("qa"));
+        let t = seed(
+            &todos,
+            sid,
+            "写逻辑",
+            Some("logic-programmer"),
+            &[],
+            None,
+            Some("qa"),
+        );
         let h = FlowHarness::new(
             vec!["VERDICT: APPROVE"],
             vec!["QA_RESULT: FAIL 挡板不响应输入"],
@@ -930,6 +1256,9 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let leader_calls = h.leader_calls.clone();
         let todos2 = todos.clone();
@@ -964,10 +1293,76 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// 情形 5(恒绿保证):leader 轮后没有任何带 role 的 queued 任务 → 直接以 leader
-    /// 文本收束,零派发零修复轮。
+    /// A missing structured plan is not a successfully built game.
     #[tokio::test]
-    async fn team_flow_without_plan_keeps_status_quo() {
+    async fn ultraplan_repair_retests_previously_failed_qa_before_review() {
+        let (todos, events, dir) = test_env("ultraqaretest");
+        let sid = "s1";
+        let source = "ultraplan:flow:1";
+        let original = todos
+            .create(
+                sid,
+                NewTodo {
+                    title: "原批准玩法".into(),
+                    role: Some("logic-programmer".into()),
+                    verify: Some("qa".into()),
+                    source: Some(source.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let h = FlowHarness::new(
+            vec!["VERDICT: APPROVE"],
+            vec!["QA_RESULT: FAIL 挡板不响应输入", "QA_RESULT: PASS"],
+        );
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: sid,
+            user_goal: "目标",
+            cancelled: &cancelled,
+            max_fix_rounds: 3,
+            source_filter: Some(source),
+            serialize_engine: true,
+            validate: None,
+        };
+        let todos2 = todos.clone();
+        let leader_round = move |_fix: String| {
+            let todos = todos2.clone();
+            async move {
+                todos
+                    .create(
+                        sid,
+                        NewTodo {
+                            title: "修输入响应".into(),
+                            role: Some("logic-programmer".into()),
+                            source: Some(source.into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                Ok(("修复已排".into(), false))
+            }
+        };
+        let (status, _, error) =
+            run_team_flow(&ctx, "计划已排".into(), leader_round, h.dispatch_fn()).await;
+        assert_eq!(status, "completed", "{error:?}");
+        let d = h.dispatches.lock().unwrap();
+        let qa_id = format!("team-qa-{}", original.id);
+        assert_eq!(
+            d.iter()
+                .filter(|(role, id)| role == "qa-tester" && id == &qa_id)
+                .count(),
+            2
+        );
+        assert_eq!(d.last().map(|(role, _)| role.as_str()), Some("reviewer"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A missing structured plan is not a successfully built game.
+    #[tokio::test]
+    async fn team_flow_without_plan_fails_honestly() {
         let (todos, events, dir) = test_env("flownoop");
         let sid = "s1";
         // 只有无 role 的普通待办(leader 自留),不触发编排。
@@ -981,13 +1376,16 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let leader_round = |_fix: String| async move { Ok(("不应被调".to_string(), false)) };
         let (status, text, error) =
             run_team_flow(&ctx, "mock 直答".to_string(), leader_round, h.dispatch_fn()).await;
-        assert_eq!(status, "completed");
-        assert_eq!(text, "mock 直答", "无计划时维持现状路径原文收束");
-        assert!(error.is_none());
+        assert_eq!(status, "failed");
+        assert_eq!(text, "mock 直答");
+        assert!(error.unwrap().contains("没有可执行任务"));
         assert!(h.dispatches.lock().unwrap().is_empty(), "零派发");
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -997,7 +1395,15 @@ mod tests {
     async fn team_flow_fix_round_without_new_tasks_fails_honestly() {
         let (todos, events, dir) = test_env("flownofix");
         let sid = "s1";
-        seed(&todos, sid, "搭场景", Some("scene-builder"), &[], None, None);
+        seed(
+            &todos,
+            sid,
+            "搭场景",
+            Some("scene-builder"),
+            &[],
+            None,
+            None,
+        );
         let h = FlowHarness::new(vec!["VERDICT: REJECT(缺相机)"], vec![]);
         let cancelled = never_cancel();
         let ctx = TeamFlowCtx {
@@ -1007,6 +1413,9 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         // leader 修复轮嘴上答应,不落任何新任务。
         let leader_round = |_fix: String| async move { Ok(("知道了".to_string(), false)) };
@@ -1024,8 +1433,24 @@ mod tests {
     async fn team_flow_cancel_token_effective() {
         let (todos, events, dir) = test_env("flowcancel");
         let sid = "s1";
-        seed(&todos, sid, "任务一", Some("scene-builder"), &[], None, None);
-        seed(&todos, sid, "任务二", Some("scene-builder"), &["任务一"], None, None);
+        seed(
+            &todos,
+            sid,
+            "任务一",
+            Some("scene-builder"),
+            &[],
+            None,
+            None,
+        );
+        seed(
+            &todos,
+            sid,
+            "任务二",
+            Some("scene-builder"),
+            &["任务一"],
+            None,
+            None,
+        );
         let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag2 = flag.clone();
         let dispatched = Arc::new(Mutex::new(0usize));
@@ -1049,12 +1474,189 @@ mod tests {
             user_goal: "目标",
             cancelled: &cancelled,
             max_fix_rounds: 3,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
         };
         let leader_round = |_fix: String| async move { Ok(("不应被调".to_string(), false)) };
         let (status, _text, _error) =
             run_team_flow(&ctx, "计划已排".to_string(), leader_round, dispatch).await;
         assert_eq!(status, "cancelled");
         assert_eq!(*dispatched.lock().unwrap(), 1, "取消后不得派发第二个任务");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn engine_roles_have_dedicated_waves_while_assets_stay_parallel() {
+        let (todos, _, dir) = test_env("enginewaves");
+        let asset1 = seed(
+            &todos,
+            "s",
+            "asset1",
+            Some("asset-wrangler"),
+            &[],
+            None,
+            None,
+        );
+        let scene = seed(&todos, "s", "scene", Some("scene-builder"), &[], None, None);
+        let asset2 = seed(
+            &todos,
+            "s",
+            "asset2",
+            Some("asset-wrangler"),
+            &[],
+            None,
+            None,
+        );
+        let logic = seed(
+            &todos,
+            "s",
+            "logic",
+            Some("gameplay-scripter"),
+            &[],
+            None,
+            None,
+        );
+        let all = vec![asset1.clone(), scene.clone(), asset2.clone(), logic.clone()];
+        assert_eq!(
+            execution_wave(&all, true),
+            vec![asset1.id.clone(), asset2.id.clone()]
+        );
+        assert_eq!(
+            execution_wave(&[scene.clone(), logic], true),
+            vec![scene.id]
+        );
+        assert_eq!(execution_wave(&all, false).len(), 4);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn resume_completed_flow_ignores_unrelated_tasks_but_rechecks_real_evidence() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (todos, events, dir) = test_env("ultraresume");
+        let source = "ultraplan:current";
+        let mine = todos
+            .create(
+                "s",
+                NewTodo {
+                    title: "finished".into(),
+                    role: Some("scene-builder".into()),
+                    source: Some(source.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        todos
+            .patch(
+                &mine.id,
+                &PatchTodoRequest {
+                    status: Some("completed".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let unrelated = seed(
+            &todos,
+            "s",
+            "unrelated",
+            Some("logic-programmer"),
+            &[],
+            None,
+            None,
+        );
+        let h = FlowHarness::new(vec!["VERDICT: APPROVE"], vec![]);
+        let checks = AtomicUsize::new(0);
+        let validate = || {
+            checks.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        };
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "goal",
+            cancelled: &cancelled,
+            max_fix_rounds: 5,
+            source_filter: Some(source),
+            serialize_engine: true,
+            validate: Some(&validate),
+        };
+        let (status, _, error) = run_team_flow(
+            &ctx,
+            "resume".into(),
+            |_| async { Ok((String::new(), false)) },
+            h.dispatch_fn(),
+        )
+        .await;
+        assert_eq!(status, "completed", "{error:?}");
+        assert_eq!(
+            checks.load(Ordering::SeqCst),
+            2,
+            "before and after review use server evidence"
+        );
+        assert_eq!(
+            h.dispatches
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(role, _)| role.as_str())
+                .collect::<Vec<_>>(),
+            ["reviewer"]
+        );
+        assert_eq!(
+            todos
+                .list_by_session("s")
+                .iter()
+                .find(|t| t.id == unrelated.id)
+                .unwrap()
+                .status,
+            "queued"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn qa_pass_cannot_bypass_missing_server_evidence() {
+        let (todos, events, dir) = test_env("ultraevidence");
+        seed(
+            &todos,
+            "s",
+            "game",
+            Some("scene-builder"),
+            &[],
+            None,
+            Some("qa"),
+        );
+        let h = FlowHarness::new(vec!["VERDICT: APPROVE"], vec!["QA_RESULT: PASS"]);
+        let cancelled = never_cancel();
+        let validate = || Err("缺少 gameplay-1 的真实检查".to_string());
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "goal",
+            cancelled: &cancelled,
+            max_fix_rounds: 0,
+            source_filter: None,
+            serialize_engine: true,
+            validate: Some(&validate),
+        };
+        let (status, _, error) = run_team_flow(
+            &ctx,
+            "build".into(),
+            |_| async { Ok((String::new(), false)) },
+            h.dispatch_fn(),
+        )
+        .await;
+        assert_eq!(status, "failed");
+        assert!(error.unwrap().contains("gameplay-1"));
+        assert!(!h
+            .dispatches
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(role, _)| role == "reviewer"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

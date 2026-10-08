@@ -114,9 +114,11 @@ function ConstCell({
 
 /** 单个数据输入行:const 可编辑 / ref 暴露属性引用 / node+pin 数据边来源 */
 function InputRow({ nodeId, pin, src }: { nodeId: string; pin: string; src: ValueSource }) {
+  const path = useGraphStore((s) => s.graphPath);
   return (
     <div className="flex h-[18px] items-center gap-1 text-2xs">
       <span className="shrink-0 text-fg-3">{pin}</span>
+      <AnnotationHandle reference={editorReference('logicGraph', { path: path ?? undefined, selection: { nodeIds: [nodeId], pin } })} label={`${nodeId}.${pin}`} />
       <span className="min-w-0 flex-1 truncate text-right">
         {'const' in src ? (
           <ConstCell nodeId={nodeId} pin={pin} value={src.const} />
@@ -140,13 +142,17 @@ function InputRow({ nodeId, pin, src }: { nodeId: string; pin: string; src: Valu
 // ---------- 节点卡片 ----------
 
 function NodeCard({ node, hasError }: { node: GraphNode; hasError: boolean }) {
+  const path = useGraphStore((s) => s.graphPath);
+  const selected = useGraphStore((s) => s.selectedNodeIds);
   const inputs = Object.entries(node.inputs ?? {});
   return (
     <div
       data-graph-node={node.id}
+      onClick={(e) => { if (!(e.target instanceof HTMLElement) || !e.target.closest('input,button')) useGraphStore.setState({ selectedNodeIds: e.ctrlKey || e.metaKey ? selected.includes(node.id) ? selected.filter((id) => id !== node.id) : [...selected, node.id] : [node.id] }); }}
       className={cn(
         'absolute select-none rounded-md border bg-shell-panel shadow-composer',
         hasError ? 'border-danger' : 'border-edge-strong',
+        selected.includes(node.id) && 'ring-2 ring-acc',
       )}
       style={{ left: node.pos[0], top: node.pos[1], width: NODE_W }}
     >
@@ -156,6 +162,7 @@ function NodeCard({ node, hasError }: { node: GraphNode; hasError: boolean }) {
         title={`${node.type} (${node.id})`}
       >
         {node.type}
+        <AnnotationHandle reference={editorReference('logicGraph', { path: path ?? undefined, selection: { nodeIds: selected.includes(node.id) ? selected : [node.id] } })} label={`${node.type} (${node.id})`} />
       </div>
       {inputs.length > 0 && (
         <div className="border-t border-edge px-1.5 py-0.5">
@@ -276,6 +283,7 @@ export default function NodeGraphView() {
   const lastSaved = useGraphStore((s) => s.lastSaved);
   const loadByPath = useGraphStore((s) => s.loadByPath);
   const save = useGraphStore((s) => s.save);
+  const reveal = useEditorAnnotationStore((s) => s.reveal);
 
   const [pathDraft, setPathDraft] = useState('');
   const vp = useCanvasViewport({
@@ -284,6 +292,12 @@ export default function NodeGraphView() {
   });
 
   const errorNodeIds = new Set(errors.map((e) => e.nodeId).filter((x): x is string => !!x));
+  useEffect(() => {
+    if (reveal?.reference.kind !== 'logicGraph' || reveal.reference.path !== graphPath) return;
+    const node = graph?.nodes.find((n) => reveal.reference.selection?.nodeIds?.includes(n.id));
+    useGraphStore.setState({ selectedNodeIds: reveal.reference.selection?.nodeIds ?? [] });
+    if (node) vp.reveal({ x: node.pos[0], y: node.pos[1], w: NODE_W, h: 120 });
+  }, [reveal, graph, graphPath, vp.reveal]);
   const execLines = graph ? execEdgeLines(graph.nodes, graph.edges) : [];
   const dataLines = graph ? dataEdgeLines(graph.nodes) : [];
   const rects = graph ? nodeRects(graph.nodes) : [];
@@ -459,3 +473,5 @@ export default function NodeGraphView() {
     </div>
   );
 }
+import AnnotationHandle from './AnnotationHandle';
+import { editorReference, useEditorAnnotationStore } from '@/lib/editorReferences';

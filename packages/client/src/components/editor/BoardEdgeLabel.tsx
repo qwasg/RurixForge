@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { X, Zap } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useDesignBoardStore, type BoardEdge } from '@/lib/designBoardStore';
+import AnnotationHandle from './AnnotationHandle';
+import { editorReference } from '@/lib/editorReferences';
 
 /**
  * 线上交互标签(主画板与实例详情画布共用):
@@ -47,6 +49,7 @@ export default function BoardEdgeLabel({
       style={{ left: x, top: y }}
     >
       <Zap size={10} strokeWidth={2} className="shrink-0 text-warn" />
+      <AnnotationHandle reference={editorReference('blueprint', { resourceId: 'main', selection: { edgeIds: [edge.id] } })} label={edge.label || title} />
       {editing ? (
         <input
           autoFocus

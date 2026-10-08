@@ -1,0 +1,16 @@
+{
+  "name": "graycard_model",
+  "project": "models",
+  "entities": [
+    {"name": "card-0", "translation": [-2.0, 0.0, 0.0], "rotation": [-0.494464, 0.278136, 0.0, 0.823496], "scale": [1.0, 1.0, 1.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "card-1", "translation": [-1.0, 0.0, 0.0], "rotation": [-0.242121, 0.136193, 0.0, 0.96064], "scale": [1.0, 1.0, 1.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "card-2", "translation": [0.0, 0.0, 0.0], "rotation": [-0.12128, 0.06822, 0.0, 0.990271], "scale": [1.0, 1.0, 1.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "card-3", "translation": [1.0, 0.0, 0.0], "rotation": [-0.020577, 0.011574, 0.0, 0.999721], "scale": [1.0, 1.0, 1.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]},
+    {"name": "card-4", "translation": [2.0, 0.0, 0.0], "rotation": [0.070927, -0.039897, 0.0, 0.996683], "scale": [1.0, 1.0, 1.0], "components": [{"type": "ModelRenderer", "enabled": true, "props": {"model": "Models/plane.rxmodel"}}]}
+  ],
+  "camera": {"target": [0.0, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0, "dist": 10.0, "ortho": true, "orthoSize": 1.5},
+  "width": 640,
+  "height": 360,
+  "probes": [[80, 180], [200, 180], [320, 180], [440, 180], [560, 180]],
+  "probeLabels": ["NdotL=1.0", "NdotL=0.8", "NdotL=0.6", "NdotL=0.4", "NdotL=0.2"]
+}

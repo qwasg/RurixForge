@@ -1,0 +1,108 @@
+{
+  "version": 4,
+  "assetCount": 10,
+  "tool": "built-in image_gen",
+  "prompts": "art-prompts.json",
+  "assets": [
+    {
+      "key": "data-center",
+      "title": "数据中心",
+      "source": "Content/UI/v4/art/data-center.png",
+      "url": "/games/code-sentinels/ui-v4/art/data-center.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "wind-power",
+      "title": "风力发电站",
+      "source": "Content/UI/v4/art/wind-power.png",
+      "url": "/games/code-sentinels/ui-v4/art/wind-power.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "hydro-power",
+      "title": "水力发电站",
+      "source": "Content/UI/v4/art/hydro-power.png",
+      "url": "/games/code-sentinels/ui-v4/art/hydro-power.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "coal-power",
+      "title": "煤炭火力发电站",
+      "source": "Content/UI/v4/art/coal-power.png",
+      "url": "/games/code-sentinels/ui-v4/art/coal-power.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "nuclear-power",
+      "title": "核电站",
+      "source": "Content/UI/v4/art/nuclear-power.png",
+      "url": "/games/code-sentinels/ui-v4/art/nuclear-power.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "mobile-relay",
+      "title": "移动基站",
+      "source": "Content/UI/v4/art/mobile-relay.png",
+      "url": "/games/code-sentinels/ui-v4/art/mobile-relay.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "research-lab",
+      "title": "研究院",
+      "source": "Content/UI/v4/art/research-lab.png",
+      "url": "/games/code-sentinels/ui-v4/art/research-lab.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "cudad-wall",
+      "title": "cudad 护城河",
+      "source": "Content/UI/v4/art/cudad-wall.png",
+      "url": "/games/code-sentinels/ui-v4/art/cudad-wall.png",
+      "mode": "RGBA",
+      "width": 2172,
+      "height": 724,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "command-core",
+      "title": "指挥基地",
+      "source": "Content/UI/v4/art/command-core.png",
+      "url": "/games/code-sentinels/ui-v4/art/command-core.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    },
+    {
+      "key": "resource-extractor",
+      "title": "资源采集站",
+      "source": "Content/UI/v4/art/resource-extractor.png",
+      "url": "/games/code-sentinels/ui-v4/art/resource-extractor.png",
+      "mode": "RGBA",
+      "width": 1254,
+      "height": 1254,
+      "kind": "static-building-illustration"
+    }
+  ]
+}

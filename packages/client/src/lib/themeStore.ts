@@ -2,8 +2,8 @@ import { create } from 'zustand';
 
 /**
  * F7 wave.3 主题系统:逐行移植参考仓 appearance.rs(Moonlit Agent IDE)。
- * - applyPalette:contrast 混色基比 0.42/0.62/0.78、accent_bg/ring alpha 明暗差异、
- *   translucent 双 alpha(0xCC/0xEE)——与参考 rust 源码逐行对应。
+ * - applyPalette:contrast 混色基比 0.42/0.62/0.78(可读性波已收深,见下)、accent_bg/ring
+ *   alpha 明暗差异、translucent 双 alpha(0xCC/0xEE)——与参考 rust 源码逐行对应。
  * - 持久化键 forge:appearance(参考 moonlit:appearance,语义照搬,前缀改 forge:)。
  * - 应用 = documentElement data-theme + 注入 CSS 变量 + 字体栈/字号变量。
  *
@@ -17,6 +17,11 @@ import { create } from 'zustand';
  *   (对 moonlit 逐值等价,fg=#2A2724);亮色 text_inv 由 #FAF9F5 改为 #FFFFFF。
  * - 语义色 SEMANTIC_LIGHT/DARK 全局换干净同族(对所有预设生效,差异如实留档)。
  * - loadSettings 一次性迁移:presetId=moonlit 且双表未自定义 → 自动切 forge。
+ *
+ * 可读性波(2026-10-07 用户反馈:淡灰字、甚至黑字都太细看不清):
+ * - text_2/3/4 混色基比由参考 0.42/0.62/0.78 收到 0.33/0.46/0.64(对所有预设与用户自定义
+ *   双表生效;contrast 滑杆语义不变)。forge 亮表对白底对比度 5.3/3.0/2.0 → 6.9/4.6/2.8:1,
+ *   text_3 过 WCAG AA。字重侧的补偿见 index.css .forge-legible。
  */
 
 // ---------- 十六进制颜色工具(对应 appearance.rs parse_hex_rgb/mix_hex/darken_hex/lighten_hex) ----------
@@ -91,7 +96,7 @@ export interface AppearanceSettings {
   diffMarkers: DiffMarkers;
 }
 
-// ---------- 10 预设(参考 theme_presets() 逐值) ----------
+// ---------- 主题预设(参考 theme_presets() 逐值;forge 为净化波新增默认) ----------
 
 export interface ThemePreset {
   id: string;
@@ -215,11 +220,12 @@ export function applyPalette(p: ThemePalette, dark: boolean): ThemeTokens {
   const sunk = dark ? darkenHex(bg, 0.06) : darkenHex(bg, 0.04);
   const panel = dark ? lightenHex(bg, 0.04) : bg;
 
-  // contrast 混色(参考基比 0.42/0.62/0.78;对比度越高 t 越小 → 越靠近 fg)
+  // contrast 混色(对比度越高 t 越小 → 越靠近 fg)。可读性波:基比由参考 0.42/0.62/0.78
+  // 收到 0.33/0.46/0.64,次级/提示文字整体加深(见文件头)
   const contrast = Math.min(100, Math.max(0, p.contrast)) / 100;
-  const text2 = mixHex(fg, bg, 0.42 * (1.1 - contrast * 0.5));
-  const text3 = mixHex(fg, bg, 0.62 * (1.05 - contrast * 0.35));
-  const text4 = mixHex(fg, bg, 0.78 * (1.02 - contrast * 0.25));
+  const text2 = mixHex(fg, bg, 0.33 * (1.1 - contrast * 0.5));
+  const text3 = mixHex(fg, bg, 0.46 * (1.05 - contrast * 0.35));
+  const text4 = mixHex(fg, bg, 0.64 * (1.02 - contrast * 0.25));
 
   // accent 派生(参考 accent_derivatives:soft 亮压暗 0.08/暗提亮 0.15;
   // bg alpha 亮 0x14/暗 0x24;ring alpha 亮 0x47/暗 0x6B)
@@ -358,7 +364,8 @@ export function effectiveDark(mode: ThemeMode, sysDark: boolean): boolean {
 
 export const FONT_SANS_STACK =
   '"Inter Variable","HarmonyOS Sans SC","Microsoft YaHei UI","PingFang SC","Noto Sans SC",system-ui,-apple-system,"Segoe UI",sans-serif';
-export const FONT_SERIF_STACK = '"Noto Serif SC","SimSun",serif';
+// D-046:衬线首选打包的思源宋体可变字体(main.tsx 导入),与 theme.css --font-serif 同步
+export const FONT_SERIF_STACK = '"Noto Serif SC Variable","Noto Serif SC","SimSun",serif';
 export const FONT_MONO_STACK = '"JetBrains Mono Variable","JetBrains Mono",Consolas,monospace';
 
 // ---------- zustand store ----------
@@ -375,6 +382,8 @@ interface ThemeState extends AppearanceSettings {
   setUiFont: (f: string) => void;
   setCodeFont: (f: string) => void;
   setDiffMarkers: (d: DiffMarkers) => void;
+  /** 云同步下发:整份外观设置一次替换(范围按本地规则夹取) */
+  replaceAppearance: (s: AppearanceSettings) => void;
   /** mode=auto 时系统明暗翻转重应用 */
   syncSystemDark: () => void;
 }
@@ -457,6 +466,8 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     setUiFont: (f) => commit({ uiFont: f }),
     setCodeFont: (f) => commit({ codeFont: f }),
     setDiffMarkers: (d) => commit({ diffMarkers: d }),
+    replaceAppearance: (s) =>
+      commit(clampSettings({ ...s, light: { ...s.light }, dark: { ...s.dark } })),
     syncSystemDark: () => {
       const s = pickSettings(get());
       const dark = effectiveDark(s.mode, systemDark());

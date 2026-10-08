@@ -10,6 +10,8 @@
  * 计划正文还在,不该因为 front matter 坏了就整页打不开。
  */
 
+import { normalizeTodoStatus } from './todoStatus';
+
 /** 计划文件所在目录(工作区相对,与 agentd plan_doc::PLAN_DIR 同值)。 */
 export const PLAN_DIR = '.forge/plans';
 /** 计划文件后缀。 */
@@ -158,7 +160,7 @@ export function planTodoProgress(
   let done = 0;
   for (const t of todos) {
     const s = statusOf(t.id) ?? t.status;
-    if (s === 'completed' || s === 'done') done += 1;
+    if (normalizeTodoStatus(s) === 'completed') done += 1;
   }
   return { done, total: todos.length };
 }

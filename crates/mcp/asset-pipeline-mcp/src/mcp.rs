@@ -59,6 +59,11 @@ fn index_after_description(project_root: &std::path::Path, asset_path: &str) -> 
 fn tool_list() -> Value {
     json!({
         "tools": [
+            {"name":"shader_graph_get","description":"Read a Shader Graph document, stable IDs and sourceHash for optimistic concurrency","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"reference":{"type":"string"}}}},
+            {"name":"shader_graph_save","description":"Save a Shader Graph draft atomically. Existing graphs require expectedHash; saving never publishes runtime changes.","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"graph":{"type":"object"},"expectedHash":{"type":"string"}},"required":["path","graph"]}},
+            {"name":"shader_graph_compile","description":"Compile a typed Shader Graph DAG to validated Rurix SPIR-V and Godot source with node diagnostics. Runtime preview verifies actual backend pipelines.","inputSchema":{"type":"object","properties":{"graph":{"type":"object"},"path":{"type":"string"},"reference":{"type":"string"}}}},
+            {"name":"shader_graph_list_nodes","description":"Discover Shader Graph domains, typed nodes, ports and budgets progressively","inputSchema":{"type":"object","properties":{}}},
+            {"name":"shader_material_create","description":"Create rxmat v2 binding a Shader Graph GUID to typed parameters and texture GUIDs","inputSchema":{"type":"object","properties":{"path":{"type":"string"},"shaderGraph":{"type":"string"},"params":{"type":"object"},"textures":{"type":"object"}},"required":["path","shaderGraph"]}},
             {
                 "name": "asset_import",
                 "description": "导入源文件到 Content/目录;幂等(覆盖源文件但保留 .meta GUID)",
@@ -70,6 +75,31 @@ fn tool_list() -> Value {
                         "importSettings": { "type": "object", "description": "导入选项覆盖(可选)" }
                     },
                     "required": ["sourcePaths", "destFolder"]
+                }
+            },
+            {
+                "name": "font_list",
+                "description": "D-045:列可用字体——项目已入库字体(含 GUID,Text 组件直接引用)+ 系统字体目录里的候选(未入库,需 font_import)。返回族名/子族/字形数/是否含中文字形",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "includeSystem": { "type": "boolean", "description": "是否列系统字体(缺省 true)" },
+                        "query": { "type": "string", "description": "按族名或文件名过滤(不区分大小写)" },
+                        "cjkOnly": { "type": "boolean", "description": "只列含中文字形的字体" },
+                        "limit": { "type": "integer", "description": "系统字体条数上限(缺省 60,最大 300)" }
+                    }
+                }
+            },
+            {
+                "name": "font_import",
+                "description": "D-045:把字体文件(.ttf/.otf/.ttc,常为 font_list 列出的系统字体)复制进 Content/Fonts/ 入库,返回 GUID 供 Text.font 引用。provenance 记来源与授权提醒:系统字体仅供本地制作,发行前须确认授权",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "sourcePath": { "type": "string", "description": "字体文件绝对路径或项目相对路径" },
+                        "destFolder": { "type": "string", "description": "相对 Content/,缺省 \"Fonts\"" }
+                    },
+                    "required": ["sourcePath"]
                 }
             },
             {
@@ -313,6 +343,16 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
     if !args.is_object() { return Err(err(Value::Null, -32602, "invalid params: arguments 须为对象")); }
 
     match name {
+        "shader_graph_list_nodes"=>Ok(assetd::shader::catalog()),
+        "shader_graph_get"|"shader_graph_save"|"shader_graph_compile"|"shader_material_create"=>{
+            let p=lock(proj);let reference=args.get("reference").or_else(||args.get("path")).and_then(Value::as_str).unwrap_or("");
+            let result=match name{
+                "shader_graph_get"=>assetd::shader::load(&p,reference),
+                "shader_graph_compile"=>if let Some(graph)=args.get("graph"){assetd::shader::compile_document(graph)}else{assetd::shader::compile(&p,reference)},
+                "shader_graph_save"=>serde_json::from_value::<assetd::shader::GraphDoc>(args["graph"].clone()).map_err(|e|assetd::AssetError::new("SHADER_PARSE",e.to_string())).and_then(|g|assetd::shader::save(&p,reference,&g,args["expectedHash"].as_str())),
+                _=>assetd::shader::create_material(&p,reference,args["shaderGraph"].as_str().unwrap_or(""),args.get("params").unwrap_or(&json!({})),args.get("textures").unwrap_or(&json!({}))),
+            };Ok(match result{Ok(mut v)=>{if name=="shader_graph_save"{let indexed=index_after_description(&p.root,reference);v["index"]=indexed;}v},Err(e)=>json!({"ok":false,"error":e.code,"message":e.message})})
+        },
         "asset_import" => {
             let sources: Vec<String> = args.get("sourcePaths")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -334,6 +374,99 @@ fn call_tool(proj: &Arc<Mutex<ForgeProject>>, params: &Value) -> Result<Value, V
                         "source": f.source, "error": f.error
                     })).collect::<Vec<_>>()
                 })),
+                Err(e) => Ok(json!({ "error": e.message, "code": e.code })),
+            }
+        }
+        "font_list" => {
+            let include_system = args.get("includeSystem").and_then(Value::as_bool).unwrap_or(true);
+            let query = args.get("query").and_then(Value::as_str).unwrap_or("").to_lowercase();
+            let cjk_only = args.get("cjkOnly").and_then(Value::as_bool).unwrap_or(false);
+            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(60).clamp(1, 300) as usize;
+            let keep = |path: &str, info: &assetd::font::FontInfo| {
+                (!cjk_only || info.has_cjk)
+                    && (query.is_empty()
+                        || info.family.to_lowercase().contains(&query)
+                        || path.to_lowercase().contains(&query))
+            };
+            let p = lock(proj);
+            let mut project_fonts = Vec::new();
+            for rel in p.scan_content().map_err(|e| err(Value::Null, -32000, &e.message))? {
+                let abs = p.content_root().join(&rel);
+                if !assetd::font::is_font_path(&abs) {
+                    continue;
+                }
+                let meta_path = meta_path_for(&p.content_root(), &rel);
+                let Ok(meta) = MetaDoc::load(&meta_path) else { continue };
+                let Ok(info) = assetd::font::probe(&abs) else { continue };
+                if keep(&rel, &info) {
+                    project_fonts.push(json!({ "assetPath": rel, "guid": meta.guid, "font": info }));
+                }
+            }
+            drop(p);
+            let mut system = Vec::new();
+            if include_system {
+                // 先多取再过滤,过滤后再截到 limit。
+                for (path, info) in assetd::font::list_fonts(&assetd::font::system_font_dirs(), 2000) {
+                    let ps = path.to_string_lossy().to_string();
+                    if keep(&ps, &info) {
+                        system.push(json!({ "path": ps, "font": info }));
+                        if system.len() >= limit {
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(json!({ "projectFonts": project_fonts, "systemFonts": system }))
+        }
+        "font_import" => {
+            let source = args.get("sourcePath").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            if source.is_empty() {
+                return Ok(json!({ "error": "缺参数: sourcePath", "code": "INVALID_PARAMS" }));
+            }
+            let dest = args.get("destFolder").and_then(Value::as_str).filter(|s| !s.trim().is_empty()).unwrap_or("Fonts");
+            let p = lock(proj);
+            let src_abs = if std::path::Path::new(&source).is_absolute() {
+                std::path::PathBuf::from(&source)
+            } else {
+                p.root.join(&source)
+            };
+            if !assetd::font::is_font_path(&src_abs) {
+                return Ok(json!({ "error": format!("不是字体文件(.ttf/.otf/.ttc): {source}"), "code": "FONT_INVALID" }));
+            }
+            let info = match assetd::font::probe(&src_abs) {
+                Ok(i) => i,
+                Err(e) => return Ok(json!({ "error": e.message, "code": e.code })),
+            };
+            match import_assets(&p, &[source.clone()], dest, None) {
+                Ok(out) => {
+                    if let Some(f) = out.failed.first() {
+                        return Ok(json!({ "error": f.error, "code": "IMPORT_FAILED" }));
+                    }
+                    let Some(i) = out.imported.first() else {
+                        return Ok(json!({ "error": "导入无结果", "code": "IMPORT_FAILED" }));
+                    };
+                    let rel = normalize_rel(&i.asset_path).unwrap_or_else(|_| i.asset_path.clone());
+                    let meta_path = meta_path_for(&p.content_root(), &rel);
+                    let system_dirs = assetd::font::system_font_dirs();
+                    let from_system = system_dirs.iter().any(|d| src_abs.starts_with(d));
+                    if let Ok(mut meta) = MetaDoc::load(&meta_path) {
+                        meta.provenance = Some(assetd::meta::Provenance {
+                            origin: "user-import".into(),
+                            detail: Some(json!({
+                                "source": source,
+                                "kind": "font",
+                                "family": info.family,
+                                "licenseNote": if from_system {
+                                    "系统字体:仅供本地制作,发行前须确认字体授权"
+                                } else {
+                                    "外部字体:发行前须确认字体授权"
+                                },
+                            })),
+                        });
+                        let _ = meta.save(&meta_path);
+                    }
+                    Ok(json!({ "assetPath": i.asset_path, "guid": i.guid, "font": info }))
+                }
                 Err(e) => Ok(json!({ "error": e.message, "code": e.code })),
             }
         }

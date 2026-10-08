@@ -1,0 +1,24 @@
+{
+  "id": "chatcmpl-resp_ns3",
+  "object": "chat.completion",
+  "created": 1700000000,
+  "model": "forge-test",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Cut short"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 9,
+    "completion_tokens": 4,
+    "total_tokens": 13,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  }
+}

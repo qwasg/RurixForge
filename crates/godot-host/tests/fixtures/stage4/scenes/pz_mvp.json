@@ -1,0 +1,7 @@
+{
+  "name": "pz_mvp",
+  "project": "demo",
+  "load": "Content/Scenes/pz_mvp_phase1.rxscene",
+  "width": 640,
+  "height": 360
+}

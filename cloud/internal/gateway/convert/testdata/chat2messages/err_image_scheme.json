@@ -1,0 +1,8 @@
+{
+  "options": {"model": "claude-sonnet-4-5"},
+  "request": {
+    "model": "forge-claude",
+    "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "ftp://example.com/a.png"}}]}]
+  },
+  "wantError": "http(s)"
+}

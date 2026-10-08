@@ -1,0 +1,26 @@
+guid: a851f44c-d10d-4163-8a83-466af9241bdf
+type: mesh
+importer: gltf
+provenance:
+  origin: gen-model
+  detail:
+    backendId: meshy
+    generatedAt: 2026-09-18T11:54:59Z
+    kind: text2mesh
+    meta:
+      aiModel: meshy-t2
+      consumedCredits: 15
+      mode: image-to-3d
+      modelType: smart-topology
+      previewViews:
+      - front
+      - right
+      - back
+      - left
+      provider: meshy
+      targetPolycount: 8000
+      taskId: 01a0b45c-42f3-75c1-9599-f334d19c21d4
+      textured: true
+      thumbnailUrl: https://assets.meshy.ai/783c88c1-d9c5-4bec-a81a-f0b322a87cd6/tasks/01a0b45c-42f3-75c1-9599-f334d19c21d4/output/preview.png?Expires=1789991685&Signature=lG0CteksZ5ktFYL6tX5BM1TgNzsD0wT6M8MNGAI1RINzSYLGUH8OVYVEV-p8cKEvTyKJOKruqcugQwk6VknzTDXiw6yn1eCLdbTlY-kZ7ZLsaeJ01ILwvaXYBuEZRmKDaMGKuLGYuBJsoTaD~9svRzJ4Lt5PSuK1fcYP05TEui2I0v8qfJPWlaBPR8Hwvuc~CcA9GCbJOOxWTtAM2~sSJXCzmngvPCChtFFp9JsRxE41gSlwXO-zbuJc1qSUjykgxTJRjFiPiOl~nwaPopjcaDYZydcevDFIafuZSkMCyDgwvf-H3elduWIhrfWpTGuM9iie5o1Qvl1TtiQw~d1A7A__&Key-Pair-Id=K1VGYTHIYLM9UM
+    prompt: 'Tier-2 self-propelled howitzer: graphite blue-gray tracked armored hull with sloped titanium glacis, brass rivets, carbon-black rubber tracks with brass road wheels, boxy turret with a long pale titanium howitzer tube angled upward, teal headlamps, dark engine grills, whip antenna. Palette: graphite blue-gray armored steel, pale titanium trim, warm brass details, carbon-black rubber, glowing teal lights, amber warnings, cyan glass. Hard-surface sci-fi military game asset, PBR, no text or logos.'
+build_state: current
