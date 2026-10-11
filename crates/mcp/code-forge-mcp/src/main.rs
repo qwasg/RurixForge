@@ -23,11 +23,7 @@ fn main() {
                 .map(PathBuf::from)
         })
         .unwrap_or_else(|| {
-            // CARGO_MANIFEST_DIR = crates/mcp/code-forge-mcp;上三级 = workspace 根。
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .ancestors()
-                .nth(3)
-                .expect("CARGO_MANIFEST_DIR 上三级须存在")
+            forge_util::roots::forge_root()
                 .join("projects")
                 .join("demo")
         });

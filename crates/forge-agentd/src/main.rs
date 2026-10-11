@@ -131,6 +131,14 @@ async fn main() {
         research::run_stdio().await;
         return;
     }
+    // 桌面端以管道作 stdin 拉起本进程:管道断开 = 桌面端已退出(含崩溃),随之退出,
+    // 免得残留进程占着端口、锁着安装目录里的文件。手动启动(未设此变量)不受影响。
+    if std::env::var_os("FORGE_EXIT_ON_STDIN_EOF").is_some() {
+        std::thread::spawn(|| {
+            let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
+            std::process::exit(0);
+        });
+    }
     let addr = std::env::var("FORGE_AGENTD_ADDR").unwrap_or_else(|_| "127.0.0.1:8103".to_string());
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -157,14 +165,15 @@ async fn main() {
         .expect("axum serve 失败");
 }
 
-/// agent 数据根:env FORGE_AGENTD_DATA_DIR 优先(测试隔离),否则 <workspace>/data(D-F7-E)。
+/// agent 数据根:env FORGE_AGENTD_DATA_DIR 优先(测试隔离),否则 Forge 数据根
+/// (安装版的 FORGE_DATA_DIR,源码检出 = <workspace>/data,D-F7-E)。
 pub(crate) fn agent_data_root() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("FORGE_AGENTD_DATA_DIR") {
         if !p.is_empty() {
             return std::path::PathBuf::from(p);
         }
     }
-    workspace_root().join("data")
+    forge_util::roots::data_root()
 }
 
 /// 单测用的隔离 AppState:事件/会话/待办等全部落在独立临时目录,run/swarm 在内存。
@@ -774,14 +783,9 @@ async fn proposals_patch(
     }
 }
 
-/// workspace 根(CARGO_MANIFEST_DIR 上两级)。
+/// workspace 根:安装版的 FORGE_ROOT,源码检出 = 仓根(forge_util::roots)。
 pub(crate) fn workspace_root() -> std::path::PathBuf {
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
-        .to_path_buf()
+    forge_util::roots::forge_root()
 }
 
 /// GET /api/forge/subagents:磁盘 profile 热加载清单(04 §6;改文件不重启生效)。
@@ -870,15 +874,10 @@ async fn project_pack(Json(req): Json<pack::PackRequest>) -> Response {
             .into_response();
     };
     let out_dir = playtest::resolve_workspace_path(&req.out_dir);
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace = manifest_dir.ancestors().nth(2).expect("workspace 根");
     let runtime_dir = std::env::var("FORGE_GODOT_RUNTIME_DIR")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| workspace.join("target").join("godot-runtime"));
-    let engine_bin = workspace
-        .join("target")
-        .join("debug")
-        .join("engine-host.exe");
+        .unwrap_or_else(|_| workspace_root().join("target").join("godot-runtime"));
+    let engine_bin = forge_util::roots::companion_exe("engine-host.exe");
     let port = req.port.unwrap_or(17890);
     match pack::build_pack_with_runtime(
         &scene_abs,

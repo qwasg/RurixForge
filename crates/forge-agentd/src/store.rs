@@ -48,11 +48,7 @@ const UNINSTALL_PROPOSAL_KIND: &str = "store.uninstall";
 // ---------- 路径锚 ----------
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
-        .to_path_buf()
+    crate::workspace_root()
 }
 
 /// 源配置与个人库的数据根。与 gend 同源(`FORGE_GEN_DATA_DIR` 可覆盖做测试隔离)。

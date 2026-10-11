@@ -77,23 +77,19 @@ pub struct FileWriteReq {
     workspace_id: Option<String>,
 }
 
-/// 工作区根:env FORGE_AGENTD_WORKSPACE_ROOT 优先(测试隔离),否则仓根(CARGO_MANIFEST_DIR 上两级)。
+/// 工作区根:env FORGE_AGENTD_WORKSPACE_ROOT 优先(测试隔离、安装版的默认工作区),否则仓根。
 pub(crate) fn workspace_root_path() -> std::path::PathBuf {
     root()
 }
 
-/// 工作区根:env FORGE_AGENTD_WORKSPACE_ROOT 优先(测试隔离),否则仓根(CARGO_MANIFEST_DIR 上两级)。
+/// 工作区根:env FORGE_AGENTD_WORKSPACE_ROOT 优先(测试隔离、安装版的默认工作区),否则仓根。
 fn root() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("FORGE_AGENTD_WORKSPACE_ROOT") {
         if !p.is_empty() {
             return std::path::PathBuf::from(p);
         }
     }
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
-        .to_path_buf()
+    crate::workspace_root()
 }
 
 /// 目标路径 confined 解析:root canonicalize + join(path) canonicalize 后 starts_with 校验。

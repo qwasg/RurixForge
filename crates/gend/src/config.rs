@@ -9,23 +9,20 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// 数据目录:env FORGE_GEN_DATA_DIR 优先(测试隔离),否则 <workspace>/data。
+/// 数据目录:env FORGE_GEN_DATA_DIR 优先(测试隔离),否则 Forge 数据根
+/// (安装版的 FORGE_DATA_DIR,源码检出 = <workspace>/data)。
 pub fn data_dir() -> PathBuf {
     if let Ok(p) = std::env::var("FORGE_GEN_DATA_DIR") {
         if !p.is_empty() {
             return PathBuf::from(p);
         }
     }
-    workspace_root().join("data")
+    forge_util::roots::data_root()
 }
 
-/// workspace 根(CARGO_MANIFEST_DIR = crates/gend,上两级)。
+/// workspace 根:安装版的 FORGE_ROOT,源码检出 = 仓根(forge_util::roots)。
 pub fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
-        .to_path_buf()
+    forge_util::roots::forge_root()
 }
 
 /// gen-backends.json 默认路径。

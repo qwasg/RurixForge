@@ -32,32 +32,24 @@ fn response_timeout(method: &str) -> Duration {
     }
 }
 
-/// workspace 根:CARGO_MANIFEST_DIR(…/crates/mcp/engine-scene-mcp)上三级。
+/// workspace 根:安装版的 FORGE_ROOT,源码检出 = 仓根(forge_util::roots)。
 pub fn workspace_root() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .ancestors()
-        .nth(3)
-        .expect("CARGO_MANIFEST_DIR 上三级须存在")
-        .to_path_buf()
+    forge_util::roots::forge_root()
 }
 
-/// engine-host 二进制路径:env FORGE_ENGINE_HOST_BIN > 默认 <root>/target/debug/engine-host.exe。
+/// engine-host 二进制路径:env FORGE_ENGINE_HOST_BIN > 同套件查找(本进程同目录,再退 <root>/target/debug)。
 pub fn host_bin_path() -> PathBuf {
     if let Ok(p) = std::env::var("FORGE_ENGINE_HOST_BIN") {
         return PathBuf::from(p);
     }
-    workspace_root()
-        .join("target")
-        .join("debug")
-        .join("engine-host.exe")
+    forge_util::roots::companion_exe("engine-host.exe")
 }
 
-/// host 事件日志路径；允许独立运行实例指定文件，缺省保持 <root>/data/host-events.jsonl。
+/// host 事件日志路径；允许独立运行实例指定文件，缺省 <数据根>/host-events.jsonl(源码检出 = <root>/data)。
 pub fn events_log_path() -> PathBuf {
     std::env::var_os("FORGE_HOST_EVENTS_LOG").filter(|p| !p.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| workspace_root().join("data").join("host-events.jsonl"))
+        .unwrap_or_else(|| forge_util::roots::data_root().join("host-events.jsonl"))
 }
 
 /// Godot 宿主等就绪行的上限(02 §6.2:冷启动 2–5 s,首次运行还有着色器编译)。rurix 仍是 START_TIMEOUT(10 s)。
@@ -395,7 +387,7 @@ impl Supervisor {
                 std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(workspace_root().join("engine-host-err.log"))
+                    .open(forge_util::roots::log_dir().join("engine-host-err.log"))
                     .map(Stdio::from)
                     .unwrap_or(Stdio::null()),
             )
@@ -517,7 +509,7 @@ impl Supervisor {
                 std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(workspace_root().join("engine-host-err.log"))
+                    .open(forge_util::roots::log_dir().join("engine-host-err.log"))
                     .map(Stdio::from)
                     .unwrap_or(Stdio::null()),
             );
@@ -525,7 +517,7 @@ impl Supervisor {
             .spawn()
             .map_err(|e| format!("spawn Godot 宿主失败:{e}"))?;
         let stdout = child.stdout.take().ok_or("无 stdout 管道")?;
-        let drain = workspace_root().join("engine-host-out.log");
+        let drain = forge_util::roots::log_dir().join("engine-host-out.log");
         let (tx, rx) = mpsc::channel::<Option<String>>();
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);

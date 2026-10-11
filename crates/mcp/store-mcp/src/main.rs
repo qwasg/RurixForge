@@ -3,7 +3,7 @@
 //! 内嵌 forge-store 库(无 supervisor,库非进程)。两个根不能合并:
 //! - `--project <dir>`:资产落地根(Content/ 与 .forge/store/installed.json),缺省 `<workspace>/projects/demo`;
 //! - `--workspace <dir>`:官方源 `registry/`、skill 落地根 `skills/`、源配置 `data/store-sources.json` 的锚,
-//!   缺省 = CARGO_MANIFEST_DIR 上三级。
+//!   缺省 = Forge 根(安装版的 FORGE_ROOT 或源码仓根);`FORGE_DATA_DIR` 另行改放源配置与个人库。
 
 mod mcp;
 
@@ -20,14 +20,7 @@ fn main() {
             _ => {}
         }
     }
-    // CARGO_MANIFEST_DIR = crates/mcp/store-mcp;上三级 = workspace 根。
-    let ws = workspace_root.unwrap_or_else(|| {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("CARGO_MANIFEST_DIR 上三级须存在")
-            .to_path_buf()
-    });
+    let ws = workspace_root.unwrap_or_else(forge_util::roots::forge_root);
     let project = project_root.unwrap_or_else(|| ws.join("projects").join("demo"));
     mcp::serve_stdio(project, ws);
 }

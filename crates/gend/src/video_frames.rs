@@ -58,7 +58,7 @@ fn probe_version(exe: &Path) -> Option<String> {
 }
 
 /// ffmpeg 可执行文件定位。顺序:env `FORGE_FFMPEG`(文件或所在目录)>
-/// `<workspace>/data/tools/ffmpeg[.exe]` > PATH。
+/// `<数据根>/tools/ffmpeg[.exe]`(源码检出 = `<workspace>/data/tools`)> PATH。
 /// env 指了却指不到文件 = 用户配错,如实返回 None 而不静默回落 PATH。
 pub fn ffmpeg_path() -> Option<PathBuf> {
     let exe = ffmpeg_exe_name();
@@ -70,7 +70,7 @@ pub fn ffmpeg_path() -> Option<PathBuf> {
             return cand.is_file().then_some(cand);
         }
     }
-    let bundled = crate::config::workspace_root().join("data").join("tools").join(exe);
+    let bundled = forge_util::roots::data_root().join("tools").join(exe);
     if bundled.is_file() {
         return Some(bundled);
     }

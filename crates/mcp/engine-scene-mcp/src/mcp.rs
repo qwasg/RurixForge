@@ -469,13 +469,9 @@ fn lock(s: &Mutex<Supervisor>) -> MutexGuard<'_, Supervisor> {
 // 落 mcp 层(转发 host 前);component_add / entity_batch_apply 内的 Script 不在本波范围。
 
 /// 资产项目根 = <workspace>/projects/demo(照 forge-agentd asset_project_root 先例;
-/// CARGO_MANIFEST_DIR = crates/mcp/engine-scene-mcp,上三级 = workspace 根)。
+/// workspace 根 = 安装版的 FORGE_ROOT 或源码仓根)。
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("CARGO_MANIFEST_DIR 上三级须存在")
-        .to_path_buf()
+    forge_util::roots::forge_root()
 }
 
 fn confine_scene_args(mut args: Value) -> Result<Value, Value> {
@@ -499,12 +495,7 @@ fn confine_scene_args(mut args: Value) -> Result<Value, Value> {
 }
 
 fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("CARGO_MANIFEST_DIR 上三级须存在")
-        .join("projects")
-        .join("demo")
+    workspace_root().join("projects").join("demo")
 }
 
 /// 单个 Script props 检查:graphRef/module 非空字符串 → 文件须存在。

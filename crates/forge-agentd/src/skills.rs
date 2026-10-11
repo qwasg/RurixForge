@@ -295,9 +295,7 @@ pub struct SkillsConfig {
 }
 
 pub fn skills_config_path() -> PathBuf {
-    crate::workspace_root()
-        .join("data")
-        .join("skills-config.json")
+    forge_util::roots::data_root().join("skills-config.json")
 }
 
 pub fn skills_config_load() -> SkillsConfig {

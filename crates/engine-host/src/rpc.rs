@@ -578,8 +578,8 @@ pub(crate) fn set_project_root(root: PathBuf) -> Result<(), PathBuf> {
     PROJECT_ROOT_OVERRIDE.set(root)
 }
 
-/// 资产项目根 = <workspace>/projects/demo(CARGO_MANIFEST_DIR = crates/engine-host,
-/// 上两级 = workspace 根);env FORGE_PROJECT_ROOT 覆盖(测试注入临时项目根)。
+/// 资产项目根 = <workspace>/projects/demo(workspace 根 = 安装版的 FORGE_ROOT 或源码仓根);
+/// env FORGE_PROJECT_ROOT 覆盖(测试注入临时项目根)。
 /// start_core 设过覆盖值(CoreConfig.project_root)时它优先于 env 与编译期回退。
 pub(crate) fn project_root() -> PathBuf {
     if let Some(root) = PROJECT_ROOT_OVERRIDE.get() {
@@ -588,12 +588,7 @@ pub(crate) fn project_root() -> PathBuf {
     if let Ok(p) = std::env::var("FORGE_PROJECT_ROOT") {
         return PathBuf::from(p);
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 上两级须存在")
-        .join("projects")
-        .join("demo")
+    workspace_root().join("projects").join("demo")
 }
 
 /// RigidBody 组件 → BodyDesc(D-F4-I):kind 映射 static→Static/dynamic→Dynamic/
@@ -2183,11 +2178,7 @@ fn transform_batch_set(st: &mut HostState, params: &Value) -> HResult {
 /// F7 wave.5 回归修复:此前「相对一律项目根」使 workspace 相对路径双前缀(projects/demo/
 /// projects/demo/...)→ scene_load os error 3,console-metrics 场景回归;恢复双契约。
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace 根")
-        .to_path_buf()
+    forge_util::roots::forge_root()
 }
 
 fn resolve_scene_path(s: &str) -> Result<PathBuf, (i64, String)> {

@@ -3,6 +3,8 @@ packages:
   - "apps/*"
   - "!apps/ide"
   - "tools/*"
+  # 安装包构建工具用 npm 单独管理(electron-builder 需要扁平 node_modules),见 tools/installer/package.json。
+  - "!tools/installer"
   - "cloud/web"
 allowBuilds:
   electron: true

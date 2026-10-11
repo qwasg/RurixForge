@@ -17,11 +17,7 @@ pub fn resolve_workspace_path(rel: &str) -> std::path::PathBuf {
     if p.is_absolute() {
         return p;
     }
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("workspace 根")
-        .join(p)
+    crate::workspace_root().join(p)
 }
 
 // ---------- 矩阵 schema ----------
