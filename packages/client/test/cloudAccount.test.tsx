@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import AuthScreen from '@/components/account/AuthScreen';
+import AuthScreen, { isLoopbackServer } from '@/components/account/AuthScreen';
 import CloudErrorGuidance, { cloudGuidance } from '@/components/chat/CloudErrorGuidance';
 import AssistantMessage from '@/components/chat/AssistantMessage';
 import ModelPicker from '@/components/chat/ModelPicker';
@@ -187,6 +187,31 @@ describe('<AuthScreen /> 版式(D-046)', () => {
     render(<AuthScreen />);
     fireEvent.click(screen.getByTestId('auth-close'));
     expect(useAccountStore.getState().authOpen).toBe(false);
+  });
+});
+
+describe('<AuthScreen /> 云服务连不上', () => {
+  it('本机缺省地址连不上:中性提示,指向官方订阅与自带密钥', () => {
+    resetAccount({ reachable: false, serverUrl: 'http://127.0.0.1:8110' });
+    render(<AuthScreen />);
+    expect(screen.getByTestId('auth-no-local-cloud')).toHaveTextContent('使用自带密钥');
+    expect(screen.queryByTestId('auth-unreachable')).not.toBeInTheDocument();
+  });
+
+  it('远端地址连不上:照旧提示检查网络', () => {
+    resetAccount({ reachable: false, serverUrl: 'https://cloud.example.com' });
+    render(<AuthScreen />);
+    expect(screen.getByTestId('auth-unreachable')).toHaveTextContent('请检查网络或服务器地址');
+    expect(screen.queryByTestId('auth-no-local-cloud')).not.toBeInTheDocument();
+  });
+
+  it('isLoopbackServer 只认本机回环地址', () => {
+    expect(isLoopbackServer('http://127.0.0.1:8110')).toBe(true);
+    expect(isLoopbackServer('http://localhost:8110/')).toBe(true);
+    expect(isLoopbackServer('http://[::1]:8110')).toBe(true);
+    expect(isLoopbackServer('https://cloud.example.com')).toBe(false);
+    expect(isLoopbackServer('')).toBe(false);
+    expect(isLoopbackServer(undefined)).toBe(false);
   });
 });
 

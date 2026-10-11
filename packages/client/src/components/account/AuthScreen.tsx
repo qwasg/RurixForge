@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowUpRight, ChevronDown, ChevronRight, CircleAlert, CircleCheck, KeyRound, Server, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ChevronRight, CircleAlert, CircleCheck, Info, KeyRound, Server, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { errorMessage, postAccountConfig, postEmailCode } from '@/lib/accountApi';
 import { gateForced, gateVisible, useAccountStore } from '@/lib/accountStore';
@@ -22,6 +22,16 @@ import { useOverlayStore } from '@/lib/overlayStore';
 type Tab = 'login' | 'register';
 
 export const EMAIL_CODE_COOLDOWN_S = 60;
+
+/** 云地址指向本机(缺省的开发地址):连不上通常只是没有自建云服务,不是网络故障。 */
+export function isLoopbackServer(raw: string | null | undefined): boolean {
+  try {
+    const host = new URL(raw ?? '').hostname;
+    return host === '127.0.0.1' || host === 'localhost' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
 
 const inputCls =
   'h-10 w-full rounded-xl border border-edge-strong bg-shell-input px-3.5 text-[13.5px] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-4 hover:border-fg-4 focus:border-acc focus:ring-[3px] focus:ring-acc-ring';
@@ -503,7 +513,19 @@ export default function AuthScreen() {
                 </button>
               ))}
             </div>
-            {unreachable && (
+            {unreachable && isLoopbackServer(status?.serverUrl) && (
+              // 安装版首次启动的常态:没有自建云服务时给出可走的路,不用警告色。
+              <div
+                data-testid="auth-no-local-cloud"
+                className="mb-4 flex items-start gap-2 rounded-xl border border-edge bg-shell-panel px-3.5 py-2.5 text-[12px] leading-[18px] text-fg-2"
+              >
+                <Info size={14} className="mt-0.5 shrink-0" />
+                <span className="min-w-0">
+                  本机没有运行 RurixForge 云服务({status?.serverUrl})。可以直接用下方的「连接官方模型订阅」或「使用自带密钥」开始;自建云服务后,在「服务器地址」里填写即可登录。
+                </span>
+              </div>
+            )}
+            {unreachable && !isLoopbackServer(status?.serverUrl) && (
               <div
                 data-testid="auth-unreachable"
                 className="mb-4 flex items-start gap-2 rounded-xl bg-warn-bg px-3.5 py-2.5 text-[12px] leading-[18px] text-warn"
