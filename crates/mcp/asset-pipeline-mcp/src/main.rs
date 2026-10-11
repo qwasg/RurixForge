@@ -19,15 +19,8 @@ fn main() {
             project_root = args.next().map(PathBuf::from);
         }
     }
-    let root = project_root.unwrap_or_else(|| {
-        // CARGO_MANIFEST_DIR = crates/mcp/asset-pipeline-mcp;上三级 = workspace 根。
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("CARGO_MANIFEST_DIR 上三级须存在")
-            .join("projects")
-            .join("demo")
-    });
+    let root = project_root
+        .unwrap_or_else(|| gend::config::workspace_root().join("projects").join("demo"));
     let project = ForgeProject::load(&root).unwrap_or_else(|e| {
         eprintln!("[asset-pipeline-mcp] forge.toml 加载失败: {e};用缺省配置");
         ForgeProject::with_defaults(root.clone())

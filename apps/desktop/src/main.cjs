@@ -5,16 +5,23 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const backend = require('./backend.cjs');
 const { isAllowedSubframeUrl } = require('./frameGuard.cjs');
 
-const desktopHostPort = Number(process.env.FORGE_HOST_PORT);
-const HOST_ORIGIN = `http://127.0.0.1:${Number.isInteger(desktopHostPort) && desktopHostPort > 0 && desktopHostPort < 65536 ? desktopHostPort : 3080}`;
-const HEALTH_URL = `${HOST_ORIGIN}/api/forge/health`;
+// 源码检出 = 仓根;安装版 = resources/forge(布局见 backend.cjs)。
+const layout = backend.resolveLayout({
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  sourceDir: __dirname,
+});
+// 端口在 main() 里定:开发态沿用 FORGE_HOST_PORT / 3080,安装版遇到占用会换端口。
+let HOST_ORIGIN = `http://127.0.0.1:${backend.devPorts(process.env).hostPort}`;
+let HEALTH_URL = `${HOST_ORIGIN}/api/forge/health`;
 const HEALTH_INTERVAL_MS = 250;
 const HEALTH_TIMEOUT_MS = 30_000;
 
-const repoRoot = path.resolve(__dirname, '..', '..', '..');
-const hostEntry = path.join(repoRoot, 'packages', 'host', 'dist', 'index.js');
+const repoRoot = layout.root;
+const hostEntry = layout.hostEntry;
 const isSmoke = process.env.FORGE_SMOKE === '1';
 const evidenceDir = isSmoke && process.env.FORGE_SMOKE_EVIDENCE_DIR
   ? path.resolve(process.env.FORGE_SMOKE_EVIDENCE_DIR)
@@ -30,9 +37,14 @@ const isSmokeVisible = process.env.FORGE_SMOKE_VISIBLE === '1';
 const useOffscreen = isSmoke && !isSmokeVisible;
 
 let mainWindow = null;
+let splashWindow = null;
 let hostProcess = null;
 let hostReady = false;
 let quitting = false;
+// 本进程拉起的 agentd(复用开发者手动启动的那个时为 null,退出时不去动它)。
+let agentdProcess = null;
+// 安装版的日志目录(<userData>/logs);开发态输出走终端。
+let logsDir = null;
 
 function forwardHostStream(stream, tag) {
   let buf = '';
@@ -52,52 +64,53 @@ function forwardHostStream(stream, tag) {
   });
 }
 
-function spawnHost() {
+function spawnHost(env, agentdOrigin) {
   if (!fs.existsSync(hostEntry)) {
     smokeLog(`host entry missing: ${hostEntry}`);
-    if (isSmoke) {
-      app.exit(1);
-      return false;
-    }
-    dialog.showErrorBox(
-      'Forge Desktop 启动失败',
-      `未找到 @forge/host 构建产物:\n${hostEntry}\n\n请先构建 packages/host。`
+    failStartup(
+      layout.packaged
+        ? `安装不完整,缺少网页宿主服务:\n${hostEntry}\n\n请重新运行安装程序。`
+        : `未找到 @forge/host 构建产物:\n${hostEntry}\n\n请先构建 packages/host。`
     );
-    app.exit(1);
     return false;
   }
 
-  console.log(`[desktop] spawning host: node ${hostEntry}`);
-  hostProcess = spawn('node', [hostEntry], {
+  // 安装版没有系统 Node,用 Electron 自带的 Node 跑 host。stdin 留一根管道:
+  // 本进程退出(含崩溃)时 host 读到 EOF 自行退出,不会残留占着端口。
+  const command = layout.packaged ? process.execPath : 'node';
+  const hostEnv = {
+    ...env,
+    FORGE_HOST_PORT: new URL(HOST_ORIGIN).port,
+    FORGE_AGENTD_ORIGIN: layout.packaged ? agentdOrigin : env.FORGE_AGENTD_ORIGIN || agentdOrigin,
+    FORGE_EXIT_ON_STDIN_EOF: '1',
+    ...(layout.packaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+  };
+  const log = logsDir ? backend.openLog(logsDir, 'host') : null;
+  console.log(`[desktop] spawning host: ${command} ${hostEntry}`);
+  hostProcess = spawn(command, [hostEntry], {
     cwd: repoRoot,
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    env: hostEnv,
+    stdio: ['pipe', log ? log.fd : 'pipe', log ? log.fd : 'pipe'],
+    windowsHide: true,
   });
 
-  forwardHostStream(hostProcess.stdout, 'stdout');
-  forwardHostStream(hostProcess.stderr, 'stderr');
+  if (log) {
+    fs.closeSync(log.fd);
+  } else {
+    forwardHostStream(hostProcess.stdout, 'stdout');
+    forwardHostStream(hostProcess.stderr, 'stderr');
+  }
 
   hostProcess.on('error', (err) => {
     if (isSmoke) smokeLog(`host spawn error: ${err.message}`);
-    dialog.showErrorBox('Forge Desktop 启动失败', `无法启动 host 子进程:\n${err.message}`);
-    app.exit(1);
+    failStartup(`无法启动 host 子进程:\n${err.message}`);
   });
 
   hostProcess.on('exit', (code, signal) => {
     console.log(`[desktop] host exited (code=${code}, signal=${signal})`);
     if (isSmoke) smokeLog(`host exited early (code=${code}, signal=${signal})`);
     if (!hostReady && !quitting) {
-      if (isSmoke) {
-        // 冒烟模式无弹窗(模态框在无人值守下永久阻塞),直接失败退出
-        killHost();
-        app.exit(1);
-        return;
-      }
-      dialog.showErrorBox(
-        'Forge Desktop 启动失败',
-        `host 子进程在健康检查通过前退出 (code=${code}, signal=${signal})。`
-      );
-      app.exit(1);
+      failStartup(`host 子进程在健康检查通过前退出 (code=${code}, signal=${signal})。`);
     }
   });
 
@@ -172,16 +185,119 @@ function killHost() {
   }
 }
 
+/** 只回收本进程拉起的 agentd(整棵树);复用的外部 agentd 不动。 */
+function stopBackend() {
+  backend.killTree(agentdProcess);
+  agentdProcess = null;
+}
+
+/**
+ * 选端口、准备安装版的数据目录与默认工作区,再确保 agentd 可用。
+ * 返回 host 要继承的环境与 agentd 地址;agentd 起不来时抛错(带日志位置)。
+ */
+async function startBackend() {
+  let env = process.env;
+  let ports = backend.devPorts(process.env);
+  if (layout.packaged) {
+    const paths = backend.packagedPaths({ layout, userData: app.getPath('userData'), env: process.env });
+    logsDir = paths.logsDir;
+    if (backend.seedWorkspace(path.join(layout.root, 'templates', 'default-workspace'), paths.workspace)) {
+      note(`已创建默认工作区 ${paths.workspace}`);
+    }
+    ports = await backend.choosePackagedPorts({ stateFile: paths.stateFile, env: process.env });
+    env = { ...process.env, ...paths.env };
+  }
+  HOST_ORIGIN = `http://127.0.0.1:${ports.hostPort}`;
+  HEALTH_URL = `${HOST_ORIGIN}/api/forge/health`;
+
+  const agentd = await backend.ensureAgentd({ layout, env, port: ports.agentdPort, logsDir });
+  if (agentd.missing) {
+    if (layout.packaged) throw new Error(`安装不完整,缺少 AI 后端:\n${agentd.missing}\n\n请重新运行安装程序。`);
+    // 源码检出还没构建 Rust 部分:照旧只起界面,状态栏会显示 agentd 不可达。
+    note(`未找到 ${agentd.missing};先 cargo build,或另行启动 forge-agentd`);
+  } else if (agentd.child) {
+    agentdProcess = agentd.child;
+    note(`agentd 已启动 pid=${agentd.child.pid} ${agentd.origin} (${agentd.exe})`);
+    agentd.child.on('exit', (code, signal) => {
+      if (!quitting) note(`agentd 意外退出 (code=${code}, signal=${signal})`);
+    });
+  } else {
+    note(`复用已在运行的 agentd ${agentd.origin}`);
+  }
+  return { env, agentdOrigin: agentd.origin };
+}
+
+/**
+ * 启动失败:弹窗说明原因(安装版附日志目录,可直接打开),然后回收子进程并退出。
+ * 冒烟模式只落日志,不弹模态框(无人值守下会永久阻塞)。
+ */
+function failStartup(message) {
+  quitting = true;
+  smokeLog(`startup failure: ${message}`);
+  // 先藏不毁:启动小窗是唯一窗口,毁掉会触发 window-all-closed 提前退出,打开日志目录就来不及了。
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.hide();
+  let opened = Promise.resolve();
+  if (!isSmoke) {
+    const buttons = logsDir ? ['打开日志文件夹', '关闭'] : ['关闭'];
+    const choice = dialog.showMessageBoxSync({
+      type: 'error',
+      title: 'RurixForge 启动失败',
+      message: 'RurixForge 启动失败',
+      detail: logsDir ? `${message}\n\n日志目录:${logsDir}` : message,
+      buttons,
+      defaultId: 0,
+      noLink: true,
+    });
+    if (logsDir && choice === 0) opened = shell.openPath(logsDir);
+  }
+  void opened.finally(() => {
+    killHost();
+    stopBackend();
+    app.exit(1);
+  });
+}
+
+/** 本地服务就绪前的小窗,免得双击后长时间没有任何反应。 */
+function showSplash() {
+  const dark = nativeTheme.shouldUseDarkColors;
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 220,
+    frame: false,
+    resizable: false,
+    movable: true,
+    show: false,
+    skipTaskbar: false,
+    backgroundColor: dark ? '#191A1D' : '#FFFFFF',
+    icon: fs.existsSync(layout.icon) ? layout.icon : undefined,
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  const fg = dark ? '#ECECEC' : '#1A1A1A';
+  const sub = dark ? '#A0A0A0' : '#555555';
+  const html = `<!doctype html><meta charset="utf-8"><title>RurixForge</title>
+<body style="margin:0;height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;
+font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;color:${fg};-webkit-app-region:drag;user-select:none">
+<div style="font-size:26px;font-weight:600;letter-spacing:.5px">RurixForge</div>
+<div style="margin-top:14px;font-size:15px;color:${sub}">正在启动本地服务…</div></body>`;
+  splashWindow.once('ready-to-show', () => splashWindow && !splashWindow.isDestroyed() && splashWindow.show());
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
+  void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+function closeSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
+  splashWindow = null;
+}
+
 // ───────────── viewport-presenter 集成(F1 wave.2 G-F1-9 桌面腿) ─────────────
 // renderer 上报视口容器 bounds(CSS px + dpr)→ spawn presenter 子窗口嵌入本窗
 // 客户区(WS_EX_TRANSPARENT 点击穿透,web 交互不受影响)→ 经 host MCP 打开 D3D12
 // 共享纹理(NT handle 复制给 presenter pid)→ stdin bind/move/close 驱动。
 // 帧源唯一(viewport.frame 同帧写共享纹理与 canvas 回退腿),尺寸变更重建共享纹理。
 
-const PRESENTER_EXE_CANDIDATES = [
-  path.join(repoRoot, 'target', 'debug', 'viewport-presenter.exe'),
-  path.join(repoRoot, 'target', 'release', 'viewport-presenter.exe'),
-];
+const PRESENTER_EXE_CANDIDATES = layout.presenterCandidates;
 const PRESENTER_RECT_EVIDENCE = path.join(evidenceDir, 'viewport-presenter-rect.json');
 const OS_CAPTURE_DONE_FLAG = path.join(evidenceDir, 'os-capture-done.flag');
 
@@ -500,11 +616,18 @@ async function stopPresenter() {
   }
 }
 
+/** 终端 + 日志文件各记一份(开发态看终端,安装版看 desktop.log)。 */
+function note(msg) {
+  console.log(`[desktop] ${msg}`);
+  smokeLog(msg);
+}
+
 function smokeLog(msg) {
-  // GUI 子系统下 stdout 不可达,冒烟日志落盘
+  // GUI 子系统下 stdout 不可达,冒烟日志落盘;安装版平时写 <userData>/logs/desktop.log。
+  const [dir, name] = !isSmoke && logsDir ? [logsDir, 'desktop.log'] : [evidenceDir, 'smoke.log'];
   try {
-    fs.mkdirSync(evidenceDir, { recursive: true });
-    fs.appendFileSync(path.join(evidenceDir, 'smoke.log'), `[${new Date().toISOString()}] ${msg}\n`);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, name), `[${new Date().toISOString()}] ${msg}\n`);
   } catch {
     // 日志失败不阻塞主流程
   }
@@ -1225,7 +1348,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    icon: path.join(repoRoot, 'packages', 'client', 'public', process.platform === 'win32' ? 'favicon.ico' : 'logo.png'),
+    icon: fs.existsSync(layout.icon) ? layout.icon : undefined,
     show: !isSmoke || isSmokeVisible,
     backgroundColor: dark ? '#191A1D' : '#FFFFFF',
     titleBarStyle: IS_MAC ? 'hiddenInset' : 'hidden',
@@ -1325,7 +1448,10 @@ function createWindow() {
       settle(false, `did-fail-load code=${code} ${desc}`)
     );
   } else {
-    mainWindow.once('ready-to-show', () => mainWindow.show());
+    mainWindow.once('ready-to-show', () => {
+      mainWindow.show();
+      closeSplash();
+    });
   }
 
   const targetUrl = process.env.FORGE_DEV_URL || HOST_ORIGIN;
@@ -1446,24 +1572,24 @@ async function main() {
     if (fs.existsSync(abs)) shell.showItemInFolder(abs);
   });
 
-  if (!spawnHost()) return;
+  if (!isSmoke) showSplash();
+  let runtime;
+  try {
+    runtime = await startBackend();
+  } catch (err) {
+    failStartup(err && err.message ? err.message : String(err));
+    return;
+  }
+  if (isSmoke) smokeLog(`backend ready: ${runtime.agentdOrigin} host=${HOST_ORIGIN}`);
+
+  if (!spawnHost(runtime.env, runtime.agentdOrigin)) return;
   if (isSmoke) smokeLog(`host spawned pid=${hostProcess && hostProcess.pid}`);
 
   hostReady = await waitForHostHealthy();
   if (isSmoke) smokeLog(`hostReady=${hostReady}`);
   if (!hostReady) {
     smokeLog(`health timeout: ${HEALTH_URL}`);
-    if (isSmoke) {
-      killHost();
-      app.exit(1);
-      return;
-    }
-    dialog.showErrorBox(
-      'Forge Desktop 启动失败',
-      `等待 host 健康检查超时 (${HEALTH_TIMEOUT_MS / 1000}s):\n${HEALTH_URL}`
-    );
-    killHost();
-    app.exit(1);
+    failStartup(`等待 host 健康检查超时 (${HEALTH_TIMEOUT_MS / 1000}s):\n${HEALTH_URL}`);
     return;
   }
 
@@ -1490,20 +1616,14 @@ if (!gotLock) {
 
   app.whenReady().then(main).catch((err) => {
     smokeLog(`main() threw: ${err && err.stack ? err.stack : err}`);
-    if (isSmoke) {
-      killHost();
-      app.exit(1);
-      return;
-    }
-    dialog.showErrorBox('Forge Desktop 启动失败', String(err && err.stack ? err.stack : err));
-    killHost();
-    app.exit(1);
+    failStartup(String(err && err.stack ? err.stack : err));
   });
 
   app.on('window-all-closed', () => {
     quitting = true;
     stopPresenter();
     killHost();
+    stopBackend();
     app.quit();
   });
 
@@ -1511,5 +1631,6 @@ if (!gotLock) {
     quitting = true;
     stopPresenter();
     killHost();
+    stopBackend();
   });
 }

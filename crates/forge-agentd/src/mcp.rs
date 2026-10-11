@@ -336,109 +336,53 @@ impl fmt::Display for McpError {
 
 impl std::error::Error for McpError {}
 
-/// engine-scene-mcp 二进制路径:env FORGE_ENGINE_SCENE_MCP_BIN 优先,
-/// 否则 <workspace_root>/target/debug/engine-scene-mcp.exe
-pub fn server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_ENGINE_SCENE_MCP_BIN") {
-        return PathBuf::from(p);
+/// MCP 服务器二进制:env 显式点名优先,否则同套件查找(当前进程同目录 = 安装版 bin/
+/// 或同 profile 的 cargo 产物,再退 <workspace_root>/target/debug)。
+fn companion_bin(env_key: &str, file_name: &str) -> PathBuf {
+    match std::env::var(env_key) {
+        Ok(p) => PathBuf::from(p),
+        Err(_) => forge_util::roots::companion_exe(file_name),
     }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target")
-        .join("debug")
-        .join("engine-scene-mcp.exe")
+}
+
+/// engine-scene-mcp 二进制路径:env FORGE_ENGINE_SCENE_MCP_BIN 优先,否则同套件查找。
+pub fn server_bin() -> PathBuf {
+    companion_bin("FORGE_ENGINE_SCENE_MCP_BIN", "engine-scene-mcp.exe")
 }
 
 /// asset-pipeline-mcp 二进制路径:env FORGE_ASSET_PIPELINE_MCP_BIN 优先。
 fn asset_server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_ASSET_PIPELINE_MCP_BIN") {
-        return PathBuf::from(p);
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target")
-        .join("debug")
-        .join("asset-pipeline-mcp.exe")
+    companion_bin("FORGE_ASSET_PIPELINE_MCP_BIN", "asset-pipeline-mcp.exe")
 }
 
 /// code-forge-mcp 二进制路径:env FORGE_CODE_FORGE_MCP_BIN 优先。
 fn code_forge_server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_CODE_FORGE_MCP_BIN") {
-        return PathBuf::from(p);
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("code-forge-mcp.exe")
+    companion_bin("FORGE_CODE_FORGE_MCP_BIN", "code-forge-mcp.exe")
 }
 
 /// gen-image-mcp 二进制路径:env FORGE_GEN_IMAGE_MCP_BIN 优先。
 fn gen_image_server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_GEN_IMAGE_MCP_BIN") {
-        return PathBuf::from(p);
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("gen-image-mcp.exe")
+    companion_bin("FORGE_GEN_IMAGE_MCP_BIN", "gen-image-mcp.exe")
 }
 
 /// gen-model-mcp 二进制路径:env FORGE_GEN_MODEL_MCP_BIN 优先。
 fn gen_model_server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_GEN_MODEL_MCP_BIN") {
-        return PathBuf::from(p);
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("gen-model-mcp.exe")
+    companion_bin("FORGE_GEN_MODEL_MCP_BIN", "gen-model-mcp.exe")
 }
 
 /// context-mcp 二进制路径:env FORGE_CONTEXT_MCP_BIN 优先。
 fn context_server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_CONTEXT_MCP_BIN") {
-        return PathBuf::from(p);
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("context-mcp.exe")
+    companion_bin("FORGE_CONTEXT_MCP_BIN", "context-mcp.exe")
 }
 
 /// store-mcp 二进制路径:env FORGE_STORE_MCP_BIN 优先。
 fn store_server_bin() -> PathBuf {
-    if let Ok(p) = std::env::var("FORGE_STORE_MCP_BIN") {
-        return PathBuf::from(p);
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("target").join("debug").join("store-mcp.exe")
+    companion_bin("FORGE_STORE_MCP_BIN", "store-mcp.exe")
 }
 
 /// workspace 根(store-mcp 需要:官方源 registry/ 与 skills/ 落地根都锚在这里)。
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)")
-        .to_path_buf()
+    crate::workspace_root()
 }
 
 /// 缺省资产项目根 = <workspace>/projects/demo(05 §1.2 mcp.json 示例对齐)。
@@ -448,12 +392,7 @@ fn workspace_root() -> PathBuf {
 /// Windows 上 canonicalize 产生 \\?\ verbatim 前缀,两种形态会为同一目录开两套
 /// MCP 子进程 + 两个 engine-host(双真相源:/mcp/call 面与 turn 面各看各的场景)。
 pub(crate) fn default_project_root() -> PathBuf {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    let p = root.join("projects").join("demo");
+    let p = workspace_root().join("projects").join("demo");
     p.canonicalize().unwrap_or(p)
 }
 

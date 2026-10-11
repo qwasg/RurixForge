@@ -1,0 +1,10 @@
+{
+  "name": "@forge/installer",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "RurixForge Windows 安装包构建工具。用 npm 管理(不进 pnpm 工作区):electron-builder 需要扁平的 node_modules。由 scripts/package-windows.ps1 调用。",
+  "devDependencies": {
+    "electron-builder": "26.15.3"
+  }
+}

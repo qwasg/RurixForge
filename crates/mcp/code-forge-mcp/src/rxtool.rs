@@ -274,13 +274,9 @@ pub fn utc_stamp(t: SystemTime) -> String {
     format!("{y:04}{mo:02}{d:02}-{h:02}{m:02}{s:02}")
 }
 
-/// <workspace>/data/code-runs/<yyyymmdd-hhmmss>-<pid>。
+/// <数据根>/code-runs/<yyyymmdd-hhmmss>-<pid>(源码检出 = <workspace>/data)。
 fn runs_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("CARGO_MANIFEST_DIR 上三级须存在(workspace 根)")
-        .join("data")
+    forge_util::roots::data_root()
         .join("code-runs")
         .join(format!("{}-{}", utc_stamp(SystemTime::now()), std::process::id()))
 }

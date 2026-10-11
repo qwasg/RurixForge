@@ -170,7 +170,7 @@ struct Ctx {
 
 impl Ctx {
     fn data_dir(&self) -> PathBuf {
-        self.workspace_root.join("data")
+        forge_util::roots::data_root_under(&self.workspace_root)
     }
 
     fn skills_root(&self) -> PathBuf {

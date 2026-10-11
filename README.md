@@ -4,7 +4,7 @@
 
 你描述想做的游戏，AI 帮你拆任务、写代码、准备素材和搭场景。你可以在同一个窗口里看进度、改细节、运行游戏，再决定下一步怎么做。
 
-它把聊天、代码编辑、场景编辑、素材管理和试玩放在了一起。项目仍在开发中，目前主要在 Windows 上开发和验证，适合愿意从源码运行、一起完善工具的开发者。
+它把聊天、代码编辑、场景编辑、素材管理和试玩放在了一起。项目仍在开发中，目前主要在 Windows 上开发和验证：Windows 用户可以直接下载安装包使用，想一起完善工具的开发者可以从源码运行。
 
 ## 现在可以做什么
 
@@ -18,7 +18,38 @@
 
 这里的“AI 帮你做”仍然需要检查和试玩。自动检查通过，不代表游戏的玩法、美术和体验已经符合你的预期。
 
-## 从源码启动
+## 安装
+
+Windows 10 / 11（64 位）直接用安装包，不需要安装 Node.js、Rust 等任何开发工具：
+
+1. 打开 [Releases 页面](https://github.com/qwasg/RurixForge/releases/latest)，下载 `RurixForge-Setup-<版本>.exe`。
+2. 双击运行，选好安装位置（可以装到 D 盘等其他磁盘）后点「安装」。不需要管理员权限。
+3. 安装完成后 RurixForge 会自动打开。本地服务由应用自己启动；在设置里配置模型服务（自带 API Key 的渠道、Codex 或云服务）即可开始使用。
+
+安装包暂未签名，Windows 可能提示「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」即可；Release 附有 SHA-256 校验值。用户数据保存在 `%APPDATA%\RurixForge`，卸载或升级都会保留。数据位置、可选组件和故障排查见 [安装与打包说明](docs/install.md)。
+
+## 从源码运行
+
+想修改代码或体验最新开发版时，在仓库根目录用 PowerShell 执行：
+
+```powershell
+git clone https://github.com/qwasg/RurixForge.git
+cd RurixForge
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+这个脚本会检查并安装缺少的构建工具（Git、Node.js、Rust、Visual Studio C++ 构建工具，经 winget 安装，安装前逐项询问），然后安装依赖、完成首次构建并准备 Godot 运行时。可以重复运行。完成后打开桌面应用：
+
+```powershell
+pnpm dev:desktop
+```
+
+桌面端会自动启动 AI 后端 `forge-agentd`；如果你已经手动运行了它，就直接复用。首次构建会下载依赖并产生较多编译缓存，请预留足够的磁盘空间。
+
+想自己构建安装包时执行 `pnpm package:win`，产物在 `target\installer\out\`，详见 [安装与打包说明](docs/install.md)。
+
+<details>
+<summary>不用脚本、手动安装与构建</summary>
 
 下面以 **Windows + PowerShell** 为例。请在仓库根目录执行命令。
 
@@ -66,21 +97,15 @@ Godot 版本与依赖见 [GODOT_PIN.json](GODOT_PIN.json)，接入范围与现�
 
 ### 3. 打开应用
 
-在第一个终端启动 AI 后端，保持它运行：
-
-```powershell
-.\target\debug\forge-agentd.exe
-```
-
-再打开一个终端，进入同一个仓库目录：
-
 ```powershell
 pnpm dev:desktop
 ```
 
-桌面应用会启动网页宿主服务。首次进入后，可以登录你配置的云服务，也可以选择自带密钥，在设置里配置模型渠道；Codex 的可用能力取决于本机安装、登录状态和上游支持。
+桌面应用会启动网页宿主服务；AI 后端没在运行时，会自动启动 `target\debug\forge-agentd.exe`，退出时一并关闭。想单独看后端日志时，可以先在另一个终端运行 `.\target\debug\forge-agentd.exe`，桌面端会直接复用它。首次进入后，可以登录你配置的云服务，也可以选择自带密钥，在设置里配置模型渠道；Codex 的可用能力取决于本机安装、登录状态和上游支持。
 
 想在浏览器里开发界面时，保持 AI 后端运行，分别执行 `pnpm dev:host` 和 `pnpm dev:client`，再打开 Vite 输出的地址。默认宿主端口为 `3080`，AI 后端端口为 `8103`。
+
+</details>
 
 ## 按需启用的功能
 
@@ -117,7 +142,7 @@ go -C cloud test ./...          # 云服务测试
 
 ## 当前状态
 
-这是开发中的源码仓库，还没有提供完整的 RurixForge 一键安装包。不同模型、图形后端和外部工具的能力并不完全相同，具体支持范围以对应文档和实际运行结果为准。
+项目仍在开发中。Windows 安装包随 [Releases](https://github.com/qwasg/RurixForge/releases) 发布；其他系统暂无安装包，也还没有完成同等范围的桌面验证。不同模型、图形后端和外部工具的能力并不完全相同，具体支持范围以对应文档和实际运行结果为准。
 
 仓库保留源码、示例运行资源和必要说明。模型密钥、登录状态、本机配置、生成服务原始记录、测试截图及历史打包副本留在本地，不随源码提交；部分历史验证文档引用的是本地证据文件。
 

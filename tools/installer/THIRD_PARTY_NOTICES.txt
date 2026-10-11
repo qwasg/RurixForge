@@ -1,0 +1,36 @@
+RurixForge — third-party components in the Windows installer
+=============================================================
+
+RurixForge itself is licensed under Apache-2.0 (see LICENSE in this directory).
+The installer also ships the following third-party software, each under its own license:
+
+Electron and Chromium (MIT and others)
+  The desktop shell. See LICENSE.electron.txt and LICENSES.chromium.html in the
+  installation directory.
+
+Godot Engine export template (MIT)
+  godot-runtime/forge-godot.exe and forge-godot_console.exe are the unmodified official
+  Godot Windows export templates of the version recorded in godot-runtime/runtime-manifest.json.
+  Copyright (c) 2014-present Godot Engine contributors; (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+  License: https://godotengine.org/license
+  Third-party components of Godot: https://github.com/godotengine/godot/blob/master/COPYRIGHT.txt
+
+Node.js (MIT) and Playwright (Apache-2.0)
+  ultraplan-runtime/ contains node.exe and playwright-core for the UltraPlan browser checks.
+  See ultraplan-runtime/README.txt and ultraplan-runtime/node_modules/playwright-core/{LICENSE,NOTICE}.
+
+Microsoft Visual C++ Runtime
+  msvcp140.dll, vcruntime140.dll and vcruntime140_1.dll are redistributed unmodified under the
+  Microsoft Visual Studio license terms for distributable code.
+
+Rust crates
+  The executables in bin/ and godot-runtime/bin/godot_host.dll are built from this repository and
+  statically link crates from crates.io and git (MIT, Apache-2.0, BSD, Zlib and similar permissive
+  licenses), including the Rurix engine (https://github.com/qwasg/Rurix) and Jolt Physics (MIT).
+  The exact versions are pinned in Cargo.lock in the source repository.
+
+CLIProxyAPI (MIT), only if data/antigravity-runtime/ is present
+  The optional Antigravity bridge embeds CLIProxyAPI; its license is in
+  data/antigravity-runtime/LICENSE.CLIProxyAPI.
+
+Source code: https://github.com/qwasg/RurixForge

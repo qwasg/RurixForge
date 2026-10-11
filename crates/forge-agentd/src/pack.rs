@@ -192,11 +192,7 @@ struct PackArtifact {
 }
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("forge-agentd manifest is two parents below workspace root")
-        .to_path_buf()
+    crate::workspace_root()
 }
 
 fn path_is_under(path: &Path, parent: &Path) -> bool {

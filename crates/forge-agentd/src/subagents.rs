@@ -59,14 +59,9 @@ impl SubagentProfile {
     }
 }
 
-/// data/agents 目录(workspace 根/data/agents):个人/覆盖根,不入库。
+/// data/agents 目录(Forge 数据根/agents):个人/覆盖根,不入库。
 pub fn agents_dir() -> PathBuf {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("CARGO_MANIFEST_DIR 应有上两级(workspace 根)");
-    root.join("data").join("agents")
+    forge_util::roots::data_root().join("agents")
 }
 
 /// 内建 profile 目录(D-044):workspace 根/agents,随仓库跟踪(同 skills/ 的定位方式)。
