@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#20333c">
+<title>雾灯守夜人 · 夜港手记</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app" aria-label="雾灯守夜人">
+<div class="game-frame" id="frame">
+<canvas id="game" width="1280" height="720" aria-label="夜雾港口，使用键盘移动守夜人"></canvas>
+<div class="grain"></div><div class="vignette"></div>
+<header class="masthead">
+<div class="brand"><span class="brand-icon">✧</span><span>夜 港 手 记<small>TALES OF A QUIET HARBOR</small></span></div>
+<div class="top-actions"><button id="soundToggle" class="icon-button" aria-label="静音切换，快捷键 M">声音 开</button><button id="pauseButton" class="icon-button hidden">暂停 <kbd>ESC</kbd></button></div>
+</header>
+<section id="titleScreen" class="screen title-screen">
+<div class="title-copy"><div class="eyebrow"><span></span> 一场关于微光与归途的小小冒险</div><h1>雾灯<br><span>守夜人</span></h1><div class="title-en">THE LANTERN KEEPER</div><p class="opening">夜雾落进了港口。<br>把灯一盏盏点亮，带归航的人找到岸。</p><button id="startButton" class="primary">开始巡夜 <span>→</span></button><button id="continueButton" class="text-button hidden">继续巡夜 · 选择已解锁关卡</button><div class="title-keys"><span><kbd>←</kbd><kbd>→</kbd> 移动</span><span><kbd>空格</kbd> 跳跃</span><span><kbd>E</kbd> 点灯</span></div></div>
+<div class="title-caption"><span>01 / 夜色初临</span><p>灯亮的地方，路就会出现。</p></div>
+<div class="bottom-edition"><span>温暖手绘 · 单人平台冒险</span><span>可试玩原型 / 两个章节</span></div>
+</section>
+<div id="hud" class="hidden">
+<div class="chapter"><span id="chapterNumber">01</span><div><small>今夜的巡行</small><strong id="chapterName">瓦上的微光</strong></div></div>
+<div class="progress-card"><div class="progress-heading"><span id="mainLabel">屋顶 · 引路灯</span><strong><span id="mainCount">0</span><i> / 3</i></strong></div><div class="lantern-track" id="lampTrack"></div><div class="optional"><span>◇ 支路灯 <b id="optionalCount">0 / 1</b></span><span id="checkpointLabel">起点</span></div></div>
+<div class="route-strip"><span>起点</span><div id="routeLine"><i id="routeDot"></i></div><span id="routeEnd">码头 →</span></div>
+<div id="toast" role="status"></div>
+<div id="context" class="context"><kbd>E</kbd><span>点亮引路灯</span></div>
+<div class="bottom-hud"><div id="guidance">先点亮屋缘的引路灯，让雾里的路显现。</div><div class="controls"><span><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> 移动</span><span><kbd>空格</kbd> 按住跳得更高</span><span><kbd>E</kbd> 点灯</span></div></div>
+</div>
+<section id="pauseScreen" class="screen modal-screen hidden">
+<div class="paper-panel"><div class="eyebrow">让脚步停一停</div><h2>港口会等你</h2><p>雾没有散，灯也不会熄灭。</p><div class="menu-buttons"><button id="resumeButton" class="primary">继续巡夜 <span>→</span></button><button id="restartButton" class="secondary">重开本关</button><button id="homeButton" class="text-button">返回标题</button></div><div class="settings"><label>音乐 <input id="musicVolume" type="range" min="0" max="100" value="35"></label><label>音效 <input id="sfxVolume" type="range" min="0" max="100" value="55"></label></div><small>↑ ↓ 选择 · Enter 确认 · Esc 继续</small></div>
+</section>
+<section id="selectScreen" class="screen modal-screen hidden"><div class="paper-panel"><div class="eyebrow">再沿微光出发</div><h2>继续巡夜</h2><p>关卡从起点开始，灯笼重新等待点亮。</p><div class="menu-buttons"><button id="roofSelect" class="primary">01 · 屋顶 <span>→</span></button><button id="dockSelect" class="secondary">02 · 码头</button><button id="selectBack" class="text-button">返回</button></div></div></section>
+<section id="victoryScreen" class="screen modal-screen hidden"><div class="paper-panel victory-panel"><span class="victory-star">✧</span><div class="eyebrow">今夜的巡行，已完成</div><h2>为归航，留一盏灯。</h2><p>雾里的路重新亮了。<br>今夜，港口有人守候。</p><div id="results" class="results"></div><div class="menu-buttons"><button id="replayButton" class="primary">再巡一夜 <span>→</span></button><button id="victoryHome" class="text-button">返回标题</button></div></div></section>
+<div id="transition" class="hidden"><small id="transitionKicker">第二章</small><h2 id="transitionTitle">潮声里的灯</h2><p id="transitionText">走下屋檐，去听海的声音。</p></div>
+<div id="deathFlash" class="hidden"><span>让灯火带你回去</span><small>返回最近的引路灯 · 已亮灯笼保留</small></div>
+<div id="storageNote" class="hidden">本次进度仅保存在当前窗口</div>
+</div>
+</main>
+<script src="game.js"></script>
+</body>
+</html>

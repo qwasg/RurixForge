@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN" data-root="https://rurixforge.com/">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#FAF9F5" />
+    <meta name="robots" content="noindex" />
+    <title>404 · RurixForge</title>
+    <!-- placeholder icon (no /favicon.ico request); the script below points it at the site root -->
+    <link rel="icon" href="data:," data-rf-icon />
+    <script>
+      /* This page is served AT the missing URL (any depth), so relative links would resolve against that
+         URL. data-root = the site root: SITE_URL when the build had one (scripts/prerender.mjs), else "/".
+         Self-contained: inline styles, inline font subsets (data: URIs), inline script — no other requests
+         except the site's favicon. v2 (DESIGN-V2): light only, ink text, frosted glass, particle ForgeMark. */
+      (function (w, d) {
+        var h = d.documentElement;
+        h.className += ' js';
+        var root = h.getAttribute('data-root') || '/';
+        var icon = d.querySelector('link[data-rf-icon]');
+        if (icon) icon.setAttribute('href', root + 'favicon.svg');
+        w.__rfRoot = root;
+        try {
+          if (localStorage.getItem('rf:motion') === 'reduce') h.setAttribute('data-motion', 'reduce');
+        } catch (e) {}
+      })(window, document);
+    </script>
+    <style>@font-face{font-family:RF404 Brush;src:url(data:font/woff2;base64,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)format("woff2");font-display:block}@font-face{font-family:RF404 Num;font-style:italic;font-weight:500;src:url(data:font/woff2;base64,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)format("woff2");font-display:block}:root{--paper:#faf9f5;--ink:#141413;--ink-2:#3d3d3a;--ink-3:#5e5d59;--stone:#87867f;--hairline:#14141314;--ease:cubic-bezier(.22, 1, .36, 1);--ease-ink:cubic-bezier(.16, .84, .28, 1);--lightningcss-light:initial;--lightningcss-dark: ;color-scheme:light}*{box-sizing:border-box}html,body{min-height:100%;margin:0}html{background:var(--paper)}body{min-height:100vh;min-height:100svh;color:var(--ink);-webkit-font-smoothing:antialiased;place-items:center;padding:calc(40px + clamp(96px,17vh,150px)/1.81818) 16px 48px;font:16px/1.7 system-ui,-apple-system,Segoe UI,HarmonyOS Sans SC,PingFang SC,Microsoft YaHei UI,Noto Sans SC,sans-serif;display:grid;position:relative;overflow-x:hidden}#field,#light{z-index:0;pointer-events:none;width:100%;height:100%;position:fixed;inset:0}.ripple{z-index:0;pointer-events:none;opacity:0;background:conic-gradient(from 20deg,#ff7a7a,#ffc46b,#f2ec74,#86e39a,#6ccff6,#7f8bff,#c688f5,#ff86b8,#ff7a7a);border-radius:50%;position:fixed;-webkit-mask:radial-gradient(closest-side,#0000 80%,#000 86% 89%,#0000 95%);mask:radial-gradient(closest-side,#0000 80%,#000 86% 89%,#0000 95%)}main{z-index:1;text-align:center;flex-direction:column;align-items:center;width:100%;display:flex;position:relative}.mark{aspect-ratio:846/740;height:clamp(96px,17vh,150px);margin-bottom:calc(clamp(96px,17vh,150px)/1.5625);position:relative}.js:not(.no-field) .mark svg{visibility:hidden}.mark svg{width:100%;height:100%;position:absolute;inset:0;overflow:visible}.fill{color:var(--ink-2);opacity:.9;transition:opacity .8s var(--ease)}.js:not(.no-field) .fill{opacity:0}.mould{fill:none;stroke:var(--ink);stroke-opacity:.2;stroke-width:.75px;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-dasharray:1}.js .mould{animation:draw 2.4s var(--ease-ink) 50ms backwards}.no-field .mould{stroke-opacity:0}.no-light .mark svg{visibility:visible}.no-light .fill{opacity:.9}.no-light .mould{stroke-opacity:0}@keyframes draw{0%{stroke-dashoffset:1px}}.arch{--w:min(100%, 440px);width:var(--w);-webkit-backdrop-filter:blur(18px)saturate(1.3);backdrop-filter:blur(18px)saturate(1.3);background:#ffffff9e;background:lab(100% -.0000298023 .0000119209/.62);border-radius:220px 220px 18px 18px;margin-top:clamp(18px,3vh,30px);padding:clamp(48px,9vh,70px) 28px 30px;position:relative;box-shadow:inset 0 0 0 .5px #14141326,inset 0 1px #ffffffb3,0 24px 60px -32px #14141333}.arch:after{content:"";pointer-events:none;border-radius:211px 211px 12px 12px;position:absolute;inset:9px;box-shadow:inset 0 0 0 .5px #1414131f}@supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){.arch{background:#faf9f5f0}}.js .arch{animation:rise 1.2s var(--ease-ink) .35s backwards}@keyframes rise{0%{transform:translateY(14px)}}.arch>*{position:relative}.js .arch>*{animation:fade 1s var(--ease) backwards}.js .arch>:first-child{animation-delay:.55s}.js .arch>:nth-child(2){animation-delay:.7s}.js .arch>:nth-child(3){animation-delay:1.5s}.js .arch>:nth-child(4){animation-delay:1.65s}.js .arch>:nth-child(5){animation-delay:1.8s}@keyframes fade{0%{opacity:0;transform:translateY(8px)}}.code{letter-spacing:-.01em;color:var(--ink);margin:0;font:italic 500 clamp(64px,12vw,96px)/.9 RF404 Num,Cormorant Garamond,Georgia,serif}.line{letter-spacing:.04em;color:var(--ink);margin:14px 0 0;padding-left:.08em;font:400 clamp(30px,7.4vw,42px)/1.2 RF404 Brush,Zhi Mang Xing,KaiTi,STKaiti,serif}.line span{display:inline-block}.js .line span{animation:settle 1s var(--ease-ink) calc(.8s + var(--i) * 70ms) backwards}@keyframes settle{0%{opacity:0;filter:blur(6px);transform:translateY(6px)scale(.96)}}.en{color:var(--ink-2);margin:4px 0 0;font:italic 500 22px/1.3 RF404 Num,Cormorant Garamond,Georgia,serif}.small{max-width:26em;color:var(--ink-3);margin:14px auto 0;font-size:14.5px;line-height:1.65}.btn{border:1px solid var(--ink);color:var(--ink);transition:background-color .28s var(--ease), color .28s var(--ease), transform .28s var(--ease);border-radius:999px;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;font-size:15px;font-weight:550;text-decoration:none;display:inline-flex}.btn:hover{background:var(--ink);color:var(--paper);transform:translateY(-1px)}.btn svg{width:16px;height:16px;transition:transform .28s var(--ease)}.btn:hover svg{transform:translate(-2px)}a:focus-visible{outline:2px solid var(--ink);outline-offset:3px}@media (prefers-reduced-motion:reduce){.js .mould,.js .arch,.js .arch>*,.js .line span{animation:none}}[data-motion=reduce] .mould,[data-motion=reduce] .arch,[data-motion=reduce] .arch>*,[data-motion=reduce] .line span{animation:none!important}@media (forced-colors:active){.arch{box-shadow:none;background:canvas;border:1px solid canvastext}.btn{border:1px solid canvastext}#field,#light{display:none}.fill{opacity:1!important}}</style>
+  </head>
+  <body>
+    <canvas id="light" aria-hidden="true"></canvas>
+    <canvas id="field" aria-hidden="true"></canvas>
+    <main>
+      <div class="mark" id="mark" aria-hidden="true">
+        <svg viewBox="205 262 846 740" class="fill" fill="currentColor"><path fill-rule="evenodd" d="M356 271H578L706 433L838 301H1024L1029 306L1023 322L819 584L1041 892L1043 904L1038 909H856L794 831L660 993L407 990L241 760L360 569L576 567L585 558L488 435H218L213 422ZM499 694L692 695L703 708L572 863L455 698Z"/></svg>
+        <svg viewBox="205 262 846 740"><path class="mould" pathLength="1" d="M356 271H578L706 433L838 301H1024L1029 306L1023 322L819 584L1041 892L1043 904L1038 909H856L794 831L660 993L407 990L241 760L360 569L576 567L585 558L488 435H218L213 422ZM499 694L692 695L703 708L572 863L455 698Z"/></svg>
+      </div>
+      <div class="arch">
+        <p class="code">404</p>
+        <h1 class="line" aria-label="这一页，不在炉里。"><span style="--i:0">这</span><span style="--i:1">一</span><span style="--i:2">页</span><span style="--i:3">，</span><span style="--i:4">不</span><span style="--i:5">在</span><span style="--i:6">炉</span><span style="--i:7">里</span><span style="--i:8">。</span></h1>
+        <p class="en" lang="en">This page isn’t in the forge.</p>
+        <p class="small">你要找的页面不存在，或已经移动。<br /><span lang="en">It may have moved, or never existed.</span></p>
+        <!-- href="./" is the no-JS fallback; the script sets the site root -->
+        <a class="btn" href="./" data-rf-home
+          ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6" /></svg
+          >返回首页 · <span lang="en">Back to home</span></a
+        >
+      </div>
+    </main>
+    <script>
+      (function (w, d) {
+        var a = d.querySelector('a[data-rf-home]');
+        if (a && w.__rfRoot) a.setAttribute('href', w.__rfRoot);
+
+        /* ---- particle ForgeMark (2D canvas, self-contained) ---- */
+        var h = d.documentElement;
+        var cv = d.getElementById('field');
+        var markEl = d.getElementById('mark');
+        var ctx = cv && cv.getContext && cv.getContext('2d');
+        if (!ctx || !w.Path2D || !w.requestAnimationFrame) { h.className += ' no-field'; return; }
+        var still = false;
+        try { still = w.matchMedia('(prefers-reduced-motion: reduce)').matches || h.getAttribute('data-motion') === 'reduce'; } catch (e) {}
+        var MARK_D = 'M356 271H578L706 433L838 301H1024L1029 306L1023 322L819 584L1041 892L1043 904L1038 909H856L794 831L660 993L407 990L241 760L360 569L576 567L585 558L488 435H218L213 422ZM499 694L692 695L703 708L572 863L455 698Z';
+        var VB = [205, 262, 846, 740];
+        var COLORS = ['61,61,58', '61,61,58', '61,61,58', '135,134,127', '135,134,127'];
+        var W = 0, H = 0, dpr = 1, ps = [], start = 0, raf = 0, last = 0, px = -1e4, py = -1e4, settled = false, sy0 = 0;
+        var t00 = performance.now();
+
+        /* ---- the light stage (the site's: components/brand/stage.ts, drawn with the site's own shaders —
+           effects/particles/shaders.ts): a small 3D scene round the mark — a round podium of frosted glass, the
+           mark hovering over it as a block of frosted glass, ONE wide beam of light refracted through it by real optics (Snell's law
+           per wavelength in SF11 glass, Fresnel; frosted: what it passes opens into a cone, what it would
+           reflect inside stays in it), the beam seen in the air by its haze (Tyndall), the podium lit by the
+           split light, the particles hanging in the air as dust that glints where the beam catches it. The
+           camera swings round the glass with the pointer. WebGL; without it the solid mark shows. ---- */
+        var lcv = d.getElementById('light');
+        /* stage:begin — generated by scripts/sync-404-stage.mjs */
+        var BEAM = {"ax":0.5,"ay":0.3,"dir":0.7,"width":1.3,"frost":0.04}, S3 = {"depth":0.3,"chamfer":0.02,"sheet":0.14,"lift":0.3,"bob":0.012,"podium":0.95,"podiumThick":0.1,"distance":7,"yaw":0,"pitch":0.2,"swingYaw":0.16,"swingPitch":0.06,"swayYaw":0.035,"swayPitch":0.012}, MAP_SCALE = 0.35;
+        var NI = [1.8338,1.8209,1.8105,1.8019,1.7948,1.7888,1.7838,1.7794,1.7757,1.7725];
+        var SPEC = [[0.0092,0,0.0626],[0.0462,0,0.5345],[0,0.0188,0.3563],[0,0.1938,0.0467],[0,0.4078,0],[0.133,0.3104,0],[0.4097,0.0685,0],[0.3179,0,0],[0.0779,0,0],[0.0061,0.0007,0]];
+        var GLSL = {
+          screen: "precision highp float;\nuniform vec2 uRes;\nattribute vec2 position;\nattribute vec2 uv;\nvarying vec2 vUv;\nvoid main() {\n  vUv = uv;\n  gl_Position = vec4(position, 0.0, 1.0);\n}",
+          compose: "precision highp float;\nuniform vec2 uRes;\nuniform sampler2D tLight;\nuniform float uLightAlpha;\nuniform vec4 uStage;\nuniform vec4 uStageInfo;\nuniform vec3 uCamPos;\nuniform vec3 uCamX;\nuniform vec3 uCamY;\nuniform vec3 uCamZ;\nuniform vec3 uCam;\nuniform vec4 uMap;\nuniform vec4 uBeam;\nuniform vec4 uBeam2;\nuniform vec4 uGlassZ;\nuniform vec4 uSlab;\nuniform sampler2D tSdf;\nuniform vec4 uSdfBox;\nuniform vec4 uSdf;\nvec4 sdfAt(vec2 xy) {\n  vec2 uv = vec2((xy.x - uSdfBox.x) / uSdfBox.z, (uSdfBox.y - xy.y) / uSdfBox.w);\n  vec4 s = texture2D(tSdf, clamp(uv, 0.0, 1.0));\n  vec2 o = max(max(-uv, uv - 1.0), 0.0) * uSdfBox.zw;\n  return vec4((s.r * 2.0 - 1.0) * uSdf.x + length(o), s.g * uSdf.y, s.ba * 2.0 - 1.0);\n}\nvec3 viewRay(vec2 p) {\n  return normalize(uCamX * ((p.x - uCam.x) / uCam.z) - uCamY * ((p.y - uCam.y) / uCam.z) - uCamZ);\n}\nfloat stageSd(vec2 p) {\n  float r = uStageInfo.x;\n  vec2 q = abs(p - (uStage.xy + uStage.zw * 0.5)) - uStage.zw * 0.5 + r;\n  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;\n}\nfloat stagePool(vec2 p) {\n  vec2 r = (p - uCam.xy) / max(uStage.zw * 0.5, vec2(1.0));\n  return (1.0 - smoothstep(-uStageInfo.x, 0.0, stageSd(p))) * (1.0 - smoothstep(0.6, 1.06, length(r)));\n}\nvec3 lightAt3(vec3 q) {\n  vec2 g = vec2(q.x, q.y - uGlassZ.w);\n  vec3 L = texture2D(tLight, (g - uMap.xy) / uMap.zw).rgb * uGlassZ.z;\n  float spread = max(0.0, sdfAt(g).x) * uBeam2.w;\n  float w = uBeam2.z + spread;\n  float soft = 0.32 * uBeam2.z + spread;\n  L *= (1.0 - smoothstep(w - soft, w + soft, abs(q.z))) * uBeam2.z / w;\n  if (q.y < 0.0 && q.z > uSlab.y && q.z < uSlab.z && abs(q.x - q.y * uBeam.z / uBeam.w) < uSlab.x) L = vec3(0.0);\n  return L * uLightAlpha;\n}\nuniform vec4 uSlab2;\nuniform float uHazeT;\nvarying vec2 vUv;\nconst vec3 PAPER = vec3(0.980, 0.976, 0.961);\nconst vec3 WARM = vec3(1.0, 0.95, 0.86);\nconst vec3 KEY = vec3(-0.329, 0.789, 0.519);\nfloat hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\nfloat vnoise(vec2 p) {\n  vec2 i = floor(p);\n  vec2 f = fract(p);\n  f = f * f * (3.0 - 2.0 * f);\n  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);\n}\nfloat haze2(vec2 p) { return 0.62 * vnoise(p) + 0.38 * vnoise(p * 2.03 + vec2(17.1, 9.7)); }\nfloat keyL(vec3 n) { return 0.74 + 0.26 * max(dot(n, KEY), 0.0) + 0.04 * n.y; }\nconst vec3 LUM = vec3(0.2126, 0.7152, 0.0722);\nvec3 vivid(vec3 L) { return max(mix(vec3(dot(L, LUM)), L, 2.0), 0.0); }\n/* ---- the glass: the outline extruded to its depth, bevelled round both faces, the folds grooved ---- */\nfloat glassDist(vec3 p) {\n  vec4 s = sdfAt(vec2(p.x, p.y - uGlassZ.w));\n  float dz = abs(p.z) - uGlassZ.x;\n  float d = min(max(s.x, dz), 0.0) + length(max(vec2(s.x, dz), 0.0));\n  d = max(d, (s.x + dz + uGlassZ.y) * 0.7071068);\n  float k = uSdf.w / uSdf.z;\n  return max(d, (dz + uSdf.w - s.y * k) * inversesqrt(1.0 + k * k));\n}\nfloat glassD(vec3 p) {\n  vec3 bq = abs(p - vec3(0.0, uGlassZ.w + uSlab2.z * 0.5, 0.0)) - vec3(uSlab2.w, uSlab2.z * 0.5, uGlassZ.x);\n  float bd = length(max(bq, 0.0));\n  return bd > 12.0 ? bd : glassDist(p);\n}\nvec3 glassN(vec3 p) {\n  vec2 xy = vec2(p.x, p.y - uGlassZ.w);\n  vec4 s = sdfAt(xy);\n  float sz = p.z >= 0.0 ? 1.0 : -1.0;\n  float dz = abs(p.z) - uGlassZ.x;\n  float k = uSdf.w / uSdf.z;\n  float cham = (s.x + dz + uGlassZ.y) * 0.7071068;\n  float groove = (dz + uSdf.w - s.y * k) * inversesqrt(1.0 + k * k);\n  vec2 side = normalize(s.zw + vec2(1e-5, 0.0));\n  vec3 n = vec3(0.0, 0.0, sz);\n  float best = dz;\n  if (s.x > best) {\n    best = s.x;\n    n = vec3(side, 0.0);\n  }\n  if (cham > best) {\n    best = cham;\n    n = normalize(vec3(side, sz));\n  }\n  if (groove > best) {\n    const float e = 2.5;\n    vec2 g = vec2(sdfAt(xy + vec2(e, 0.0)).y - sdfAt(xy - vec2(e, 0.0)).y, sdfAt(xy + vec2(0.0, e)).y - sdfAt(xy - vec2(0.0, e)).y) / (2.0 * e);\n    n = normalize(vec3(-g * k, sz));\n  }\n  return n;\n}\n/* ---- the podium: a slab rounded into a disc (its corners as round as it is wide), its edges eased ---- */\nfloat slabRect(vec2 xz) {\n  vec2 c = vec2(0.0, (uSlab.y + uSlab.z) * 0.5);\n  vec2 q = abs(xz - c) - vec2(uSlab.x, (uSlab.z - uSlab.y) * 0.5) + uSlab2.x;\n  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - uSlab2.x;\n}\nfloat slabD(vec3 p) {\n  const float e = 9.0;\n  vec2 w = vec2(slabRect(p.xz) + e, abs(p.y + uSlab.w * 0.5) - uSlab.w * 0.5 + e);\n  return min(max(w.x, w.y), 0.0) + length(max(w, 0.0)) - e;\n}\nvec3 slabN(vec3 p) {\n  vec2 h = vec2(0.6, 0.0);\n  return normalize(vec3(slabD(p + h.xyy) - slabD(p - h.xyy), slabD(p + h.yxy) - slabD(p - h.yxy), slabD(p + h.yyx) - slabD(p - h.yyx)));\n}\nvec2 boxHit(vec3 ro, vec3 rd, vec3 b0, vec3 b1) {\n  vec3 r = vec3(abs(rd.x) < 1e-5 ? 1e-5 : rd.x, abs(rd.y) < 1e-5 ? 1e-5 : rd.y, abs(rd.z) < 1e-5 ? 1e-5 : rd.z);\n  vec3 t0 = (b0 - ro) / r;\n  vec3 t1 = (b1 - ro) / r;\n  vec3 lo = min(t0, t1);\n  vec3 hi = max(t0, t1);\n  return vec2(max(max(lo.x, lo.y), lo.z), min(min(hi.x, hi.y), hi.z));\n}\nvec3 tracedAt(vec2 xy) { return texture2D(tLight, (xy - uMap.xy) / uMap.zw).rgb * uGlassZ.z * uLightAlpha; }\nvec3 backdrop(vec3 ro, vec3 rd) {\n  float sh = 0.0;\n  if (rd.y < -1e-4) {\n    vec3 q = ro + rd * ((uSlab2.y - ro.y) / rd.y);\n    sh = 0.15 * (1.0 - smoothstep(-0.3 * uSlab2.z, 0.4 * uSlab2.z, slabRect(q.xz)));\n  }\n  return PAPER * (1.0 - sh);\n}\n/* the podium: a slab of frosted glass — cool milk, its top lit a little less by the studio than its faces\n   (the beam is the light that matters there), a fine frosted grain, the light glowing softly in it */\nvec3 shadeSlab(vec3 p, vec3 n, float ga, vec3 rd) {\n  vec3 alb = vec3(0.935, 0.945, 0.955);\n  float key = 0.6 + 0.4 * max(dot(n, KEY), 0.0);\n  vec3 c = alb * (n.y > 0.5 ? 0.88 * key / 0.9156 : 0.06 + keyL(n));\n  if (n.y > 0.5) {\n    c *= 1.0 - 0.05 * clamp((uSlab.z - p.z) / (uSlab.z - uSlab.y), 0.0, 1.0);\n    c *= 1.0 + (hash(floor(p.xz * 0.9)) - 0.5) * 0.028;\n  } else {\n    c *= 0.95 + 0.05 * clamp((p.y + uSlab.w) / uSlab.w, 0.0, 1.0);\n    c += 0.05 * exp(-(p.y + uSlab.w) / 6.0);\n  }\n  if (ga > 0.0) {\n    float H = uSlab2.z;\n    float dg = glassDist(p + n * 2.0);\n    float under = exp(-pow(max(abs(p.x) - 0.45 * uSlab2.w, 0.0) / (0.28 * H), 2.0)) * exp(-pow(max(abs(p.z) - uGlassZ.x, 0.0) / (0.14 * H), 2.0));\n    c *= 1.0 - ga * (0.12 * exp(-dg / (0.14 * H)) + 0.16 * under * exp(-uGlassZ.w / (0.5 * H)) * step(0.5, n.y));\n  }\n  vec3 q = p + n * 1.5;\n  vec3 L = 0.4 * lightAt3(q) + 0.15 * (lightAt3(q + vec3(14.0, 0.0, 0.0)) + lightAt3(q - vec3(14.0, 0.0, 0.0)) + lightAt3(q + vec3(0.0, 0.0, 14.0)) + lightAt3(q - vec3(0.0, 0.0, 14.0)));\n  vec3 E = vivid(L) * max(dot(n, -vec3(uBeam.zw, 0.0)), 0.0);\n  c *= 1.0 + E * 2.6;\n  float F = 0.04 + 0.96 * pow(1.0 - max(dot(n, -rd), 0.0), 5.0);\n  c += pow(max(dot(reflect(-KEY, n), -rd), 0.0), 10.0) * 0.1;\n  float edge = (1.0 - smoothstep(0.85, 0.98, n.y)) * step(p.y, -0.5);\n  c = mix(c, vec3(0.8, 0.88, 0.875) * (0.82 + 0.28 * max(dot(n, KEY), 0.0)), edge * 0.32) + edge * pow(max(dot(n, KEY), 0.0), 6.0) * 0.22;\n  return mix(c, vec3(1.0), F * 0.5);\n}\nvec3 shadeGlass(vec3 p, vec3 n, vec3 rd, vec3 behind) {\n  vec3 ld = vec3(uBeam.zw, 0.0);\n  vec3 Lo = lightAt3(p + n * 3.0);\n  vec3 Li = vivid(tracedAt(vec2(p.x, p.y - uGlassZ.w) - n.xy * 5.0));\n  float cv = max(dot(n, -rd), 0.0);\n  float F = 0.04 + 0.96 * pow(1.0 - cv, 5.0);\n  float key = 0.7 + 0.25 * max(dot(n, KEY), 0.0) + 0.12 * n.y;\n  vec3 c = mix(behind * 0.94, vec3(0.9, 0.915, 0.93) * key, 0.72);\n  c += Lo * WARM * max(dot(n, -ld), 0.0) * 0.32;\n  c += Li * WARM * 0.34;\n  c += Lo * pow(max(dot(reflect(ld, n), -rd), 0.0), 24.0) * 0.5;\n  vec3 r = reflect(rd, n);\n  c = mix(c, vec3(mix(0.8, 1.0, smoothstep(-0.3, 0.5, r.y))), F * 0.7);\n  c *= 1.0 - 0.3 * pow(1.0 - cv, 2.5) * (1.0 - max(n.y, 0.0));\n  return c;\n}\nvec3 hazeAlong(vec3 ro, vec3 rd, float tEnd, vec2 p) {\n  float zs = uBeam2.z * 1.18;\n  float rz = abs(rd.z) < 1e-4 ? -1e-4 : rd.z;\n  float ta = (zs - ro.z) / rz;\n  float tb = (-zs - ro.z) / rz;\n  float t0 = max(min(ta, tb), 0.0);\n  float t1 = min(max(ta, tb), tEnd);\n  if (t1 <= t0) return vec3(0.0);\n  float dt = (t1 - t0) / 6.0;\n  float j = hash(p);\n  vec2 ac = vec2(-uBeam.w, uBeam.z);\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < 6; i++) {\n    vec3 q = ro + rd * (t0 + (float(i) + j) * dt);\n    vec3 L = lightAt3(q);\n    if (L.r + L.g + L.b < 0.004) continue;\n    vec2 hq = vec2(dot(q.xy, uBeam.zw) * 0.0013 - uHazeT * 0.035, dot(q.xy, ac) * 0.0105 + q.z * 0.003 + uHazeT * 0.012);\n    acc += vivid(L) * (0.3 + 1.2 * haze2(hq));\n  }\n  return acc * dt / (2.0 * uBeam2.z);\n}\nvoid main() {\n  vec2 p = vec2(vUv.x, 1.0 - vUv.y) * uRes;\n  float sa = uStageInfo.y;\n  if (sa < 0.002 || stageSd(p) > 0.0) {\n    gl_FragColor = vec4(0.0);\n    return;\n  }\n  float ga = uStageInfo.w;\n  float H = uSlab2.z;\n  vec3 ro = uCamPos;\n  vec3 rd = viewRay(p);\n  vec2 tb = boxHit(ro, rd, vec3(-uSlab.x, -uSlab.w, uSlab.y), vec3(uSlab.x, uGlassZ.w + H + 2.0, uSlab.z));\n  float t = max(tb.x, 0.0);\n  int id = 0;\n  float near = 1e5;\n  if (tb.y > t) {\n    for (int i = 0; i < 96; i++) {\n      vec3 q = ro + rd * t;\n      float dg = ga > 0.0 ? glassD(q) : 1e5;\n      float ds = slabD(q);\n      float d = min(dg, ds);\n      near = min(near, dg);\n      if (d < 0.25) {\n        id = dg < ds ? 2 : 1;\n        break;\n      }\n      t += d;\n      if (t > tb.y) break;\n    }\n  }\n  vec3 col;\n  float hit = 1e9;\n  if (id == 0) {\n    col = backdrop(ro, rd) * 0.9;\n  } else {\n    vec3 q = ro + rd * t;\n    hit = t;\n    if (id == 1) {\n      col = shadeSlab(q, slabN(q), ga, rd);\n    } else {\n      vec3 behind = backdrop(ro, rd) * 0.9;\n      if (rd.y < 0.0) {\n        float tp = -ro.y / rd.y;\n        vec3 b = ro + rd * tp;\n        if (tp > t) behind = mix(behind, vec3(0.935, 0.932, 0.922) * 0.87, 1.0 - smoothstep(-0.3 * H, 0.3 * H, slabRect(b.xz)));\n      }\n      col = mix(behind, shadeGlass(q, glassN(q), rd, behind), ga);\n    }\n  }\n  if (id != 2) col *= 1.0 - 0.26 * ga * exp(-near / 2.5);\n  col += hazeAlong(ro, rd, hit, p) * WARM * 0.58;\n  float lum = max(dot(col, LUM), 1e-4);\n  col *= 1.0 / (1.0 + max(lum - 0.86, 0.0) * 0.9);\n  col = min(col, 0.9) + 0.1 * (1.0 - exp(-max(col - 0.9, 0.0) / 0.1));\n  float A = sa * (id == 0 ? stagePool(p) : 1.0);\n  gl_FragColor = vec4(clamp(col * A + (hash(p * 1.37 + 0.5) - 0.5) / 255.0, 0.0, A), A);\n}",
+          beamV: "precision highp float;\nuniform vec2 uRes;\nattribute vec2 position;\nattribute vec3 color;\nuniform vec4 uMap;\nuniform vec2 uOrigin;\nvarying vec3 vCol;\nvoid main() {\n  vCol = color;\n  vec2 w = vec2(position.x - uOrigin.x, uOrigin.y - position.y);\n  gl_Position = vec4((w - uMap.xy) / uMap.zw * 2.0 - 1.0, 0.0, 1.0);\n}",
+          beamF: "precision highp float;\nuniform vec2 uRes;\nuniform float uBeamGain;\nvarying vec3 vCol;\nvoid main() {\n  gl_FragColor = vec4(vCol * uBeamGain, 0.0);\n}"
+        };
+        /* stage:end */
+        var CREASES = [578, 271, 488, 435, 585, 558, 703, 708, 460, 697, 382, 569, 819, 584, 706, 433, 703, 708, 794, 831, 660, 993, 572, 863];
+        var RINGS = [[], []];
+        (function () {
+          /* the mark's outline as rings (viewBox units) for the tracer and the glass */
+          var cur = -1, x = 0, y = 0;
+          MARK_D.replace(/([MLHVZ])([^MLHVZ]*)/g, function (_, c, a) {
+            var n = a.trim() ? a.trim().split(/[\s,]+/).map(Number) : [];
+            if (c === 'M') { cur++; x = n[0]; y = n[1]; RINGS[cur].push(x, y); }
+            else if (c === 'L') { x = n[0]; y = n[1]; RINGS[cur].push(x, y); }
+            else if (c === 'H') { x = n[0]; RINGS[cur].push(x, y); }
+            else if (c === 'V') { y = n[0]; RINGS[cur].push(x, y); }
+            return '';
+          });
+        })();
+        /* world = viewBox units, y up, the glass's foot at y = 0, its middle at x = 0 */
+        var XS = RINGS[0].filter(function (_, i) { return i % 2 === 0; }), YS = RINGS[0].filter(function (_, i) { return i % 2 === 1; });
+        var MID = (Math.min.apply(0, XS) + Math.max.apply(0, XS)) / 2, BASE = Math.max.apply(0, YS);
+        var GH = BASE - Math.min.apply(0, YS), GHW = (Math.max.apply(0, XS) - Math.min.apply(0, XS)) / 2, GR = 56, CR = 32;
+        var EDGES = [];
+        RINGS.forEach(function (r) { for (var i = 0; i < r.length; i += 2) { var j = (i + 2) % r.length; EDGES.push(r[i], r[i + 1], r[j], r[j + 1]); } });
+        var wave = { x: 0, y: 0, at: -1e5 };
+        var gl = null, PC = null, PB = null, triBuf, posBuf, colBuf, beamN = 0, mapTex, mapFb, sdfTex, fld = null;
+        var LW = 0, LH = 0, mapBuf = null, traced = '', stg = null, cam = null, U = null, camYaw = S3.yaw, camPitch = S3.pitch, lastLight = 0;
+        /* the stage's box: round the mark, down to its podium (it fades out towards its edges) */
+        function stageBox() {
+          var r = markEl.getBoundingClientRect(), mh = r.height, sw = Math.min(900, W);
+          return { x: r.left + r.width / 2 - sw / 2, y: r.top - mh * 0.9, w: sw, h: mh * 2.54 + 40, m: r };
+        }
+        function inside(x, y) {
+          var c = false;
+          RINGS.forEach(function (r) {
+            for (var i = 0, n = r.length / 2, j = n - 1; i < n; j = i++) {
+              var xi = r[i * 2], yi = r[i * 2 + 1], xj = r[j * 2], yj = r[j * 2 + 1];
+              if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+            }
+          });
+          return c;
+        }
+        function segD(px2, py2, ax, ay, bx, by) {
+          var ex = bx - ax, ey = by - ay, t = Math.max(0, Math.min(1, ((px2 - ax) * ex + (py2 - ay) * ey) / (ex * ex + ey * ey)));
+          return Math.hypot(px2 - ax - ex * t, py2 - ay - ey * t);
+        }
+        /* the glass's distance field (the site's effects/particles/glass.ts): r signed distance, g distance to
+           a fold of the ribbon, ba the nearest face's outward normal */
+        function glassField(wd) {
+          var box = [-GHW - GR, GH + GR, GHW * 2 + GR * 2, GH + GR * 2], hh = Math.round(wd * box[3] / box[2]), data = new Uint8Array(wd * hh * 4), faces = [];
+          RINGS.forEach(function (r) {
+            for (var i = 0, n = r.length / 2; i < n; i++) {
+              var ax = r[i * 2], ay = r[i * 2 + 1], bx = r[((i + 1) % n) * 2], by = r[((i + 1) % n) * 2 + 1], l = Math.hypot(bx - ax, by - ay) || 1;
+              var nx = (by - ay) / l, ny = -(bx - ax) / l;
+              if (inside((ax + bx) / 2 + nx * 2, (ay + by) / 2 + ny * 2)) { nx = -nx; ny = -ny; }
+              faces.push(ax, ay, bx, by, nx, ny);
+            }
+          });
+          for (var j = 0; j < hh; j++) {
+            var py2 = BASE - (box[1] - (j + 0.5) / hh * box[3]);
+            for (var i = 0; i < wd; i++) {
+              var px2 = box[0] + (i + 0.5) / wd * box[2] + MID, best = Infinity, bn = 0, cr = Infinity;
+              for (var f = 0; f < faces.length; f += 6) { var dd = segD(px2, py2, faces[f], faces[f + 1], faces[f + 2], faces[f + 3]); if (dd < best) { best = dd; bn = f; } }
+              for (var c = 0; c < CREASES.length; c += 4) cr = Math.min(cr, segD(px2, py2, CREASES[c], CREASES[c + 1], CREASES[c + 2], CREASES[c + 3]));
+              var sd = inside(px2, py2) ? -best : best, o = (j * wd + i) * 4;
+              data[o] = Math.round(Math.max(0, Math.min(1, sd / GR / 2 + 0.5)) * 255);
+              data[o + 1] = Math.round(Math.min(1, cr / CR) * 255);
+              data[o + 2] = Math.round((0.5 + 0.5 * faces[bn + 4]) * 255);
+              data[o + 3] = Math.round((0.5 - 0.5 * faces[bn + 5]) * 255);
+            }
+          }
+          return { data: data, w: wd, h: hh, box: box };
+        }
+        /* distance along (dx, dy) to edge e of a list (Infinity if it misses) */
+        function hitEdge(list, e, x, y, dx, dy) {
+          var ex = list[e + 2] - list[e], ey = list[e + 3] - list[e + 1], den = dx * ey - dy * ex;
+          if (Math.abs(den) < 1e-12) return Infinity;
+          var qx = list[e] - x, qy = list[e + 1] - y, t = (qx * ey - qy * ex) / den;
+          if (t <= 1e-3) return Infinity;
+          var u = (qx * dy - qy * dx) / den;
+          return u < 0 || u > 1 ? Infinity : t;
+        }
+        function trace(edges, stops, ox, oy, dx, dy, n, len) {
+          var pts = [ox, oy], dir = [], tr = [], sig = [], kind = [], x = ox, y = oy, inside2 = false, left = false, T = 1;
+          for (var hit = 0; hit <= 10; hit++) {
+            var best = Infinity, bi = -1, stop = -1, e, t;
+            for (e = 0; e < edges.length; e += 4) { t = hitEdge(edges, e, x, y, dx, dy); if (t < best) { best = t; bi = e; } }
+            for (e = 0; e < stops.length; e += 4) { t = hitEdge(stops, e, x, y, dx, dy); if (t < best) { best = t; bi = -1; stop = e; } }
+            dir.push(dx, dy); tr.push(T); kind.push(inside2 ? 1 : left ? 2 : 0);
+            if ((bi < 0 && stop < 0) || hit === 10) { pts.push(x + dx * len, y + dy * len); break; }
+            x += dx * best; y += dy * best; pts.push(x, y);
+            /* an opaque surface (the podium): the ray ends on it */
+            if (stop >= 0) { sig.push(-1 - stop); break; }
+            var gx = edges[bi + 2] - edges[bi], gy = edges[bi + 3] - edges[bi + 1], gll = Math.hypot(gx, gy) || 1;
+            var nx = gy / gll, ny = -gx / gll, ci = -(nx * dx + ny * dy);
+            if (ci < 0) { nx = -nx; ny = -ny; ci = -ci; }
+            var n1 = inside2 ? n : 1, n2 = inside2 ? 1 : n, eta = n1 / n2, kk = 1 - eta * eta * (1 - ci * ci);
+            /* frosted: what would reflect totally inside is scattered into the glass — the ray ends */
+            if (kk < 0) { sig.push(bi + 1); break; }
+            var ct = Math.sqrt(kk), r0 = Math.pow((n1 - n2) / (n1 + n2), 2), c = n1 <= n2 ? ci : ct;
+            T *= 1 - (r0 + (1 - r0) * Math.pow(1 - c, 5));
+            dx = eta * dx + (eta * ci - ct) * nx; dy = eta * dy + (eta * ci - ct) * ny;
+            if (inside2) left = true;
+            inside2 = !inside2; sig.push(bi);
+            var dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+          }
+          return { pts: pts, dir: dir, tr: tr, sig: sig, kind: kind };
+        }
+        var CUTS = [0, 0.012, 0.035, 0.08, 0.16, 0.3, 0.55, 1];
+        /* trace the beam through the glass (viewBox units) → ribbons of light: triangles, per-vertex colour */
+        function traceAll(sx, sy, dir, len, stops) {
+          var P = [], C = [], cd = Math.cos(dir), sd = Math.sin(dir), N = W < 768 ? 40 : 56, bw = BEAM.width * VB[3], w0 = bw / (N - 1), open = Math.tan(BEAM.frost / 2);
+          function put(x, y, c, l) { P.push(x, y); C.push(c[0] * l, c[1] * l, c[2] * l); }
+          function quad(ax0, ay0, ax1, ay1, bx1, by1, bx0, by0, c, l0, l1, wa, wb) {
+            put(ax0, ay0, c, l0 * wa); put(ax1, ay1, c, l1 * wa); put(bx1, by1, c, l1 * wb);
+            put(ax0, ay0, c, l0 * wa); put(bx1, by1, c, l1 * wb); put(bx0, by0, c, l0 * wb);
+          }
+          for (var l = 0; l < NI.length; l++) {
+            var prev = null, pw = 0, CL = SPEC[l];
+            for (var j = 0; j < N; j++) {
+              var off = (j / (N - 1) - 0.5) * bw, ry = trace(EDGES, stops, sx - sd * off, sy + cd * off, cd, sd, NI[l], len);
+              var uu = j / (N - 1), e1 = Math.min(1, uu / 0.14), e2 = Math.min(1, (1 - uu) / 0.14);
+              var wj = e1 * e1 * (3 - 2 * e1) * e2 * e2 * (3 - 2 * e2);
+              if (prev) {
+                var A = prev, B = ry, segs = Math.min(A.pts.length, B.pts.length) / 2 - 1;
+                for (var q = 0; q < segs; q++) {
+                  if (q > 0 && A.sig[q - 1] !== B.sig[q - 1]) break;
+                  var aE = q < A.sig.length, bE = q < B.sig.length, parting = aE !== bE || (aE && A.sig[q] !== B.sig[q]);
+                  var PA = A.pts, PBb = B.pts, ddx = A.dir[q * 2], ddy = A.dir[q * 2 + 1], s0 = (A.tr[q] + B.tr[q]) * 0.5;
+                  var a0x = PA[q * 2], a0y = PA[q * 2 + 1], a1x = PA[q * 2 + 2], a1y = PA[q * 2 + 3];
+                  var b0x = PBb[q * 2], b0y = PBb[q * 2 + 1], b1x = PBb[q * 2 + 2], b1y = PBb[q * 2 + 3];
+                  if (aE !== bE) {
+                    var la = Math.hypot(a1x - a0x, a1y - a0y), lb = Math.hypot(b1x - b0x, b1y - b0y);
+                    if (aE) { b1x = b0x + (b1x - b0x) * la / lb; b1y = b0y + (b1y - b0y) * la / lb; }
+                    else { a1x = a0x + (a1x - a0x) * lb / la; a1y = a0y + (a1y - a0y) * lb / la; }
+                  }
+                  var lum = function (x0, y0, x1, y1) { return Math.min(3, w0 / Math.max(0.3 * w0, Math.abs((x1 - x0) * ddy - (y1 - y0) * ddx))); };
+                  if (!parting && A.kind[q] === 2 && q === A.pts.length / 2 - 2 && q === B.pts.length / 2 - 2) {
+                    /* leaving frosted glass: the ribbon opens into a cone, dimming as it opens */
+                    var cx = b0x - a0x, cy = b0y - a0y, cl = Math.hypot(cx, cy) || 1; cx /= cl; cy /= cl;
+                    var qa = [a0x, a0y], qb = [b0x, b0y], iq = lum(a0x, a0y, b0x, b0y) * s0;
+                    for (var cI = 1; cI < CUTS.length; cI++) {
+                      var f = CUTS[cI], lf = Math.hypot(a1x - a0x, a1y - a0y) * f;
+                      var na = [a0x + (a1x - a0x) * f - cx * lf * open, a0y + (a1y - a0y) * f - cy * lf * open];
+                      var nb = [b0x + (b1x - b0x) * f + cx * lf * open, b0y + (b1y - b0y) * f + cy * lf * open];
+                      var inx = lum(na[0], na[1], nb[0], nb[1]) * s0;
+                      quad(qa[0], qa[1], na[0], na[1], nb[0], nb[1], qb[0], qb[1], CL, iq, inx, pw, wj);
+                      qa = na; qb = nb; iq = inx;
+                    }
+                    continue;
+                  }
+                  quad(a0x, a0y, a1x, a1y, b1x, b1y, b0x, b0y, CL, lum(a0x, a0y, b0x, b0y) * s0, lum(a1x, a1y, b1x, b1y) * s0, pw, wj);
+                  if (parting) break;
+                }
+              }
+              prev = ry; pw = wj;
+            }
+          }
+          return { pos: new Float32Array(P), col: new Float32Array(C) };
+        }
+        function program(vs, fs) {
+          var p = gl.createProgram();
+          [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].forEach(function (x) { var sh = gl.createShader(x[0]); gl.shaderSource(sh, x[1]); gl.compileShader(sh); gl.attachShader(p, sh); });
+          gl.linkProgram(p);
+          if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return null;
+          p.u = {};
+          return p;
+        }
+        function uni(p, name, v) {
+          var loc = name in p.u ? p.u[name] : (p.u[name] = gl.getUniformLocation(p, name));
+          if (!loc) return;
+          if (typeof v === 'number') gl.uniform1f(loc, v);
+          else if (v.length === 2) gl.uniform2fv(loc, v);
+          else if (v.length === 3) gl.uniform3fv(loc, v);
+          else gl.uniform4fv(loc, v);
+        }
+        function tex(w2, h2, data) {
+          var t = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, t);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w2, h2, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+          return t;
+        }
+        function setupGL() {
+          try { gl = lcv && lcv.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false }); } catch (e) { gl = null; }
+          if (!gl) return false;
+          PC = program(GLSL.screen, GLSL.compose); PB = program(GLSL.beamV, GLSL.beamF);
+          if (!PC || !PB) { gl = null; return false; }
+          triBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, triBuf);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 0, 3, -1, 2, 0, -1, 3, 0, 2]), gl.STATIC_DRAW);
+          posBuf = gl.createBuffer(); colBuf = gl.createBuffer();
+          fld = glassField(W < 768 ? 288 : 384);
+          sdfTex = tex(fld.w, fld.h, fld.data);
+          mapTex = tex(2, 2, null);
+          mapFb = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, mapFb);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mapTex, 0);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          return true;
+        }
+        function orbit(pv, dist, yaw, pitch, cx, cy, f) {
+          var cp = Math.cos(pitch), z = [Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp], xl = Math.hypot(z[2], z[0]) || 1;
+          var x = [z[2] / xl, 0, -z[0] / xl], y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+          return { pos: [pv[0] + z[0] * dist, pv[1] + z[1] * dist, pv[2] + z[2] * dist], x: x, y: y, z: z, cx: cx, cy: cy, f: f };
+        }
+        function drawBeam(gain) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, mapFb);
+          gl.viewport(0, 0, LW, LH);
+          gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+          gl.useProgram(PB);
+          uni(PB, 'uMap', U.map); uni(PB, 'uOrigin', [MID, BASE]); uni(PB, 'uBeamGain', gain);
+          var lp = gl.getAttribLocation(PB, 'position'), lc2 = gl.getAttribLocation(PB, 'color');
+          gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp, 2, gl.FLOAT, false, 0, 0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, colBuf); gl.enableVertexAttribArray(lc2); gl.vertexAttribPointer(lc2, 3, gl.FLOAT, false, 0, 0);
+          gl.drawArrays(gl.TRIANGLES, 0, beamN);
+          gl.disableVertexAttribArray(lp); gl.disableVertexAttribArray(lc2);
+          gl.disable(gl.BLEND);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        /* place the scene (camera, podium, light map), draw the light map, then the scene */
+        function light(now) {
+          if (!gl) return false;
+          var dt = Math.min(0.1, Math.max(0.001, (now - lastLight) / 1000 || 1 / 60)); lastLight = now;
+          var t = still ? 0 : now / 1000, S = stg = stageBox(), gr = S.m;
+          var k = Math.min(gr.width / VB[2], gr.height / VB[3]);
+          if (!(k > 0)) return false;
+          var gx = gr.left + (gr.width - VB[2] * k) / 2 - VB[0] * k, gy = gr.top + (gr.height - VB[3] * k) / 2 - VB[1] * k;
+          var h2 = GH, halfD = S3.depth * h2 / 2, cx = gx + MID * k, cy = gy + (BASE - h2 / 2) * k, F = S3.distance * h2;
+          /* the glass hovers over the podium, bobbing a little: the beam and the light map are in its frame */
+          var lift = S3.lift * h2, hover = lift + (still ? 0 : S3.bob * h2 * Math.sin(t * 0.8));
+          var pin = px > -1e3 && !still, pnx = pin ? Math.max(-1, Math.min(1, px / W * 2 - 1)) : 0, pny = pin ? Math.max(-1, Math.min(1, py / H * 2 - 1)) : 0;
+          var sway = still ? 0 : pin ? 0.3 : 1, ez = still ? 1 : Math.min(1, dt * 2.6);
+          camYaw += (S3.yaw + S3.swingYaw * pnx + S3.swayYaw * Math.sin(t * 0.21) * sway - camYaw) * ez;
+          camPitch += (S3.pitch - S3.swingPitch * pny + S3.swayPitch * Math.sin(t * 0.17) * sway - camPitch) * ez;
+          cam = orbit([0, lift + h2 / 2, 0], F + halfD, camYaw, camPitch, cx, cy, F * k);
+          /* the podium: a round slab of frosted glass (a rounded rect as round as it is wide) */
+          var rad = Math.min(Math.max(GHW + 0.1 * h2, Math.min(S.w / 2 * 0.86, S.w / 2 - 10) / k), S3.podium * h2);
+          var thick = S3.podiumThick * h2, floor = -thick - 0.05 * h2;
+          var x0 = (S.x - cx) / k - 0.3 * h2, x1 = (S.x + S.w - cx) / k + 0.3 * h2, y1 = h2 / 2 + (cy - S.y) / k + 0.5 * h2;
+          var y0 = Math.min(h2 / 2 - (S.y + S.h - cy) / k, floor - lift) - 0.3 * h2, land = S3.bob * h2 + 10;
+          var cd = Math.cos(BEAM.dir), sd = Math.sin(BEAM.dir), axS = VB[0] + BEAM.ax * VB[2], ayS = VB[1] + BEAM.ay * VB[3];
+          var fade = still ? 1 : Math.min(1, (now - t00) / 1400), wt = (now - wave.at) / 1000;
+          var flare = !still && wt < 1.6 ? (1 - wt / 1.6) * Math.exp(-Math.pow((Math.hypot(cx - wave.x, cy - wave.y) - wt * 820) / 260, 2)) : 0;
+          var bright = fade * (0.93 + 0.07 * Math.sin(t * 0.6)) * (1 + 0.5 * flare);
+          U = { map: [x0, y0, x1 - x0, y1 - y0], beam: [axS - MID, BASE - ayS, cd, -sd], beam2: [BEAM.width * VB[3], bright, S3.sheet * h2, Math.tan(BEAM.frost / 2)],
+            glassZ: [halfD, S3.chamfer * h2, 1 / MAP_SCALE, hover], slab: [rad, -rad, rad, thick], slab2: [rad, floor, h2, GHW],
+            stage: [S.x, S.y, S.w, S.h], info: [Math.max(24, Math.min(180, Math.min(S.w, S.h) * 0.16)), fade, 0, 1] };
+          var key = [Math.round(x0), Math.round(x1), Math.round(y0), Math.round(y1), W < 768, Math.round(rad)].join();
+          if (key !== traced) {
+            traced = key;
+            var back = Math.min((axS - (x0 + MID)) / cd, (ayS - (BASE - y1)) / sd) + 60, m = traceAll(axS - cd * back, ayS - sd * back, BEAM.dir, Math.hypot(x1 - x0, y1 - y0) * 1.3, [MID - rad, BASE + lift + land, MID + rad, BASE + lift + land]);
+            beamN = m.pos.length / 2;
+            gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, m.pos, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, colBuf); gl.bufferData(gl.ARRAY_BUFFER, m.col, gl.STATIC_DRAW);
+            LW = W < 768 ? 640 : 1024; LH = Math.max(64, Math.min(1024, Math.round(LW * (y1 - y0) / (x1 - x0))));
+            gl.bindTexture(gl.TEXTURE_2D, mapTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, LW, LH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            /* a copy for the dust (at full brightness) */
+            drawBeam(MAP_SCALE);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, mapFb);
+            mapBuf = new Uint8Array(LW * LH * 4);
+            gl.readPixels(0, 0, LW, LH, gl.RGBA, gl.UNSIGNED_BYTE, mapBuf);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          }
+          drawBeam(MAP_SCALE * bright);
+          gl.viewport(0, 0, lcv.width, lcv.height);
+          gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.useProgram(PC);
+          gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, mapTex);
+          gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, sdfTex);
+          gl.uniform1i(gl.getUniformLocation(PC, 'tLight'), 0); gl.uniform1i(gl.getUniformLocation(PC, 'tSdf'), 1);
+          uni(PC, 'uRes', [W, H]); uni(PC, 'uLightAlpha', 1); uni(PC, 'uStage', U.stage); uni(PC, 'uStageInfo', U.info);
+          uni(PC, 'uCamPos', cam.pos); uni(PC, 'uCamX', cam.x); uni(PC, 'uCamY', cam.y); uni(PC, 'uCamZ', cam.z); uni(PC, 'uCam', [cam.cx, cam.cy, cam.f]);
+          uni(PC, 'uMap', U.map); uni(PC, 'uBeam', U.beam); uni(PC, 'uBeam2', U.beam2); uni(PC, 'uGlassZ', U.glassZ); uni(PC, 'uSlab', U.slab);
+          uni(PC, 'uSdfBox', fld.box); uni(PC, 'uSdf', [GR, CR, 13, 5.5]); uni(PC, 'uSlab2', U.slab2); uni(PC, 'uHazeT', t);
+          var lp = gl.getAttribLocation(PC, 'position'), lu = gl.getAttribLocation(PC, 'uv');
+          gl.bindBuffer(gl.ARRAY_BUFFER, triBuf);
+          gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp, 2, gl.FLOAT, false, 16, 0);
+          gl.enableVertexAttribArray(lu); gl.vertexAttribPointer(lu, 2, gl.FLOAT, false, 16, 8);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          return true;
+        }
+        function sstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+        /* the light at a point of the scene (world) — the shader's lightAt3, on the CPU for the dust */
+        function lightAt3(x, y, z) {
+          if (y < 0 && z > U.slab[1] && z < U.slab[2] && Math.abs(x - y * U.beam[2] / U.beam[3]) < U.slab[0]) return [0, 0, 0];
+          /* in the glass's frame: the trace (the whole beam), a sheet as thick as the glass, widening away from it */
+          var gy = y - U.glassZ[3], br = U.beam2[1] / MAP_SCALE / 255;
+          var ix = Math.floor((x - U.map[0]) / U.map[2] * LW), iy = Math.floor((gy - U.map[1]) / U.map[3] * LH), tr = [0, 0, 0];
+          if (ix >= 0 && iy >= 0 && ix < LW && iy < LH) { var o = (iy * LW + ix) * 4; tr = [mapBuf[o] * br, mapBuf[o + 1] * br, mapBuf[o + 2] * br]; }
+          var fx = Math.floor((x - fld.box[0]) / fld.box[2] * fld.w), fy = Math.floor((fld.box[1] - gy) / fld.box[3] * fld.h), sdf = GR;
+          if (fx >= 0 && fy >= 0 && fx < fld.w && fy < fld.h) sdf = (fld.data[(fy * fld.w + fx) * 4] / 255 * 2 - 1) * GR;
+          var spread = Math.max(0, sdf) * U.beam2[3], wd = U.beam2[2] + spread, soft = 0.32 * U.beam2[2] + spread;
+          var sheet = (1 - sstep(wd - soft, wd + soft, Math.abs(z))) * U.beam2[2] / wd;
+          return [tr[0] * sheet, tr[1] * sheet, tr[2] * sheet];
+        }
+        /* the dust at a screen point, hanging at depth zn (−1…1 of the light sheet): its light + how far in the stage */
+        function lightAt(sx, sy, zn) {
+          if (!cam || !U || !mapBuf) return null;
+          var S = U.stage, fr = U.info[0], qx = Math.abs(sx - (S[0] + S[2] / 2)) - S[2] / 2 + fr, qy = Math.abs(sy - (S[1] + S[3] / 2)) - S[3] / 2 + fr;
+          var sdv = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - fr;
+          var rx = (sx - (S[0] + S[2] / 2)) / (S[2] / 2), ry = (sy - (S[1] + S[3] / 2)) / (S[3] / 2);
+          var pool = (1 - sstep(-fr, 0, sdv)) * (1 - sstep(0.6, 1.06, Math.hypot(rx, ry))) * U.info[1];
+          if (pool <= 0.002) return null;
+          var vx = (sx - cam.cx) / cam.f, vy = -(sy - cam.cy) / cam.f;
+          var rd = [cam.x[0] * vx + cam.y[0] * vy - cam.z[0], cam.x[1] * vx + cam.y[1] * vy - cam.z[1], cam.x[2] * vx + cam.y[2] * vy - cam.z[2]];
+          var tq = (zn * U.beam2[2] - cam.pos[2]) / Math.min(rd[2], -0.05);
+          var L = lightAt3(cam.pos[0] + rd[0] * tq, cam.pos[1] + rd[1] * tq, cam.pos[2] + rd[2] * tq);
+          return [L[0], L[1], L[2], pool];
+        }
+        /* a click: a spectral ripple, a shockwave through the particles, a flare along the edges */
+        function ripple(x, y) {
+          if (!d.body.animate) return;
+          var size = W < 768 ? 150 : 220;
+          [[0, 1, 40], [110, 0.62, -30]].forEach(function (o) {
+            var r = d.createElement('span');
+            r.className = 'ripple';
+            r.style.width = r.style.height = size + 'px';
+            r.style.left = x - size / 2 + 'px';
+            r.style.top = y - size / 2 + 'px';
+            d.body.appendChild(r);
+            var an = r.animate(
+              [{ transform: 'scale(' + 0.18 * o[1] + ') rotate(0deg)', opacity: 0.85 }, { transform: 'scale(' + 1.5 * o[1] + ') rotate(' + o[2] + 'deg)', opacity: 0 }],
+              { duration: 1100, delay: o[0], easing: 'cubic-bezier(.16, .84, .28, 1)', fill: 'backwards' }
+            );
+            an.onfinish = an.oncancel = function () { r.remove(); };
+          });
+        }
+        d.addEventListener('click', function (e) {
+          if (still || e.button !== 0 || e.detail === 0) return;
+          var x = e.clientX, y = e.clientY;
+          wave = { x: x, y: y, at: performance.now() };
+          ripple(x, y);
+          for (var i = 0; i < ps.length; i++) {
+            var p = ps[i], dx = p.x - x, dy = p.y - y, dd = Math.sqrt(dx * dx + dy * dy) + 1;
+            if (dd < 260) { var f = (1 - dd / 260) * 6; p.vx += dx / dd * f; p.vy += dy / dd * f; }
+          }
+          schedule();
+        });
+
+        function rnd(a, b) { return a + Math.random() * (b - a); }
+        var built = null; /* the mark's box the targets were sampled from */
+        function targets(n) {
+          /* dust in the air of the stage */
+          var S = stageBox();
+          built = { l: S.m.left, t: S.m.top + (w.scrollY || 0), w: S.m.width };
+          var out = [];
+          for (var i = 0; i < n; i++) out.push(S.x + Math.random() * S.w, S.y + Math.random() * S.h);
+          return out;
+        }
+        function build() {
+          dpr = Math.min(w.devicePixelRatio || 1, 1.75);
+          W = w.innerWidth; H = w.innerHeight;
+          cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          if (lcv) { lcv.width = Math.max(2, Math.round(W * dpr)); lcv.height = Math.max(2, Math.round(H * dpr)); traced = ''; }
+          if (!gl && !setupGL()) h.className += ' no-light';
+          var n = W < 768 ? 1100 : 2000, inMark = Math.round(n * 0.5);
+          var t = targets(inMark);
+          var fresh = !ps.length;
+          for (var i = 0; i < n; i++) {
+            var p = ps[i] || (ps[i] = {
+              x: rnd(-40, W + 40), y: rnd(-40, H + 40), vx: 0, vy: 0,
+              c: Math.random() < 0.07 ? '217,119,87' : COLORS[(Math.random() * COLORS.length) | 0],
+              s: rnd(1.1, 2.4), a: rnd(0.28, 0.55), ph: rnd(0, 6.28), sp: rnd(0.4, 0.9), tk: Math.random(), z: rnd(-1, 1)
+            });
+            if (p.c === '217,119,87') p.a = 0.5;
+            if (i < inMark && t[i * 2] !== undefined) { p.tx = t[i * 2]; p.ty = t[i * 2 + 1]; p.dust = false; }
+            else { p.tx = rnd(0, W); p.ty = rnd(0, H); p.dust = true; p.a = Math.min(p.a, 0.3); }
+            /* delay along the mark's 143° diagonal */
+            p.dl = fresh ? ((p.tx + p.ty) / (W + H)) * 0.7 + rnd(0, 0.25) : 0;
+            if (fresh) { p.sx = p.x; p.sy = p.y; }
+          }
+          ps.length = n;
+          start = performance.now(); settled = false; sy0 = w.scrollY || 0;
+          if (!fresh) ps.forEach(function (p) { p.sx = p.x; p.sy = p.y; });
+        }
+        function ease(x) { return 1 - Math.pow(1 - x, 3); }
+        function frame(now) {
+          raf = 0;
+          var T = (now - start) / 1000, k, done = true, off = (w.scrollY || 0) - sy0;
+          ctx.clearRect(0, 0, W, H);
+          var lit = light(now);
+          for (var i = 0; i < ps.length; i++) {
+            var p = ps[i];
+            var gx, gy;
+            var ty = p.dust ? p.ty : p.ty - off;
+            if (still) { gx = p.tx; gy = ty; }
+            else {
+              k = Math.min(1, Math.max(0, (T - p.dl) / 1.6));
+              if (k < 1) done = false;
+              var e = ease(k), drift = p.dust ? 9 : 6;
+              gx = p.sx + (p.tx - p.sx) * e + Math.sin(now / 1000 * p.sp + p.ph) * drift;
+              gy = p.sy + (ty - p.sy) * e + Math.cos(now / 1300 * p.sp + p.ph) * drift;
+              /* pointer: a soft push, eased back */
+              var dx = gx - px, dy = gy - py, dd = dx * dx + dy * dy;
+              if (dd < 6400) { var f = (1 - Math.sqrt(dd) / 80) * 9; p.vx += dx / (Math.sqrt(dd) + 1) * f; p.vy += dy / (Math.sqrt(dd) + 1) * f; }
+              p.vx *= 0.84; p.vy *= 0.84;
+              gx += p.vx; gy += p.vy;
+            }
+            p.x = gx; p.y = gy;
+            /* in the stage a particle hangs in the light sheet: dim in the shade, glinting where the beam lights
+               it (Tyndall) — warm, or the split light's colour */
+            var lt = lightAt(gx, gy, p.z), sz = p.s;
+            if (lt) {
+              var lmx = Math.max(lt[0], lt[1], lt[2]), lit = Math.min(1, lmx * 2.8), pool = lt[3];
+              var lsat = lmx > 0.002 ? Math.min(0.55, (1 - Math.min(lt[0], lt[1], lt[2]) / lmx) * 1.3) : 0;
+              var gl0 = lmx > 0.002 ? [1 + (lt[0] / lmx - 1) * lsat, 0.96 + (lt[1] / lmx - 0.96) * lsat, 0.88 + (lt[2] / lmx - 0.88) * lsat] : [1, 0.96, 0.88];
+              var pc = p.c.split(','), mixc = function (i) { var sh = 0.36 + (gl0[i] - 0.36) * lit; return Math.round(255 * ((pc[i] / 255) + (sh - pc[i] / 255) * pool)); };
+              ctx.fillStyle = 'rgba(' + mixc(0) + ',' + mixc(1) + ',' + mixc(2) + ',' + Math.min(0.85, p.a * (1 + (0.5 + 1.2 * lit - 1) * pool)).toFixed(3) + ')';
+              sz = p.s * (1 + (0.8 + 0.7 * lit - 1) * pool);
+            } else ctx.fillStyle = 'rgba(' + p.c + ',' + p.a + ')';
+            ctx.beginPath(); ctx.arc(gx, gy, sz / 2, 0, 6.2832); ctx.fill();
+          }
+          settled = false;
+          if (!still && !d.hidden) schedule();
+        }
+        function schedule() {
+          if (raf) return;
+          raf = w.requestAnimationFrame(function (now) {
+            /* idle: 30 fps once the mark has formed */
+            if (settled && now - last < 32) { raf = 0; schedule(); return; }
+            last = now; frame(now);
+          });
+        }
+        build();
+        frame(performance.now());
+        /* the mark settles after the first sample (fonts swap in, the layout above it grows): re-sample
+           once it has moved, so the particles land in the hairline mould */
+        function resettle() {
+          var r = markEl.getBoundingClientRect();
+          if (built && Math.abs(r.left - built.l) < 1 && Math.abs(r.top + (w.scrollY || 0) - built.t) < 1 && Math.abs(r.width - built.w) < 1) return;
+          build(); frame(performance.now());
+        }
+        if (d.fonts && d.fonts.ready) d.fonts.ready.then(resettle);
+        if (d.readyState === 'complete') w.setTimeout(resettle, 0); else w.addEventListener('load', resettle);
+        w.addEventListener('resize', function () { build(); frame(performance.now()); });
+        w.addEventListener('scroll', function () { if (still) frame(performance.now()); else schedule(); }, { passive: true });
+        w.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse' || e.pointerType === 'pen') { px = e.clientX; py = e.clientY; } }, { passive: true });
+        d.addEventListener('pointerleave', function () { px = py = -1e4; });
+        d.addEventListener('visibilitychange', function () { if (!d.hidden && !still) schedule(); });
+      })(window, document);
+    </script>
+  </body>
+</html>
