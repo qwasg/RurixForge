@@ -105,6 +105,7 @@ pub struct Runtime {
 impl Runtime {
     fn start() -> Result<Runtime, String> {
         let cfg = config::from_env()?;
+        crate::light::initialize_physical_units()?;
         let mut rs = RenderingServer::singleton();
         // 以 Godot 实际生效的方式 / 驱动为准(模板可能因为不支持而回退,01 §4.3)。
         let method_s = rs.get_current_rendering_method().to_string();

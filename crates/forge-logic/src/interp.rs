@@ -65,6 +65,36 @@ pub enum AnimCommand {
     SetBool { entity: u64, param: String, value: bool },
     /// animator trigger 参数(转换触发即消费)。
     SetTrigger { entity: u64, param: String },
+    /// F-GAME-5 rig.play:播放 .rxrig clip(restart=false 同 clip 幂等)。
+    RigPlay { entity: u64, clip: String, restart: bool },
+    /// F-GAME-5 rig.stop:停止 clip 推进(物理/自动项照常)。
+    RigStop { entity: u64 },
+    /// F-GAME-5 rig.set_param:绝对覆盖参数;blend ∈ (0,1) 时逐步趋近。
+    RigSetParam { entity: u64, param: String, value: f32, blend: Option<f32> },
+}
+
+impl AnimCommand {
+    /// 目标实体 id。
+    pub fn entity(&self) -> u64 {
+        match self {
+            AnimCommand::Play { entity, .. }
+            | AnimCommand::Stop { entity }
+            | AnimCommand::SetFrame { entity, .. }
+            | AnimCommand::SetBool { entity, .. }
+            | AnimCommand::SetTrigger { entity, .. }
+            | AnimCommand::RigPlay { entity, .. }
+            | AnimCommand::RigStop { entity }
+            | AnimCommand::RigSetParam { entity, .. } => *entity,
+        }
+    }
+
+    /// rig.* 专属命令(宿主直送 RigSystem)。
+    pub fn is_rig(&self) -> bool {
+        matches!(
+            self,
+            AnimCommand::RigPlay { .. } | AnimCommand::RigStop { .. } | AnimCommand::RigSetParam { .. }
+        )
+    }
 }
 
 /// 活跃 tween(rotate = 绕本地 Y 轴 angle 度制 / move = 线性 offset;末帧钳制写最终值)。
@@ -852,6 +882,36 @@ fn exec_node(
             }
             next_exec(inst)
         }
+        // ---- rig.*(F-GAME-5 / D-050:2D 绑骨命令;宿主 RigSystem 消费)----
+        "rig.set_param" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            let param = as_string(&eval_pin(inst, eid, &nid, "param", ev, scene, log));
+            let value = as_f64(&eval_pin(inst, eid, &nid, "value", ev, scene, log)) as f32;
+            // blend 可选 pin:未接(Null)= None = 立即覆盖。
+            let blend = eval_pin(inst, eid, &nid, "blend", ev, scene, log).as_f64().map(|b| b as f32);
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::RigSetParam { entity: id, param, value, blend });
+            }
+            next_exec(inst)
+        }
+        "rig.play" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            let clip = as_string(&eval_pin(inst, eid, &nid, "clip", ev, scene, log));
+            let restart = eval_pin(inst, eid, &nid, "restart", ev, scene, log)
+                .as_bool()
+                .unwrap_or(false);
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::RigPlay { entity: id, clip, restart });
+            }
+            next_exec(inst)
+        }
+        "rig.stop" => {
+            let target = eval_pin(inst, eid, &nid, "entity", ev, scene, log);
+            if let Some(id) = resolve_entity(&target, eid, scene) {
+                anim.push(AnimCommand::RigStop { entity: id });
+            }
+            next_exec(inst)
+        }
         "debug.log" => {
             let message = eval_pin(inst, eid, &nid, "message", ev, scene, log);
             log.push((
@@ -1166,6 +1226,54 @@ mod tests {
         assert!(rt.take_anim_commands().is_empty(), "无 on_update 挂链不应再产命令");
         // 校验器接受新节点(必填 pin 齐全)。
         assert!(names(&log).iter().all(|n| *n != "logic.unsupported"), "新节点不得报 unsupported: {log:?}");
+    }
+
+    /// F-GAME-5:rig.* 节点产出 Rig* AnimCommand(blend/restart 可选 pin 缺省语义)。
+    #[test]
+    fn rig_nodes_emit_commands() {
+        let mut scene = Scene::new("t");
+        scene.entities = vec![entity(1, "hero", [0.0; 3], vec![]), entity(2, "girl", [0.0; 3], vec![])];
+        let g = doc(json!({
+            "version": 1, "id": "g_rig", "name": "Rig",
+            "nodes": [
+                { "id": "s", "type": "event.on_start", "pos": [0, 0] },
+                { "id": "a", "type": "rig.set_param", "pos": [1, 0],
+                  "inputs": { "entity": { "const": "$self" }, "param": { "const": "ParamAngleX" }, "value": { "const": 12.5 } } },
+                { "id": "b", "type": "rig.set_param", "pos": [2, 0],
+                  "inputs": { "entity": { "const": "girl" }, "param": { "const": "ParamEyeOpen" }, "value": { "const": 0 }, "blend": { "const": 0.25 } } },
+                { "id": "p", "type": "rig.play", "pos": [3, 0],
+                  "inputs": { "entity": { "const": 2 }, "clip": { "const": "wave" }, "restart": { "const": true } } },
+                { "id": "q", "type": "rig.play", "pos": [4, 0],
+                  "inputs": { "entity": { "const": "$self" }, "clip": { "const": "idle" } } },
+                { "id": "st", "type": "rig.stop", "pos": [5, 0],
+                  "inputs": { "entity": { "const": "$self" } } }
+            ],
+            "edges": [
+                { "from": ["s", "exec"], "to": ["a", "exec"] },
+                { "from": ["a", "exec"], "to": ["b", "exec"] },
+                { "from": ["b", "exec"], "to": ["p", "exec"] },
+                { "from": ["p", "exec"], "to": ["q", "exec"] },
+                { "from": ["q", "exec"], "to": ["st", "exec"] }
+            ]
+        }));
+        let mut rt = LogicRuntime::new();
+        let mut log = Vec::new();
+        rt.load(1, g, &json!({}), &mut scene, &mut log);
+        let cmds = rt.take_anim_commands();
+        assert_eq!(
+            cmds,
+            vec![
+                AnimCommand::RigSetParam { entity: 1, param: "ParamAngleX".into(), value: 12.5, blend: None },
+                AnimCommand::RigSetParam { entity: 2, param: "ParamEyeOpen".into(), value: 0.0, blend: Some(0.25) },
+                AnimCommand::RigPlay { entity: 2, clip: "wave".into(), restart: true },
+                AnimCommand::RigPlay { entity: 1, clip: "idle".into(), restart: false },
+                AnimCommand::RigStop { entity: 1 },
+            ]
+        );
+        assert!(cmds.iter().all(AnimCommand::is_rig));
+        assert_eq!(cmds[1].entity(), 2);
+        assert!(!AnimCommand::SetBool { entity: 1, param: "x".into(), value: true }.is_rig());
+        assert!(names(&log).iter().all(|n| *n != "logic.unsupported"), "rig 节点不得报 unsupported: {log:?}");
     }
 
     /// timer_start → 到期 on_timer(0.05s @60Hz = 第 3 帧)。

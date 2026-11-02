@@ -40,7 +40,7 @@ use crate::AppState;
 /// composer 七模式(契约 G-F7-2;未知 mode → 400 INVALID_INPUT)。
 /// team = 游戏制作特化多代理:leader 统筹立项→素材→场景→逻辑→测试→修复,task 委派专职子代理。
 /// ultraplan = 一句设想到可玩 MVP 的引导式流程(D-044;阶段机与各轮次见 [ultraplan](crate::ultraplan))。
-pub const MODES: [&str; 8] = [
+pub const MODES: [&str; 9] = [
     "ask",
     "build",
     "debug",
@@ -50,7 +50,9 @@ pub const MODES: [&str; 8] = [
     "ultraplan",
     // D-045:设计稿生成 → 用户审阅 → 引擎内原子级复刻。
     "design",
+    "world_build",
 ];
+
 
 /// 写工具显式名集合(plan 模式:从给 provider 的 tools 中剔除 + 调用侧 TOOL_FORBIDDEN 门)。
 /// 判定口径:凡改变场景/资产/代码/播放态/编辑器视图态者皆写;已按 mcp::KNOWN_TOOLS 全量
@@ -63,6 +65,8 @@ pub const WRITE_TOOLS: &[&str] = &[
     "mcp__engine-scene__sprite_create",
     // D-045:文字实体创建(组合 entity.create,写语义同)
     "mcp__engine-scene__text_create",
+    // F-GAME-5 / D-050:2D 绑骨实体创建(实体 + Rig2D 组件,写语义同 sprite_create)
+    "mcp__engine-scene__rig_spawn",
     "mcp__engine-scene__entity_destroy",
     "mcp__engine-scene__entity_rename",
     "mcp__engine-scene__entity_batch_apply",
@@ -109,6 +113,15 @@ pub const WRITE_TOOLS: &[&str] = &[
     "mcp__asset-pipeline__sprite_create",
     "mcp__asset-pipeline__sprite_set",
     "mcp__asset-pipeline__sprite_autoslice",
+    // F-GAME-5 / D-050:2D 绑骨资产写(rig_get / rig_evaluate / rig_validate 只读;
+    // rig_preview 只落 .forge/tmp 预览图,同 viewport_frame 归只读)
+    "mcp__asset-pipeline__rig_create",
+    "mcp__asset-pipeline__rig_set",
+    "mcp__asset-pipeline__rig_patch",
+    "mcp__asset-pipeline__rig_mesh_auto",
+    "mcp__asset-pipeline__rig_weights_auto",
+    "mcp__asset-pipeline__rig_import_psd",
+    "mcp__asset-pipeline__rig_parts_from_sheet",
     // D-045:字体入库(font_list 只读不入本表)
     "mcp__asset-pipeline__font_import",
     // code-forge:构建/运行/格式化(产物或源文件写)
@@ -127,6 +140,9 @@ pub const WRITE_TOOLS: &[&str] = &[
     "mcp__gen-image__gen_video_frames",
     "mcp__gen-model__gen_mesh",
     "mcp__gen-model__gen_mesh_refine",
+    "mcp__gen-model__gen_mesh_rig",
+    "mcp__gen-model__gen_mesh_animate",
+    "mcp__gen-model__gen_character_publish",
     "mcp__gen-model__gen_accept",
     // context:语义描述写入(写 .meta)。索引重建是派生缓存,不进本表——
     // Studio 自动 ensure 与 plan 模式都允许重建,不走用户内容写审批。
@@ -188,6 +204,8 @@ fn args_summary(name: &str, args: &Value) -> String {
 }
 
 // 留痕:debug = build + 调试导向提示(F7 wave.2 契约,文案自定注释留痕)。
+pub(crate) const DELEGATION_PROMPT: &str = "\n【主 agent 委派纪律 · 所有模式】包括第一轮在内，必须由你先阅读用户需求、补充和已有上下文，再决定分工并亲自编写每个子 agent 的详细提示词。每份提示词写明需求背景、具体目标、相关文件/资料、允许读写范围、约束与依赖、预期产物、验证方法和回报格式，确保子 agent 不依赖未提供的对话。禁止仅传任务标题、工种名称或通用模板启动任务。task/dispatch、团队任务的 prompt、Demo 的 demoPrompt 以及 QA/终审委派均遵守本规则；调度器只执行你已经明确写出的委派，不代替你理解需求或编写任务。并行与后台执行可在你完成上述委派后进行。";
+
 const DEBUG_PROMPT_SUFFIX: &str = "\n当前为 debug 模式:优先使用 viewport/scene 只读工具\
 (viewport_frame/scene_summary/scene_graph_dump/entity_list/entity_get 等)取证定位问题,\
 再决定是否需要写操作;每步观察与结论如实汇报,不得猜测式修改。";
@@ -242,10 +260,10 @@ const TEAM_PROMPT_SUFFIX: &str = "\n当前为 team 模式:你是游戏制作团�
 3d = 透视相机 + MeshRenderer 网格,素材工序出 PBR 贴图/网格。全部工种按模式分流,不得混用。\n\
 2. 结构化计划(核心):用 plan_write 落一份结构化计划,每个任务必须带:\
 role=执行工种(素材生成派 material-smith,资产导入整理派 asset-wrangler,场景搭建派 scene-builder,\
-脚本与玩法逻辑派 logic-programmer,运行验证派 qa-tester;完整清单见 task 工具描述);\
+脚本与玩法逻辑派 logic-programmer,运行验证派 qa-tester,2D 绑骨派 rig-artist;完整清单见 task 工具描述);\
 prompt=完整委派词(目标、涉及路径、命名约定、验收标准——子代理看不到对话历史,全靠它);\
 deps=依赖任务(引用同批任务的 title;无依赖留空);\
-stage=阶段名(素材→场景→逻辑→测试);verify=qa(完成后自动复测)或 reviewer(纳入终审)。\
+stage=阶段名(素材→场景→逻辑→测试);verify=qa(由你编写具体复测委派后检查)或 reviewer(纳入终审)。\
 引擎只有一个活动场景和一个 play 态、全队共用:凡是改场景或要进 play 自验的任务\
 (scene-builder / logic-programmer / 要调场景的 material-smith)彼此必须用 deps 串行\
 ——同阶段互不依赖的任务会被同时派发,并行会互相打断试玩、把场景存乱;\
@@ -278,6 +296,8 @@ sprite_create{autoslice:true} 切帧 → sprite_set 定义 clips(duration 优先
 实体 Sprite 组件写 sprite=<.rxsprite GUID>:clip 留空 = animator 状态机接管(图里 \
 animator.set_bool/set_trigger 驱动),显式写 clip = 手动模式(图里 sprite.play 幂等切换)。\
 工序细节读 game-2d-kit 技能。\n\
+- 骨骼动画(F-GAME-5,可选):立绘需要眨眼/转头/呼吸/头发摆动等 Live2D 风格形变时走 .rxrig 绑骨\
+(asset-pipeline rig_* 工具,rig_spawn 挂场景),搭绑定读 rig2d-build 技能、做动作与挂场景读 rig2d-animate 技能。\n\
 - 物理:重力默认 [0,-9.81,0](侧视平台/弹射类);俯视/零重力玩法 scene_new 时写 gravity=[0,0,0]。\
 脚本驱动的移动体一律 RigidBody kind=\"kinematic\"。\n\
 - 视口:viewport_set_camera 用 orthoSize 调缩放、改 target 平移视野;2D 下不要动 yaw/pitch。\n\
@@ -404,7 +424,7 @@ impl RunRegistry {
 // ---------- todos:TodoStore 持久化 data/agent-sessions/todos.json ----------
 
 pub const TODO_KINDS: [&str; 2] = ["edit", "explore"];
-pub const TODO_STATUSES: [&str; 4] = ["queued", "running", "completed", "failed"];
+pub const TODO_STATUSES: [&str; 6] = ["queued", "running", "verifying", "completed", "failed", "blocked"];
 /// F-GAME-4 wave.3:verify 合法取值(none = 与缺省等价,不触发任何复测)。
 pub const TODO_VERIFIES: [&str; 3] = ["none", "qa", "reviewer"];
 
@@ -571,11 +591,45 @@ impl TodoStore {
         Ok(todo)
     }
 
+    /// Workflow migration only: withdraw a legacy generated assignment until
+    /// the leader supplies a fresh prompt. This is not exposed as a model tool.
+    pub(crate) fn clear_delegation(&self, id: &str) -> Result<TodoItem, TodoError> {
+        let mut inner = self.inner.lock().unwrap();
+        let todo = inner.iter_mut().find(|t| t.id == id).ok_or(TodoError::NotFound)?;
+        if !matches!(todo.status.as_str(), "queued" | "failed" | "cancelled") {
+            return Err(TodoError::Invalid("不能撤回活动或已完成任务的委派".into()));
+        }
+        todo.prompt = None;
+        todo.updated_at = now_rfc3339();
+        let out = todo.clone();
+        self.persist_locked(&inner);
+        Ok(out)
+    }
+
     pub fn patch(&self, id: &str, req: &PatchTodoRequest) -> Result<TodoItem, TodoError> {
         let mut inner = self.inner.lock().unwrap();
         let Some(todo) = inner.iter_mut().find(|t| t.id == id) else {
             return Err(TodoError::NotFound);
         };
+        // Validate the whole update before changing stored state. A failed
+        // prompt revision must not partially requeue or rename the task.
+        if req.status.as_deref().is_some_and(|s| !TODO_STATUSES.contains(&s)) {
+            return Err(TodoError::Invalid("非法 status".into()));
+        }
+        if req.title.as_deref().is_some_and(|t| t.trim().is_empty()) {
+            return Err(TodoError::Invalid("title 不可空".into()));
+        }
+        if let Some(prompt) = req.prompt.as_deref() {
+            if prompt.trim().is_empty() {
+                return Err(TodoError::Invalid("prompt 必须是主 agent 编写的完整委派，不可空".into()));
+            }
+            let targeted_retry = todo.source.starts_with("ultraplan:")
+                && todo.status == "completed" && req.status.as_deref() == Some("queued")
+                && todo.prompt.as_deref() != Some(prompt);
+            if !matches!(todo.status.as_str(), "queued" | "failed" | "cancelled" | "blocked") && !targeted_retry {
+                return Err(TodoError::Invalid("只能修改未执行或失败/取消任务的委派提示词".into()));
+            }
+        }
         if let Some(status) = &req.status {
             if !TODO_STATUSES.contains(&status.as_str()) {
                 return Err(TodoError::Invalid(format!("非法 status: {status}")));
@@ -593,6 +647,9 @@ impl TodoStore {
         }
         if let Some(summary) = &req.summary {
             todo.summary = Some(summary.clone());
+        }
+        if let Some(prompt) = &req.prompt {
+            todo.prompt = Some(prompt.clone());
         }
         todo.updated_at = now_rfc3339();
         let out = todo.clone();
@@ -707,7 +764,11 @@ pub struct TurnInput<'a> {
     /// D-045:本轮是 Design 流程的哪一类轮次(ask_execute 经 design::resolve_request 校验后递进来)。
     /// 系统自起的轮次恒为 None——它们没有经过阶段路由,不许推进流程。
     pub design: Option<crate::design::DesignTurn>,
+    /// 本轮是 WorldBuild 流程的哪一类轮次 (ask_execute 经 world_build::resolve_request 校验后递进来)。
+    /// 系统自起的轮次恒为 None —— 它们没有经过阶段路由, 不许推进流程。
+    pub world_build: Option<crate::world_build::WorldBuildTurn>,
 }
+
 
 /// D-038:回执唤醒上下文——派发发生时从派发轮抓拍,唤醒轮据此重建 TurnInput,
 /// 不重新解析 provider(密钥只在内存)、不重拉 MCP 工具面(复用派发轮已拉的)。
@@ -949,6 +1010,9 @@ fn spawn_team_member(
     if team.status != "active" {
         return (false, "TEAM_NOT_ACTIVE".into());
     }
+    if args["prompt"].as_str().is_none_or(|p| p.trim().is_empty()) {
+        return (false, "DELEGATION_PROMPT_REQUIRED: 主 agent 必须提供成员的详细委派提示词".into());
+    }
     let name = args["name"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
@@ -1044,12 +1108,10 @@ fn ensure_team_workers(state: &Arc<AppState>, sid: &str, team_id: &str, ctx: &Su
         {
             continue;
         }
-        let config = state
-            .collaboration
-            .member_config(&member.id)
-            .unwrap_or_else(
-                || json!({"name":member.name,"prompt":"继续现有任务，保留已完成结果。"}),
-            );
+        let Some(config) = state.collaboration.member_config(&member.id) else {
+            // Do not invent instructions for a legacy member after restart.
+            continue;
+        };
         let _ = spawn_team_member(state, sid, team_id, ctx, &config);
     }
     let mut roles = std::collections::BTreeSet::new();
@@ -1073,7 +1135,9 @@ fn ensure_team_workers(state: &Arc<AppState>, sid: &str, team_id: &str, ctx: &Su
             sid,
             team_id,
             ctx,
-            &json!({"name":name,"subagent_type":if role.is_empty(){Value::Null}else{json!(role)},"prompt":"根据共享任务板完成指派任务，发现问题及时向主 agent 和有关队友发消息。"}),
+            // This is a persistent role envelope, never a task assignment. The
+            // current leader-authored task.prompt is required at execution.
+            &json!({"name":name,"subagent_type":if role.is_empty(){Value::Null}else{json!(role)},"_taskAssignedOnly":true,"prompt":"按主 agent 为当前任务编写的完整委派执行；通过协作消息回报事实与问题，不重复已完成任务。"}),
         );
     }
 }
@@ -1085,12 +1149,15 @@ pub(crate) async fn run_team_member(
     run_id: &str,
     token: CancelToken,
 ) -> (bool, String) {
+    if task.is_some_and(|t| t.prompt.trim().is_empty() || t.prompt.trim() == t.title.trim()) || worker.prompt.trim().is_empty() {
+        return (false, "DELEGATION_PROMPT_REQUIRED: 请主 agent 补全委派提示词后重试".into());
+    }
     let mut ctx = worker.context.clone();
     ctx.participant_id = Some(worker.agent_id.clone());
     ctx.cancel = Some(token);
     let prompt = match task {
         Some(t) => format!(
-            "{}\n【任务 {}】{}\n{}",
+            "【成员已有背景；本次执行以下方当前任务为准】\n{}\n【当前任务 {}】{}\n{}",
             worker.prompt, t.id, t.title, t.prompt
         ),
         None => format!(
@@ -1201,7 +1268,7 @@ pub(crate) async fn wake_collaboration_root(state: &Arc<AppState>, sid: &str) {
             State(state.clone()),
             Path(sid.into()),
             Json(AskExecuteRequest {
-            annotations: Vec::new(),
+                annotations: Vec::new(),
                 user_input: "【协作唤醒】处理收件箱中的新增消息，沿用现有任务目标。".into(),
                 mode: Some(mode),
                 skills: vec![],
@@ -1210,6 +1277,7 @@ pub(crate) async fn wake_collaboration_root(state: &Arc<AppState>, sid: &str) {
                 plan_path: None,
                 ultraplan: None,
                 design: None,
+                world_build: None,
                 goal_origin: false,
             }),
         )
@@ -1223,7 +1291,7 @@ pub(crate) async fn wake_collaboration_root(state: &Arc<AppState>, sid: &str) {
             .is_some_and(|t| t.status == "active")
         {
             let _=ask_execute(State(state.clone()),Path(sid.into()),Json(AskExecuteRequest {
-            annotations: Vec::new(),user_input:"继续已恢复团队：先读取现有任务图和成员历史，只执行明确处于就绪状态的任务，不重放结果未知的工具。".into(),mode:Some("team".into()),skills:vec![],readonly_workspace_ids:vec![],include_library:true,plan_path:None,ultraplan:None,design:None,goal_origin:false})).await;
+            annotations: Vec::new(),user_input:"继续已恢复团队：先读取现有任务图和成员历史，只执行明确处于就绪状态的任务，不重放结果未知的工具。".into(),mode:Some("team".into()),skills:vec![],readonly_workspace_ids:vec![],include_library:true,plan_path:None,ultraplan:None,design:None,world_build:None,goal_origin:false})).await;
         }
         return;
     };
@@ -1235,7 +1303,7 @@ pub(crate) async fn wake_collaboration_root(state: &Arc<AppState>, sid: &str) {
         state,
         &session,
         TurnInput {
-                annotations: Vec::new(),
+            annotations: Vec::new(),
             user_input: "【协作唤醒】处理收件箱中的新增消息，沿用现有任务目标。",
             mode: &ctx.mode,
             provider_label: &ctx.provider_label,
@@ -1254,8 +1322,10 @@ pub(crate) async fn wake_collaboration_root(state: &Arc<AppState>, sid: &str) {
             history: true,
             ultraplan: None,
             design: None,
+            world_build: None,
         },
     )
+
     .await;
 }
 
@@ -1410,6 +1480,53 @@ fn scoped_delta_payload(
     payload
 }
 
+/// Keep reasoning boundaries replayable even when the model emits no summary
+/// tokens. Text deltas remain ephemeral, as with the other streaming providers.
+fn emit_model_stream_delta(
+    events: &crate::events::EventBus,
+    session_id: &str,
+    run_id: &str,
+    identity: &crate::events::AgentEventContext,
+    parent: Option<&str>,
+    delta: StreamDelta,
+) {
+    let (event_type, extra, durable) = match delta {
+        StreamDelta::Text(text) => ("agent.token.stream.delta", json!({ "delta": text }), false),
+        StreamDelta::Reasoning(text) => ("agent.reasoning.delta", json!({ "delta": text }), false),
+        StreamDelta::ReasoningStarted { item_id } => (
+            "agent.reasoning.started",
+            json!({ "itemId": item_id }),
+            true,
+        ),
+        StreamDelta::ReasoningDelta { item_id, delta } => (
+            "agent.reasoning.delta",
+            json!({ "itemId": item_id, "delta": delta }),
+            false,
+        ),
+        StreamDelta::ReasoningCompleted { item_id, text } => (
+            "agent.reasoning.completed",
+            json!({ "itemId": item_id, "text": text }),
+            true,
+        ),
+        StreamDelta::ToolArgs { index, tool_call_id, name, delta } => (
+            "agent.tool.args.delta",
+            json!({ "index": index, "toolCallId": tool_call_id, "name": name, "delta": delta }),
+            false,
+        ),
+        StreamDelta::Reset => ("agent.stream.reset", json!({}), false),
+    };
+    let payload = scoped_delta_payload(identity, run_id, extra, parent);
+    if durable {
+        events.emit(
+            EventDraft::new(session_id, event_type, "agent")
+                .payload(payload)
+                .correlation(Some(run_id.to_string())),
+        );
+    } else {
+        emit_stream_delta(events, session_id, run_id, event_type, payload);
+    }
+}
+
 /// turn 全流程:建 run → 认领 activeRunId → 事件序列 → 模式分派 → 终态 + 释放(均持久事件)。
 ///
 /// D-038:state 取 `&Arc<AppState>`——turn 结束时若收件箱仍有未送回执,要 spawn 唤醒轮,
@@ -1432,23 +1549,33 @@ pub async fn execute_turn(
     // 放行就等于让一句续跑提示词去重出问卷 / 重做 Demo。不发任何事件,与 SESSION_BUSY 同形。
     let ultra_turn = input.ultraplan.take();
     let design_turn = input.design.take();
+    let world_build_turn = input.world_build.take();
     let turn_kind_ok = match &ultra_turn {
         Some(ut) => ut.kind.mode() == input.mode,
         None => input.mode != crate::ultraplan::MODE,
     } && match &design_turn {
         Some(_) => input.mode == crate::design::MODE,
         None => input.mode != crate::design::MODE,
+    } && match &world_build_turn {
+        Some(_) => input.mode == crate::world_build::MODE,
+        None => input.mode != crate::world_build::MODE,
     };
     if !turn_kind_ok {
         state.runs.finish(&run_id, "failed");
+        let err_code = if input.mode == crate::world_build::MODE {
+            crate::world_build::ERR_TURN_INVALID
+        } else if input.mode == crate::design::MODE {
+            "DESIGN_TURN_INVALID"
+        } else {
+            "ULTRAPLAN_TURN_INVALID"
+        };
         return TurnOutput {
             run_id,
             status: "failed".to_string(),
             text: String::new(),
-            error: Some(
-                "ULTRAPLAN_TURN_INVALID: 流程轮次缺少阶段路由(模式与轮次种类不配),未执行"
-                    .to_string(),
-            ),
+            error: Some(format!(
+                "{err_code}: 流程轮次缺少阶段路由(模式与轮次种类不配),未执行"
+            )),
         };
     }
     if let Err(busy) = state.sessions.claim_active_run(sid, &run_id) {
@@ -1491,6 +1618,20 @@ pub async fn execute_turn(
             };
         }
     }
+    if let Some(wt) = &world_build_turn {
+        let latest = state.sessions.get(sid).and_then(|s| s.world_build);
+        if let Err(e) = crate::world_build::revalidate(latest.as_ref(), input.mode, wt) {
+            state.runs.finish(&run_id, "failed");
+            state.sessions.release_active_run(sid, &run_id);
+            return TurnOutput {
+                run_id,
+                status: "failed".to_string(),
+                text: String::new(),
+                error: Some(format!("{}: {}", e.code(), e.message())),
+            };
+        }
+    }
+
     crate::collaboration_runtime::start(state);
     let actor_id = crate::collaboration::root_id(sid);
     let registration = crate::collaboration::AgentRegistration {
@@ -1564,10 +1705,11 @@ pub async fn execute_turn(
         // 目标续跑轮的正文由 goals::decide 生成后经 user_input 递进来,与用户轮同路。
         // D-044:点按钮触发的流程动作可以没有用户正文,此时用服务端的展示文案(用户卡与模型同见)。
         TurnOrigin::User | TurnOrigin::GoalContinue | TurnOrigin::MessageWake => {
-            match (&ultra_turn, &design_turn) {
-                (Some(ut), _) => ut.display_text(input.user_input).to_string(),
-                (None, Some(dt)) => dt.display_text(input.user_input).to_string(),
-                (None, None) => input.user_input.to_string(),
+            match (&ultra_turn, &design_turn, &world_build_turn) {
+                (Some(ut), _, _) => ut.display_text(input.user_input).to_string(),
+                (None, Some(dt), _) => dt.display_text(input.user_input).to_string(),
+                (None, None, Some(wt)) => wt.display_text(input.user_input).to_string(),
+                (None, None, None) => input.user_input.to_string(),
             }
         }
         TurnOrigin::ReceiptWake => match &receipts {
@@ -1619,6 +1761,9 @@ pub async fn execute_turn(
     }
     if let Some(tag) = design_turn.as_ref().and_then(|dt| dt.user_message_tag()) {
         user_payload["design"] = tag;
+    }
+    if let Some(tag) = world_build_turn.as_ref().and_then(|wt| wt.user_message_tag()) {
+        user_payload["worldBuild"] = tag;
     }
     state
         .events
@@ -1710,6 +1855,21 @@ pub async fn execute_turn(
         }
         _ => None,
     };
+
+    // WorldBuild 轮次开场(动作执行 / 调查与首版预览 / 置相位)。失败 = 本轮如实 failed。
+    let wt_building_id = world_build_turn.as_ref().and_then(|wt| wt.building_id.clone());
+    let world_build_rt: Option<Arc<crate::world_build::WorldBuildRuntime>> = match &world_build_turn {
+        Some(wt) if ultra_begin_err.is_none() => {
+            match crate::world_build::begin_turn(state, sid, &run_id, &scope.current, user_text, wt) {
+                Ok(rt) => Some(Arc::new(rt)),
+                Err(e) => {
+                    ultra_begin_err = Some(e);
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
     // A newly approved project is initialized by the stage coordinator. Resolve
     // its tools afresh rather than touching the repository's demo fallback.
     if ultra_rt
@@ -1728,9 +1888,24 @@ pub async fn execute_turn(
         );
         if input.provider_label != "mock" || session.is_codex() {
             let listed = crate::mcp::list_tools_in(&scope.current.project_root).await;
+            let unavailable: Vec<_> = listed.iter().filter_map(|s| s.error.as_ref().map(|e| format!("{:?}: {e}",s.kind))).collect();
             let all: Vec<Value> = listed.into_iter().flat_map(|s| s.tools).collect();
             input.tools = llm::to_openai_tools(&all);
             input.execute = Arc::from(llm::mcp_executor_in(scope.current.project_root.clone()));
+            if let Some(rt) = ultra_rt.as_deref() {
+                if let Err(error) = production_preflight(rt, &input.tools, &scope.current.project_root, &state.permissions.mode(sid)).await {
+                    ultra_begin_err = Some(format!("{error}{}", if unavailable.is_empty() { String::new() } else {format!("\nMCP 服务诊断：{}",unavailable.join("; "))}));
+                } else if let Err(error) = recover_production_handoffs(state, sid, &run_id, rt, &scope.current.project_root, token.clone()).await {
+                    ultra_begin_err = Some(error);
+                }
+            }
+        }
+    }
+    if ultra_rt.is_none() {
+        if let (Some(turn),Some(error))=(ultra_turn.as_ref(),ultra_begin_err.as_ref()) {
+            if let Err(persist_error)=crate::ultraplan::finish_production_preflight_failure(state,sid,&run_id,turn,&scope.current.workspace_root,error) {
+                ultra_begin_err=Some(format!("{error}\n预检诊断保存失败：{persist_error}"));
+            }
         }
     }
     let managed = if session.is_codex() {
@@ -2001,49 +2176,7 @@ pub async fn execute_turn(
         let parent_slot = parent_slot.clone();
         Arc::new(move |d: StreamDelta| {
             let parent = parent_slot.lock().unwrap().clone();
-            match d {
-                StreamDelta::Text(t) => emit_stream_delta(
-                    &events,
-                    &sid_owned,
-                    &rid,
-                    "agent.token.stream.delta",
-                    scoped_delta_payload(&identity, &rid, json!({ "delta": t }), parent.as_deref()),
-                ),
-                StreamDelta::Reasoning(t) => emit_stream_delta(
-                    &events,
-                    &sid_owned,
-                    &rid,
-                    "agent.reasoning.delta",
-                    scoped_delta_payload(&identity, &rid, json!({ "delta": t }), parent.as_deref()),
-                ),
-                StreamDelta::ToolArgs {
-                    index,
-                    tool_call_id,
-                    name,
-                    delta,
-                } => emit_stream_delta(
-                    &events,
-                    &sid_owned,
-                    &rid,
-                    "agent.tool.args.delta",
-                    scoped_delta_payload(
-                        &identity,
-                        &rid,
-                        json!({
-                            "index": index, "toolCallId": tool_call_id,
-                            "name": name, "delta": delta,
-                        }),
-                        parent.as_deref(),
-                    ),
-                ),
-                StreamDelta::Reset => emit_stream_delta(
-                    &events,
-                    &sid_owned,
-                    &rid,
-                    "agent.stream.reset",
-                    scoped_delta_payload(&identity, &rid, json!({}), parent.as_deref()),
-                ),
-            }
+            emit_model_stream_delta(&events, &sid_owned, &rid, &identity, parent.as_deref(), d);
         })
     };
 
@@ -2362,7 +2495,7 @@ pub async fn execute_turn(
                 }) {
                     return (
                         false,
-                        "TOOL_FORBIDDEN: Demo及制作任务由编排器按已确认任务图派发".into(),
+                        "TOOL_FORBIDDEN: Demo 委派请写入 ultraplan_spec.demoPrompt；制作委派通过任务图及 todo_update.prompt 提交，由调度器执行".into(),
                     );
                 }
                 let (ok, text) = run_nested_task(
@@ -2390,6 +2523,9 @@ pub async fn execute_turn(
             }
             // D-036:异步派发。起后台 run 后**立刻**返回受理回执,本轮不等结果。
             if name == engine::DISPATCH_TOOL {
+                if ultra_x.as_ref().is_some_and(|rt| matches!(rt.kind,crate::ultraplan::TurnKind::Production(_))) {
+                    return (false,"TOOL_FORBIDDEN: UltraPlan 制作只允许调度器执行批准任务，不能绕过交接后台派工".into());
+                }
                 let (ok, text) = spawn_detached_subagent(
                     &ws_root, state_x, wake_ctx, &sid_x, &rid_x, &args, sub_ctx,
                 );
@@ -2429,12 +2565,15 @@ pub async fn execute_turn(
                             {
                                 return (false, "TOOL_FORBIDDEN: 只能更新当前流程的任务".into());
                             }
-                            if args["status"].as_str().is_some_and(|s| s == "completed") {
+                            if args["status"].as_str().is_some_and(|s| matches!(s,"completed"|"running"|"verifying")) {
                                 return (
                                     false,
                                     "TOOL_FORBIDDEN: 任务完成由调度器依据执行结果记录".into(),
                                 );
                             }
+                        }
+                        if matches!(name.as_str(), "plan_write" | "todo_create" | "todo_write" | "write_todos") {
+                            return (false,"TOOL_FORBIDDEN: UltraPlan 使用批准任务 ID；定向修复请用 todo_update {id,prompt,status:queued}，不得追加第二条修复链".into());
                         }
                         let (ok, text) = crate::native_tools::dispatch_native_scoped(
                             &ws_root, &events_x, &todos_x, &sid_x, &rid_x, &name, &args, &source,
@@ -2451,23 +2590,49 @@ pub async fn execute_turn(
         })
     });
 
-    if ultra_begin_err.is_none() {
-        if let Some(rt) = ultra_rt.as_deref() {
-            let tasks = crate::ultraplan::discovery_tasks(rt);
-            let results = futures_util::future::join_all(
-                tasks.into_iter().map(|args| execute("task".into(), args)),
-            )
-            .await;
-            if results.iter().any(|(ok, _)| !ok) {
-                ultra_begin_err = Some(
-                    "ULTRAPLAN_TURN_INVALID: 项目并行探索未全部成功，请重试；已完成报告保留".into(),
-                );
-            }
-        }
-    }
+    // The leader must read the request and author every assignment, including
+    // the first exploration batch. Stage gates never synthesize child tasks.
     let mut outcome: (String, String, Option<String>) = if let Some(e) = ultra_begin_err {
         // D-044:UltraPlan 开场即败——不进工具循环,原因原样作为本轮的失败。
         ("failed".to_string(), String::new(), Some(e))
+    } else if let Some(rt) = world_build_rt.as_deref().filter(|r| r.action_result.is_some()) {
+        let res = rt.action_result.as_ref().unwrap();
+        let text = match &rt.kind {
+            crate::world_build::TurnKind::RebuildBuilding => {
+                let rev = res.get("rev").and_then(Value::as_u64).unwrap_or(1);
+                let bldg_id = wt_building_id.as_deref().unwrap_or("");
+                format!("已重构建筑 [{bldg_id}]，场景预览已更新至 Rev {rev}。")
+            }
+            crate::world_build::TurnKind::TuneBuilding => {
+                let rev = res.get("rev").and_then(Value::as_u64).unwrap_or(1);
+                let bldg_id = wt_building_id.as_deref().unwrap_or("");
+                format!("已微调建筑 [{bldg_id}]，场景预览已更新至 Rev {rev}。")
+            }
+            crate::world_build::TurnKind::AdjustStyle => {
+                let rev = res.get("rev").and_then(Value::as_u64).unwrap_or(1);
+                let style = res.get("style").and_then(Value::as_str).unwrap_or("");
+                format!("已应用风格预设 [{style}]，场景预览已更新至 Rev {rev}。")
+            }
+            crate::world_build::TurnKind::Construction => {
+                let count = res.get("buildingCount").and_then(Value::as_u64).unwrap_or(0);
+                let rev = res.get("rev").and_then(Value::as_u64).unwrap_or(1);
+                format!("场景预览已确认（Rev {rev}，共 {count} 处建筑），已进入施工阶段。")
+            }
+            crate::world_build::TurnKind::FixCoherence => {
+                let status = res.get("status").and_then(Value::as_str).unwrap_or("");
+                let v_count = res.get("violations").and_then(Value::as_array).map_or(0, |a| a.len());
+                if status == "PASS" {
+                    "场景一致性修复完成，全项自检通过，场景已交付完成。".to_string()
+                } else {
+                    format!("场景一致性修复轮次已执行，仍有 {v_count} 处问题待调整。")
+                }
+            }
+            crate::world_build::TurnKind::CoherenceVerify => {
+                "用户已确认覆盖一致性告警，场景制作收尾完成。".to_string()
+            }
+            _ => "WorldBuild 动作执行成功。".to_string(),
+        };
+        ("completed".to_string(), text, None)
     } else {
         let (system_prompt, mut tools) = match input.mode {
             "ask" => (llm::SYSTEM_PROMPT.to_string(), Vec::new()),
@@ -2581,7 +2746,7 @@ pub async fn execute_turn(
             }
             _ => game_mode_prompt(scope.current.game_mode),
         };
-        let system_prompt = format!("{system_prompt}{mode_conventions}");
+        let system_prompt = format!("{system_prompt}{mode_conventions}{DELEGATION_PROMPT}");
         // F11 wave.2:「可用技能」索引注入(06 §2 兑现;仅启用项的 name+description,
         // 全文按需经 read_skill 取,十几篇规程不常驻上下文)。
         // ask 模式一并注入(D-F11-SK1):ask 没有工具面、read_skill 不可用,但用户问「你能做什么」
@@ -2838,23 +3003,67 @@ pub async fn execute_turn(
         let leader_tools = team_env.as_ref().map(|_| tools.clone());
         // 多轮历史放在 user 卡片与 agent.started 之后装配:压缩要调一次 LLM,不能让界面干等。
         let history = if input.history {
-            let resolved = crate::modelspec::resolve(
+            let resolved = crate::modelspec::resolve_session(
                 session.selected_model_id.as_deref(),
                 session.thinking_enabled,
                 session.reasoning_effort.as_deref(),
                 session.context_option_id.as_deref(),
             );
             let summaries_path = state.sessions.path().with_file_name("summaries.json");
-            let built = crate::history::build(crate::history::HistoryRequest {
-                session_id: sid,
-                events: &prior_events,
-                context_tokens: resolved.context_tokens,
-                summaries_path: &summaries_path,
-                // mock 没有真实模型可做摘要,超限直接丢最旧轮。
-                summarizer: (input.provider_label != "mock" && managed.is_none())
-                    .then_some(leader_step),
-            })
-            .await;
+            // Ordinary event history retains only the tool names and final
+            // answer. After interruption, use the exact acknowledged transcript
+            // so completed tools/results survive a process restart. Match the
+            // run explicitly; a stale checkpoint must not replace a newer turn.
+            let recovery = managed.is_none().then(|| {
+                let previous_run = crate::history::interrupted_run_id(&prior_events)?;
+                let messages = state.collaboration.history_for_run(&actor_id, previous_run)
+                    .unwrap_or_default();
+                let progress = crate::history::recovery_progress(&prior_events, previous_run, &messages);
+                (!messages.is_empty() || progress.is_some()).then_some((previous_run, messages, progress))
+            }).flatten();
+            let recovered_run_id = recovery.as_ref().map(|(id, _, _)| *id);
+            let built = if let Some((_, mut messages, progress)) = recovery {
+                if messages.is_empty() {
+                    // Pre-checkpoint versions still have their full event log
+                    // and saved summaries; retain them before adding the tail.
+                    messages = crate::history::build(crate::history::HistoryRequest {
+                        session_id: sid,
+                        events: &prior_events,
+                        context_tokens: resolved.context_tokens,
+                        summaries_path: &summaries_path,
+                        summarizer: (input.provider_label != "mock").then_some(leader_step),
+                    }).await.messages;
+                }
+                if let Some(progress) = progress {
+                    messages.push(json!({"role":"user","content":progress}));
+                }
+                let messages = crate::history::compact_messages(
+                    messages, resolved.context_tokens,
+                    (input.provider_label != "mock").then_some(leader_step),
+                ).await;
+                let total_turns = crate::history::reconstruct(&prior_events).len();
+                crate::history::HistoryBuild {
+                    turns: total_turns.min(messages.iter().filter(|m| m["role"] == "user").count()),
+                    tokens: messages.iter().map(|m| crate::history::estimate_tokens(&m.to_string())).sum(),
+                    total_turns,
+                    budget: crate::history::budget_tokens(resolved.context_tokens),
+                    summarized: messages.iter().any(|m| m["content"].as_str()
+                        .is_some_and(|text| text.starts_with(crate::history::SUMMARY_PREFIX))),
+                    messages,
+                    ..Default::default()
+                }
+            } else {
+                crate::history::build(crate::history::HistoryRequest {
+                    session_id: sid,
+                    events: &prior_events,
+                    context_tokens: resolved.context_tokens,
+                    summaries_path: &summaries_path,
+                    // mock 没有真实模型可做摘要,超限直接丢最旧轮。
+                    summarizer: (input.provider_label != "mock" && managed.is_none())
+                        .then_some(leader_step),
+                })
+                .await
+            };
             if built.total_turns > 0 {
                 state.events.emit(
                     EventDraft::new(sid, "agent.history.injected", "agent").payload(json!({
@@ -2866,6 +3075,7 @@ pub async fn execute_turn(
                         "compacted": built.compacted,
                         "tokens": built.tokens,
                         "budget": built.budget,
+                        "recoveredRunId": recovered_run_id,
                     })),
                 );
             }
@@ -2927,6 +3137,8 @@ pub async fn execute_turn(
                                 "description": req.description,
                                 "subagent_type": req.subagent_type,
                                 "_toolCallId": req.tool_call_id,
+                                "_productionTaskId": req.task_id,
+                                "_productionAttempt": req.attempt,
                             });
                             let result = run_nested_task(
                                 &ws_root,
@@ -2955,11 +3167,25 @@ pub async fn execute_turn(
                                     if let Err(e) =
                                         crate::ultraplan::record_review(&rt.dir_abs, evidence)
                                     {
-                                        return (false, e);
+                                        return crate::plan::DispatchOutcome::Failed(e);
                                     }
                                 }
                             }
-                            result
+                            if let (Some(rt), Some(task_id), Some(attempt)) = (rt.as_deref(), req.task_id.as_deref(), req.attempt) {
+                                match crate::ultraplan::production::read_task_result(&rt.dir_abs,task_id,attempt) {
+                                    Ok(Some(task)) => {
+                                        use crate::ultraplan::production::ProductionTaskStatus;
+                                        return match task.status {
+                                            ProductionTaskStatus::Completed if result.0 && task.receipt.is_some() => crate::plan::DispatchOutcome::Completed(task.summary),
+                                            ProductionTaskStatus::Blocked => crate::plan::DispatchOutcome::Blocked(format!("{}: {}",task.reason_code,task.summary)),
+                                            _ => crate::plan::DispatchOutcome::Failed(format!("{}: {}",task.reason_code,task.summary)),
+                                        };
+                                    },
+                                    Ok(None) => return crate::plan::DispatchOutcome::Blocked(format!("UP_RESULT_MISSING: {}",result.1)),
+                                    Err(error) => return crate::plan::DispatchOutcome::Failed(error),
+                                }
+                            }
+                            result.into()
                         }
                     };
                     // leader 修复轮:同一 system prompt / 工具面 / 步进 / 执行器再跑
@@ -2973,7 +3199,7 @@ pub async fn execute_turn(
                     let inbox_ref: &(dyn Fn() -> Option<String> + Send + Sync) = &inbox;
                     let managed_loop = managed.is_some();
                     let leader_job_ref = &leader_job;
-                    let context_tokens = crate::modelspec::resolve(
+                    let context_tokens = crate::modelspec::resolve_session(
                         session.selected_model_id.as_deref(),
                         session.thinking_enabled,
                         session.reasoning_effort.as_deref(),
@@ -2991,6 +3217,7 @@ pub async fn execute_turn(
                         }
                         let tools2 = leader_tools.clone();
                         let stream2 = stream.clone();
+                        let round_context = ultra_rt.as_deref().map(crate::ultraplan::production_context);
                         let round_history = if free_team.is_some() && !managed_loop {
                             state.collaboration.history(&actor_id)
                         } else {
@@ -3018,7 +3245,7 @@ pub async fn execute_turn(
                                     forbidden: None,
                                     cancelled: Some(cancel_ref),
                                     stream: Some(stream2),
-                                    preamble: None,
+                                    preamble: round_context,
                                     max_iters: None,
                                     // leader 修复轮同为主 agent 循环,照收中途回执。
                                     inbox: Some(inbox_ref),
@@ -3027,6 +3254,7 @@ pub async fn execute_turn(
                             )
                             .await
                             {
+                                Ok(o) if o.exhausted && !o.cancelled => Err("主 agent 轮次耗尽，不能使用未完成的委派".into()),
                                 Ok(o) => Ok((o.text, o.cancelled)),
                                 Err(e) => Err(e.to_string()),
                             }
@@ -3041,6 +3269,12 @@ pub async fn execute_turn(
                             None => Ok(()),
                         }
                     };
+                    let production_issues = || -> Result<Vec<Value>, String> {
+                        match ultra_rt.as_deref() {
+                            Some(rt) => crate::ultraplan::verification_issues(rt),
+                            None => Ok(vec![]),
+                        }
+                    };
                     let flow_ctx = crate::plan::TeamFlowCtx {
                         todos: &state.todos,
                         events: &state.events,
@@ -3050,6 +3284,8 @@ pub async fn execute_turn(
                         max_fix_rounds: if ultra_rt.is_some() { 5 } else { 3 },
                         source_filter: ultra_source.as_deref(),
                         serialize_engine: ultra_rt.is_some(),
+                        production_dir: ultra_rt.as_ref().map(|rt| rt.dir_abs.as_path()),
+                        verification_issues: ultra_rt.as_ref().map(|_| &production_issues as &(dyn Fn() -> Result<Vec<Value>, String> + Send + Sync)),
                         validate: ultra_rt.as_ref().map(|_| {
                             &validate_production as &(dyn Fn() -> Result<(), String> + Send + Sync)
                         }),
@@ -3207,6 +3443,16 @@ pub async fn execute_turn(
             .or_else(|| state.sessions.get(sid).and_then(|s| s.design).map(|d| d.id));
         if let Some(fid) = flow_id {
             crate::design::finish_turn(state, sid, &run_id, &fid, &outcome.0, outcome.2.as_deref());
+        }
+    }
+    // WorldBuild 轮次收尾(相位回 waiting / failed)。
+    if world_build_turn.is_some() {
+        let flow_id = world_build_rt
+            .as_deref()
+            .map(|rt| rt.flow_id.clone())
+            .or_else(|| state.sessions.get(sid).and_then(|s| s.world_build).map(|w| w.id));
+        if let Some(fid) = flow_id {
+            crate::world_build::finish_turn(state, sid, &run_id, &fid, &outcome.0, outcome.2.as_deref());
         }
     }
     // 终态事件 + run 迁移 + activeRunId 清理(三态均 HTTP 200 如实返回)。
@@ -3421,7 +3667,9 @@ fn schedule_goal_continue(
                 history: true,
                 ultraplan: None,
                 design: None,
+                world_build: None,
             },
+
         )
         .await;
         if let Some(e) = &out.error {
@@ -3504,7 +3752,9 @@ async fn run_wake_turn(state: Arc<AppState>, session_id: String) {
             history: true,
             ultraplan: None,
             design: None,
+            world_build: None,
         },
+
     )
     .await;
     if let Some(e) = &out.error {
@@ -3582,36 +3832,6 @@ fn demo_tool_allowed(name: &str) -> bool {
     )
 }
 
-fn demo_requirement_paths(root: &std::path::Path) -> Option<Vec<PathBuf>> {
-    let root = root.canonicalize().ok()?;
-    let manifest: Value =
-        serde_json::from_slice(&std::fs::read(root.join("requirements.json")).ok()?).ok()?;
-    manifest["files"]
-        .as_array()?
-        .iter()
-        .map(|entry| {
-            let relative = entry["path"].as_str()?;
-            if !relative.starts_with("_requirements/chunks/")
-                || relative.contains([':', '\\'])
-                || relative
-                    .split('/')
-                    .any(|p| p.is_empty() || p == "." || p == "..")
-            {
-                return None;
-            }
-            let path = root.join(relative).canonicalize().ok()?;
-            if !path.starts_with(&root) {
-                return None;
-            }
-            let bytes = std::fs::read(&path).ok()?;
-            if entry["sha256"].as_str()? != forge_util::hashutil::sha256_hex(&bytes) {
-                return None;
-            }
-            Some(path)
-        })
-        .collect()
-}
-
 fn workflow_task_source(
     state: &AppState,
     sid: &str,
@@ -3625,6 +3845,147 @@ fn workflow_task_source(
         .map(|up| up.plan_rev)
         .unwrap_or_default();
     format!("ultraplan:{}:{rev}", rt.flow_id)
+}
+
+fn production_gate_executor(
+    perms: Arc<crate::permission::PermissionService>, events: Arc<crate::events::EventBus>,
+    sid: String, rid: String, root: std::path::PathBuf, cancel: Option<CancelToken>,
+) -> Box<ExecFn> {
+    Box::new(move |name,args| {
+        let perms=perms.clone(); let events=events.clone(); let sid=sid.clone(); let rid=rid.clone(); let root=root.clone(); let cancel=cancel.clone();
+        Box::pin(async move {
+            if cancel.as_ref().is_some_and(|c|c.is_cancelled()) { return (false,"CANCELLED: 交接检查已停止".into()); }
+            match perms.authorize(&events,&sid,&rid,&name,is_write_tool(&name)).await {
+                Ok(true)=>{}, Ok(false)=>return (false,"TOOL_FORBIDDEN: 交接检查无当前会话授权".into()),
+                Err(error)=>return (false,error.into()),
+            }
+            match crate::mcp::call_tool_in(&root,&name,Some(args)).await {
+                Ok(value)=>(value["isError"]!=true,value.to_string().into()),
+                Err(error)=>(false,format!("{error:?}").into()),
+            }
+        })
+    })
+}
+
+async fn recover_production_handoffs(state: &AppState, sid: &str, rid: &str, rt: &crate::ultraplan::UltraRuntime, project: &FsPath, cancel: CancelToken) -> Result<(), String> {
+    use crate::ultraplan::production as production;
+    let source = workflow_task_source(state,sid,rt);
+    let record: Value = serde_json::from_slice(&std::fs::read(rt.dir_abs.join("production.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    let active:std::collections::HashSet<_>=record["activeTodoIds"].as_array().ok_or("UP_RECOVERY_REQUIRED: 当前批准任务清单缺失")?.iter().filter_map(Value::as_str).collect();
+    let tasks: Vec<_> = state.todos.list_by_session(sid).into_iter().filter(|t|t.source == source && active.contains(t.id.as_str())).collect();
+    let gate = production_gate_executor(state.permissions.clone(),state.events.clone(),sid.into(),rid.into(),project.into(),Some(cancel.clone()));
+    let plan_rev = state.sessions.get(sid).and_then(|s|s.ultraplan).map(|up|up.plan_rev as u64).ok_or("UP_RECOVERY_REQUIRED: 计划版本缺失")?;
+    let client = state.codex.running_client();
+    for task in &tasks {
+        if cancel.is_cancelled() { return Err("CANCELLED: 恢复验证已停止".into()); }
+        let attempt_and_submission = if let Some(attempt) = crate::plan::active_attempt(&rt.dir_abs,&task.id) {
+            let recovered = production::recover_pending_handoff(&rt.dir_abs,&rt.flow_id,plan_rev,&task.id,attempt,client.as_deref()).await?;
+            let result = match recovered {
+                Some(production::PendingHandoffRecovery::Verify(result) | production::PendingHandoffRecovery::Terminal(result)) => result,
+                None => production::read_task_result(&rt.dir_abs,&task.id,attempt)?.ok_or("UP_RECOVERY_REQUIRED: final结果缺失")?,
+            };
+            Some((attempt,result))
+        } else if task.status == "completed" {
+            match crate::plan::legacy_revalidation_attempt(&rt.dir_abs,&task.id,task.prompt.as_deref().unwrap_or("legacy handoff revalidation"))? {
+                Some(attempt) => Some((attempt, production::ProductionTaskResult {
+                    status:production::ProductionTaskStatus::Completed,
+                    summary:format!("历史 completed 的现存产物重新验证；本次未派制作 agent。\n{}",task.summary.as_deref().unwrap_or("")),
+                    reason_code:String::new(), outputs:production::task_contract(&rt.dir_abs,task)?.outputs, evidence:vec![], blocked_by:vec![], receipt:None,
+                })),
+                None => None,
+            }
+        } else { None };
+        let Some((attempt,submitted))=attempt_and_submission else {continue;};
+        let contract = production::task_contract(&rt.dir_abs,task)?;
+        let updated=state.todos.patch(&task.id,&PatchTodoRequest{status:Some("verifying".into()),..Default::default()}).map_err(|e|format!("{e:?}"))?;
+        state.events.emit(EventDraft::new(sid,"todo.updated","todo").payload(json!(updated)));
+        let result=production::verify_handoff(project,&contract,&task.id,attempt,submitted,gate.as_ref()).await;
+        production::save_task_result(&rt.dir_abs,&task.id,attempt,&result)?;
+        let status=match result.status {production::ProductionTaskStatus::Completed=>"completed",production::ProductionTaskStatus::Blocked=>"blocked",production::ProductionTaskStatus::Failed=>"failed"};
+        crate::plan::finish_revalidation(&rt.dir_abs,&task.id,attempt,status,&result.summary)?;
+        let updated=state.todos.patch(&task.id,&PatchTodoRequest{status:Some(status.into()),summary:Some(result.summary.clone()),..Default::default()}).map_err(|e|format!("{e:?}"))?;
+        state.events.emit(EventDraft::new(sid,"todo.updated","todo").payload(json!(updated)));
+    }
+    if matches!(rt.kind,crate::ultraplan::TurnKind::Production(crate::ultraplan::ProductionPhase::Resume)) {
+        let blocked:Vec<_>=tasks.iter().filter(|t|t.status=="blocked" && !t.summary.as_deref().is_some_and(|s|s.starts_with("DEPENDENCY_BLOCKED:"))).map(|t|t.id.clone()).collect();
+        if !blocked.is_empty() {
+            crate::plan::authorize_blocked_retry(&rt.dir_abs,&blocked)?;
+            for id in blocked {
+                let updated=state.todos.patch(&id,&PatchTodoRequest{status:Some("queued".into()),..Default::default()}).map_err(|e|format!("{e:?}"))?;
+                state.events.emit(EventDraft::new(sid,"todo.updated","todo").payload(json!(updated)));
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn production_preflight(rt: &crate::ultraplan::UltraRuntime, tools: &[Value], project: &FsPath, permission_mode: &str) -> Result<(), String> {
+    let contracts = crate::ultraplan::production::contracts(&rt.dir_abs)?;
+    let (profiles, _) = crate::subagents::list_all_subagents();
+    let mut missing = std::collections::BTreeSet::new();
+    let mut need_rx = false;
+    let mut need_compiler = false;
+    let mut capability_state = json!({"permissionMode":permission_mode,"roles":{},"toolchain":null});
+    for contract in &contracts {
+        let profile = profiles.iter().find(|p| p.name == contract.role)
+            .ok_or_else(|| format!("UP_CAPABILITY_UNAVAILABLE: 未知工种 {}",contract.role))?;
+        let actual = subagent_tools(tools, Some(&profile.tools), false);
+        let actual_names: std::collections::BTreeSet<_> = actual.iter().filter_map(|t|t.pointer("/function/name").and_then(Value::as_str)).collect();
+        capability_state["roles"][&contract.role] = json!(actual_names);
+        for name in crate::ultraplan::production::missing_tools(contract, &actual) {
+            missing.insert(format!("{} / {}: {name}",contract.id,contract.role));
+        }
+        for name in &contract.required_tools {
+            if permission_mode == "plan" && is_write_tool(name) {
+                missing.insert(format!("{} / {}: {name} 被会话只读权限禁止",contract.id,contract.role));
+            }
+        }
+        // Handoff checks execute in the host, but still need real MCP servers.
+        for check in &contract.handoff_checks {
+            let required: &[&str] = match check["kind"].as_str() {
+                Some("rx") => &["mcp__code-forge__rx_check"],
+                Some("graph") => &["mcp__code-forge__graph_validate"],
+                Some("matrix") => &["mcp__engine-scene__scene_load", "mcp__engine-scene__play_enter", "mcp__engine-scene__play_exit", "mcp__engine-scene__play_pause", "mcp__engine-scene__play_step", "mcp__engine-scene__logic_inject_input", "mcp__engine-scene__entity_list", "mcp__engine-scene__component_get", "mcp__engine-scene__transform_get", "mcp__engine-scene__scene_summary", "mcp__engine-scene__viewport_frame"],
+                _ => &[],
+            };
+            for name in required {
+                if !tools.iter().any(|t| t.pointer("/function/name").and_then(Value::as_str) == Some(*name)) {
+                    missing.insert(format!("宿主交接检查缺少 {name}"));
+                }
+                if permission_mode == "plan" && is_write_tool(name) {
+                    missing.insert(format!("宿主交接检查 {name} 被会话只读权限禁止"));
+                }
+            }
+        }
+        need_rx |= contract.required_tools.iter().any(|t| matches!(t.as_str(),"mcp__code-forge__rx_build"|"mcp__code-forge__rx_run"|"mcp__code-forge__rx_test"|"mcp__code-forge__rx_fmt"));
+        need_compiler |= contract.required_tools.iter().any(|t| t == "mcp__code-forge__rx_check")
+            || contract.handoff_checks.iter().any(|c| c["kind"] == "rx");
+    }
+    if need_rx || need_compiler {
+        match crate::mcp::call_tool_in(project,"mcp__code-forge__toolchain_capabilities",Some(json!({}))).await {
+            Ok(envelope) => match crate::playtest::unwrap_envelope(&envelope) {
+                Ok(capabilities) => {
+                    capability_state["toolchain"] = capabilities.clone();
+                    for (name, required) in [("rx",need_rx),("rurixc",need_compiler)] {
+                        if required && capabilities["tools"][name]["available"] != true {
+                            missing.insert(format!("{name}: {}",capabilities["tools"][name]));
+                        }
+                    }
+                },
+                Err(error) => { missing.insert(format!("工具链能力读取失败：{error}")); }
+            },
+            Err(error) => { missing.insert(format!("工具链能力工具不可用：{error:?}")); }
+        }
+    }
+    let capability_digest = forge_util::hashutil::sha256_hex(&serde_json::to_vec(&capability_state).map_err(|e|e.to_string())?);
+    if missing.is_empty() {
+        crate::ultraplan::write_json_atomic(&rt.dir_abs.join("preflight.json"),&json!({"status":"ready","capabilityDigest":capability_digest,"capabilities":capability_state,"at":now_rfc3339()})).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        let report = json!({"status":"blocked","reasonCode":"UP_CAPABILITY_UNAVAILABLE","missing":missing,"capabilityDigest":capability_digest,"capabilities":capability_state,"at":now_rfc3339()});
+        crate::ultraplan::write_json_atomic(&rt.dir_abs.join("preflight.json"),&report).map_err(|e| e.to_string())?;
+        Err(format!("UP_CAPABILITY_UNAVAILABLE: 制作尚未派工；请修复能力后恢复。{report}"))
+    }
 }
 
 fn bind_workflow_job(
@@ -3661,7 +4022,7 @@ fn bind_workflow_job(
     job.retry_failed = true;
     job.metadata = crate::agent_job::AgentJobMetadata {
         flow_id: Some(up.id),
-        revision: Some(up.plan_rev.max(up.questionnaire_rev) as u64),
+        revision: Some(if matches!(rt.kind, crate::ultraplan::TurnKind::Production(_)) { up.plan_rev } else { up.plan_rev.max(up.questionnaire_rev) } as u64),
         phase: Some(phase.into()),
         role: Some(role.into()),
         requirement_pack: Some(
@@ -3805,6 +4166,19 @@ fn protected_workflow_write(
     None
 }
 
+fn subagent_description(args: &Value, fallback: &str) -> String {
+    ["description", "title"]
+        .iter()
+        .find_map(|key| {
+            args.get(*key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or(fallback)
+        .to_string()
+}
+
 async fn run_nested_task(
     ws_root: &std::path::Path,
     events: Arc<crate::events::EventBus>,
@@ -3827,11 +4201,7 @@ async fn run_nested_task(
     if prompt.is_empty() {
         return (false, "prompt required".into());
     }
-    let description = args
-        .get("description")
-        .and_then(|v| v.as_str())
-        .unwrap_or("子代理任务")
-        .to_string();
+    let description = subagent_description(args, "子代理任务");
     // subagent_type → 磁盘 profile(热加载;未知类型如实回错,leader 换类型或省略重派)。
     // D-044:内建 agents/ + 个人 data/agents/ 合并(同名个人胜)。
     let sub_type = args
@@ -3857,6 +4227,42 @@ async fn run_nested_task(
         None => None,
     };
     let max_iters = crate::subagents::loop_max_iters(profile.as_ref());
+    let production_task = match (ctx.ultra.as_deref(), args["_productionTaskId"].as_str(), args["_productionAttempt"].as_u64()) {
+        (Some(rt),Some(id),Some(attempt)) if matches!(rt.kind,crate::ultraplan::TurnKind::Production(_)) => {
+            if u32::try_from(attempt).ok() != crate::plan::active_attempt(&rt.dir_abs,id) {
+                return (false,"UP_TASK_NOT_ACTIVE: attempt 未由当前流程持久授权".into());
+            }
+            let Some(todo) = todos.list_by_session(session_id).into_iter().find(|t| t.id == id && t.status == "running") else {
+                return (false,"UP_TASK_NOT_ACTIVE: 制作任务未由调度器认领".into());
+            };
+            let contract = match crate::ultraplan::production::task_contract(&rt.dir_abs,&todo) {
+                Ok(value) => value, Err(error) => return (false,error),
+            };
+            if contract.role != sub_type.unwrap_or_default() { return (false,"UP_ROLE_MISMATCH".into()); }
+            let actual = subagent_tools(&ctx.mcp_tools,profile.as_ref().map(|p|p.tools.as_slice()),ctx.read_only);
+            let missing=crate::ultraplan::production::missing_tools(&contract,&actual);
+            if !missing.is_empty() {
+                let mut result=crate::ultraplan::production::ProductionTaskResult::failure("UP_CAPABILITY_UNAVAILABLE",format!("缺少工具：{}",missing.join(", ")));
+                result.status=crate::ultraplan::production::ProductionTaskStatus::Blocked;
+                if let Err(error)=crate::ultraplan::production::save_task_result(&rt.dir_abs,id,attempt as u32,&result) { return (false,error); }
+                return (false,result.summary);
+            }
+            Some((rt.dir_abs.clone(),id.to_string(),attempt as u32,contract))
+        },
+        _ if ctx.ultra.as_deref().is_some_and(|rt| matches!(rt.kind,crate::ultraplan::TurnKind::Production(_)))
+            && !matches!(sub_type,Some("qa-tester"|"reviewer")) => {
+                return (false,"UP_TASK_NOT_ACTIVE: 制作子代理必须绑定批准任务与宿主授权 attempt".into());
+            },
+        _ => None,
+    };
+    let restored_submission = match production_task.as_ref() {
+        Some((dir,id,attempt,_)) => match crate::ultraplan::production::read_pending_submission(dir,id,*attempt) {
+            Ok(result) => result,
+            Err(error) => return (false,error),
+        },
+        None => None,
+    };
+    let production_result = Arc::new(Mutex::new(restored_submission));
     // F-GAME-4 wave.3:并发派发下子代理不能靠「最近一次 invoked 的 call id」猜父 id
     // (单线程假设已破),优先读 run_tool_loop 并行分支/team 编排器注入的 _toolCallId;
     // 串行路径无注入,维持 last_call 原语义。
@@ -4034,6 +4440,12 @@ async fn run_nested_task(
                 &prompt,
             );
         }
+        if let Some((_,id,attempt,_)) = &production_task {
+            let flow=job.metadata.flow_id.as_deref().unwrap_or("production");
+            job.job_id=format!("{flow}-p{}-{id}-attempt-{attempt}",job.metadata.revision.unwrap_or_default());
+            job.retry_failed=false;
+            job.resume_completed=true;
+        }
         let cancel = ctx.cancel.clone();
         let child_cancel = child_run.as_ref().map(|(_, token)| token.clone());
         job.cancelled = Arc::new(move || {
@@ -4126,6 +4538,7 @@ async fn run_nested_task(
         });
         tools.push(json!({"type":"function","function":{"name":"web_demo_probe","description":"在隔离浏览器里执行 probe.json 的真实键鼠操作、状态断言和截图，修复所有失败后再交付。","parameters":{"type":"object","properties":{},"additionalProperties":false}}}));
     }
+    if production_task.is_some() { tools.push(crate::ultraplan::production::result_tool()); }
     if !read_only
         && ctx
             .ultra
@@ -4135,13 +4548,12 @@ async fn run_nested_task(
     {
         tools.push(crate::ultraplan::verification_tool_spec());
     }
-    // 预算在派发前按档案与子代理统一下限决议，不对网页原型做硬编码覆盖。
-    let requirement_paths: Vec<PathBuf> = if demo_builder {
-        demo_requirement_paths(ws_root).unwrap_or_default()
-    } else {
-        vec![]
-    };
-    let read_requirements = Arc::new(Mutex::new(std::collections::HashSet::<PathBuf>::new()));
+    // 所有制作子代理共享无限工具轮数，旧档案 maxSteps 不再截断任务。
+    let demo_requirements = demo_builder.then(|| {
+        Arc::new(Mutex::new(crate::demo_requirements::DemoRequirements::load(
+            ws_root,
+        )))
+    });
     let requirement_root = ws_root.to_path_buf();
     let system_prompt = match &profile {
         Some(p) if !p.prompt.trim().is_empty() => format!(
@@ -4152,7 +4564,7 @@ async fn run_nested_task(
     };
     // F-GAME-3:子代理同样注入项目模式约定(它们才是搭场景/产素材的执行层)。
     let system_prompt = format!(
-        "{system_prompt}\n本次工作循环上限为 {max_iters} 轮（包含最终汇报）；同轮可批量调用工具。预留最后 4 轮用于验证、保存与汇报，未完成部分须明确列出。{}",
+        "{system_prompt}\n本次工作循环不设工具轮数上限；同轮可批量调用工具。请持续完成委派任务，验证并保存产物后汇报；收到取消时及时停止，遇到实际阻塞须如实报告。{}",
         game_mode_prompt(crate::scope::game_mode_of(&ctx.project_root))
     );
     let system_prompt = match ctx.ultra.as_deref() {
@@ -4162,6 +4574,9 @@ async fn run_nested_task(
         ),
         _ => system_prompt,
     };
+    let system_prompt = if let Some((_,id,attempt,contract))=&production_task {
+        format!("{system_prompt}\n【宿主交接契约】taskId={id}, attempt={attempt}。批准契约：{}。结束前必须调用 ultraplan_task_result 提交 completed/blocked/failed、完整原因与实际产物/证据路径；正常结束不表示任务完成。completed 由宿主校验后才放行下游。缺能力或前置依赖时立即提交 blocked，不虚报成功；提交后不要继续修改产物。原生沙箱只读不禁止获准的 Forge 动态写工具。",serde_json::to_string(contract).unwrap_or_default())
+    } else { system_prompt };
     let system_prompt = format!(
         "{}{}{}",
         system_prompt,
@@ -4184,9 +4599,12 @@ async fn run_nested_task(
     let state2 = ctx.state.clone();
     let cancel2 = ctx.cancel.clone();
     let actual_cancel2 = child_run.as_ref().map(|(_, token)| token.clone());
-    let read_requirements2 = read_requirements.clone();
+    let demo_requirements2 = demo_requirements.clone();
     let actor2 = actor_id.clone();
     let permission_context = event_context.clone();
+    let production_result2 = production_result.clone();
+    let production_enabled = production_task.is_some();
+    let production_submission_target = production_task.as_ref().map(|(dir,id,attempt,_)| (dir.clone(),id.clone(),*attempt));
     let exec: Box<ExecFn> = Box::new(move |name, args| {
         let actor2 = actor2.clone();
         let permission_context = permission_context.clone();
@@ -4204,12 +4622,35 @@ async fn run_nested_task(
         let state2 = state2.clone();
         let cancel2 = cancel2.clone();
         let actual_cancel2 = actual_cancel2.clone();
-        let read_requirements2 = read_requirements2.clone();
+        let demo_requirements2 = demo_requirements2.clone();
+        let production_result2 = production_result2.clone();
+        let production_submission_target = production_submission_target.clone();
         Box::pin(async move {
             if cancel2.as_ref().is_some_and(|c| c.is_cancelled())
                 || actual_cancel2.as_ref().is_some_and(|c| c.is_cancelled())
             {
                 return (false, "CANCELLED: 子任务已停止".into());
+            }
+            if name == crate::ultraplan::production::RESULT_TOOL {
+                if !production_enabled { return (false,"TOOL_FORBIDDEN: 非制作任务不可提交交接".into()); }
+                return match crate::ultraplan::production::submission(&args) {
+                    Ok(result) => {
+                        let Some((dir,id,attempt)) = production_submission_target.as_ref() else {
+                            return (false,"UP_TASK_NOT_ACTIVE: 缺少交接申请身份".into());
+                        };
+                        let mut pending = production_result2.lock().unwrap();
+                        if let Err(error) = crate::ultraplan::production::save_pending_submission(dir,id,*attempt,&result) {
+                            return (false,error.into());
+                        }
+                        *pending=Some(result);
+                        (true,"交接申请已持久保存；宿主验证前不得宣称完成，不再修改产物。".into())
+                    },
+                    Err(error) => (false,error.into()),
+                };
+            }
+            if production_enabled && production_result2.lock().unwrap().is_some()
+                && (is_write_tool(&name)||engine::is_native_write_tool(&name)) {
+                return (false,"UP_RESULT_SEALED: 已提交交接结果，不能继续修改产物".into());
             }
             if crate::collaboration_runtime::is_tool(&name) {
                 if let Some(why) = subagent_tool_denied(&name, allow2.as_deref(), read_only) {
@@ -4231,6 +4672,16 @@ async fn run_nested_task(
             }
             if let Some(why) = subagent_tool_denied(&name, allow2.as_deref(), read_only) {
                 return (false, why.into());
+            }
+            if matches!(
+                name.as_str(),
+                "write_file" | "str_replace_edit" | "apply_patch" | "web_demo_probe"
+            ) {
+                if let Some(requirements) = demo_requirements2.as_ref() {
+                    if let Err(message) = requirements.lock().unwrap().ensure_complete(&ws_root) {
+                        return (false, message.into());
+                    }
+                }
             }
             if name == crate::ultraplan::VERIFY_TOOL {
                 if let (Some(state), Some(rt)) = (state2.upgrade(), ultra2.as_deref()) {
@@ -4317,24 +4768,11 @@ async fn run_nested_task(
                 let (ok, text) = crate::native_tools::dispatch_native(
                     &ws_root, &events2, &todos2, &sid2, &rid2, &name, &args,
                 );
-                if ok
-                    && demo_builder
-                    && name == "read_file"
-                    && args["offset"].as_u64().unwrap_or(1) == 1
-                {
-                    if let Some(path) = args["path"]
-                        .as_str()
-                        .and_then(|s| ws_root.join(s).canonicalize().ok())
-                    {
-                        if let Ok(contents) = std::fs::read_to_string(&path) {
-                            if contents.chars().count() <= 3000
-                                && args["limit"].as_u64().map_or(true, |n| {
-                                    n == 0 || n as usize >= contents.lines().count()
-                                })
-                            {
-                                read_requirements2.lock().unwrap().insert(path);
-                            }
-                        }
+                if ok && name == "read_file" {
+                    if let Some(requirements) = demo_requirements2.as_ref() {
+                        requirements
+                            .lock().unwrap()
+                            .record_read(&ws_root, &args, &text);
                     }
                 }
                 return (ok, text.into());
@@ -4515,49 +4953,7 @@ async fn run_nested_task(
                     identity.task_id = Some(task);
                 }
             }
-            match d {
-                StreamDelta::Text(t) => emit_stream_delta(
-                    &events,
-                    &sid,
-                    &rid,
-                    "agent.token.stream.delta",
-                    scoped_delta_payload(&identity, &rid, json!({ "delta": t }), Some(&parent)),
-                ),
-                StreamDelta::Reasoning(t) => emit_stream_delta(
-                    &events,
-                    &sid,
-                    &rid,
-                    "agent.reasoning.delta",
-                    scoped_delta_payload(&identity, &rid, json!({ "delta": t }), Some(&parent)),
-                ),
-                StreamDelta::ToolArgs {
-                    index,
-                    tool_call_id,
-                    name,
-                    delta,
-                } => emit_stream_delta(
-                    &events,
-                    &sid,
-                    &rid,
-                    "agent.tool.args.delta",
-                    scoped_delta_payload(
-                        &identity,
-                        &rid,
-                        json!({
-                            "index": index, "toolCallId": tool_call_id,
-                            "name": name, "delta": delta,
-                        }),
-                        Some(&parent),
-                    ),
-                ),
-                StreamDelta::Reset => emit_stream_delta(
-                    &events,
-                    &sid,
-                    &rid,
-                    "agent.stream.reset",
-                    scoped_delta_payload(&identity, &rid, json!({}), Some(&parent)),
-                ),
-            }
+            emit_model_stream_delta(&events, &sid, &rid, &identity, Some(&parent), d);
         })
     };
     // 后台腿把取消令牌接进子循环(每迭代开头检查);同步 task 腿维持 None(原语义)。
@@ -4584,7 +4980,7 @@ async fn run_nested_task(
             .as_ref()
             .and_then(|state| state.sessions.get(session_id))
             .map(|s| {
-                crate::modelspec::resolve(
+                crate::modelspec::resolve_session(
                     s.selected_model_id.as_deref(),
                     s.thinking_enabled,
                     s.reasoning_effort.as_deref(),
@@ -4617,7 +5013,7 @@ async fn run_nested_task(
             cancelled: Some(&cancel_fn),
             stream: Some(child_stream),
             preamble: None,
-            max_iters: Some(max_iters),
+            max_iters,
             inbox: Some(&child_inbox),
             // The final reviewer sees host-validated current screenshots.
             history: review_history,
@@ -4636,24 +5032,45 @@ async fn run_nested_task(
         "detached": detached,
         "dispatchedBy": dispatched_by,
     });
-    let out = match out {
-        Ok(o)
-            if !o.cancelled
-                && !o.exhausted
-                && demo_builder
-                && (requirement_paths.is_empty()
-                    || demo_requirement_paths(&requirement_root).as_ref()
-                        != Some(&requirement_paths)
-                    || !requirement_paths
-                        .iter()
-                        .all(|p| read_requirements.lock().unwrap().contains(p))) =>
-        {
-            Err(llm::LlmError::new(
-                "ULTRAPLAN_REQUIREMENTS_INCOMPLETE: builder 尚未完整读取需求包所有分段，不能发布 Demo",
-            ))
+    let mut out = out.and_then(|out| {
+        if !out.cancelled && !out.exhausted {
+            if let Some(requirements) = demo_requirements.as_ref() {
+                requirements.lock().unwrap()
+                    .ensure_complete(&requirement_root)
+                    .map_err(llm::LlmError::new)?;
+            }
         }
-        other => other,
-    };
+        Ok(out)
+    });
+    if let Some((dir,id,attempt,contract))=&production_task {
+        if out.as_ref().is_ok_and(|o| !o.cancelled && !o.exhausted) {
+            let submitted=production_result.lock().unwrap().clone().map(Ok)
+                .unwrap_or_else(|| crate::ultraplan::production::read_pending_submission(dir,id,*attempt)
+                    .and_then(|pending| match pending {
+                        Some(result) => Ok(Some(result)),
+                        None => crate::ultraplan::production::read_task_result(dir,id,*attempt),
+                    })
+                    .map(|result| result.unwrap_or_else(|| crate::ultraplan::production::ProductionTaskResult::incomplete("UP_RESULT_MISSING","模型轮次结束但未提交结构化任务结果"))))
+                .unwrap_or_else(|error| crate::ultraplan::production::ProductionTaskResult::incomplete("UP_RESULT_PERSIST_FAILED",error));
+            let _=todos.patch(id,&PatchTodoRequest{status:Some("verifying".into()),..Default::default()});
+            events.emit(EventDraft::new(session_id,"todo.updated","todo").payload(json!({"id":id,"status":"verifying"})));
+            let gate=production_gate_executor(perms.clone(),events.clone(),session_id.into(),parent_run_id.into(),ctx.project_root.clone(),ctx.cancel.clone());
+            let result=crate::ultraplan::production::verify_handoff(&ctx.project_root,contract,id,*attempt,submitted,gate.as_ref()).await;
+            let saved=crate::ultraplan::production::save_task_result(dir,id,*attempt,&result);
+            if let Some(path)=crate::agent_job::journal_path(&sub_job) {
+                if let Ok(bytes)=std::fs::read(&path) {
+                    if let Ok(mut record)=serde_json::from_slice::<crate::agent_job::AgentJobRecord>(&bytes) {
+                        record.result.task_result=Some(result.clone());
+                        if let Err(error)=crate::ultraplan::write_json_atomic(&path,&serde_json::to_value(record).unwrap()) { out=Err(llm::LlmError::new(format!("UP_RESULT_PERSIST_FAILED: {error}"))); }
+                    }
+                }
+            }
+            if let Err(error)=saved { out=Err(llm::LlmError::new(error)); }
+            else if result.status != crate::ultraplan::production::ProductionTaskStatus::Completed || result.receipt.is_none() {
+                out=Err(llm::LlmError::new(format!("{}: {}",result.reason_code,result.summary)));
+            }
+        }
+    }
     if let Some(state) = app.as_ref() {
         state.runs.finish(
             &actor_run_id,
@@ -4798,19 +5215,7 @@ fn spawn_detached_subagent(
     if prompt.is_empty() {
         return (false, "prompt required".into());
     }
-    let description = args
-        .get("description")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            prompt
-                .lines()
-                .find(|l| !l.trim().is_empty())
-                .map(|l| l.trim().chars().take(48).collect())
-        })
-        .unwrap_or_else(|| "后台子代理任务".to_string());
+    let description = subagent_description(args, "后台子代理任务");
     let sub_type = args
         .get("subagent_type")
         .and_then(Value::as_str)
@@ -4993,6 +5398,21 @@ pub(crate) fn resolve_profile_provider(profile_model: Option<&str>) -> SubProvid
             _ => SubProvider::Fallback(format!("profile.model={m} 云端不可用,回落父会话渠道")),
         };
     }
+    // D-049:自定义模型目录(旧单槽 openai-compat 与 custom:<hex> 同走目录项)。
+    if crate::custom_models::is_custom_id(m) {
+        let resolved = crate::modelspec::resolve(Some(m), false, None, None);
+        let spec = llm::RequestSpec {
+            model: resolved.model,
+            reasoning_effort: resolved.reasoning_effort,
+            thinking_enabled: None,
+        };
+        return match crate::custom_models::provider(m) {
+            p @ llm::Provider::OpenAiCompat { .. } => SubProvider::Override(p, spec),
+            _ => SubProvider::Fallback(format!(
+                "profile.model={m} 自定义模型未配齐或已删除(baseUrl/model/key 缺一),回落父会话渠道"
+            )),
+        };
+    }
     let Some(card) = crate::modelspec::card(m) else {
         return SubProvider::Fallback(format!("profile.model={m} 不在模型目录,回落父会话渠道"));
     };
@@ -5008,19 +5428,6 @@ pub(crate) fn resolve_profile_provider(profile_model: Option<&str>) -> SubProvid
             Some(k) => SubProvider::Override(llm::Provider::Deepseek(k), spec),
             None => SubProvider::Fallback(format!(
                 "profile.model={m} 需要 deepseek 密钥(未配置),回落父会话渠道"
-            )),
-        },
-        "openai-compat" => match llm::resolve_openai_compat() {
-            Some((base_url, model, key)) => SubProvider::Override(
-                llm::Provider::OpenAiCompat {
-                    base_url,
-                    model,
-                    key,
-                },
-                spec,
-            ),
-            None => SubProvider::Fallback(format!(
-                "profile.model={m} 渠道未配齐(baseUrl/model/key 缺一),回落父会话渠道"
             )),
         },
         "antigravity" => match crate::antigravity::resolve_antigravity() {
@@ -5080,9 +5487,9 @@ fn is_antigravity_model(m: &str) -> bool {
 }
 
 /// F7 wave.4:provider 选择——会话显式选 "mock" 模型 → 强制 Mock(有 key 也如实走 mock);
-/// 选 "openai-compat" → 走 resolve_openai_compat 配置面(已配齐返回 OpenAiCompat,缺一返回
-/// OpenAiCompatNotConfigured 显式错误态,不静默回落 deepseek/mock);
-/// 其余(未选/未知 id)走 resolve_provider 默认决议(配齐的 openai-compat 优先)。
+/// 选自定义模型("openai-compat" / `custom:<hex>`,D-049)→ 走目录项(已配齐返回 OpenAiCompat,
+/// 缺一或已删除返回 OpenAiCompatNotConfigured 显式错误态,不静默回落 deepseek/mock);
+/// 其余(未选/未知 id)走 resolve_provider 默认决议(配齐的自定义模型优先)。
 /// 抽出以便确定单测。
 pub(crate) fn provider_for_session(session: &DebugSession) -> llm::Provider {
     match session.selected_model_id.as_deref() {
@@ -5095,14 +5502,7 @@ pub(crate) fn provider_for_session(session: &DebugSession) -> llm::Provider {
                 llm::resolve_provider()
             }
         }
-        Some("openai-compat") => match llm::resolve_openai_compat() {
-            Some((base_url, model, key)) => llm::Provider::OpenAiCompat {
-                base_url,
-                model,
-                key,
-            },
-            None => llm::Provider::OpenAiCompatNotConfigured,
-        },
+        Some(id) if crate::custom_models::is_custom_id(id) => crate::custom_models::provider(id),
         Some(id) if id.starts_with("cloud:") => {
             let model_id = id.trim_start_matches("cloud:");
             llm::resolve_cloud_model(&crate::cloud::global(), model_id)
@@ -5168,10 +5568,14 @@ pub struct AskExecuteRequest {
     /// D-045:Design 流程动作 `{ id, rev, action, candidate? }`。在场 = 流程动作(userInput 可空)。
     #[serde(default)]
     design: Option<crate::design::DesignReq>,
+    /// WorldBuild 流程动作 `{ id, rev?, action, buildingId?, instruction?, stylePreset? }`。在场 = 流程动作 (userInput 可空)。
+    #[serde(default)]
+    pub(crate) world_build: Option<crate::world_build::WorldBuildReq>,
     /// Internal Goal turn marker. It is never accepted from the HTTP request body.
     #[serde(skip)]
     goal_origin: bool,
 }
+
 
 fn default_include_library() -> bool {
     true
@@ -5340,6 +5744,7 @@ struct OwnedTurn {
     history: bool,
     ultraplan: Option<crate::ultraplan::UltraTurn>,
     design: Option<crate::design::DesignTurn>,
+    world_build: Option<crate::world_build::WorldBuildTurn>,
 }
 
 /// 在独立任务里跑完一轮 turn,调用方只等结果。
@@ -5384,8 +5789,10 @@ async fn run_turn_detached(
                 history: turn.history,
                 ultraplan: turn.ultraplan,
                 design: turn.design,
+                world_build: turn.world_build,
             },
         )
+
         .await
     })
     .await
@@ -5399,9 +5806,12 @@ fn catalog_model_id(session: &DebugSession, provider: &llm::Provider) -> Option<
         llm::Provider::Mock => Some("mock".to_string()),
         llm::Provider::Official { channel } => Some(if *channel == "kimi" {"kimi-code"} else {"glm-coding"}.to_string()),
         llm::Provider::Deepseek(_) => Some("deepseek-chat".to_string()),
-        llm::Provider::OpenAiCompat { .. } | llm::Provider::OpenAiCompatNotConfigured => {
-            Some("openai-compat".to_string())
-        }
+        llm::Provider::OpenAiCompat { api, .. } => Some(api.id.clone()),
+        llm::Provider::OpenAiCompatNotConfigured => session
+            .selected_model_id
+            .clone()
+            .filter(|id| crate::custom_models::is_custom_id(id))
+            .or_else(|| Some(crate::custom_models::LEGACY_ID.to_string())),
         llm::Provider::Cloud { model, .. } => Some(format!("cloud:{model}")),
         llm::Provider::CloudNotConfigured | llm::Provider::CloudLoginRequired => {
             session.selected_model_id.clone()
@@ -5484,7 +5894,7 @@ async fn ask_execute_with(
     let user_input = if req.user_input.trim().is_empty() && !req.annotations.is_empty() { "请查看附加的对象批注。".to_string() } else { req.user_input.trim().to_string() };
     // D-044:带 `ultraplan` 对象的请求可以没有正文(点按钮触发的动作);是否真的可空由
     // ultraplan::resolve_request 按动作判(修改类动作仍要求写明意见)。
-    if user_input.is_empty() && req.ultraplan.is_none() && req.design.is_none() {
+    if user_input.is_empty() && req.ultraplan.is_none() && req.design.is_none() && req.world_build.is_none() {
         return bad_request("INVALID_INPUT", "userInput 不可空");
     }
     let mode = req
@@ -5511,9 +5921,11 @@ async fn ask_execute_with(
     if session.is_codex()
         && mode != crate::ultraplan::MODE
         && mode != crate::design::MODE
+        && mode != crate::world_build::MODE
         && mode != "team"
         && req.ultraplan.is_none()
         && req.design.is_none()
+        && req.world_build.is_none()
     {
         if !crate::codex::turn::mode_supported(&mode) {
             return bad_request(
@@ -5658,6 +6070,20 @@ async fn ask_execute_with(
             );
         }
     }
+    // WorldBuild 路由与校验(与 UltraPlan/Design 同位:任何 run 创建之前,不对即 4xx、无副作用)。
+    let world_build_turn = match crate::world_build::resolve_request(&session, &mode, req.world_build.as_ref(), &user_input) {
+        Ok(turn) => turn,
+        Err(resp) => return resp,
+    };
+    if world_build_turn.is_some() {
+        if state.permissions.mode(&session.id) == "plan" {
+            return bad_request(
+                "WORLD_BUILD_NEEDS_WRITE",
+                "当前会话权限为只读(plan),WorldBuild 模式需要生成与写入项目的权限",
+            );
+        }
+    }
+
     if session.is_codex() {
         if let Some(ut) = ultra.as_mut().filter(|ut| ut.kind.deep_planning()) {
             let selected = session
@@ -5726,7 +6152,7 @@ async fn ask_execute_with(
         Some(ut) => {
             let model_id = catalog_model_id(&session, &provider);
             let cloud_efforts = cloud_reasoning_efforts(&provider);
-            let deep = crate::modelspec::resolve_deep(
+            let deep = crate::modelspec::resolve_deep_session(
                 model_id.as_deref(),
                 session.context_option_id.as_deref(),
                 cloud_efforts.as_deref(),
@@ -5811,7 +6237,7 @@ async fn ask_execute_with(
     let mut tools: Vec<Value> = Vec::new();
     if matches!(
         mode.as_str(),
-        "build" | "debug" | "plan" | "team" | "multitask" | crate::ultraplan::MODE | crate::design::MODE
+        "build" | "debug" | "plan" | "team" | "multitask" | crate::ultraplan::MODE | crate::design::MODE | crate::world_build::MODE
     ) && !ultra_foreign_project
     {
         if session.is_codex()
@@ -5827,7 +6253,7 @@ async fn ask_execute_with(
             let t: Vec<Value> = listed.into_iter().flat_map(|s| s.tools).collect();
             if !t.is_empty() {
                 tools = llm::to_openai_tools(&t);
-            } else if mode == crate::ultraplan::MODE || mode == "team" || mode == crate::design::MODE {
+            } else if mode == crate::ultraplan::MODE || mode == "team" || mode == crate::design::MODE || mode == crate::world_build::MODE {
                 // ultraplan 的 leader 不靠 MCP 也能干活(原生只读工具、task、出口工具都在):
                 // 工具面拉不到只是少了场景/资产查询,不该让整轮立项讨论直接失败。
                 eprintln!("[ultraplan] MCP 工具面为空(各服务均不可用),本轮只用原生只读工具");
@@ -5933,9 +6359,11 @@ async fn ask_execute_with(
         },
         // D-044:UltraPlan 轮次只有 Discovery 带多轮历史(其余以流程产物为唯一来源)。
         history: ultra.as_ref().map_or(true, |ut| ut.kind.wants_history())
-            && design_turn.as_ref().map_or(true, |dt| dt.kind.wants_history()),
+            && design_turn.as_ref().map_or(true, |dt| dt.kind.wants_history())
+            && world_build_turn.as_ref().map_or(true, |wt| wt.kind.wants_history()),
         ultraplan: ultra,
         design: design_turn,
+        world_build: world_build_turn.clone(),
     };
     // 轮次跑在独立任务里(见 run_turn_detached):本 handler 的 future 被丢弃不会截断它。
     let out = match run_turn_detached(state.clone(), session, turn).await {
@@ -5987,11 +6415,66 @@ async fn ask_execute_with(
         }
         .into_response();
     }
+    // WorldBuild: 认领之后的再核对没过 → 409(本轮未发任何事件)。
+    if let Some(msg) = out.error.as_deref().and_then(|e| e.strip_prefix(&format!("{}: ", crate::world_build::ERR_STAGE_MISMATCH))) {
+        let latest = state.sessions.get(&id).and_then(|s| s.world_build);
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": {
+                    "code": crate::world_build::ERR_STAGE_MISMATCH,
+                    "message": msg,
+                    "details": {
+                        "stage": latest.as_ref().map(|w| w.stage.as_str()),
+                    }
+                }
+            })),
+        )
+        .into_response();
+    }
+    if let Some(msg) = out.error.as_deref().and_then(|e| e.strip_prefix(&format!("{}: ", crate::world_build::ERR_BUILDING_NOT_FOUND))) {
+        let latest = state.sessions.get(&id).and_then(|s| s.world_build);
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": {
+                    "code": crate::world_build::ERR_BUILDING_NOT_FOUND,
+                    "message": msg,
+                    "details": {
+                        "stage": latest.as_ref().map(|w| w.stage.as_str()),
+                    }
+                }
+            })),
+        )
+        .into_response();
+    }
+    if let Some(msg) = out.error.as_deref().and_then(|e| e.strip_prefix(&format!("{}: ", crate::world_build::ERR_INVALID_ACTION))) {
+        let latest = state.sessions.get(&id).and_then(|s| s.world_build);
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": {
+                    "code": crate::world_build::ERR_INVALID_ACTION,
+                    "message": msg,
+                    "details": {
+                        "stage": latest.as_ref().map(|w| w.stage.as_str()),
+                    }
+                }
+            })),
+        )
+        .into_response();
+    }
+
     let mut body = json!({
         "message": { "text": out.text },
         "run": { "id": out.run_id, "status": out.status },
         "mode": mode,
     });
+    if mode == crate::world_build::MODE || world_build_turn.is_some() {
+        if let Some(wb) = state.sessions.get(&id).and_then(|s| s.world_build) {
+            body["worldBuild"] = json!(wb);
+        }
+    }
     if let Some(e) = out.error {
         body["error"] = json!(e);
     }
@@ -6046,8 +6529,10 @@ pub(crate) fn start_local_goal_lifecycle(
                 plan_path: None,
                 ultraplan: None,
                 design: None,
+                world_build: None,
                 goal_origin: true,
             }),
+
         )
         .await;
         if !response.status().is_success() {
@@ -6197,15 +6682,21 @@ pub struct PatchTodoRequest {
     pub description: Option<String>,
     #[serde(default)]
     pub summary: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
 }
 
-/// PATCH /api/forge/todos/{id} {status?,title?,description?,summary?} → {todo} + todo.updated。
+/// PATCH /api/forge/todos/{id} {status?,title?,description?,summary?,prompt?} → {todo} + todo.updated。
 /// 404 TODO_NOT_FOUND;非法 status/空 title → 400 TODO_INVALID。
 pub async fn patch_todo(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<PatchTodoRequest>,
 ) -> Response {
+    if req.status.as_deref().is_some_and(|s| matches!(s,"completed"|"running"|"verifying"))
+        && state.todos.inner.lock().unwrap().iter().any(|t| t.id == id && t.source.starts_with("ultraplan:")) {
+        return bad_request("UP_HOST_OWNED_STATUS", "UltraPlan 完成与验证状态只能由宿主交接检查更新");
+    }
     match state.todos.patch(&id, &req) {
         Ok(todo) => {
             state.events.emit(
@@ -6404,7 +6895,9 @@ mod tests {
             history: true,
             ultraplan: None,
             design: None,
+            world_build: None,
         }
+
     }
 
     // ---------- D-035:Cursor 式 plan 模式(create_plan / 子代理只读 / Build 入口) ----------
@@ -6888,8 +7381,10 @@ mod tests {
                 plan_path: Some("../../etc/passwd".to_string()),
                 ultraplan: None,
                 design: None,
+                world_build: None,
                 goal_origin: false,
             }),
+
         )
         .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -7217,13 +7712,44 @@ mod tests {
                 base_url,
                 model,
                 key,
+                api,
             } => {
                 assert_eq!(base_url, "http://127.0.0.1:1");
                 assert_eq!(model, "qwen2.5-7b");
                 assert_eq!(key, "sk-test-oai-agent-leg");
+                assert_eq!(api.id, "openai-compat");
+                assert_eq!(api.format, crate::custom_models::ApiFormat::Openai);
             }
             other => panic!("已配齐应 OpenAiCompat: {other:?}"),
         }
+        // D-049:custom:<hex> 目录项同走 provider_for_session;删除后显式 NotConfigured。
+        std::fs::write(
+            dir.join("llm-custom-models.json"),
+            r#"{"models":[{"id":"custom:0000beef","apiFormat":"anthropic","baseUrl":"https://relay.example.com","model":"claude-sonnet-5-5","contextWindow":204800,"maxOutputTokens":16384}]}"#,
+        )
+        .unwrap();
+        gend::keystore::set_key("custom:0000beef", "sk-test-custom-agent-leg").unwrap();
+        let s2 = state
+            .sessions
+            .create("t2", "coding", Some("custom:0000beef".to_string()), true, None);
+        match provider_for_session(&s2) {
+            llm::Provider::OpenAiCompat { model, api, .. } => {
+                assert_eq!(model, "claude-sonnet-5-5");
+                assert_eq!(api.format, crate::custom_models::ApiFormat::Anthropic);
+                assert_eq!(api.max_output_tokens, Some(16384));
+            }
+            other => panic!("custom 目录项应可调用: {other:?}"),
+        }
+        // 新目录文件生效后旧单槽(未迁移进目录)不再可选 → 显式 NotConfigured。
+        assert!(matches!(
+            provider_for_session(&s),
+            llm::Provider::OpenAiCompatNotConfigured
+        ));
+        // 窗口声明折进会话面规格(历史预算/压缩阈值用);纯能力解析不变。
+        let spec = crate::modelspec::resolve_session(Some("custom:0000beef"), false, None, None);
+        assert_eq!(spec.context_tokens, 204_800);
+        let spec = crate::modelspec::resolve_session(Some("custom:0000beef"), false, None, Some("128k"));
+        assert_eq!(spec.context_tokens, 131_072);
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&dir).ok();
         std::fs::remove_dir_all(&state_dir).ok();
@@ -7262,8 +7788,10 @@ mod tests {
                 plan_path: None,
                 ultraplan: None,
                 design: None,
+                world_build: None,
                 goal_origin: false,
             }),
+
         )
         .await;
         let (parts, body) = resp.into_parts();
@@ -7453,8 +7981,10 @@ mod tests {
                 plan_path: None,
                 ultraplan: None,
                 design: None,
+                world_build: None,
                 goal_origin: false,
             }),
+
         )
         .await;
 
@@ -7487,6 +8017,67 @@ mod tests {
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&dir).ok();
         std::fs::remove_dir_all(&state_dir).ok();
+    }
+
+    #[tokio::test]
+    async fn interrupted_local_turn_restores_tool_results_after_restart_without_reexecution() {
+        let (state, dir) = test_state("restart-progress");
+        let mut session = state.sessions.create("restart", "coding", None, true, None);
+        session.agent_engine = "local".into();
+        state.sessions.save(&session);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let step_calls = calls.clone();
+        let step: Box<StepFn> = Box::new(move |_, _, _| {
+            let call = step_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async move {
+                if call == 0 {
+                    Ok(StepOutcome { message: tool_call_msg("mcp__engine-scene__entity_list", "{\"path\":\"completed.txt\"}"), usage: None })
+                } else {
+                    Err(llm::LlmError::new("invalid request: simulated interruption after tool completed"))
+                }
+            })
+        });
+        let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let executed = writes.clone();
+        let execute: Arc<ExecFn> = Arc::new(move |_, _| {
+            executed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async { (true, "completed.txt saved; next step: validate output".into()) })
+        });
+        let interrupted = execute_turn(&state, &session, turn_input(
+            "build", "write and validate", vec![], step.as_ref(), execute,
+        )).await;
+        assert_eq!(interrupted.status, "failed");
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        drop(state);
+
+        // Recreate every store involved in recovery from disk, with empty run
+        // registries: no transcript or progress may come from process memory.
+        let (mut restored, empty_dir) = test_state("restart-new-process");
+        let app = Arc::get_mut(&mut restored).unwrap();
+        app.events = Arc::new(EventBus::new(dir.join("agent-events"), 256));
+        app.sessions = Arc::new(SessionStore::load(dir.join("agent-sessions/sessions.json")));
+        app.collaboration = Arc::new(crate::collaboration::CollaborationStore::load(dir.join("collaboration.json")));
+        let session = restored.sessions.get(&session.id).unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let next = scripted_step_capturing_msgs(vec![final_msg("validated existing output")], seen.clone());
+        let never_reexecute: Arc<ExecFn> = Arc::new(|_, _| panic!("completed tool must not be replayed"));
+        let resumed = execute_turn(&restored, &session, turn_input(
+            "build", "continue", vec![], next.as_ref(), never_reexecute,
+        )).await;
+        assert_eq!(resumed.status, "completed");
+        let requests = seen.lock().unwrap();
+        let messages = &requests[0];
+        assert!(messages.iter().any(|m| m["role"] == "tool"
+            && m["content"].as_str().is_some_and(|s| s.contains("completed.txt saved"))));
+        assert!(messages.iter().any(|m| m["tool_calls"].as_array().is_some_and(|calls|
+            calls.iter().any(|c| c["function"]["arguments"].as_str().is_some_and(|s| s.contains("completed.txt"))))));
+        assert_eq!(messages.iter().filter(|m| m["content"] == "write and validate").count(), 1);
+        assert_eq!(messages.last().unwrap()["content"], "continue");
+        assert!(restored.events.persisted(&session.id).iter().any(|e|
+            e.event_type == "agent.history.injected" && e.payload["recoveredRunId"] == interrupted.run_id));
+        drop(requests);
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&empty_dir).ok();
     }
 
     #[tokio::test]
@@ -8178,6 +8769,46 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[test]
+    fn model_reasoning_boundaries_survive_replay_with_item_and_member_identity() {
+        let (state, dir) = test_state("reasoning-lifecycle");
+        let mut rx = state.events.subscribe("session");
+        let identity = crate::events::AgentEventContext {
+            agent_id: Some("member".into()),
+            agent_run_id: Some("member-run".into()),
+            parent_agent_id: Some("leader".into()),
+            ..Default::default()
+        };
+        for delta in [
+            StreamDelta::ReasoningStarted { item_id: "reasoning-1".into() },
+            StreamDelta::ReasoningDelta { item_id: "reasoning-1".into(), delta: "partial".into() },
+            StreamDelta::ReasoningCompleted { item_id: "reasoning-1".into(), text: "authoritative summary".into() },
+        ] {
+            emit_model_stream_delta(
+                &state.events, "session", "leader-run", &identity, Some("member-card"), delta,
+            );
+        }
+        let persisted = state.events.persisted("session");
+        assert_eq!(persisted.len(), 2, "only lifecycle boundaries are durable");
+        assert_eq!(persisted[0].event_type, "agent.reasoning.started");
+        assert_eq!(persisted[1].event_type, "agent.reasoning.completed");
+        assert_eq!(persisted[1].payload["text"], "authoritative summary");
+        for event in &persisted {
+            assert_eq!(event.payload["itemId"], "reasoning-1");
+            assert_eq!(event.payload["runId"], "leader-run");
+            assert_eq!(event.payload["agentId"], "member");
+            assert_eq!(event.payload["agentRunId"], "member-run");
+            assert_eq!(event.payload["parentToolCallId"], "member-card");
+        }
+        let mut live = Vec::new();
+        while let Ok(event) = rx.try_recv() { live.push(event); }
+        assert_eq!(live.len(), 3);
+        assert_eq!(live[1].event_type, "agent.reasoning.delta");
+        assert_eq!(live[1].payload["itemId"], "reasoning-1");
+        assert_eq!(live[1].payload["delta"], "partial");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[tokio::test]
     async fn todo_write_records_todos_and_completed_output() {
         let (state, dir) = test_state("todow");
@@ -8215,6 +8846,33 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    #[test]
+    fn subagent_descriptions_never_fall_back_to_prompt() {
+        for fallback in ["子代理任务", "后台子代理任务"] {
+            for args in [
+                json!({ "prompt": "委派正文\n检查并报告结果" }),
+                json!({ "description": " \n\t ", "title": "\t", "prompt": "委派正文" }),
+                json!({}),
+            ] {
+                assert_eq!(subagent_description(&args, fallback), fallback);
+            }
+            assert_eq!(
+                subagent_description(
+                    &json!({ "description": "  检查存档  ", "title": "备用标题", "prompt": "委派正文" }),
+                    fallback,
+                ),
+                "检查存档"
+            );
+            assert_eq!(
+                subagent_description(
+                    &json!({ "description": " \n ", "title": "  检查接口  ", "prompt": "委派正文" }),
+                    fallback,
+                ),
+                "检查接口"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn task_emits_subagent_events_and_parent_id() {
         let (state, dir) = test_state("task");
@@ -8246,7 +8904,7 @@ mod tests {
         assert_eq!(started.payload["prompt"], "列出场景实体");
         assert!(started.payload["parentToolCallId"].as_str().is_some());
         assert!(evs.iter().any(|e| e.event_type == "subagent.completed"));
-        assert_eq!(started.payload["maxSteps"], 512, "通用子代理预算");
+        assert!(started.payload["maxSteps"].is_null(), "通用子代理无限轮数");
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -8791,7 +9449,7 @@ mod tests {
             .find(|e| e.event_type == "subagent.started")
             .expect("subagent.started");
         assert_eq!(started.payload["subagentType"], "qa-tester");
-        assert_eq!(started.payload["maxSteps"], 512, "内建工种预算");
+        assert!(started.payload["maxSteps"].is_null(), "内建工种无限轮数");
         assert!(
             evs.iter().any(|e| e.event_type == "subagent.completed"),
             "mock 步进应正常收束"
@@ -8817,6 +9475,7 @@ mod tests {
         let mut input = turn_input("build", "调研项目", vec![], step.as_ref(), Arc::from(ok_executor()));
         input.sub_llm = Some((llm::Provider::OpenAiCompat {
             base_url: "http://127.0.0.1:1".into(), model: "unusable-parent".into(), key: "fixture".into(),
+            api: llm::CustomApi::default(),
         }, llm::RequestSpec::default()));
         let output = tokio::time::timeout(std::time::Duration::from_secs(5), execute_turn(&state, &session, input)).await.unwrap();
         assert_eq!(output.status, "completed");
@@ -9988,11 +10647,207 @@ mod tests {
 
     use crate::ultraplan as up;
 
+    /// Uses only in-memory Codex RPC, including the real host dynamic-tool bridge.
+    fn production_rpc_fixture(calls: Vec<(&'static str, Value)>) -> (Arc<crate::codex::managed::ManagedCodexFlow>, Arc<Mutex<Vec<Value>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let captured = seen.clone();
+        let reply_after = move |index: usize| -> Vec<Value> {
+            if let Some((name, arguments)) = calls.get(index) {
+                vec![json!({"id":format!("fixture-call-{index}"),"method":"item/tool/call","params":{
+                    "threadId":"fixture-thread","turnId":"fixture-turn","tool":format!("forge__{name}"),"arguments":arguments}})]
+            } else {
+                vec![
+                    json!({"method":"item/completed","params":{"threadId":"fixture-thread","turnId":"fixture-turn","item":{"type":"agentMessage","text":"模型轮次已结束"}}}),
+                    json!({"method":"turn/completed","params":{"threadId":"fixture-thread","turn":{"id":"fixture-turn","status":"completed"}}}),
+                ]
+            }
+        };
+        let transport = Arc::new(crate::codex::rpc::ScriptedTransport::new(move |message| {
+            captured.lock().unwrap().push(message.clone());
+            match message["method"].as_str() {
+                Some("initialize") => vec![json!({"id":message["id"],"result":{"version":"fixture"}})],
+                Some("initialized") => vec![],
+                Some("config/read") => vec![json!({"id":message["id"],"result":{"config":{}}})],
+                Some("skills/list") => vec![json!({"id":message["id"],"result":{"data":[{"cwd":message["params"]["cwds"][0],"skills":[],"errors":[]}]}})],
+                Some("thread/start") => vec![json!({"id":message["id"],"result":{"thread":{"id":"fixture-thread"}}})],
+                Some("turn/start") => {
+                    let mut replies = vec![json!({"id":message["id"],"result":{"turn":{"id":"fixture-turn"}}})];
+                    replies.extend(reply_after(0));
+                    replies
+                },
+                Some("turn/interrupt") => vec![
+                    json!({"id":message["id"],"result":{}}),
+                    json!({"method":"turn/completed","params":{"threadId":"fixture-thread","turn":{"id":"fixture-turn","status":"interrupted"}}}),
+                ],
+                None => {
+                    let index = message["id"].as_str().and_then(|id| id.strip_prefix("fixture-call-")).and_then(|id| id.parse::<usize>().ok())
+                        .expect("unexpected client response");
+                    reply_after(index + 1)
+                },
+                other => panic!("unexpected fixture RPC: {other:?}"),
+            }
+        }));
+        let service = crate::codex::service::CodexService::with_transport(transport);
+        (crate::codex::managed::ManagedCodexFlow::new(&service).unwrap(), seen)
+    }
+
+    fn production_runtime_fixture(root: &FsPath, tasks: Value) -> Arc<up::UltraRuntime> {
+        let dir = root.join(".forge/ultraplan/production-fixture");
+        up::write_json_atomic(&dir.join("team-plan.json"), &tasks).unwrap();
+        Arc::new(up::UltraRuntime {
+            kind: up::TurnKind::Production(up::ProductionPhase::Start),
+            flow_id: "fixture".into(), dir_rel: ".forge/ultraplan/production-fixture".into(), dir_abs: dir,
+            facts: up::ProjectFacts { has_project:false, game_mode:None, render_backend:None, assets:0,
+                scenes:0, scripts:0, docs:0, has_content:false, scan_error:None },
+            deep:up::DeepPlanning::default(), deep_fallback:None, tracker:up::TurnTracker::default(),
+            prompt_suffix:String::new(), exit_tool_specs:vec![], preamble:String::new(), sections:vec![],
+        })
+    }
+
+    /// Real dynamic result submission, child termination and scheduler dependency
+    /// gating; no network, MCP server, engine, compiler or user project is used.
+    #[tokio::test]
+    async fn ultraplan_production_handoff_failures_never_complete_or_dispatch_downstream() {
+        for (case, submission, reason, expected_status) in [
+            ("blocked", Some(json!({"status":"blocked","summary":"缺少编译器","reasonCode":"RX_CLI_NOT_FOUND","outputs":[],"evidence":[]})), "RX_CLI_NOT_FOUND", "blocked"),
+            ("unsubmitted", None, "UP_RESULT_MISSING", "blocked"),
+            ("missing-output", Some(json!({"status":"completed","summary":"已实现","outputs":["upstream.txt"],"evidence":[]})), "UP_OUTPUT_MISSING", "failed"),
+            ("plan-write", Some(json!({"status":"blocked","summary":"会话只读权限拒绝写入","reasonCode":"TOOL_FORBIDDEN","outputs":[],"evidence":[]})), "TOOL_FORBIDDEN", "blocked"),
+        ] {
+            let (state, dir) = test_state(&format!("up-handoff-{case}"));
+            let (root, scope) = ultra_scope(&format!("up-handoff-{case}"), false);
+            let session = state.sessions.create("production", "coding", Some("mock".into()), true, None);
+            let source = "ultraplan:fixture:1";
+            let first = state.todos.create(&session.id, NewTodo {
+                title:"上游实现".into(), role:Some("logic-programmer".into()), prompt:Some("实现上游文件并提交真实任务结果".into()),
+                source:Some(source.into()), plan_todo_id:Some("fixture:T01".into()), ..Default::default()
+            }).unwrap();
+            let second = state.todos.create(&session.id, NewTodo {
+                title:"下游集成".into(), role:Some("logic-programmer".into()), prompt:Some("依赖上游交接后集成游戏".into()),
+                deps:vec![first.id.clone()], source:Some(source.into()), plan_todo_id:Some("fixture:T02".into()), ..Default::default()
+            }).unwrap();
+            let rt = production_runtime_fixture(&root, json!([
+                {"id":"T01","role":"logic-programmer","requiredTools":["read_file"],"outputs":["upstream.txt"],"handoffChecks":[{"kind":"file","path":"upstream.txt"}]},
+                {"id":"T02","role":"logic-programmer","requiredTools":["read_file"],"outputs":["downstream.txt"],"handoffChecks":[{"kind":"file","path":"downstream.txt"}]}
+            ]));
+            up::write_json_atomic(&rt.dir_abs.join("production.json"), &json!({"flowId":"fixture","planRev":1,"planHash":"approved-fixture","activeTodoIds":[first.id,second.id]})).unwrap();
+            let mut calls = Vec::new();
+            if case == "plan-write" {
+                state.permissions.set_mode(&session.id,"plan").unwrap();
+                calls.push(("write_file",json!({"path":"upstream.txt","content":"must not be written"})));
+            }
+            calls.extend(submission.clone().into_iter().map(|value| (up::production::RESULT_TOOL, value)));
+            let (flow, rpc) = production_rpc_fixture(calls);
+            let child = SubTaskCtx { participant_id:None, llm:None, mcp_tools:vec![], vision:false,
+                project_root:root.clone(), workspaces:state.workspaces.clone(), scope, read_only:false,
+                managed:Some(flow), managed_model:Some("fixture".into()), cancel:None, ultra:Some(rt.clone()), state:std::sync::Weak::new() };
+            let dispatched = Arc::new(Mutex::new(Vec::new()));
+            let dispatch = |request: crate::plan::DispatchReq| {
+                let child = child.clone(); let state = state.clone(); let root = root.clone(); let rt = rt.clone();
+                let sid = session.id.clone(); let dispatched = dispatched.clone();
+                async move {
+                    let id = request.task_id.clone().unwrap();
+                    let attempt = request.attempt.unwrap();
+                    dispatched.lock().unwrap().push(id.clone());
+                    let result = run_nested_task(&root,state.events.clone(),state.todos.clone(),state.permissions.clone(),&sid,"fixture-parent",
+                        &json!({"prompt":request.prompt,"description":request.description,"subagent_type":request.subagent_type,
+                            "_productionTaskId":id,"_productionAttempt":attempt,"_toolCallId":request.tool_call_id}),
+                        Arc::new(Mutex::new(None)),Arc::new(Mutex::new(None)),child,None).await;
+                    assert!(!result.0, "model completion must not be host completion: {}",result.1);
+                    match up::production::read_task_result(&rt.dir_abs,&id,attempt).unwrap() {
+                        Some(saved) if saved.status == up::production::ProductionTaskStatus::Blocked => crate::plan::DispatchOutcome::Blocked(result.1),
+                        _ => crate::plan::DispatchOutcome::Failed(result.1),
+                    }
+                }
+            };
+            let cancelled = || false;
+            let ctx = crate::plan::TeamFlowCtx { todos:&state.todos, events:&state.events, session_id:&session.id,
+                user_goal:"交付可玩的游戏", cancelled:&cancelled, max_fix_rounds:3, source_filter:Some(source),
+                serialize_engine:true, validate:None, verification_issues:None, production_dir:Some(&rt.dir_abs) };
+            let report = tokio::time::timeout(std::time::Duration::from_secs(5),crate::plan::run_ready_waves(&ctx,&dispatch)).await.unwrap();
+            assert!(report.completed.is_empty(), "{case}");
+            assert!(report.stalled.is_none(), "{case}: {:?}",report.stalled);
+            assert_eq!(*dispatched.lock().unwrap(),vec![first.id.clone()],"{case}: downstream dispatched");
+            let todos = state.todos.list_by_session(&session.id);
+            assert_eq!(todos.iter().find(|todo|todo.id==first.id).unwrap().status,expected_status,"{case}");
+            let downstream = todos.iter().find(|todo|todo.id==second.id).unwrap();
+            assert_eq!(downstream.status,"blocked");
+            assert!(downstream.summary.as_deref().unwrap().starts_with("DEPENDENCY_BLOCKED:"));
+            let saved = up::production::read_task_result(&rt.dir_abs,&first.id,1).unwrap().unwrap();
+            assert_ne!(saved.status,up::production::ProductionTaskStatus::Completed);
+            assert!(saved.reason_code.contains(reason),"{case}: {}",saved.reason_code);
+            assert!(saved.receipt.is_none());
+            assert_eq!(up::production::read_pending_submission(&rt.dir_abs,&first.id,1).unwrap().is_some(),submission.is_some());
+            assert!(events_of(&state,&session.id,"subagent.completed").is_empty());
+            assert_eq!(events_of(&state,&session.id,"subagent.started").len(),1);
+            let messages = rpc.lock().unwrap();
+            assert_eq!(messages.iter().filter(|message|message["method"]=="thread/start").count(),1);
+            if submission.is_some() {
+                let result_call = if case == "plan-write" { "fixture-call-1" } else { "fixture-call-0" };
+                assert!(messages.iter().any(|message|message["id"]==result_call && message["result"]["success"]==true));
+            }
+            if case == "plan-write" {
+                assert!(messages.iter().any(|message|message["id"]=="fixture-call-0" && message["result"]["success"]==false));
+                assert!(!root.join("upstream.txt").exists());
+            }
+            drop(messages);
+            // HTTP todo mutation cannot bypass the rejected host handoff.
+            for status in ["completed","running","verifying"] {
+                let (code, body) = resp_json(patch_todo(State(state.clone()),Path(first.id.clone()),Json(PatchTodoRequest {
+                    status:Some(status.into()),..Default::default()
+                })).await).await;
+                assert_eq!(code,StatusCode::BAD_REQUEST);
+                assert_eq!(body["error"]["code"],"UP_HOST_OWNED_STATUS");
+            }
+            assert!(crate::plan::ready_ids(&state.todos.list_by_session(&session.id)).is_empty());
+            std::fs::remove_dir_all(root).ok(); std::fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    #[tokio::test]
+    async fn ultraplan_production_preflight_reports_twelve_missing_capabilities_before_work() {
+        let (state, dir) = test_state("up-preflight-twelve");
+        let (root, _) = ultra_scope("up-preflight-twelve",false);
+        let tasks:Vec<Value> = (1..=12).map(|index| {
+            let path = format!("output-{index}.txt");
+            json!({"id":format!("T{index:02}"),"role":"logic-programmer","requiredTools":["mcp__engine-scene__scene_summary"],
+                "outputs":[path],"handoffChecks":[{"kind":"file","path":path}]})
+        }).collect();
+        let rt = production_runtime_fixture(&root,json!(tasks));
+        let error = production_preflight(&rt,&[],&root,"bypass").await.unwrap_err();
+        assert!(error.starts_with("UP_CAPABILITY_UNAVAILABLE"));
+        let report = up::read_json(&rt.dir_abs.join("preflight.json")).unwrap();
+        assert_eq!(report["status"],"blocked");
+        let missing = report["missing"].as_array().unwrap();
+        assert_eq!(missing.len(),12);
+        for index in 1..=12 {
+            assert!(missing.iter().any(|value|value.as_str().unwrap().contains(&format!("T{index:02} / logic-programmer: mcp__engine-scene__scene_summary"))));
+        }
+        assert!(!rt.dir_abs.join("jobs").exists());
+        assert!(!rt.dir_abs.join("execution.json").exists());
+        assert!(events_of(&state,"fixture","subagent.started").is_empty());
+        std::fs::remove_dir_all(root).ok(); std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn ultraplan_production_plan_permission_blocks_declared_writes_before_work() {
+        let (root, _) = ultra_scope("up-preflight-plan-permission",false);
+        let rt = production_runtime_fixture(&root,json!([{"id":"T01","role":"logic-programmer","requiredTools":["write_file"],
+            "outputs":["output.txt"],"handoffChecks":[{"kind":"file","path":"output.txt"}]}]));
+        let error = production_preflight(&rt,&[],&root,"plan").await.unwrap_err();
+        assert!(error.contains("write_file 被会话只读权限禁止"),"{error}");
+        assert!(!root.join("output.txt").exists());
+        assert!(!rt.dir_abs.join("jobs").exists());
+        production_preflight(&rt,&[],&root,"bypass").await.unwrap();
+        assert_eq!(up::read_json(&rt.dir_abs.join("preflight.json")).unwrap()["status"],"ready");
+        std::fs::remove_dir_all(root).ok();
+    }
+
     // r### 定界:understanding 以 Markdown 二级标题起头,JSON 里就是 `"##`——r## 定界会被它提前收尾。
     const QUESTIONNAIRE_ARGS: &str = r###"{"title":"塔防小游戏 · 需求确认","understanding":"## 我的理解\n一个 2D 塔防,向日葵产阳光。","sections":[{"id":"core","title":"核心玩法","questions":[{"id":"loop","kind":"single","question":"核心循环是哪一种?","options":[{"id":"wave","label":"波次防守","description":"经典,推荐","recommended":true},{"id":"endless","label":"无尽模式"},{"id":"puzzle","label":"解谜关卡"}],"allowOther":true},{"id":"name","kind":"text","question":"游戏叫什么?"}]},{"id":"scope","title":"范围与 MVP 取舍","questions":[{"id":"difficulty","kind":"scale","question":"难度偏好?","scaleLabels":["轻松","硬核"]}]}]}"###;
 
-    const EXPLORE_TASK_A: &str = r#"{"prompt":"盘点 Content 下的资产与美术风格,带路径","description":"摸底资产与美术风格","subagent_type":"explore"}"#;
-    const EXPLORE_TASK_B: &str = r#"{"prompt":"梳理现有场景与实体,带场景路径","description":"摸底场景与实体","subagent_type":"explore"}"#;
+    const EXPLORE_TASK_A: &str = r#"{"prompt":"用户希望在现有 2D 项目上制作塔防。只读检查 Content 中的贴图和精灵资源，识别可复用的防御塔、敌人与地形及美术约束，不改文件、不调查玩法脚本。返回真实路径、复用建议、缺口及证据，供主 agent 设计需求问卷。","description":"摸底塔防资产与美术风格","subagent_type":"explore"}"#;
+    const EXPLORE_TASK_B: &str = r#"{"prompt":"用户希望在现有 2D 项目上制作塔防。只读检查 forge.toml、场景、实体、脚本和设计文档，定位已有移动/伤害/波次逻辑及引擎约束；资产美术由其他成员调查。返回路径、现有行为、可复用模块和需要澄清的问题，不修改内容，所有结论附可复查证据。","description":"摸底塔防场景与玩法","subagent_type":"explore"}"#;
 
     /// UltraPlan 用例的工作区:隔离临时目录,项目根 = 工作区根(项目在工作区内)。
     /// `with_content` = 已初始化的 2D 项目外加一张贴图(「项目已有内容」);否则是空目录(还没有项目)。
@@ -10486,15 +11341,16 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Existing content is explored by the coordinator before the first model step.
+    /// Only the leader's explicit task calls may start the first exploration batch.
     #[tokio::test]
-    async fn ultraplan_questionnaire_has_three_automatic_explorers() {
+    async fn ultraplan_questionnaire_uses_leader_authored_explorers() {
         let (state, dir) = test_state("up-explore");
         let (root, scope) = ultra_scope("up-explore", true);
         let session = state.sessions.create("t", "coding", None, true, None);
         let seen = Arc::new(Mutex::new(Vec::new()));
         let step = scripted_step_capturing_msgs(
             vec![
+                tool_calls_msg(&[("t1", "task", EXPLORE_TASK_A), ("t2", "task", EXPLORE_TASK_B)]),
                 tool_call_msg(up::QUESTIONNAIRE_TOOL, QUESTIONNAIRE_ARGS),
                 final_msg("请填写问卷"),
             ],
@@ -10514,14 +11370,45 @@ mod tests {
         .await;
         assert_eq!(out.status, "completed", "{:?}", out.error);
         let subs = events_of(&state, &session.id, "subagent.started");
-        assert_eq!(subs.len(), 3);
+        assert_eq!(subs.len(), 2);
         assert!(subs.iter().all(|e| e.payload["subagentType"] == "explore"));
         assert!(events_of(&state, &session.id, "agent.tool.failed").is_empty());
         let flow = flow_of(&state, &session.id);
         assert_eq!(flow.stage, up::STAGE_QUESTIONNAIRE);
         assert_eq!(flow.questionnaire_rev, 1);
-        assert_eq!(up::explore_reports(&flow.dir_abs(&root).unwrap()).len(), 3);
+        let reports = up::explore_reports(&flow.dir_abs(&root).unwrap());
+        assert_eq!(reports.len(), 2);
+        let report_text = reports.iter().map(|(_, path)| std::fs::read_to_string(path).unwrap()).collect::<Vec<_>>().join("\n");
+        assert!(report_text.contains(serde_json::from_str::<Value>(EXPLORE_TASK_A).unwrap()["prompt"].as_str().unwrap()));
+        assert!(report_text.contains(serde_json::from_str::<Value>(EXPLORE_TASK_B).unwrap()["prompt"].as_str().unwrap()));
         assert!(system_text(&seen).contains("当前项目为 2D 游戏"));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn ultraplan_does_not_start_children_without_leader_assignments() {
+        let (state, dir) = test_state("up-no-headless");
+        let (root, scope) = ultra_scope("up-no-headless", true);
+        let session = state.sessions.create("t", "coding", None, true, None);
+        let step = scripted_step(
+            vec![
+                tool_call_msg(up::QUESTIONNAIRE_TOOL, QUESTIONNAIRE_ARGS),
+                final_msg("先核对需求，再为探索任务编写具体委派。"),
+            ],
+            None,
+        );
+        let out = execute_turn(&state, &session, ultra_input(
+            &session, "在现有项目上做塔防", step.as_ref(), Arc::from(ok_executor()), &scope,
+        )).await;
+        assert_eq!(out.status, "completed", "{:?}", out.error);
+        assert!(events_of(&state, &session.id, "subagent.started").is_empty());
+        assert!(events_of(&state, &session.id, "ultraplan.questionnaire").is_empty());
+        let flow = flow_of(&state, &session.id);
+        assert_eq!(flow.stage, up::STAGE_DISCOVERY);
+        assert!(up::explore_reports(&flow.dir_abs(&root).unwrap()).is_empty());
+        assert!(events_of(&state, &session.id, "agent.tool.failed").iter().any(|e|
+            e.payload["error"].as_str().is_some_and(|s| s.contains("ULTRAPLAN_EXPLORE_REQUIRED"))));
         std::fs::remove_dir_all(&root).ok();
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -10674,6 +11561,7 @@ mod tests {
         let session = state.sessions.create("t", "coding", None, true, None);
         let step = scripted_step(
             vec![
+                tool_calls_msg(&[("t1", "task", EXPLORE_TASK_A), ("t2", "task", EXPLORE_TASK_B)]),
                 tool_call_msg(up::QUESTIONNAIRE_TOOL, QUESTIONNAIRE_ARGS),
                 tool_call_msg(up::QUESTIONNAIRE_TOOL, QUESTIONNAIRE_ARGS),
                 final_msg("请填写问卷"),
@@ -10695,8 +11583,8 @@ mod tests {
         assert_eq!(out.status, "completed", "{:?}", out.error);
         let flow = flow_of(&state, &session.id);
         assert_eq!(flow.questionnaire_rev, 1);
-        assert_eq!(events_of(&state, &session.id, "subagent.started").len(), 3);
-        assert_eq!(up::explore_reports(&flow.dir_abs(&root).unwrap()).len(), 3);
+        assert_eq!(events_of(&state, &session.id, "subagent.started").len(), 2);
+        assert_eq!(up::explore_reports(&flow.dir_abs(&root).unwrap()).len(), 2);
         std::fs::remove_dir_all(&root).ok();
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -11851,5 +12739,123 @@ mod tests {
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::fs::remove_dir_all(&dir).ok();
         std::fs::remove_dir_all(&gen_dir).ok();
+    }
+
+    /// Milestone 3: WorldBuild turn execution wires actions into state machine:
+    /// 1. Action rebuild_building mutates manifest.json, scene.json, bumps previewRev to 2.
+    /// 2. Action approve_preview generates approved_preview.json, advances stage to STAGE_CONSTRUCTION.
+    /// 3. demo_host registers both slug and token without 404 risk.
+    #[tokio::test]
+    async fn world_build_turn_execution_rebuild_and_approve_preview() {
+        use crate::world_build::{self, WorldBuildReq, STAGE_PREVIEW_REVIEW, STAGE_CONSTRUCTION};
+        let (state, dir) = test_state("wb-exec");
+        let ws = dir.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let scope = crate::scope::ScopeContext::single(crate::scope::ScopeProject {
+            workspace_id: Some("ws_test".into()),
+            name: "test".into(),
+            workspace_root: ws.clone(),
+            project_root: ws.clone(),
+            game_mode: assetd::project::GameMode::ThreeD,
+        });
+
+        let session = state.sessions.create("wb_test", "coding", None, true, Some("ws_test".to_string()));
+        let sid = session.id.clone();
+
+        // 1. Initial flow setup at preview_review stage
+        let mut wb = world_build::WorldBuildState::new_flow("SciFi Base", Some("ws_test"), &ws);
+        wb.stage = STAGE_PREVIEW_REVIEW.to_string();
+        wb.preview_rev = 1;
+        let preview_dir = ws.join(&wb.dir).join(world_build::PREVIEW_DIR);
+        std::fs::create_dir_all(&preview_dir).unwrap();
+        let mut manifest = world_build::preview::synthesize_initial_manifest(&wb.slug, None);
+        manifest["token"] = json!(&wb.token);
+        world_build::write_json_atomic(&preview_dir.join("manifest.json"), &manifest).unwrap();
+        world_build::write_json_atomic(&preview_dir.join("scene.json"), &manifest).unwrap();
+        world_build::preview::generate_preview_package(&ws, &wb.slug, Some(&manifest)).unwrap();
+
+        state.sessions.update_world_build(&sid, |slot| {
+            *slot = Some(wb.clone());
+        });
+        let session = state.sessions.get(&sid).unwrap();
+
+        // Verify initial demo_host registration works for both slug and token
+        assert!(crate::demo_host::global().root(&wb.slug).is_some());
+        assert!(crate::demo_host::global().root(&wb.token).is_some());
+
+        // 2. Execute turn with rebuild_building action
+        let step = scripted_step(vec![final_msg("ok")], None);
+        let execute: Box<ExecFn> = Box::new(|_n, _a| Box::pin(async { (true, "{}".into()) }));
+
+        let req = WorldBuildReq {
+            id: wb.id.clone(),
+            rev: Some(1),
+            action: Some("rebuild_building".into()),
+            building_id: Some("bldg_terminal_01".into()),
+            instruction: Some("加停机坪与泛光灯".into()),
+            style_preset: None,
+            parameters: None,
+        };
+        let turn = world_build::resolve_request(&session, world_build::MODE, Some(&req), "").unwrap().unwrap();
+        let mut input = turn_input(world_build::MODE, "", vec![], step.as_ref(), Arc::from(execute));
+        input.scope = Some(scope.clone());
+        input.world_build = Some(turn);
+
+        let out = execute_turn(&state, &session, input).await;
+        assert_eq!(out.status, "completed");
+        assert!(out.text.contains("已重构建筑 [bldg_terminal_01]"));
+
+        // Verify state and disk files after rebuild
+        let session_after = state.sessions.get(&sid).unwrap();
+        let wb_after = session_after.world_build.as_ref().unwrap();
+        assert_eq!(wb_after.preview_rev, 2);
+        assert_eq!(wb_after.stage, STAGE_PREVIEW_REVIEW);
+
+        let manifest_disk = world_build::read_manifest(&preview_dir).unwrap();
+        assert_eq!(manifest_disk["rev"], 2);
+        let bldgs = manifest_disk["buildings"].as_array().unwrap();
+        let terminal = bldgs.iter().find(|b| b["id"] == "bldg_terminal_01").unwrap();
+        assert_eq!(terminal["rebuilt"], true);
+        assert_eq!(terminal["lastInstruction"], "加停机坪与泛光灯");
+
+        // Verify scene.json was also dual-synced to Rev 2
+        let scene_disk: Value = serde_json::from_str(&std::fs::read_to_string(preview_dir.join("scene.json")).unwrap()).unwrap();
+        assert_eq!(scene_disk["rev"], 2);
+
+        // 3. Execute turn with approve_preview action
+        let step2 = scripted_step(vec![final_msg("ok")], None);
+        let execute2: Box<ExecFn> = Box::new(|_n, _a| Box::pin(async { (true, "{}".into()) }));
+
+        let req_approve = WorldBuildReq {
+            id: wb.id.clone(),
+            rev: Some(2),
+            action: Some("approve_preview".into()),
+            building_id: None,
+            instruction: None,
+            style_preset: None,
+            parameters: None,
+        };
+        let turn_approve = world_build::resolve_request(&session_after, world_build::MODE, Some(&req_approve), "").unwrap().unwrap();
+        let mut input_approve = turn_input(world_build::MODE, "", vec![], step2.as_ref(), Arc::from(execute2));
+        input_approve.scope = Some(scope.clone());
+        input_approve.world_build = Some(turn_approve);
+
+        let out_approve = execute_turn(&state, &session_after, input_approve).await;
+        assert_eq!(out_approve.status, "completed");
+        assert!(out_approve.text.contains("场景预览已确认"));
+
+        // Verify stage advanced to construction
+        let session_approved = state.sessions.get(&sid).unwrap();
+        let wb_approved = session_approved.world_build.as_ref().unwrap();
+        assert_eq!(wb_approved.stage, STAGE_CONSTRUCTION);
+        assert!(wb_approved.approved_preview.is_some());
+
+        // Verify approved_preview.json and template.json exist on disk
+        let flow_dir = ws.join(&wb_approved.dir);
+        assert!(flow_dir.join(world_build::APPROVED_PREVIEW_FILE).is_file());
+        assert!(flow_dir.join(world_build::TEMPLATE_FILE).is_file());
+
+        // Clean up
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

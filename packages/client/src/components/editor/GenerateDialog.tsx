@@ -172,7 +172,7 @@ export default function GenerateDialog() {
           </p>
         )}
         {noBackend && (
-          <p className="mt-1.5 text-2xs text-info" data-gen-error>
+          <p className="mt-1.5 text-2xs text-fg-2" data-gen-error>
             GEN_BACKEND_NOT_CONFIGURED:无已配置生成后端。请到 设置 → 模型 →「生成后端」配置后重试。
             <OpenModelsSettings />
           </p>

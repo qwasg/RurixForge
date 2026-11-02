@@ -122,14 +122,14 @@ fn scene_cam_cases() -> Vec<(&'static str, Scene, f32)> {
         tr([0.0, 0.0, 10.0], [0.0, 0.0, 0.0, 1.0], [1.0; 3]),
         vec![comp("Camera", json!({"projection": "orthographic", "orthoSize": 6.2, "near": 0.1, "far": 100.0}))],
     ));
-    // 正交 + roll:view_proj 丢 roll,ray 保留 roll(现状不对称)。
+    // 正交 + roll:投影与射线均保留roll。
     let mut roll = Scene::with_mode("golden-roll", "2d");
     roll.entities.push(ent(
         4,
         tr([1.5, -2.0, 12.0], [0.0, 0.0, 0.258819, 0.9659258], [1.0; 3]),
         vec![comp("Camera", json!({"projection": "orthographic", "orthoSize": 3.75}))],
     ));
-    // Parent 链:场景相机只用本地 transform(不走 Parent);fov/near/far 取缺省。
+    // Parent 链:投影、射线和eye使用相同世界变换;fov/near/far 取缺省。
     let mut parented = Scene::new("golden-parent");
     parented.entities.push(ent(10, tr([10.0, 0.0, 0.0], [0.0, 0.3826834, 0.0, 0.9238795], [2.0; 3]), vec![]));
     parented.entities.push(ent(
@@ -137,7 +137,7 @@ fn scene_cam_cases() -> Vec<(&'static str, Scene, f32)> {
         tr([0.0, 1.5, 6.0], [-0.13052619, 0.0, 0.0, 0.9914449], [1.0; 3]),
         vec![comp("Parent", json!({"entity": 10})), comp("Camera", json!({}))],
     ));
-    // 选实体看"任一启用 Camera",取 props 却取首个 Camera 组件(即使它被禁用)。
+    // 选择同一个启用 Camera 的实体与 props，忽略禁用组件。
     let mut quirk = Scene::new("golden-quirk");
     quirk.entities.push(ent(1, Transform::default(), vec![disabled("Camera", json!({"fov": 20.0}))]));
     quirk.entities.push(ent(
@@ -586,37 +586,38 @@ const EDITOR: &[(&str, &[u32])] = &[
     ("ortho_tilt@2520x1080/ray3", &[0x414bf648, 0x4155698c, 0x410d68c8, 0xbf1cc470, 0xbf000000, 0xbf1cc470]),
 ];
 
+// RXS-0408: measured again after Parent/roll and enabled-camera selection were unified.
 const SCENE_CAM: &[(&str, &[u32])] = &[
-    ("persp_roll@960x540/view_proj", &[0x3f606f52, 0x00000000, 0xbf21b466, 0x401b154f, 0x3e371195, 0x3ff2bfe5, 0x3e7e162a, 0xc0e86721, 0xbf13eb39, 0x3e233885, 0xbf4d4d12, 0x40ee6850, 0xbf13bdc8, 0x3e230660, 0xbf4d0e00, 0x40f7b8ac]),
+    ("persp_roll@960x540/view_proj", &[0x3f61b377, 0x3e2aa6ef, 0xbf1a232a, 0x3fe0ab4b, 0xbd8902c9, 0x3fefc4e6, 0x3ed74d8f, 0xc0fb15b5, 0xbf13eb39, 0x3e233885, 0xbf4d4d12, 0x40ee6850, 0xbf13bdc8, 0x3e230660, 0xbf4d0e00, 0x40f7b8ac]),
     ("persp_roll@960x540/ray0", &[0x40400000, 0x40200000, 0x41000000, 0xbf13bdc7, 0x3e23065f, 0xbf4d0e02]),
-    ("persp_roll@960x540/ray1", &[0x40400000, 0x40200000, 0x41000000, 0xbe34000b, 0x3dbf593d, 0xbf7ae052]),
-    ("persp_roll@960x540/ray2", &[0x40400000, 0x40200000, 0x41000000, 0xbf6d00a5, 0x3eb7f835, 0xbdf09d48]),
-    ("persp_roll@960x540/ray3", &[0x40400000, 0x40200000, 0x41000000, 0x3d7f2097, 0x3f09cb50, 0xbf57295c]),
-    ("persp_roll@540x960/view_proj", &[0x403154cc, 0x00000000, 0xbfff8888, 0x40f511df, 0x3e371195, 0x3ff2bfe5, 0x3e7e162a, 0xc0e86721, 0xbf13eb39, 0x3e233885, 0xbf4d4d12, 0x40ee6850, 0xbf13bdc8, 0x3e230660, 0xbf4d0e00, 0x40f7b8ac]),
+    ("persp_roll@960x540/ray1", &[0x40400000, 0x40200000, 0x41000000, 0xbe34000b, 0x3dbf593b, 0xbf7ae052]),
+    ("persp_roll@960x540/ray2", &[0x40400000, 0x40200000, 0x41000000, 0xbf6d00a3, 0x3eb7f835, 0xbdf09d4c]),
+    ("persp_roll@960x540/ray3", &[0x40400000, 0x40200000, 0x41000000, 0x3d7f2099, 0x3f09cb51, 0xbf57295c]),
+    ("persp_roll@540x960/view_proj", &[0x403254e9, 0x3f06d612, 0xbff39338, 0x40b1842e, 0xbd8902c9, 0x3fefc4e6, 0x3ed74d8f, 0xc0fb15b5, 0xbf13eb39, 0x3e233885, 0xbf4d4d12, 0x40ee6850, 0xbf13bdc8, 0x3e230660, 0xbf4d0e00, 0x40f7b8ac]),
     ("persp_roll@540x960/ray0", &[0x40400000, 0x40200000, 0x41000000, 0xbf13bdc7, 0x3e23065f, 0xbf4d0e02]),
-    ("persp_roll@540x960/ray1", &[0x40400000, 0x40200000, 0x41000000, 0xbee3ac1a, 0x3d5c98b5, 0xbf64e1f1]),
-    ("persp_roll@540x960/ray2", &[0x40400000, 0x40200000, 0x41000000, 0xbf375572, 0x3f08a146, 0xbee64722]),
-    ("persp_roll@540x960/ray3", &[0x40400000, 0x40200000, 0x41000000, 0xbeaaa6a7, 0x3f14140d, 0xbf3e999b]),
+    ("persp_roll@540x960/ray1", &[0x40400000, 0x40200000, 0x41000000, 0xbee3ac1a, 0x3d5c98b3, 0xbf64e1f1]),
+    ("persp_roll@540x960/ray2", &[0x40400000, 0x40200000, 0x41000000, 0xbf375572, 0x3f08a147, 0xbee64722]),
+    ("persp_roll@540x960/ray3", &[0x40400000, 0x40200000, 0x41000000, 0xbeaaa6a7, 0x3f14140e, 0xbf3e999a]),
     ("ortho2d@1280x720/view_proj", &[0x3db9ce74, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x3e25294b, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xbc240106, 0x3dcaf478, 0x00000000, 0x00000000, 0x00000000, 0x3f800000]),
     ("ortho2d@1280x720/ray0", &[0x00000000, 0x00000000, 0x41200000, 0x00000000, 0x00000000, 0xbf800000]),
     ("ortho2d@1280x720/ray1", &[0x40b05b05, 0xbfc66666, 0x41200000, 0x00000000, 0x00000000, 0xbf800000]),
     ("ortho2d@1280x720/ray2", &[0xc1305b05, 0x40c66666, 0x41200000, 0x00000000, 0x00000000, 0xbf800000]),
     ("ortho2d@1280x720/ray3", &[0x411eb851, 0x40b28f5b, 0x41200000, 0x00000000, 0x00000000, 0xbf800000]),
-    ("ortho_roll@640x480/view_proj", &[0x3e4ccccd, 0x00000000, 0x00000000, 0xbe99999a, 0x00000000, 0x3e888889, 0x00000000, 0x3f088889, 0x00000000, 0x00000000, 0xbb031925, 0x3cc30234, 0x00000000, 0x00000000, 0x00000000, 0x3f800000]),
+    ("ortho_roll@640x480/view_proj", &[0x3e315cac, 0x3dcccccd, 0x00000000, 0xbd74f8d3, 0xbe088889, 0x3e6c7b91, 0x00000000, 0x3f2970fc, 0x00000000, 0x00000000, 0xbb031925, 0x3cc30234, 0x00000000, 0x00000000, 0x00000000, 0x3f800000]),
     ("ortho_roll@640x480/ray0", &[0x3fc00000, 0xc0000000, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
-    ("ortho_roll@640x480/ray1", &[0x40844833, 0xbfc7ec4d, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
-    ("ortho_roll@640x480/ray2", &[0xc0969066, 0xbfa04ecc, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
-    ("ortho_roll@640x480/ray3", &[0x406d6a50, 0x404b0fbd, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
-    ("parented@320x180/view_proj", &[0x3f796a53, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x3fd625ef, 0xbee585f7, 0x3e388061, 0x00000000, 0xbe848ab6, 0xbf775394, 0x40c2b853, 0x00000000, 0xbe8483ed, 0xbf7746ea, 0x40c5e18e]),
-    ("parented@320x180/ray0", &[0x00000000, 0x3fc00000, 0x40c00000, 0x00000000, 0xbe8483ee, 0xbf7746ea]),
-    ("parented@320x180/ray1", &[0x00000000, 0x3fc00000, 0x40c00000, 0x3ee7ddfa, 0xbeb3ed39, 0xbf51c43e]),
-    ("parented@320x180/ray2", &[0x00000000, 0x3fc00000, 0x40c00000, 0xbf2a13be, 0x3e46161e, 0xbf38d131]),
-    ("parented@320x180/ray3", &[0x00000000, 0x3fc00000, 0x40c00000, 0x3f224a18, 0x3e2ad3fc, 0xbf415301]),
-    ("quirk@1x1/view_proj", &[0x40748c11, 0x00000000, 0x40861b3f, 0xc1a7a20f, 0xbfe7663c, 0x40a3ba3a, 0x3fd2fb5b, 0xc1bcba37, 0x3f2ab366, 0x3edce82d, 0xbf1ba397, 0x3fd29d63, 0x3f2aaaa9, 0x3edcdcde, 0xbf1b9b9f, 0x3fdf5f68]),
+    ("ortho_roll@640x480/ray1", &[0x40844834, 0xbfc7ec4d, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
+    ("ortho_roll@640x480/ray2", &[0xc0969067, 0xbfa04ecc, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
+    ("ortho_roll@640x480/ray3", &[0x406d6a52, 0x404b0fbd, 0x41400000, 0x00000000, 0x00000000, 0xbf800000]),
+    ("parented@320x180/view_proj", &[0x3f305d08, 0x3433446b, 0xbf305cf8, 0xc0dc745b, 0xbea24c30, 0x3fd625f1, 0xbea24c31, 0x4061ef56, 0xbf2ee2d8, 0xbe848abc, 0xbf2ee2e8, 0x4198cfe5, 0xbf2ed9e4, 0xbe8483f3, 0xbf2ed9f4, 0x419994df]),
+    ("parented@320x180/ray0", &[0x4193e1db, 0x40400000, 0x4107c3b7, 0xbf2ed9eb, 0xbe8483ee, 0xbf2ed9ec]),
+    ("parented@320x180/ray1", &[0x4193e1db, 0x40400000, 0x4107c3b7, 0xbe84b32b, 0xbeb3ed38, 0xbf664e05]),
+    ("parented@320x180/ray2", &[0x4193e1db, 0x40400000, 0x4107c3b7, 0xbf7af2bb, 0x3e461622, 0xbd26c39f]),
+    ("parented@320x180/ray3", &[0x4193e1db, 0x40400000, 0x4107c3b7, 0xbdaf8f29, 0x3e2ad3fe, 0xbf7b74f1]),
+    ("quirk@1x1/view_proj", &[0x3f2aaaad, 0x3ca0a0e7, 0x3f3ebebd, 0xc0723231, 0xbeaaaaad, 0x3f66e6e8, 0x3e8c8c8c, 0xc0828283, 0x3f2ab366, 0x3edce82d, 0xbf1ba397, 0x3fd29d63, 0x3f2aaaa9, 0x3edcdcde, 0xbf1b9b9f, 0x3fdf5f68]),
     ("quirk@1x1/ray0", &[0x00000000, 0x40400000, 0x40a00000, 0x3f2aaaaa, 0x3edcdcdc, 0xbf1b9b9c]),
-    ("quirk@1x1/ray1", &[0x00000000, 0x40400000, 0x40a00000, 0x3f3c8fa2, 0x3ec86b5f, 0xbf0d3461]),
-    ("quirk@1x1/ray2", &[0x00000000, 0x40400000, 0x40a00000, 0x3ef3982e, 0x3f11cbc0, 0xbf2b986d]),
-    ("quirk@1x1/ray3", &[0x00000000, 0x40400000, 0x40a00000, 0x3f33bcda, 0x3f104827, 0xbeded40e]),
+    ("quirk@1x1/ray1", &[0x00000000, 0x40400000, 0x40a00000, 0x3f72138e, 0x3e40c8ea, 0xbe87d360]),
+    ("quirk@1x1/ray2", &[0x00000000, 0x40400000, 0x40a00000, 0xbe4511a4, 0x3f422bba, 0xbf1f64db]),
+    ("quirk@1x1/ray3", &[0x00000000, 0x40400000, 0x40a00000, 0x3f18e2aa, 0x3f4766fc, 0x3e43fdb1]),
     ("none@960x540/view_proj", &[]),
     ("none@960x540/ray0", &[]),
     ("none@960x540/ray1", &[]),
@@ -765,7 +766,7 @@ fn model_eye_cases() -> Vec<(&'static str, Scene, EditorCamera, bool)> {
     let mut cycle = Scene::new("golden-eye-cycle");
     cycle.entities.push(ent(60, tr([1.0; 3], ID_ROT, [1.0; 3]), vec![comp("Parent", json!({"entity": 61})), comp("Camera", json!({}))]));
     cycle.entities.push(ent(61, Transform::default(), vec![comp("Parent", json!({"entity": 60}))]));
-    // 首个 Camera 组件被禁用的实体被跳过(即使它还有启用的第二个 Camera)——与场景相机选法不同。
+    // 首个实体存在启用的第二个 Camera，投影与eye均使用该启用组件。
     let mut first_disabled = Scene::new("golden-eye-first-disabled");
     first_disabled.entities.push(ent(
         70,
@@ -792,7 +793,7 @@ const MODEL_EYE: &[(&str, &[u32])] = &[
     ("model_scene/edit", &[0xbf06abe6, 0x3fc55c9f, 0x40346bc4]),
     ("no_camera/pie", &[0xbf06abe6, 0x3fc55c9f, 0x40346bc4]),
     ("camera_cycle/pie", &[0xbf06abe6, 0x3fc55c9f, 0x40346bc4]),
-    ("first_camera_disabled/pie", &[0x408ba592, 0x40600000, 0x40be6456]),
+    ("first_camera_disabled/pie", &[0x41100000, 0x41100000, 0x41100000]),
 ];
 
 
@@ -815,13 +816,13 @@ fn rebuild_view_proj(v: &ViewSetup) -> M4 {
         Projection::Perspective { fov_y_deg } => perspective_vk(fov_y_deg.to_radians(), v.aspect.max(1e-6), v.near, v.far),
     };
     proj[1][1] = -proj[1][1];
-    m4_mul(proj, look_at_rh(v.eye, v.center, [0.0, 1.0, 0.0]))
+    m4_mul(proj, look_at_rh(v.eye, v.center, v.up))
 }
 
 /// view_basis 必须与 look_at_rh 的前三行(s, u, -f)逐位一致。
 fn assert_basis_matches_look_at(label: &str, v: &ViewSetup) {
     let (s, u, f) = view_basis(v);
-    let view = look_at_rh(v.eye, v.center, [0.0, 1.0, 0.0]);
+    let view = look_at_rh(v.eye, v.center, v.up);
     for i in 0..3 {
         assert_eq!(s[i].to_bits(), view[0][i].to_bits(), "{label}: right[{i}]");
         assert_eq!(u[i].to_bits(), view[1][i].to_bits(), "{label}: up[{i}]");

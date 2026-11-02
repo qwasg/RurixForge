@@ -95,3 +95,30 @@
     Quit
   forgeInitDone:
 !macroend
+
+; 安装界面(tools/installer/setup)的快捷方式选项:不勾选时传 --no-desktop-shortcut / --no-start-menu-shortcut。
+; 模板只认前者,而且升级时旧版卸载程序会保留已有快捷方式,所以这里按本次的选择删掉不要的。
+!macro customInstall
+  ${StdUtils.TestParameter} $R9 "no-desktop-shortcut"
+  StrCmp $R9 "true" 0 forgeDesktopDone
+    IfFileExists "$newDesktopLink" 0 forgeDesktopDone
+    WinShell::UninstShortcut "$newDesktopLink"
+    Delete "$newDesktopLink"
+    System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+  forgeDesktopDone:
+  ${StdUtils.TestParameter} $R9 "no-start-menu-shortcut"
+  StrCmp $R9 "true" 0 forgeStartMenuDone
+    IfFileExists "$newStartMenuLink" 0 forgeStartMenuDone
+    WinShell::UninstShortcut "$newStartMenuLink"
+    Delete "$newStartMenuLink"
+    StrCpy $launchLink "$appExe"
+  forgeStartMenuDone:
+
+  ; 模板会把安装包整个复制到 %LOCALAPPDATA%\<应用名>-updater\installer.exe,供 electron-updater 做差分更新。
+  ; RurixForge 没有自动更新,这份和安装包一样大的副本没有用处,装完即删。
+  !ifdef APP_INSTALLER_STORE_FILE
+    Delete "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+    ${StdUtils.GetParentPath} $R9 "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+    RMDir "$R9"
+  !endif
+!macroend

@@ -75,6 +75,10 @@ export type ChatBlock =
   | {
       kind: 'reasoning';
       text: string;
+      /** Codex reasoning item identity; stable across persisted lifecycle events and replay. */
+      itemId?: string;
+      /** Explicit lifecycle wins over the legacy trailing-block heuristic. */
+      status?: 'running' | 'done';
       /** 该块首个 reasoning 事件 ts(ISO);缺省 = 无计时(旧快照/直接构造的块)。 */
       startedTs?: string;
       /** 该块末个 reasoning 事件 ts(ISO);与 startedTs 之差即思考时长。 */
@@ -192,6 +196,17 @@ export type ChatBlock =
       rev: number;
       payload: Record<string, unknown>;
       /** 用户在审阅卡上的决定(design.decision 载荷);有值即只读。 */
+      submitted?: Record<string, unknown>;
+    }
+  | {
+      /**
+       * M3: WorldBuild 流程卡 (survey / preview / construction / coherence_verify / done)。
+       */
+      kind: 'world_build';
+      step: 'survey' | 'preview' | 'construction' | 'coherence_verify' | 'done';
+      slug: string;
+      rev: number;
+      payload: Record<string, unknown>;
       submitted?: Record<string, unknown>;
     };
 
@@ -779,6 +794,12 @@ const ARG_KEYS = [
   'name', 'id', 'entityId',
 ] as const;
 
+/** Delegation bodies belong in details; collapsed rows show only task/recipient metadata. */
+const DELEGATION_TOOLS = new Set([
+  'task', 'dispatch', 'send_message', 'team_member_spawn', 'team_task_create', 'team_task_update',
+  'spawn_agent', 'send_input', 'followup_task',
+]);
+
 export function argSummary(args: string): string | null {
   const obj = parseArgs(args);
   if (!obj) return null;
@@ -830,6 +851,13 @@ export function lineRange(args: string): string {
 export function toolTarget(b: Extract<ChatBlock, { kind: 'tool' }>): string {
   const bare = bareName(b.name);
   const str = (k: string): string | null => jsonArgStr(b.args, k);
+  if (DELEGATION_TOOLS.has(bare)) {
+    for (const key of ['description', 'title', 'name', 'toAgentId', 'agentId', 'id', 'taskId', 'ownerAgentId']) {
+      const value = str(key);
+      if (value) return ellipsize(compactText(value), 48);
+    }
+    return '';
+  }
   if (bare === 'grep') {
     const q = str('query') ?? str('pattern');
     const head = q === null ? '' : ellipsize(compactText(q), 72);
@@ -897,6 +925,13 @@ export function reasoningDurationMs(b: Extract<ChatBlock, { kind: 'reasoning' }>
   return to - from;
 }
 
+/** Legacy deltas have no item identity and are live only while trailing. */
+export function reasoningIsRunning(b: Extract<ChatBlock, { kind: 'reasoning' }>, isTrailing: boolean): boolean {
+  if (b.status === 'done') return false;
+  if (b.status === 'running') return b.itemId !== undefined || isTrailing;
+  return b.endedTs === undefined && isTrailing;
+}
+
 /**
  * 思考行两段式:完成「Thought」+「47s」(不足 1 秒进位 1s,过分钟仍报秒——截图里
  * 「Thought 106s」逐字如此);无计时 →「Thought briefly」。进行中不走这里(渲染层出渐变
@@ -932,12 +967,10 @@ export function todoMilestoneLabel(args: string): string {
   return headline ? ellipsize(headline, 60) : '更新待办';
 }
 
-/** 子代理首行(参考 subagent_dispatch_summary)。 */
-export function subagentDispatchSummary(label: string, prompt: string): string {
+/** 子代理首行只展示任务名称；完整提示词保留在详情中。 */
+export function subagentDispatchSummary(label: string): string {
   const l = label.trim();
-  if (l !== '') return ellipsize(l, 84);
-  const p = prompt.trim();
-  return p === '' ? '子 Agent 任务' : ellipsize(p, 84);
+  return l === '' ? '子 Agent 任务' : ellipsize(l, 84);
 }
 
 /** 把子代理 work 块压成一行摘录。 */
@@ -949,6 +982,7 @@ export function workLine(block: ChatBlock): string {
   if (block.kind === 'plan') return block.text;
   if (block.kind === 'approval') return block.command ?? block.reason ?? 'Approval requested';
   if (block.kind === 'ultraplan') return `UltraPlan ${block.step}`;
+  if (block.kind === 'world_build') return `WorldBuild ${block.step}`;
   return '';
 }
 

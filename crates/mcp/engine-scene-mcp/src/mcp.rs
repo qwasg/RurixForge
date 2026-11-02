@@ -330,6 +330,8 @@ fn tool_list() -> Value {
                     "required": ["x", "y"]
                 }
             },
+            {"name":"runtime_transforms","description":"Play/Pause中的原子瞬态变换批次，不写编辑撤销历史或源文件；cameraFov只可修改已有启用Camera；物理body所属变换须用物理控制", "inputSchema":{"type":"object","required":["updates"],"properties":{"updates":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"object","required":["id"],"additionalProperties":false,"properties":{"id":{"type":"integer"},"translation":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"rotation":{"type":"array","items":{"type":"number"},"minItems":4,"maxItems":4},"scale":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"cameraFov":{"type":"number","exclusiveMinimum":0,"exclusiveMaximum":180}}}}}}},
+            {"name":"viewport_render_stats","description":"读取最近Rurix实时帧的GPU/CPU/显存和回读统计；实际present计数由presenter独立记录", "inputSchema":{"type":"object","properties":{}}},
             // ---- viewport.*(F1 wave.2)----
             {
                 "name": "viewport_frame",
@@ -340,7 +342,7 @@ fn tool_list() -> Value {
                         "width": { "type": "integer", "description": "帧宽(16..=1920,缺省 960)" },
                         "height": { "type": "integer", "description": "帧高(16..=1080,缺省 540)" },
                         "selectedId": { "type": "integer", "description": "选中实体 id(高亮,可选)" },
-                        "format": { "type": "string", "enum": ["rgba8", "h264"], "description": "帧格式(F1 wave.4):rgba8(默认) | h264(Annex B 流腿)" },
+                        "format": { "type": "string", "enum": ["rgba8", "h264", "none", "file"], "description": "rgba8 | h264 | none(无像素) | file(按需PNG文件,最高2560x1440)" },
                         "camera": { "type": "string", "enum": ["editor", "scene"], "description": "D-045:scene = 编辑态也用场景 Camera 渲染(看游戏画面);缺省 editor(play 态恒用场景相机)" },
                         "exact": { "type": "boolean", "description": "D-045:true = 严格按请求尺寸离屏出帧(IDE 推流在线也不让位,可能触发一次 1-5s 会话重建;验收截帧专用)" }
                     }
@@ -435,11 +437,29 @@ fn tool_list() -> Value {
                 }
             },
             {
+                "name": "rig_spawn",
+                "description": "F-GAME-5(D-050)2D 绑骨角色一步到位:创建实体 + Rig2D 组件 + TRS。rig 为 .rxrig 资产 GUID(asset-pipeline rig_create / rig_import_psd 取得);scale=1 即 rig 画布原生尺寸(像素/pixelsPerUnit 米),原点 = 画布 origin(通常脚底中心);clip 非空 = 手动模式播该 clip,留空且文档带 animator = 状态机模式;params 为编辑态摆姿势(PIE 中由宿主 RigSystem 接管);2D 坐标约定 XY 平面 z=0",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "rig": { "type": "string", "description": ".rxrig GUID" },
+                        "position": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z](2D 约定 z=0)" },
+                        "scale": { "type": "array", "items": { "type": "number" }, "description": "[x,y,z] 尺寸倍率(缺省 1,1,1 = 原生尺寸)" },
+                        "sortingOrder": { "type": "number", "description": "叠放次序(小者先绘,大者压上;缺省 0)" },
+                        "clip": { "type": "string", "description": "初始 clip(空 = animator 状态机模式 / 静止)" },
+                        "params": { "type": "object", "additionalProperties": { "type": "number" }, "description": "参数初值 {paramId: value}(编辑态摆姿势)" }
+                    },
+                    "required": ["name", "rig"]
+                }
+            },
+            {
                 "name": "viewport_share_open",
                 "description": "打开 D3D12 共享纹理并把句柄移交 pid 进程(viewport-presenter);返回 texHandle/fenceHandle/width/height",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
+                        "protocol": {"type":"integer","enum":[1,2],"description":"2=两个GPU输出槽与消费完成fence"},
                         "pid": { "type": "integer", "description": "目标进程 id(句柄接收方)" },
                         "width": { "type": "integer", "description": "纹理宽(16..=1920,缺省 960)" },
                         "height": { "type": "integer", "description": "纹理高(16..=1080,缺省 540)" }
@@ -630,6 +650,8 @@ fn passthrough_method(name: &str) -> Option<&'static str> {
         "viewport_share_close" => "viewport.shareClose",
         "render_backend_info" => "render.backendInfo",
         "render_capabilities" => "render.capabilities",
+        "viewport_render_stats" => "viewport.renderStats",
+        "runtime_transforms" => "runtime.transforms",
         _ => return None,
     })
 }
@@ -721,6 +743,38 @@ fn call_tool(sup: &Arc<Mutex<Supervisor>>, params: &Value) -> Result<Value, Valu
             let mut create = json!({
                 "name": name,
                 "components": [ { "type": "Text", "props": props } ],
+            });
+            if let Some(expected)=args.get("expected"){create["expected"]=expected.clone();}
+            if let Some(p) = args.get("position") {
+                create["translation"] = p.clone();
+            }
+            if let Some(s) = args.get("scale") {
+                create["scale"] = s.clone();
+            }
+            Ok(host_tool(sup, "entity.create", create))
+        }
+        // F-GAME-5(D-050,契约 C):rig_spawn = entity.create + Rig2D 组件 + TRS(与 sprite_create 对称)。
+        "rig_spawn" => {
+            let name = match args.get("name").and_then(Value::as_str) {
+                Some(s) if !s.is_empty() => s,
+                _ => return Err(err(Value::Null, -32602, "invalid params: 缺 name")),
+            };
+            let rig = match args.get("rig").and_then(Value::as_str) {
+                Some(s) if !s.is_empty() => s,
+                _ => return Err(err(Value::Null, -32602, "invalid params: 缺 rig(.rxrig GUID)")),
+            };
+            if args.get("params").is_some_and(|p| !p.is_object()) {
+                return Err(err(Value::Null, -32602, "invalid params: params 须为 {paramId: number} 对象"));
+            }
+            let mut props = json!({ "rig": rig });
+            for k in ["sortingOrder", "clip", "params"] {
+                if let Some(v) = args.get(k) {
+                    props[k] = v.clone();
+                }
+            }
+            let mut create = json!({
+                "name": name,
+                "components": [ { "type": "Rig2D", "props": props } ],
             });
             if let Some(expected)=args.get("expected"){create["expected"]=expected.clone();}
             if let Some(p) = args.get("position") {

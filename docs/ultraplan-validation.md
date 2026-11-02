@@ -75,3 +75,17 @@ Forge/Codex × rurix/Godot 四个 stage contract 使用脚本输出测试协调�
 存储检查采用 `D:/Rurix/ci/storage_health.py` 的 start、D=3 GiB preflight 与 finish。08:21 UTC 快照 D 盘剩余 106673692672 字节（约 99.34 GiB，18.02%，healthy）；08:23 UTC 收工复测为 103116738560 字节（约 96.04 GiB，17.41%，healthy）。E 盘剩余 102398074880 字节（约 95.37 GiB，10.00%，warning），本任务未安排 E 盘写入。无临时工具链副本；未清理仍有活动 Cargo 进程的构建缓存，回收量为 0。源码、现有交付物和历史证据保留。
 
 存储：本批次只在 D 盘写入代码和紧凑证据，临时 runtime 测试副本位于 C 并已清理；D 开工剩余 114.90 GB（19.40%）为 healthy，E 10.01% warning 且未写入。有效截图、报告与夹具作为测试证据保留。
+
+## 2026-10-17 主 agent 编写全部子任务委派
+
+移除 UltraPlan 在主模型首轮之前启动固定探索任务的路径。Forge 与 Codex 各模式共享委派纪律；Demo 必须提交本轮 `demoPrompt`，QA/终审先回到主 agent 编写具体提示词，人工验收返修等待主 agent 用 `todo_update {id,prompt}` 写入新委派。旧自动返修说明保留为上下文，已完成结果不重写。空提示词、仅有标题的历史任务及自动成员尚未获得首个任务时的消息唤醒均不会启动子 agent。
+
+最终使用隔离配置及 `CARGO_INCREMENTAL=0`、`CARGO_PROFILE_DEV_DEBUG=0`、`CARGO_PROFILE_TEST_DEBUG=0` 执行 `cargo test -p forge-agentd --no-run --locked --offline`，构建通过。随后以 `--test-threads=1` 运行 UltraPlan、调度、协作、原生工具、Codex 及各模式相关测试，去重后 **163 通过、0 失败、1 忽略**。被忽略的是原有真实浏览器探测变体；本轮契约测试使用确定性夹具，不代表真实模型完成游戏制作。最初未隔离配置的测试继承了本机 Codex 默认引擎，已中断，不计入最终结果。变更文件 `git diff --check` 通过。命令日志及逐项名单保存在 `.codex/cleanup/20261017-delegation/`。
+
+存储执行 start、checkpoint、finish 检查；实际清除两个已核对且无编译进程使用的旧 Rust 增量依赖图文件，逻辑体积 133930028 字节，D 盘实测回收 134017024 字节。较大范围缓存清理与本轮临时构建目录清理均被自动审批审查拒绝，原因为 `blocked by policy`，未执行。C 盘隔离测试目录保留约 0.85 GiB，可由源码重建；当前运行的 D 盘后端未替换或重启。20:54（Asia/Taipei）收工 D 剩余 51.47 GiB / 9.33%，E 剩余 128.37 GiB / 13.46%，均仍低于 15% 健康线；本轮避免在 D/E 进行大批构建写入，源码、当前程序与验收记录保留。
+
+### 2026-10-17 后端部署补充
+
+按用户要求复用隔离缓存执行 `cargo build -p forge-agentd --bin forge-agentd --locked --offline`，构建通过。确认全部会话及团队空闲后，备份原程序和会话状态，替换 `target/debug/forge-agentd.exe` 并重启。旧 PID 45520，新 PID 29436；运行文件 SHA-256 为 `66D587DE20F4D21C141624A14B224A03685686FC03F26A7B5CDFA84444327666`。后端 8103 健康检查与当前应用 3080 的代理健康检查均通过，53 个原有会话全部保留。额外候选进程的启动/停止检查被自动审批审查以 `blocked by policy` 拒绝，随后通过精确进程身份与空闲检查完成正式替换，并核对运行哈希和应用代理连接。
+
+部署记录、构建日志、回滚程序和状态快照位于 `.codex/backend-restart/20261017-delegation/`。核对部署副本与运行程序哈希一致后，实际回收 44666880 字节临时副本；回滚程序保留。收工 D 剩余 51.04 GiB / 9.26%，E 剩余 128.37 GiB / 13.46%，仍为 warning；本轮复用 C 盘缓存，D 盘仅写部署文件和紧凑记录。

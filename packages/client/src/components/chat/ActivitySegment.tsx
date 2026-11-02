@@ -4,6 +4,7 @@ import {
   groupPhraseParts,
   groupSegmentItems,
   reasoningDurationMs,
+  reasoningIsRunning,
   runningLabel,
   segmentPhraseParts,
   segmentStats,
@@ -215,8 +216,13 @@ export default function ActivitySegment({
 }) {
   const [open, setOpen] = useState(false);
   const stats = segmentStats(blocks, indices);
-  const running = runningLabel(blocks, indices) !== null;
-  const { verb, detail } = segmentPhraseParts(stats, running);
+  const toolRunning = runningLabel(blocks, indices) !== null;
+  const thinking = streaming && !toolRunning && indices.some((i) => {
+    const block = blocks[i];
+    return block.kind === 'reasoning' && reasoningIsRunning(block, i === blocks.length - 1);
+  });
+  const running = toolRunning || thinking;
+  const { verb, detail } = thinking ? { verb: 'Thinking', detail: '' } : segmentPhraseParts(stats, toolRunning);
   const runs = groupSegmentItems(blocks, indices);
   const hasTool = indices.some((bi) => blocks[bi].kind === 'tool');
   // 段本身的入场由外层(AssistantMessage)负责;这里只让段挂上之后才到的明细行各自入场
@@ -232,7 +238,7 @@ export default function ActivitySegment({
         } else if (first.kind === 'tool') {
           row = <ToolLine block={first} streaming={streaming} />;
         } else if (first.kind === 'reasoning') {
-          row = <ReasoningLine block={first} live={streaming && run[0] === blocks.length - 1} />;
+          row = <ReasoningLine block={first} live={streaming && reasoningIsRunning(first, run[0] === blocks.length - 1)} />;
         }
         if (row === null) return null;
         return (
@@ -252,8 +258,8 @@ export default function ActivitySegment({
       verb={verb}
       detail={detail}
       shimmer={streaming && running}
-      added={stats.added}
-      removed={stats.removed}
+      added={thinking ? 0 : stats.added}
+      removed={thinking ? 0 : stats.removed}
       chevron
       expanded={open}
       onToggle={() => setOpen((v) => !v)}

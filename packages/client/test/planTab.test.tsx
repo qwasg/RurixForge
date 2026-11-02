@@ -166,7 +166,7 @@ describe('Plan 页签', () => {
     expect(screen.getByTestId('plan-todo-wave-config').querySelector('.line-through')).not.toBeNull();
   });
 
-  it('文件里的四种状态与旧状态别名有可识别的圆圈,完成进度与状态一致', async () => {
+  it('区分失败、受阻和交接验证中,只有完成项计入进度', async () => {
     stubBackend(`---
 name: 敌人波次系统
 todos:
@@ -181,7 +181,13 @@ todos:
   status: done
 - id: failed-task
   content: 失败任务
+  status: failed
+- id: blocked-task
+  content: 受阻任务
   status: blocked
+- id: verifying-task
+  content: 交接验证
+  status: verifying
 ---
 
 # 敌人波次系统
@@ -194,12 +200,14 @@ todos:
       ['running-task', '制作中', 'running'],
       ['completed-task', '完成', 'completed'],
       ['failed-task', '失败', 'failed'],
+      ['blocked-task', '受阻', 'blocked'],
+      ['verifying-task', '验证中', 'verifying'],
     ];
     for (const [id, label, status] of states) {
       expect(within(screen.getByTestId(`plan-todo-${id}`)).getByRole('img', { name: label }))
         .toHaveAttribute('data-todo-status', status);
     }
-    expect(screen.getByTestId('plan-progress')).toHaveTextContent('1/4');
+    expect(screen.getByTestId('plan-progress')).toHaveTextContent('1/6');
   });
 
   it('todo 事件实时推进待办 → 制作中 → 完成,失败项重试后更新圆圈与进度', async () => {

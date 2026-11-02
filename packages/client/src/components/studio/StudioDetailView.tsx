@@ -32,7 +32,6 @@ import {
 } from '@/lib/studioStore';
 import { useCanvasViewport, type WorldRect } from '@/lib/useCanvasViewport';
 import BoardContextMenu, { type BoardMenuItem } from '../editor/BoardContextMenu';
-import { TONE_META } from '../editor/DesignBoardNode';
 import CanvasHud from '../editor/CanvasHud';
 import StudioComposer from './StudioComposer';
 import StudioPreview, { KIND_ICON } from './StudioPreview';
@@ -47,9 +46,6 @@ import StudioPreview, { KIND_ICON } from './StudioPreview';
  * 版本卡 / 上游卡;落在输入框或生成输入条上则让位给原生菜单(要能复制粘贴)。
  * 视口独立持久化(forge:studioDetail:<nodeId>);组件按 nodeId 重挂载。
  */
-
-const toolBtn =
-  'flex items-center gap-1 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 text-2xs text-fg-2 transition-colors hover:bg-shell-hover disabled:opacity-40 disabled:hover:bg-shell-panel';
 
 // ---------- 几何 ----------
 
@@ -196,14 +192,14 @@ function VersionCard({
                 e.stopPropagation();
                 openInSpriteEditor(node.id, version.id);
               }}
-              className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-edge-strong px-1 py-px text-[10px] text-sage transition-colors hover:bg-shell-hover"
+              className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded border border-edge-strong px-1 py-px text-[10px] text-fg-2 transition-colors hover:bg-shell-hover"
             >
               <PersonStanding size={9} strokeWidth={2} />
               精灵编辑器
             </button>
           ) : version.assetPath !== undefined ? (
             <span
-              className="max-w-[96px] shrink-0 truncate font-mono text-[10px] text-sage"
+              className="max-w-[96px] shrink-0 truncate font-mono text-[10px] text-fg-2"
               title={version.assetPath}
             >
               已入库
@@ -256,7 +252,6 @@ function UpstreamCard({
   const openNode = useStudioStore((s) => s.openNode);
   const preset = presetOf(node.preset);
   if (!preset) return null;
-  const tone = TONE_META[preset.tone];
   const Icon = KIND_ICON[preset.kind];
   const cur = currentVersion(node);
   const summary =
@@ -273,9 +268,9 @@ function UpstreamCard({
       style={{ left: UP_X, top: index * UP_STEP, width: UP_W, height: UP_H }}
     >
       <div className="flex items-center gap-1 px-1.5 pt-1">
-        <Icon size={11} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
+        <Icon size={11} strokeWidth={1.8} className="shrink-0 text-fg" />
         <span className="min-w-0 flex-1 truncate text-2xs font-medium text-fg">{node.name}</span>
-        <span className={cn('shrink-0 text-[10px]', tone.text)}>{preset.label}</span>
+        <span className="shrink-0 text-[10px] text-fg-3">{preset.label}</span>
         <button
           type="button"
           data-testid={`studio-upstream-open-${node.id}`}
@@ -365,7 +360,6 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
   }, [vp.ensureContentVisible]);
 
   if (node === undefined || preset === undefined) return null; // store 保证不悬空
-  const tone = TONE_META[preset.tone];
   const Icon = KIND_ICON[preset.kind];
   const cur = currentVersion(node);
   const versionsDesc = [...node.versions].reverse();
@@ -653,7 +647,6 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
           title={node.name}
           scope="创作画布"
           icon={Icon}
-          accentClass={tone.text}
           items={canvasMenuItems()}
           onClose={closeMenu}
           testid="studio-detail-menu-canvas"
@@ -668,7 +661,6 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
           title={node.name}
           scope={preset.label}
           icon={Icon}
-          accentClass={tone.text}
           items={centerMenuItems()}
           onClose={closeMenu}
           testid="studio-detail-menu-center"
@@ -717,13 +709,13 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
           data-testid="studio-detail-back"
           title="返回素材创作主画布"
           onClick={closeNode}
-          className={toolBtn}
+          className="glass-btn"
         >
           <ArrowLeft size={11} strokeWidth={1.8} />
           返回
         </button>
         <span className="h-4 w-px bg-edge-strong" />
-        <Icon size={12} strokeWidth={1.8} className={tone.text} />
+        <Icon size={12} strokeWidth={1.8} className="text-fg" />
         {editingName ? (
           <input
             autoFocus
@@ -751,11 +743,11 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
             {node.name}
           </button>
         )}
-        <span className={cn('text-[10px]', tone.text)}>{preset.label}</span>
+        <span className="text-[10px] text-fg-3">{preset.label}</span>
         <span className="text-2xs text-fg-4">
           {node.versions.length} 版本 · {upstream.length} 上游引用
         </span>
-        {busy && <span className="text-2xs text-warn">生成中…</span>}
+        {busy && <span className="text-2xs text-acc">生成中…</span>}
         <span className="flex-1" />
       </div>
 
@@ -816,11 +808,11 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
             className="absolute select-none rounded-md border border-edge-strong bg-shell-panel shadow-composer"
             style={{ left: 0, top: 0, width: CENTER_W }}
           >
-            <div className={cn('rounded-t-md', tone.bar)} style={{ height: CENTER_BAR_H }} />
+            <div className="rounded-t-md bg-fg" style={{ height: CENTER_BAR_H }} />
             <div className="flex items-center gap-1.5 px-2" style={{ height: CENTER_TITLE_H }}>
-              <Icon size={12} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
+              <Icon size={12} strokeWidth={1.8} className="shrink-0 text-fg" />
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg">{node.name}</span>
-              <span className={cn('shrink-0 text-[10px]', tone.text)}>{preset.label}</span>
+              <span className="shrink-0 text-[10px] text-fg-3">{preset.label}</span>
             </div>
             <div
               className="overflow-hidden border-t border-edge bg-shell-sunk"
@@ -847,7 +839,7 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
                         type="button"
                         data-testid="studio-write-own"
                         onClick={() => writeText(node.id, '')}
-                        className={toolBtn}
+                        className="glass-btn"
                       >
                         <PencilLine size={11} strokeWidth={1.8} />
                         自己编写内容
@@ -863,7 +855,7 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
                           data-testid={`studio-empty-template-${t.id}`}
                           title="选中该模板,在下方输入需求后发送"
                           onClick={() => setParam(node.id, 'template', t.id)}
-                          className={toolBtn}
+                          className="glass-btn"
                         >
                           {t.label}
                         </button>
@@ -888,7 +880,7 @@ export default function StudioDetailView({ nodeId }: { nodeId: string }) {
                 <>
                   <span className="font-mono text-[10px] text-fg-4">{cur.backendId}</span>
                   {cur.assetPath !== undefined && (
-                    <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-sage" title={cur.assetPath}>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-fg-2" title={cur.assetPath}>
                       {cur.assetPath}
                     </span>
                   )}

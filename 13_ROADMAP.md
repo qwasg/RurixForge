@@ -139,6 +139,13 @@ F0 地基 → F1 场景编辑闭环 → F2 素材管线 → F3 agent 集群与 s
 > 拖拽、Auto-Detect、clip 编辑、预览 rail);④Agent 团队:并行 task + 按角色配模型 +
 > Plan DAG(兑现 04 §4)+ team 模式代码级编排(qa 修复轮 + reviewer 收工门)+
 > planner/reviewer 角色。验收门见 `milestones/f-game-4/F_GAME_4_CONTRACT.md`。
+> F-GAME-5(2026-10-11 立项 D-050):自研 Live2D 式 2D 骨骼/网格变形绑定。交付:
+> ①`.rxrig` 资产 + `forge-rig2d` 核心库(LBS 蒙皮/参数关键形状/变形器/clip+animator/
+> 摆锤物理/自动眨眼呼吸/自动网格与权重/软光栅预览);②asset-pipeline 11 个 `rig_*`
+> 工具(含 PSD 导入与品红底部件表切分)+ engine-scene `rig_spawn`;③`Rig2D` 组件 +
+> 宿主 RigSystem + rurix/Godot 双后端 + 图节点三件(48→51);④技能 rig2d-build /
+> rig2d-animate + 内置子代理 rig-artist;⑤客户端骨骼编辑器 Workbench tab。
+> 验收门见 `milestones/f-game-5/F_GAME_5_CONTRACT.md`。
 
 ## F11 · 资产商店 + Skill 管理(后路线图里程碑,2026-08-25 立项 D-025)
 

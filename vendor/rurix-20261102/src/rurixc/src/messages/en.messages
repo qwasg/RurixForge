@@ -1,0 +1,196 @@
+# rurixc 诊断消息表 — message-key 骨架(07 §5 第 7 条,D-206)
+# 行格式:key = 模板文本;`{name}` 为参数占位;`#` 行注释。
+# key 与 registry/error_codes.json 的 message_key 字段互查(check_schemas.py 交叉校验)。
+# 单语基线;中英双语全量覆盖 → RD-006(M8)。
+#
+# 词法诊断(RX0001 ~ RX0007,spec/lexical.md;M1.2 分配)
+lex.unexpected_char = unexpected character sequence {found}
+lex.unterminated_block_comment = unterminated block comment
+lex.unterminated_string = unterminated string literal
+lex.bad_char_literal = invalid character literal: {reason}
+lex.bad_escape = invalid escape sequence: {esc}
+lex.bad_number = invalid numeric literal: {reason}
+lex.bad_suffix = invalid suffix {suffix}
+#
+# 语法诊断(RX0008 ~ RX0011,spec/syntax.md;M1.3 分配)
+parse.expected_token = expected {expected}, found {found}
+parse.unclosed_delimiter = unclosed delimiter {delim}
+parse.gated_feature = use of experimental syntax gated behind feature `{feature}`
+parse.unknown_feature = unknown feature {feature}
+#
+# 名称解析诊断(RX1001 ~ RX1004,spec/names.md;M2.1 分配)
+resolve.unresolved_name = unresolved name {name}
+resolve.duplicate_definition = duplicate definition of {name}
+resolve.visibility_violation = {name} is not visible from this scope
+resolve.bad_use_target = invalid use target {target}
+#
+# 类型检查诊断(RX2001 ~ RX2006,spec/types.md;M2.2 分配)
+typeck.mismatched_types = mismatched types: expected {expected}, found {found}
+typeck.bad_field = {kind} field {field} on type {ty}
+typeck.arg_count_mismatch = this call takes {expected} argument(s) but {found} were supplied
+typeck.unknown_method = no method named {method} found on type {ty}
+typeck.not_callable = expression of type {ty} is not callable
+typeck.bad_operand = operator {op} cannot be applied to type {ty}
+#
+# 着色 / 地址空间诊断(RX3001 ~ RX3003,spec/device.md RXS-0066~0069;M4.1 分配)
+coloring.cross_color_call = cannot call {callee} from a {context} context
+addrspace.mismatch = address space mismatch: expected {expected}, found {found}
+coloring.barrier_non_uniform = `block.sync()` is not uniformly reachable: called inside a thread-id-dependent branch (requires `unsafe`)
+#
+# 模式穷尽性诊断(RX2007,spec/borrow.md RXS-0051;M3.1 分配)
+typeck.non_exhaustive_match = non-exhaustive match: {witness} not covered
+#
+# Copy/Drop 定义处检查(RX2008 ~ RX2009,spec/borrow.md RXS-0053/RXS-0055;M3.2 分配)
+typeck.bad_derive_copy = `derive(Copy)` cannot be applied to {ty}: {reason}
+typeck.bad_drop_impl = invalid `Drop` impl for {ty}: {reason}
+#
+# move/init 数据流诊断(RX4001 ~ RX4003,spec/borrow.md RXS-0053/RXS-0054;M3.2 分配)
+borrowck.use_after_move = use of moved value {place}
+borrowck.use_before_init = use of possibly-uninitialized value {place}
+borrowck.move_out_of_ref = cannot move {place} out of a reference
+#
+# NLL 借用检查诊断(RX4004 ~ RX4006,spec/borrow.md RXS-0058/RXS-0060/RXS-0061;M3.3 分配)
+borrowck.borrow_conflict = conflicting borrows of {place}: {kind}
+borrowck.borrow_while_borrowed = cannot {action} {place} while it is borrowed
+borrowck.dangling_reference = reference to {place} outlives the value it refers to
+#
+# const 求值诊断(RX5001 ~ RX5003,spec/consteval.md RXS-0063/RXS-0065;M3.4 分配)
+consteval.overflow = constant evaluation overflow in {op}
+consteval.index_out_of_bounds = constant index {index} out of bounds for length {len}
+consteval.non_const_operation = {what} is not allowed in a constant context
+#
+# codegen / 链接诊断(RX6001 ~ RX6002 / RX7001;M2.3 分配)
+codegen.unsupported_construct = {construct} is not supported by codegen yet (M2.3 host subset)
+codegen.missing_main = no `main` function found for executable target
+link.toolchain_failure = external toolchain failure: {reason}
+#
+# device codegen / ptxas 诊断(RX6003 ~ RX6005,spec/device.md RXS-0070~0073;M4.2 分配)
+codegen.device_unsupported = {detail} is not supported by NVPTX device codegen yet (M4.2 subset)
+codegen.ptxas_rejected = ptxas rejected the generated PTX: {reason}
+codegen.device_constraint = device codegen constraint violated: {detail}
+#
+# launch 类型契约诊断(RX3004 ~ RX3006,spec/device.md RXS-0074~0075;M4.3 分配)
+launch.non_kernel = cannot launch {callee}: only a `kernel` function can be launched
+launch.dim_mismatch = launch grid and block dimensions disagree: grid is {grid}-dimensional, block is {block}-dimensional
+launch.context_brand = context-brand mismatch: {what} belongs to a different context than the launching stream
+#
+# UC-05 RHI 跨 brand 资源误用诊断(RX3006 复用,spec/rhi.md RXS-0256 I7;EI1.3 Part B 分配)
+rhi.cross_brand = context-brand mismatch: {what} belongs to a different `Rhi` instance than this pass
+#
+# UC-05 RHI const 容量接线诊断(RX2010 复用,spec/rhi.md RXS-0283;G4.3 PR-E 分配)
+rhi.graph_cap_literal = `rhi.graph::<CAP>()` requires an integer literal CAP (RXS-0283)
+rhi.graph_nonstatic = `rhi.graph::<CAP>()` must not be constructed inside a loop/condition (RXS-0283 non-static construction strict)
+rhi.graph_dup = duplicate `rhi.graph::<CAP>()` declaration in a single function body (RXS-0283 affine single-definition chain)
+#
+# views 不相交证明诊断(RX3007 ~ RX3008,spec/device.md RXS-0078;M5.1 分配)
+views.overlapping_mut = overlapping or aliased mutable sub-views of {place}: cannot prove the sub-views are disjoint
+views.out_of_bounds = view split is out of bounds: {detail}
+#
+# shared+barrier 一致性诊断(RX3009,spec/device.md RXS-0079;M5.2 分配)
+shared.barrier_consistency = cannot prove shared write/read is synchronized by a block barrier: {detail}
+#
+# scoped atomics 诊断(RX3010,spec/device.md RXS-0080;M5.2 分配)
+atomics.scope_misuse = scoped atomic scope misuse: {detail}
+#
+# 着色阶段类型面诊断(RX3011 ~ RX3013,spec/shader_stages.md RXS-0154~0156;G2.1 分配)
+shader.stage_io_invalid = invalid shader stage I/O field: {detail}
+shader.stage_interface_mismatch = shader stage interface mismatch: {detail}
+shader.resource_handle_invalid = invalid shader resource handle: {detail}
+shader.sample_expr_invalid = invalid texture sampling expression: {detail}
+shader.nonuniform_annotation_missing = bindless table dynamic index must be annotated with nonuniform(...): {detail}
+shader.mesh_entry_invalid = invalid mesh/task entry annotation: {detail}
+shader.ray_query_state_invalid = invalid RayQuery traversal state: {detail}
+#
+# shader permutation 域/预算诊断(RX3019 / RX7023,spec/rendering_platform.md RXS-0308~0310;G8.2 M29 分配)
+shader.permutation_domain_invalid = invalid shader permutation domain: {detail}
+toolchain.permutation_budget_exceeded = shader permutation budget exceeded: {detail}
+#
+# capability profile 诊断(RX3020 ~ RX3023,spec/shader_stages.md RXS-0311 + spec/rendering_platform.md RXS-0312;G8.2 M32 分配)
+capability.missing_required = required capability missing for shader entry: {detail}
+capability.forbidden_used = forbidden capability used by shader entry: {detail}
+capability.fallback_incompatible = capability fallback interface contract incompatible: {detail}
+capability.unknown_id = unknown capability id or invalid `#[requires]` usage: {detail}
+#
+# libdevice 链接 / device 数学 intrinsic 诊断(RX6006 / RX7002,spec/device.md RXS-0081~0082;M5.3 分配)
+codegen.device_math_unsupported = {detail} is not a supported device math intrinsic (outside libdevice coverage or unsupported element type)
+link.libdevice_failure = libdevice link failure: {reason}
+#
+# DXIL codegen 诊断(RX6007,spec/dxil_backend.md RXS-0157;G2.2 PR-C2 分片1 分配)
+codegen.dxil_unsupported = DXIL codegen target unavailable or unsupported: {detail}
+codegen.dxil_stage_deferred = DXIL stage lowering unavailable: {detail}
+#
+# Vulkan/SPIR-V codegen 诊断(RX6026,spec/vulkan_backend.md RXS-0200/0201;mb1 RFC-0011 分配;跳 RX6024/6025=MS1.2b 避撞)
+codegen.vulkan_unsupported = Vulkan/SPIR-V codegen target unavailable or unsupported: {detail}
+#
+# DXIL B 路 strict-only 失败诊断(RX6010 ~ RX6013,spec/dxil_backend.md RXS-0157/0159/0162;G2.2 任务7 分配)
+codegen.dxil_b_transpile_failed = DXIL B-chain transpile failed at {step}: {reason}
+codegen.dxil_sig_mismatch = DXIL signature mismatch: {detail}
+codegen.dxil_sig_dropped_input = DXIL declared input eliminated: {detail}
+codegen.dxil_unmappable = unmappable DXIL construct: {detail}
+#
+# DXIL 绑定布局推导 + 阶段间接口链接 strict-only 失败诊断(RX6014 ~ RX6017,spec/binding_layout.md RXS-0163~0166 + spec/dxil_backend.md RXS-0160;G2.3 PR-E2b-2 分配)
+codegen.dxil_stage_link_mismatch = DXIL stage interface link mismatch: {detail}
+codegen.dxil_register_conflict = DXIL binding register/layout conflict: {detail}
+codegen.dxil_root_signature_too_large = DXIL root signature exceeds DWORD limit: {detail}
+codegen.dxil_psv0_mismatch = DXIL PSV0 reflection mismatch: {detail}
+#
+# DXIL 纹理采样首期收敛子集 strict-only 失败诊断(RX6023,spec/dxil_backend.md RXS-0175;G2.4 RFC-0007 分配)
+codegen.dxil_sample_unsupported = DXIL texture sampling outside first-phase subset: {detail}
+#
+# rx CLI 工具链诊断(RX7003 / RX7004,spec/toolchain.md RXS-0083/0085;M6.1 分配)
+toolchain.rx_cli_usage = rx CLI usage error: {detail}
+toolchain.rx_run_exec_failure = rx run: cannot execute build artifact: {detail}
+#
+# 包管理诊断(RX7005 ~ RX7009,spec/toolchain.md RXS-0089~0094;M6.2 分配)
+toolchain.pkg_manifest_invalid = invalid rurix.toml manifest: {detail}
+toolchain.pkg_resolution_conflict = dependency resolution conflict: {detail}
+toolchain.pkg_lock_mismatch = rurix.lock is out of date or inconsistent: {detail}
+toolchain.pkg_digest_mismatch = content tree digest mismatch: {detail}
+toolchain.pkg_source_unreachable = dependency source is unreachable: {detail}
+#
+# rx test 诊断(RX7010 ~ RX7011,spec/toolchain.md RXS-0095;M6.3 分配)
+toolchain.rx_test_discovery = rx test discovery error: {detail}
+toolchain.rx_test_exec_failure = rx test child process failed: {detail}
+toolchain.lsp_rename_invalid = invalid LSP rename target: {detail}
+# edition 诊断(RX7020,spec/edition.md RXS-0179;G2.5 RFC-0008 分配)
+toolchain.edition_unknown = unknown rurix.toml edition: {detail}
+#
+# 互操作诊断(RX7013 ~ RX7015,spec/interop.md RXS-0122~0125;M8.1 分配)
+interop.unsupported_protocol = interop protocol unsupported: {detail}
+interop.invalid_device_pointer = invalid interop device pointer: {detail}
+interop.shape_mismatch = interop shape mismatch: {detail}
+#
+# cublas 绑定诊断(RX7016 ~ RX7019,spec/cublas.md RXS-0126~0129;M8.2 分配)
+cublas.handle_init_failed = cublas handle initialization failed: {detail}
+cublas.invalid_device_pointer = invalid cublas device pointer: {detail}
+cublas.dimension_mismatch = cublas dimension mismatch: {detail}
+cublas.runtime_failed = cublas runtime failure: {detail}
+## UC-04 deferred 渲染器装配/编排诊断(RX6018 ~ RX6022,spec/d3d12_runtime.md RXS-0167~0170;G2.4 PR-F2 分配)
+runtime.uc04_pso_assembly_mismatch = UC-04 graphics PSO assembly inconsistency: {detail}
+runtime.uc04_rts0_pso_mismatch = UC-04 RTS0 / PSO binding inconsistency: {detail}
+runtime.uc04_pass_orchestration = UC-04 deferred pass orchestration failed: {detail}
+runtime.uc04_barrier_plan = UC-04 barrier orchestration failed: {detail}
+runtime.uc04_readback_layout = UC-04 readback buffer layout mismatch: {detail}
+## UC-04 可见窗口 present 装配/重建诊断(RX6027 ~ RX6028,spec/d3d12_runtime.md RXS-0220~0222;G3.2 RFC-0013 §4.A 分配)
+runtime.uc04_present_assembly = UC-04 visible-window present assembly inconsistency: {detail}
+runtime.uc04_resize_rebuild = UC-04 swapchain rebuild verification failed: {detail}
+#
+# render graph 装配核验诊断(RX6029 ~ RX6030,spec/render_graph.md RXS-0237;G3.5 RFC-0013 §4.D 分配)
+runtime.graph_structure = render graph structure violation (cycle/read-before-write/write-write conflict/lifecycle misuse): {detail}
+runtime.graph_reflection_mismatch = render graph declaration/reflection mismatch (missing declaration/unused declaration): {detail}
+#
+# 宿主编排前端机械面诊断(RX1005 / RX7022,spec/host_orchestration.md RXS-0195~0196;MS1.2 分配)
+resolve.module_load_failure = cannot load out-of-line module {name}: {detail}
+link.native_lib_failure = #[link] native library failure: {detail}
+#
+# 宿主 GPU 编排诊断(RX2010 / RX3015 / RX6024 / RX6025 / RX7021,spec/host_orchestration.md RXS-0189~0192/0195;MS1.2 分配)
+gpu.elem_infer = cannot determine a first-phase element type for this GPU buffer: {detail} (element type must resolve to f32 / i32 / u32, RXS-0190)
+coloring.gpu_host_api_in_device = std::gpu host orchestration API cannot be used in a `kernel`/`device` context (RXS-0189)
+gpu.launch_arg_subset = launch argument type {ty} is outside the first-phase marshalling subset (Buffer plus i32 / u32 / f32 / usize, RXS-0191)
+codegen.gpu_embed_failure = failed to embed device artifacts into the host image: {detail} (RXS-0192)
+link.rt_cabi_failure = cannot locate or build the rurix-rt-cabi runtime library: {detail} (search order: RURIX_RT_CABI_LIB, <compiler>/lib/, workspace target; RXS-0195)
+#
+# `#[export(c)]` C ABI export diagnostics (RX6031 ~ RX6033, spec/export_c.md RXS-0250/0251/0252/0255; EI1.2 RFC-0014 Part A allocation)
+export_c.attr_target = `#[export(c)]` may only be attached to a host `pub fn` (RXS-0250): {detail}
+export_c.subset = `#[export(c)]` export surface is outside the C-compatible subset v1 (RXS-0251 signature / RXS-0255 body): {detail}
+export_c.empty = `--emit=dll` has no `#[export(c)]` exports (RXS-0252): empty export set

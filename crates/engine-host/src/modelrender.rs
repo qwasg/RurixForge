@@ -19,11 +19,15 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(feature = "backend-rurix")]
 mod rurix;
 #[cfg(feature = "backend-rurix")]
+pub(crate) mod realtime;
+#[cfg(feature = "backend-rurix")]
 pub use rurix::render;
 pub fn invalidate() {
     // rurix 部分:丢弃模型腿会话(与拆分前同一顺序:先会话,再打包贴图缓存)。
     #[cfg(feature = "backend-rurix")]
     rurix::reset_state();
+    #[cfg(feature = "backend-rurix")]
+    realtime::reset();
     if let Some(p) = PACKED.get() {
         p.lock().unwrap().clear();
     }

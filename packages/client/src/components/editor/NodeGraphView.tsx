@@ -25,10 +25,10 @@ const BAR_H = 3; // 节点头色条高
 const TITLE_H = 20; // 节点标题行高
 const ROW_H = 18; // 输入行高
 
-/** 节点头色条:event.* 绿 / flow.* 蓝 / 其余灰(照 UE 蓝图直觉) */
+/** 节点头色条:event.* 强调色 / flow.* 黑 / 其余灰(纯色波:不再绿 / 蓝分色) */
 function headerBar(type: string): string {
-  if (type.startsWith('event.')) return 'bg-sage';
-  if (type.startsWith('flow.')) return 'bg-info';
+  if (type.startsWith('event.')) return 'bg-acc';
+  if (type.startsWith('flow.')) return 'bg-fg';
   return 'bg-fg-4';
 }
 
@@ -123,7 +123,7 @@ function InputRow({ nodeId, pin, src }: { nodeId: string; pin: string; src: Valu
         {'const' in src ? (
           <ConstCell nodeId={nodeId} pin={pin} value={src.const} />
         ) : 'ref' in src ? (
-          <span className="truncate font-mono text-info" title={`暴露属性 ${src.ref}`}>
+          <span className="truncate font-mono text-fg" title={`暴露属性 ${src.ref}`}>
             = {src.ref}
           </span>
         ) : (
@@ -319,7 +319,7 @@ export default function NodeGraphView() {
           <span className="flex min-w-0 items-center gap-1 text-2xs text-fg-2">
             <span className="truncate font-medium">{graph.name}</span>
             <span className="truncate text-fg-4">{graphPath}</span>
-            {dirty && <span title="未保存修改" className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />}
+            {dirty && <span title="未保存修改" className="h-1.5 w-1.5 shrink-0 rounded-full bg-acc" />}
           </span>
         )}
         <input
@@ -338,7 +338,7 @@ export default function NodeGraphView() {
           data-graph-load
           disabled={loading || pathDraft.trim() === ''}
           onClick={() => void loadByPath(pathDraft)}
-          className="shrink-0 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 text-2xs text-fg-2 transition-colors hover:bg-shell-hover disabled:opacity-40"
+          className="glass-btn shrink-0"
         >
           加载
         </button>
@@ -361,13 +361,13 @@ export default function NodeGraphView() {
           <Save size={12} strokeWidth={1.8} />
         </button>
         <span className="flex-1" />
-        {/* 状态行:错误红 / 保存成功绿 / 加载中灰,简朴如实 */}
+        {/* 状态行:错误红 / 已保存与加载中灰,简朴如实 */}
         {lastError ? (
           <span className="truncate text-2xs text-danger" title={lastError}>
             {lastError}
           </span>
         ) : lastSaved ? (
-          <span className="truncate text-2xs text-sage">已保存 {lastSaved}</span>
+          <span className="truncate text-2xs text-fg-3">已保存 {lastSaved}</span>
         ) : loading ? (
           <span className="text-2xs text-fg-4">加载中…</span>
         ) : null}

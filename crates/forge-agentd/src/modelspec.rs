@@ -153,7 +153,7 @@ pub const CATALOG: &[ModelCard] = &[
         id: "openai-compat",
         label: "openai-compatible",
         provider: "openai-compat",
-        group: "自定义渠道",
+        group: "自定义模型",
         supports_thinking: true,
         thinking_model: None,
         effort_options: EFFORTS_FULL,
@@ -187,6 +187,66 @@ pub const CATALOG: &[ModelCard] = &[
         default_context: "1m",
     },
     ModelCard {
+        id: "gemini-4",
+        label: "gemini-4",
+        provider: "antigravity",
+        group: "Antigravity",
+        supports_thinking: true,
+        thinking_model: None,
+        effort_options: EFFORTS_FULL,
+        default_effort: Some("medium"),
+        context_options: CTX_TIERS,
+        default_context: "1m",
+    },
+    ModelCard {
+        id: "gemini-4-flash",
+        label: "gemini-4-flash",
+        provider: "antigravity",
+        group: "Antigravity",
+        supports_thinking: true,
+        thinking_model: None,
+        effort_options: EFFORTS_FULL,
+        default_effort: Some("medium"),
+        context_options: CTX_TIERS,
+        default_context: "1m",
+    },
+    ModelCard {
+        id: "gemini-4-pro",
+        label: "gemini-4-pro",
+        provider: "antigravity",
+        group: "Antigravity",
+        supports_thinking: true,
+        thinking_model: None,
+        effort_options: EFFORTS_FULL,
+        default_effort: Some("high"),
+        context_options: CTX_TIERS,
+        default_context: "1m",
+    },
+    ModelCard {
+        id: "gemini-2.5-flash",
+        label: "gemini-2.5-flash",
+        provider: "antigravity",
+        group: "Antigravity",
+        supports_thinking: true,
+        thinking_model: None,
+        effort_options: EFFORTS_FULL,
+        default_effort: Some("medium"),
+        context_options: CTX_TIERS,
+        default_context: "1m",
+    },
+    ModelCard {
+        id: "gemini-2.5-pro",
+        label: "gemini-2.5-pro",
+        provider: "antigravity",
+        group: "Antigravity",
+        supports_thinking: true,
+        thinking_model: None,
+        effort_options: EFFORTS_FULL,
+        default_effort: Some("high"),
+        context_options: CTX_TIERS,
+        default_context: "1m",
+    },
+    ModelCard {
         id: "kimi-code", label: "Kimi Code", provider: "kimi", group: "Kimi Code",
         supports_thinking: true, thinking_model: None, effort_options: EFFORTS_FULL,
         default_effort: Some("medium"), context_options: CTX_FIXED_256K, default_context: "256k",
@@ -202,18 +262,67 @@ pub fn card(model_id: &str) -> Option<&'static ModelCard> {
     if let Some(c) = CATALOG.iter().find(|c| c.id == model_id) {
         return Some(c);
     }
-    if model_id == "antigravity" || model_id == "antigravity/" || model_id == "antigravity:" {
-        return CATALOG.iter().find(|c| c.provider == "antigravity");
-    }
-    if let Some(stripped) = model_id
-        .strip_prefix("antigravity/")
-        .or_else(|| model_id.strip_prefix("antigravity:"))
-    {
+    // D-049:自定义模型目录项(`custom:<hex>`)与旧单槽同一能力面(思考靠 reasoning_effort,
+    // 五档 effort);窗口按目录项声明另算,见 resolve_session。
+    if model_id != crate::custom_models::LEGACY_ID && crate::custom_models::is_custom_id(model_id) {
         return CATALOG
             .iter()
-            .find(|c| c.provider == "antigravity" && c.id == stripped);
+            .find(|c| c.id == crate::custom_models::LEGACY_ID);
     }
+    // Antigravity prefix normalization: accepts bare "antigravity", "antigravity/", "antigravity:"
+    let norm = model_id
+        .strip_prefix("antigravity/")
+        .or_else(|| model_id.strip_prefix("antigravity:"))
+        .unwrap_or(model_id);
+
+    if norm.is_empty() || norm == "antigravity" {
+        return CATALOG.iter().find(|c| c.provider == "antigravity");
+    }
+
+    if let Some(c) = CATALOG.iter().find(|c| c.provider == "antigravity" && c.id == norm) {
+        return Some(c);
+    }
+
+    // Dynamic alias resolution for Gemini models
+    let alias_target = match norm {
+        "gemini-4" => Some("gemini-4-flash"),
+        "gemini-4-flash" => Some("gemini-2.5-flash"),
+        "gemini-4-pro" => Some("gemini-2.5-pro"),
+        _ => None,
+    };
+    if let Some(target) = alias_target {
+        if let Some(c) = CATALOG.iter().find(|c| c.provider == "antigravity" && c.id == target) {
+            return Some(c);
+        }
+    }
+
     None
+}
+
+/// 上游实发模型名映射: 将前端/会话逻辑模型标识映射至反代端点实际支持的上游模型标识。
+///
+/// 映射规则:
+/// - `gemini-4`, `gemini-4-flash` -> `gemini-2.5-flash`
+/// - `gemini-4-pro` -> `gemini-2.5-pro`
+/// - `gemini-2.5-flash` -> `gemini-2.5-flash`
+/// - `gemini-2.5-pro` -> `gemini-2.5-pro`
+/// - `gemini-3.8-flash` -> `gemini-3.8-flash`
+/// - `gemini-3.8-pro` -> `gemini-3.8-pro`
+/// - 其余或前缀变体统一剥离前缀后回落至 `gemini-2.5-flash`。
+pub fn upstream_model(model_id: &str) -> &'static str {
+    let stripped = model_id
+        .strip_prefix("antigravity/")
+        .or_else(|| model_id.strip_prefix("antigravity:"))
+        .unwrap_or(model_id);
+    match stripped {
+        "gemini-4" | "gemini-4-flash" => "gemini-2.5-flash",
+        "gemini-4-pro" => "gemini-2.5-pro",
+        "gemini-2.5-flash" => "gemini-2.5-flash",
+        "gemini-2.5-pro" => "gemini-2.5-pro",
+        "gemini-3.8-flash" => "gemini-3.8-flash",
+        "gemini-3.8-pro" => "gemini-3.8-pro",
+        _ => "gemini-2.5-flash",
+    }
 }
 
 /// PATCH 入参校验用:是否本仓已知的 effort 档(跨模型集合;当前模型是否支持交给 resolve 回落)。
@@ -221,9 +330,143 @@ pub fn is_known_effort(id: &str) -> bool {
     EFFORTS_FULL.iter().any(|o| o.id == id)
 }
 
-/// PATCH 入参校验用:是否本仓已知的 context 档(同上)。
+/// PATCH 入参校验用:是否本仓已知的 context 档(同上)。D-049 起自定义模型按声明窗口
+/// 现算档位(见 window_options):落在标准档上的沿用标准 id,其余为显式的 `ctx-<tokens>`,
+/// 一并认;`9m` 这类生造档名照旧拒绝。
 pub fn is_known_context(id: &str) -> bool {
-    CTX_TIERS.iter().chain(CTX_FIXED_256K).any(|o| o.id == id)
+    CTX_TIERS.iter().chain(CTX_FIXED_256K).any(|o| o.id == id) || parse_window_id(id).is_some()
+}
+
+/// 自定义模型的窗口档(由目录项声明的窗口现算,所以 id/label 是自有字符串)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowOption {
+    pub id: String,
+    pub label: String,
+    pub tokens: u64,
+}
+
+const WINDOW_K: u64 = 1_024;
+const WINDOW_M: u64 = 1_048_576;
+
+/// tokens → 档位显示名(client `formatWindow` 同口径):哪种进制能整除就用哪种,十进制优先
+/// ——128000 = 128K、200000 = 200K;只有 1024 进制整除时按 1024(131072 = 128K、
+/// 204800 = 200K,与 CTX_TIERS 一致);≥1M 的十进制整万保留两位(1050000 = 1.05M)。
+pub fn window_label(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        if tokens % 1_000_000 == 0 {
+            return format!("{}M", tokens / 1_000_000);
+        }
+        if tokens % WINDOW_M == 0 {
+            return format!("{}M", tokens / WINDOW_M);
+        }
+        if tokens % 10_000 == 0 {
+            let m = format!("{:.2}", tokens as f64 / 1_000_000.0);
+            return format!("{}M", m.trim_end_matches('0').trim_end_matches('.'));
+        }
+    }
+    if tokens % 1_000 == 0 {
+        format!("{}K", tokens / 1_000)
+    } else if tokens % WINDOW_K == 0 {
+        format!("{}K", tokens / WINDOW_K)
+    } else {
+        format!("{}K", ((tokens + 500) / 1_000).max(1))
+    }
+}
+
+/// 声明窗口可取的范围(与 custom_models 的保存校验一致)。
+const WINDOW_MIN: u64 = 1_024;
+const WINDOW_MAX: u64 = 16_777_216;
+
+/// tokens → 档位 id:恰好落在标准档上沿用标准 id(64k/200k/1m…),其余为 `ctx-<tokens>`
+/// (都过得了 is_known_context 的 PATCH 防线)。
+fn window_id(tokens: u64) -> String {
+    CTX_TIERS
+        .iter()
+        .chain(CTX_FIXED_256K)
+        .find(|o| o.tokens == tokens)
+        .map(|o| o.id.to_string())
+        .unwrap_or_else(|| format!("ctx-{tokens}"))
+}
+
+/// `ctx-<tokens>` → tokens(只认纯数字且在声明范围内;PATCH 防线用)。
+fn parse_window_id(id: &str) -> Option<u64> {
+    let digits = id.strip_prefix("ctx-")?;
+    if digits.is_empty() || digits.len() > 9 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits
+        .parse::<u64>()
+        .ok()
+        .filter(|n| (WINDOW_MIN..=WINDOW_MAX).contains(n))
+}
+
+/// 声明窗口 → 可选档:标准档里比它小的各档 + 声明值本身(恒在末位,即默认档)。
+pub fn window_options(window: u64) -> Vec<WindowOption> {
+    let mut out: Vec<WindowOption> = CTX_TIERS
+        .iter()
+        .chain(CTX_FIXED_256K)
+        .filter(|o| o.tokens < window)
+        .map(|o| WindowOption {
+            id: o.id.to_string(),
+            label: o.label.to_string(),
+            tokens: o.tokens,
+        })
+        .collect();
+    out.sort_by_key(|o| o.tokens);
+    let label = window_label(window);
+    let id = window_id(window);
+    out.retain(|o| o.label != label && o.id != id);
+    out.push(WindowOption {
+        id,
+        label,
+        tokens: window,
+    });
+    out
+}
+
+/// 声明窗口下某档选择的实际 tokens(选择不在档内 → 声明值)。
+pub fn window_tokens(window: u64, choice: Option<&str>) -> u64 {
+    choice
+        .and_then(|c| window_options(window).into_iter().find(|o| o.id == c))
+        .map(|o| o.tokens)
+        .unwrap_or(window)
+}
+
+/// 自定义模型目录项声明的窗口(读目录,IO;非自定义模型 / 未声明 → None)。
+fn declared_window(model_id: Option<&str>) -> Option<u64> {
+    let id = model_id.unwrap_or(DEFAULT_MODEL_ID);
+    if !crate::custom_models::is_custom_id(id) {
+        return None;
+    }
+    crate::custom_models::find(id).and_then(|m| m.context_window)
+}
+
+/// 会话面解析(IO):同 [`resolve`],另把自定义模型声明的窗口折进 context_tokens。
+/// 历史预算、压缩阈值这类「看窗口」的调用点用它;纯能力判断用 [`resolve`] 即可。
+pub fn resolve_session(
+    model_id: Option<&str>,
+    thinking: bool,
+    effort: Option<&str>,
+    context: Option<&str>,
+) -> ResolvedSpec {
+    let mut spec = resolve(model_id, thinking, effort, context);
+    if let Some(window) = declared_window(model_id) {
+        spec.context_tokens = window_tokens(window, context);
+    }
+    spec
+}
+
+/// [`resolve_deep`] 的会话面版本(IO;自定义模型声明的窗口折进 context_tokens)。
+pub fn resolve_deep_session(
+    model_id: Option<&str>,
+    context: Option<&str>,
+    cloud_efforts: Option<&[String]>,
+) -> ResolvedSpec {
+    let mut spec = resolve_deep(model_id, context, cloud_efforts);
+    if let Some(window) = declared_window(model_id) {
+        spec.context_tokens = window_tokens(window, context);
+    }
+    spec
 }
 
 /// 会话选择解析后的实发规格(每轮现算,不落库)。
@@ -661,6 +904,56 @@ mod tests {
         );
     }
 
+    /// D-049:自定义模型 id 借 openai-compat 卡的能力面;声明窗口现算档位,id 进 PATCH 白名单。
+    #[test]
+    fn custom_model_ids_and_declared_windows() {
+        let c = card("custom:0a1b2c3d").expect("custom: 走 openai-compat 能力卡");
+        assert_eq!(c.id, "openai-compat");
+        assert!(card("custom:").is_none());
+        assert!(supports_thinking(Some("custom:0a1b2c3d"), None));
+        let deep = resolve_deep(Some("custom:0a1b2c3d"), None, None);
+        assert_eq!(deep.reasoning_effort.as_deref(), Some("max"));
+
+        assert_eq!(window_label(204_800), "200K");
+        assert_eq!(window_label(200_000), "200K");
+        assert_eq!(window_label(2_097_152), "2M");
+        assert_eq!(window_label(409_600), "400K");
+        assert_eq!(window_label(32_768), "32K");
+        assert_eq!(window_label(1_050_000), "1.05M");
+        assert_eq!(window_label(1_000_000), "1M");
+        assert_eq!(window_label(1_500_000), "1.5M");
+        assert_eq!(window_label(128_000), "128K", "十进制整除优先,不写成 125K");
+        assert_eq!(window_label(131_072), "128K");
+        assert_eq!(window_label(393_216), "384K");
+        // 标准档的标签与按 tokens 现算的一致(档位去重靠它)。
+        for o in CTX_TIERS.iter().chain(CTX_FIXED_256K).chain(CTX_FIXED_64K) {
+            assert_eq!(window_label(o.tokens), o.label, "{}", o.id);
+        }
+        let last = window_options(1_050_000).pop().unwrap();
+        assert_eq!((last.id.as_str(), last.label.as_str()), ("ctx-1050000", "1.05M"));
+        assert!(is_known_context(&last.id), "生成的档位 id 必须过 PATCH 防线");
+
+        let ids = |w: u64| -> Vec<String> { window_options(w).into_iter().map(|o| o.id).collect() };
+        assert_eq!(ids(32_768), ["ctx-32768"]);
+        assert_eq!(ids(131_072), ["64k", "128k"]);
+        assert_eq!(ids(409_600), ["64k", "128k", "200k", "256k", "300k", "ctx-409600"]);
+        assert_eq!(ids(200_000), ["64k", "128k", "ctx-200000"]);
+        assert_eq!(window_options(200_000).last().unwrap().label, "200K");
+        assert_eq!(ids(1_048_576), ["64k", "128k", "200k", "256k", "300k", "1m"]);
+        assert_eq!(ids(262_144), ["64k", "128k", "200k", "256k"]);
+
+        assert_eq!(window_tokens(409_600, Some("128k")), 131_072);
+        assert_eq!(window_tokens(409_600, Some("1m")), 409_600, "超出声明窗口的档不认");
+        assert_eq!(window_tokens(409_600, None), 409_600);
+
+        for ok in ["64k", "1m", "256k", "ctx-409600", "ctx-2097152"] {
+            assert!(is_known_context(ok), "{ok}");
+        }
+        for bad in ["", "9m", "400k", "2m", "ctx-", "ctx-1", "ctx-99999999", "ctx-1e5", "ctx--1", "ctx-中"] {
+            assert!(!is_known_context(bad), "{bad}");
+        }
+    }
+
     #[test]
     fn card_json_carries_capability_face() {
         let c = card("openai-compat").unwrap();
@@ -731,4 +1024,188 @@ mod tests {
         assert!(supports_thinking(Some("antigravity/gemini-3.8-flash"), None));
         assert!(supports_thinking(Some("antigravity:gemini-3.8-pro"), None));
     }
+
+    #[test]
+    fn gemini4_modelspec_thinking_effort_context_resolution() {
+        // 1. Thinking on + high effort + 1M context
+        let on = resolve(Some("gemini-4"), true, Some("high"), Some("1m"));
+        assert_eq!(on.model, None, "gemini 不换模型名");
+        assert_eq!(on.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(on.context_tokens, 1_048_576, "默认 1M 上下文窗口");
+
+        // 2. Thinking off -> reasoning_effort 为 None
+        let off = resolve(Some("gemini-4"), false, Some("high"), Some("1m"));
+        assert_eq!(off.reasoning_effort, None, "思考关闭时不发 reasoning_effort");
+        assert_eq!(off.context_tokens, 1_048_576);
+
+        // 3. Fallback logic: flash defaults to medium, pro defaults to high
+        let fb_flash = resolve(Some("gemini-4-flash"), true, Some("invalid_effort"), None);
+        assert_eq!(fb_flash.reasoning_effort.as_deref(), Some("medium"));
+
+        let fb_pro = resolve(Some("gemini-4-pro"), true, Some("invalid_effort"), None);
+        assert_eq!(fb_pro.reasoning_effort.as_deref(), Some("high"));
+
+        let fb_25_flash = resolve(Some("gemini-2.5-flash"), true, Some("invalid_effort"), None);
+        assert_eq!(fb_25_flash.reasoning_effort.as_deref(), Some("medium"));
+    }
+
+    #[test]
+    fn gemini4_modelspec_prefix_and_aliasing() {
+        // 1. Direct card lookups
+        for id in ["gemini-4", "gemini-4-flash", "gemini-4-pro", "gemini-2.5-flash", "gemini-2.5-pro"] {
+            let c = card(id).unwrap_or_else(|| panic!("missing card for {id}"));
+            assert_eq!(c.provider, "antigravity");
+            assert!(c.supports_thinking);
+            assert_eq!(c.default_context, "1m");
+        }
+
+        // 2. Prefix lookups (antigravity/ and antigravity:)
+        for prefix in ["antigravity/", "antigravity:"] {
+            for id in ["gemini-4", "gemini-4-flash", "gemini-4-pro", "gemini-2.5-flash", "gemini-2.5-pro"] {
+                let full = format!("{prefix}{id}");
+                let c = card(&full).unwrap_or_else(|| panic!("missing prefixed card for {full}"));
+                assert_eq!(c.provider, "antigravity");
+            }
+        }
+
+        // 3. supports_thinking verification
+        assert!(supports_thinking(Some("gemini-4"), None));
+        assert!(supports_thinking(Some("antigravity/gemini-4-flash"), None));
+        assert!(supports_thinking(Some("antigravity:gemini-4-pro"), None));
+        assert!(supports_thinking(Some("gemini-2.5-flash"), None));
+
+        // 4. resolve_deep verification: max effort and 1M window
+        let deep = resolve_deep(Some("gemini-4"), Some("1m"), None);
+        assert_eq!(deep.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(deep.context_tokens, 1_048_576);
+    }
+
+    #[test]
+    fn gemini4_upstream_model_mapping() {
+        assert_eq!(upstream_model("gemini-4"), "gemini-2.5-flash");
+        assert_eq!(upstream_model("gemini-4-flash"), "gemini-2.5-flash");
+        assert_eq!(upstream_model("gemini-4-pro"), "gemini-2.5-pro");
+        assert_eq!(upstream_model("gemini-2.5-flash"), "gemini-2.5-flash");
+        assert_eq!(upstream_model("gemini-2.5-pro"), "gemini-2.5-pro");
+        assert_eq!(upstream_model("gemini-3.8-flash"), "gemini-3.8-flash");
+
+        // Prefixed variants
+        assert_eq!(upstream_model("antigravity/gemini-4"), "gemini-2.5-flash");
+        assert_eq!(upstream_model("antigravity:gemini-4-flash"), "gemini-2.5-flash");
+        assert_eq!(upstream_model("antigravity/gemini-4-pro"), "gemini-2.5-pro");
+
+        // Unknown fallback
+        assert_eq!(upstream_model("antigravity/unknown-future-model"), "gemini-2.5-flash");
+    }
+
+    #[test]
+    fn adversarial_gemini4_stress_test_prefixes_effort_and_upstream_routing() {
+        // 1. Prefix variations on gemini-4 family
+        let test_cases = [
+            ("gemini-4", "gemini-4", "gemini-2.5-flash"),
+            ("antigravity/gemini-4", "gemini-4", "gemini-2.5-flash"),
+            ("antigravity:gemini-4", "gemini-4", "gemini-2.5-flash"),
+            ("gemini-4-flash", "gemini-4-flash", "gemini-2.5-flash"),
+            ("antigravity/gemini-4-flash", "gemini-4-flash", "gemini-2.5-flash"),
+            ("antigravity:gemini-4-flash", "gemini-4-flash", "gemini-2.5-flash"),
+            ("gemini-4-pro", "gemini-4-pro", "gemini-2.5-pro"),
+            ("antigravity/gemini-4-pro", "gemini-4-pro", "gemini-2.5-pro"),
+            ("antigravity:gemini-4-pro", "gemini-4-pro", "gemini-2.5-pro"),
+            ("gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-flash"),
+            ("antigravity/gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-flash"),
+            ("antigravity:gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-flash"),
+            ("gemini-2.5-pro", "gemini-2.5-pro", "gemini-2.5-pro"),
+            ("antigravity/gemini-2.5-pro", "gemini-2.5-pro", "gemini-2.5-pro"),
+            ("antigravity:gemini-2.5-pro", "gemini-2.5-pro", "gemini-2.5-pro"),
+            ("antigravity", "gemini-3.8-flash", "gemini-2.5-flash"),
+            ("antigravity/", "gemini-3.8-flash", "gemini-2.5-flash"),
+            ("antigravity:", "gemini-3.8-flash", "gemini-2.5-flash"),
+        ];
+
+        for (input, expected_card_id, expected_upstream) in test_cases {
+            let c = card(input).unwrap_or_else(|| panic!("failed to resolve card for '{input}'"));
+            assert_eq!(c.id, expected_card_id, "card id mismatch for '{input}'");
+            assert_eq!(c.provider, "antigravity", "provider mismatch for '{input}'");
+            assert!(c.supports_thinking, "supports_thinking should be true for '{input}'");
+            assert_eq!(upstream_model(input), expected_upstream, "upstream mismatch for '{input}'");
+        }
+
+        // 2. Upstream mapping fallback on unknown/adversarial models
+        let unknown_cases = [
+            "unknown-model-xyz",
+            "antigravity/unknown-model-xyz",
+            "antigravity:unknown-model-xyz",
+            "antigravity/deepseek-r1-mock",
+            "antigravity/gpt-5-omni",
+            "",
+            "   ",
+            "antigravity//invalid",
+            "antigravity:::broken",
+        ];
+        for unk in unknown_cases {
+            assert_eq!(
+                upstream_model(unk),
+                "gemini-2.5-flash",
+                "unknown model '{unk}' should gracefully fall back to gemini-2.5-flash"
+            );
+        }
+
+        // 3. Thinking enabled vs disabled across all tiers
+        for model in ["gemini-4", "antigravity/gemini-4", "antigravity:gemini-4-flash", "antigravity/gemini-4-pro"] {
+            // Thinking disabled -> reasoning_effort must be None regardless of requested effort
+            for eff in [Some("low"), Some("medium"), Some("high"), Some("xhigh"), Some("max"), Some("bogus")] {
+                let res = resolve(Some(model), false, eff, Some("1m"));
+                assert_eq!(
+                    res.reasoning_effort, None,
+                    "reasoning_effort must be None when thinking=false for {model} with effort {eff:?}"
+                );
+                assert_eq!(res.model, None, "gemini model name should not be mutated");
+                assert_eq!(res.context_tokens, 1_048_576);
+            }
+
+            // Thinking enabled -> valid tiers preserved
+            for eff in ["low", "medium", "high", "xhigh", "max"] {
+                let res = resolve(Some(model), true, Some(eff), Some("1m"));
+                assert_eq!(
+                    res.reasoning_effort.as_deref(),
+                    Some(eff),
+                    "reasoning_effort should match requested '{eff}' when thinking=true for {model}"
+                );
+            }
+
+            // Thinking enabled + invalid/unknown effort -> fallback to default effort
+            let c = card(model).unwrap();
+            let default_eff = c.default_effort;
+            for invalid_eff in ["invalid", "bogus", "none", "supermax", "12345", ""] {
+                let res = resolve(Some(model), true, Some(invalid_eff), Some("1m"));
+                assert_eq!(
+                    res.reasoning_effort.as_deref(),
+                    default_eff,
+                    "invalid effort '{invalid_eff}' should fall back to default effort {default_eff:?} for {model}"
+                );
+            }
+
+            // Thinking enabled + None effort -> default effort
+            let res_none = resolve(Some(model), true, None, None);
+            assert_eq!(
+                res_none.reasoning_effort.as_deref(),
+                default_eff,
+                "None effort should fall back to default {default_eff:?} for {model}"
+            );
+            assert_eq!(res_none.context_tokens, 1_048_576, "None context should fall back to 1m (1048576)");
+        }
+
+        // 4. Context window tier resolution & fallback
+        for model in ["gemini-4", "antigravity/gemini-4-pro"] {
+            assert_eq!(resolve(Some(model), true, None, Some("64k")).context_tokens, 65_536);
+            assert_eq!(resolve(Some(model), true, None, Some("128k")).context_tokens, 131_072);
+            assert_eq!(resolve(Some(model), true, None, Some("200k")).context_tokens, 204_800);
+            assert_eq!(resolve(Some(model), true, None, Some("300k")).context_tokens, 307_200);
+            assert_eq!(resolve(Some(model), true, None, Some("1m")).context_tokens, 1_048_576);
+            // Invalid context -> default 1m
+            assert_eq!(resolve(Some(model), true, None, Some("invalid_ctx")).context_tokens, 1_048_576);
+            assert_eq!(resolve(Some(model), true, None, Some("9m")).context_tokens, 1_048_576);
+        }
+    }
 }
+

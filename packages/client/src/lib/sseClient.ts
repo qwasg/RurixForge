@@ -132,6 +132,9 @@ export function subscribeSessionEvents(
       scheduleRetry();
       return;
     }
+    // fetch 可以在 close() 后才完成（代理/测试流也可能忽略 abort）。旧订阅
+    // 不得把已切换或已 reset 的会话重新标成 live，更不能投递历史帧。
+    if (closed) return;
     if (!res.ok || !res.body) {
       if (closed) return;
       cb.onError?.(new Error(`SSE HTTP ${res.status}`));
@@ -140,6 +143,7 @@ export function subscribeSessionEvents(
     }
     attempt = 0; // 连接成功 → 退避复位
     cb.onOpen?.();
+    if (closed) return;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -152,6 +156,7 @@ export function subscribeSessionEvents(
         const [frames, rest] = splitFrames(buf);
         buf = rest;
         for (const raw of frames) {
+          if (closed) return;
           const frame = parseFrame(raw);
           if (!frame) continue;
           if (frame.event === 'stream.gap') {

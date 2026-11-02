@@ -11,6 +11,8 @@ window.__demo={reset(){x=0;draw()},getState(){return {player:{x},phase:'playing'
 addEventListener('keydown',e=>{if(e.key==='ArrowRight'){x+=10;draw()}});draw();
 </script>"#;
 
+const DEMO_PROMPT: &str = "Build this project's keyboard arena Demo: the player moves right toward a visible goal, receives victory feedback, and can restart. Use a bright yellow player against the confirmed dark arena. Read every file in requirements.json; write only the isolated Demo directory, with index.html as the entry. Implement real keyboard input and deterministic reset/getState, then deliver probe.json proving ArrowRight moves player.x from 0 to 10. Report the controls, completed loop, and browser verification results.";
+
 struct FlowFixture {
     state: Arc<AppState>,
     root: PathBuf,
@@ -186,6 +188,20 @@ impl FlowFixture {
         let up = self.up();
         let production = read_json(&rt.dir_abs.join(PRODUCTION_FILE)).unwrap();
         for id in production["activeTodoIds"].as_array().unwrap() {
+            assert!(
+                self.state
+                    .todos
+                    .list_by_session(&self.sid)
+                    .iter()
+                    .any(|todo| {
+                        todo.id == id.as_str().unwrap()
+                            && todo
+                                .prompt
+                                .as_deref()
+                                .is_some_and(|prompt| !prompt.trim().is_empty())
+                    }),
+                "fixture must not complete a task before the leader supplies its delegation"
+            );
             self.state
                 .todos
                 .patch(
@@ -246,8 +262,8 @@ fn questionnaire() -> Value {
 
 fn plan() -> Value {
     json!({"tasks":[
-        {"id":"logic","title":"Game loop","role":"logic-programmer","prompt":"Implement controls and victory","stage":"build","deps":["scene"],"verify":"qa","checkIds":["gameplay","feel"]},
-        {"id":"scene","title":"Scene setup","role":"scene-builder","prompt":"Create a readable game scene","stage":"build","deps":[],"verify":"qa","checkIds":["visual"]}],
+        {"id":"logic","title":"Game loop","role":"logic-programmer","prompt":"Implement controls and victory","stage":"build","deps":["scene"],"verify":"qa","checkIds":["gameplay","feel"],"requiredTools":["mcp__code-forge__rx_check"],"outputs":["Content/Scripts/game.rx"],"handoffChecks":[{"kind":"rx","path":"Content/Scripts/game.rx"}]},
+        {"id":"scene","title":"Scene setup","role":"scene-builder","prompt":"Create a readable game scene","stage":"build","deps":[],"verify":"qa","checkIds":["visual"],"requiredTools":["mcp__engine-scene__scene_save"],"outputs":["Content/Scenes/main.rxscene"],"handoffChecks":[{"kind":"scene","path":"Content/Scenes/main.rxscene"}]}],
         "checks":{"automated":[{"id":"visual","kind":"visual","scene":"Content/Scenes/main.rxscene","steps":"Capture game","expected":"Nonblank scene"},{"id":"gameplay","kind":"gameplay","scene":"Content/Scenes/main.rxscene","steps":"Move right","expected":"Player moves"}],"manual":[{"id":"feel","title":"Control feel","steps":"Play the loop and restart","expected":"Responsive movement","required":true}]},
         "delivery":{"entry":"Content/Scenes/main.rxscene","controls":"Arrow keys to move; R to restart"}})
 }
@@ -260,7 +276,6 @@ async fn run_flow(engine: &str, mode: &str, backend: &str, real_browser: bool) {
         "Build a playable keyboard game. Preserve this complete original brief.",
     );
     assert!(!discovery.facts.has_content);
-    assert!(discovery_tasks(&discovery).is_empty());
     assert!(
         !handle_exit_tool(
             &f.state,
@@ -299,7 +314,7 @@ async fn run_flow(engine: &str, mode: &str, backend: &str, real_browser: bool) {
     assert!(target_for_answers(&f.scope, &saved_questionnaire, &answers).is_err());
     answers[IMPLEMENTATION_STACK_QUESTION] = json!({"choice":[format!("{mode}_{backend}")]});
     let answer = f.request(Action::Answer, Some(answers));
-    let (answer_id, demo_rt) = f.start(Some(&answer), "");
+    let (answer_id, mut demo_rt) = f.start(Some(&answer), "");
     let target = read_json(&demo_rt.dir_abs.join(TARGET)).unwrap();
     assert_eq!(target["gameMode"], mode);
     assert_eq!(target["renderBackend"], backend);
@@ -313,18 +328,57 @@ async fn run_flow(engine: &str, mode: &str, backend: &str, real_browser: bool) {
     }
     let wrong_backend = if backend == "godot" { "rurix" } else { "godot" };
     assert!(!handle_spec(&f.state, &f.sid, &answer_id, &demo_rt,
-        &json!({"spec":"Must not change confirmed stack","gameMode":mode,"renderBackend":wrong_backend})).0);
+        &json!({"spec":"Must not change confirmed stack","gameMode":mode,"renderBackend":wrong_backend,"demoPrompt":DEMO_PROMPT})).0);
     assert!(!demo_rt.dir_abs.join(SPEC_FILE).exists());
     assert_eq!(read_json(&demo_rt.dir_abs.join(TARGET)).unwrap(), target);
-    f.exit(&answer_id,&demo_rt,SPEC_TOOL,&json!({"spec":"Complete fixture requirements: controls, goal, win, restart, readable player.","gameMode":mode,"renderBackend":backend}));
+    let mut spec = json!({"spec":"Complete fixture requirements: controls, goal, win, restart, readable player.","gameMode":mode,"renderBackend":backend});
+    for prompt in [None, Some(""), Some(" \n\t")] {
+        if let Some(prompt) = prompt {
+            spec["demoPrompt"] = json!(prompt);
+        }
+        let (ok, error) = handle_spec(&f.state, &f.sid, &answer_id, &demo_rt, &spec);
+        assert!(!ok);
+        assert!(error.contains("demoPrompt"));
+        assert!(!demo_rt.dir_abs.join(SPEC_FILE).exists());
+        assert!(demo_rt.tracker.demo_prompt.lock().unwrap().is_none());
+        assert_eq!(read_json(&demo_rt.dir_abs.join(TARGET)).unwrap(), target);
+    }
+    spec["demoPrompt"] = json!(DEMO_PROMPT);
+    f.exit(&answer_id, &demo_rt, SPEC_TOOL, &spec);
     assert!(
         !f.ws.join("forge.toml").exists(),
         "Demo/requirements must not initialize production"
     );
-    let (work, _) = prepare_demo(&demo_rt).unwrap();
+    // A retry/new runtime can see the old spec on disk, but cannot inherit its
+    // delegation. Only a successful submission in this turn authorizes a Demo.
+    let submitted_tracker = std::mem::take(&mut demo_rt.tracker);
+    assert!(demo_rt.dir_abs.join(SPEC_FILE).is_file());
+    assert!(prepare_demo(&demo_rt)
+        .unwrap_err()
+        .contains("ULTRAPLAN_DEMO_DELEGATION_MISSING"));
+    assert!(std::fs::read_dir(&demo_rt.dir_abs)
+        .unwrap()
+        .all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("demo-attempt-")));
+    demo_rt.tracker = submitted_tracker;
+    let (work, builder_prompt) = prepare_demo(&demo_rt).unwrap();
+    assert!(builder_prompt.starts_with(DEMO_PROMPT));
+    assert!(builder_prompt.contains("只能写当前目录"));
+    assert!(builder_prompt.contains("不得修改 _requirements 或 requirements.json"));
+    assert!(builder_prompt.contains("不得访问外部网络"));
+    assert!(builder_prompt.contains("probe.json"));
     std::fs::write(work.join("index.html"), DEMO).unwrap();
     save(&work,"probe.json",&json!({"script":[{"call":"reset"}],"inputs":[{"kind":"keyPress","key":"ArrowRight"}],"assertions":[{"path":"player.x","op":"eq","expected":10}]})).unwrap();
     let manifest = read_json(&work.join("requirements.json")).unwrap();
+    for entry in manifest["files"].as_array().unwrap() {
+        assert!(
+            builder_prompt.contains(entry["path"].as_str().unwrap()),
+            "all chunk paths must remain visible even when the manifest is truncated"
+        );
+    }
     assert!(manifest["files"]
         .as_array()
         .unwrap()
@@ -488,17 +542,30 @@ async fn run_flow(engine: &str, mode: &str, backend: &str, real_browser: bool) {
     let fix = f.request(Action::FixProduction, None);
     let (fix_id, fix_rt) = f.start(Some(&fix), "");
     let todos = f.state.todos.list_by_session(&f.sid);
-    assert_eq!(todos.len(), 3);
+    assert_eq!(todos.len(), 2);
     let repairs: Vec<_> = todos
         .iter()
         .filter(|t| {
-            t.plan_todo_id
-                .as_deref()
-                .is_some_and(|id| id.contains(":fix:1:"))
+            t.status == "queued" && t.prompt.is_none()
         })
         .collect();
     assert_eq!(repairs.len(), 1);
     assert_eq!(repairs[0].role.as_deref(), Some("logic-programmer"));
+    assert!(repairs[0].prompt.is_none());
+    let repair_context = repairs[0].description.as_deref().unwrap();
+    assert!(repair_context.contains("Implement controls and victory"));
+    assert!(repair_context.contains("Fixture feedback: movement must respond"));
+    assert!(fix_rt.preamble.contains(&repairs[0].id));
+    assert!(fix_rt.preamble.contains("todo_update {id,prompt}"));
+    assert!(fix_rt.preamble.contains(DELEGATIONS));
+    let delegation_snapshot = read_json(&fix_rt.dir_abs.join(DELEGATIONS)).unwrap();
+    assert_eq!(delegation_snapshot["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(delegation_snapshot["tasks"][0]["id"], repairs[0].id);
+    assert!(delegation_snapshot["tasks"][0]["prompt"].is_null());
+    assert_eq!(
+        delegation_snapshot["tasks"][0]["description"],
+        repair_context
+    );
     assert_eq!(
         read_json(&fix_rt.dir_abs.join(PRODUCTION_FILE)).unwrap()["checks"],
         json!({})
@@ -508,8 +575,42 @@ async fn run_flow(engine: &str, mode: &str, backend: &str, real_browser: bool) {
     let (repair_id, repair_rt) = f.start(Some(&resume), "");
     assert_eq!(
         f.state.todos.list_by_session(&f.sid).len(),
-        3,
+        2,
         "repair retry may not duplicate or remake all tasks"
+    );
+    assert!(f
+        .state
+        .todos
+        .list_by_session(&f.sid)
+        .iter()
+        .find(|todo| todo.id == repairs[0].id)
+        .unwrap()
+        .prompt
+        .is_none());
+    // Model fixture: the leader reads the retained failure context and submits
+    // a new specific delegation through the same scoped tool used in production.
+    let repair_prompt = "Fix the reported unresponsive movement in this keyboard game. Read requirements.json, the approved loop task and acceptance.json first. Change only the existing input/loop script; preserve the completed arena and victory/restart behavior. Trace ArrowRight key handling, remove dropped input and update player.x on the next frame. Deliver the corrected script and rerun the approved movement probe; verify responsive movement and restart, and report exact evidence for the failed feel check.";
+    let (ok, message) = crate::native_tools::dispatch_native_scoped(
+        &f.ws,
+        &f.state.events,
+        &f.state.todos,
+        &f.sid,
+        &repair_id,
+        "todo_update",
+        &json!({"id":repairs[0].id,"prompt":repair_prompt}),
+        &repairs[0].source,
+    );
+    assert!(ok, "leader repair delegation: {message}");
+    assert_eq!(
+        f.state
+            .todos
+            .list_by_session(&f.sid)
+            .iter()
+            .find(|todo| todo.id == repairs[0].id)
+            .unwrap()
+            .prompt
+            .as_deref(),
+        Some(repair_prompt)
     );
     f.approve_production_fixtures(&repair_rt, &repair_id);
     complete_production(

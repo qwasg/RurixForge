@@ -126,7 +126,7 @@ function ModelPicker({ node, onClose }: { node: StudioNode; onClose: () => void 
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono text-2xs text-fg">{genBackendLabel(b.id, b.label)}</span>
-                <span className={cn('block text-[10px]', b.configured ? 'text-sage' : 'text-fg-4')}>
+                <span className={cn('block text-[10px]', b.configured ? 'text-fg-2' : 'text-fg-4')}>
                   {b.configured ? (b.id === LOCAL_H3_BACKEND_ID ? '已配置 · 本机生成 · 无需 API Key' : '已配置')
                     : b.kind === 'local' ? '未配置 · 去设置页启用并填写服务地址'
                       : '未配置(生成时如实报错,去设置页配 endpoint/key)'}
@@ -568,7 +568,7 @@ export default function StudioComposer({ node }: { node: StudioNode }) {
                 className={cn(
                   'ml-auto rounded border px-1.5 py-px text-[10px]',
                   ffmpeg.found
-                    ? 'border-sage/50 text-sage'
+                    ? 'border-edge-strong text-fg-2'
                     : 'border-warn/50 text-warn',
                 )}
               >

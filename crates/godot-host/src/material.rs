@@ -368,6 +368,12 @@ impl Materials {
         let orm = m.occlusion_texture.is_some() && m.occlusion_texture == m.metallic_roughness_texture && m.occlusion_strength == 1.0;
         let mut mat: Gd<BaseMaterial3D> =
             if orm { OrmMaterial3D::new_gd().upcast() } else { StandardMaterial3D::new_gd().upcast() };
+        if crate::light::physical_units_enabled() {
+            // Godot material.h defaults physical emission_intensity to 1000 nits.
+            // Forge already authors the full linear emissive radiance below; an
+            // extra default 1000 multiplier would invalidate the physical profile.
+            mat.set_emission_intensity(1.0);
+        }
         mat.set_albedo(srgb_color([m.base_color[0], m.base_color[1], m.base_color[2]], m.base_color[3]));
         mat.set_metallic(m.metallic);
         mat.set_roughness(m.roughness);

@@ -14,26 +14,42 @@
 use std::ffi::c_void;
 use std::io::{BufRead, Write};
 use std::process::exit;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Mutex,OnceLock};
+use std::collections::VecDeque;
+use std::time::Instant;
 use std::sync::mpsc;
 use std::thread;
 
 use windows::core::{Interface, PCWSTR};
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{DXGI_STATUS_OCCLUDED, CloseHandle, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D12::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::System::Threading::CreateEventW;
+use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 const WINDOW_CLASS: &str = "ForgeViewportPresenter";
 /// 呈现帧率目标(就近 vsync 近似;消息泵空闲期 peek 间隔)。
 const PRESENT_TICK_MS: u32 = 8;
+static PRESENT_CALLS:AtomicU64=AtomicU64::new(0);
+static RECORD_METRICS:AtomicBool=AtomicBool::new(false);
+static SAMPLES:OnceLock<Mutex<VecDeque<String>>>=OnceLock::new();
+fn record_sample(value:String){let mut samples=SAMPLES.get_or_init(||Mutex::new(VecDeque::new())).lock().unwrap_or_else(|e|e.into_inner());if samples.len()==512{samples.pop_front();}samples.push_back(value);}
+fn print_sample_stats(){let samples=SAMPLES.get_or_init(||Mutex::new(VecDeque::new())).lock().unwrap_or_else(|e|e.into_inner());println!("PRESENT_STATS {{\"presentCalls\":{},\"visiblePresents\":{},\"samples\":[{}]}}",PRESENT_CALLS.load(Ordering::SeqCst),presented_counter().0.load(Ordering::SeqCst),samples.iter().cloned().collect::<Vec<_>>().join(","));std::io::stdout().flush().ok();}
+
 
 // ─────────────────────────── D3D12 消费者状态 ───────────────────────────
+
+fn diagnostic_epoch_micros()->Option<u64>{std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().and_then(|t|u64::try_from(t.as_micros()).ok())}
+struct ReceivedHandle(HANDLE);
+impl Drop for ReceivedHandle { fn drop(&mut self) { // SAFETY: one owner for each duplicated process handle.
+    unsafe { let _=CloseHandle(self.0); }
+} }
+struct NativeSlot { buffer: ID3D12Resource, produced: ID3D12Fence, consumed: ID3D12Fence, seen: u64 }
 
 struct Dx {
     _factory: IDXGIFactory2,
@@ -54,6 +70,12 @@ struct Dx {
     /// 共享 buffer 行距(256B 对齐;PLACED_FOOTPRINT 拷贝用)。
     row_pitch: u32,
     presented: u64,
+    native_slots: Vec<NativeSlot>,
+    generation: u64,
+    completion: ID3D12Fence,
+    completion_value: u64,
+    last_present:Option<Instant>,
+    last_visible:bool,
 }
 
 impl Dx {
@@ -63,8 +85,11 @@ impl Dx {
             let factory: IDXGIFactory2 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))
                 .map_err(|e| format!("CreateDXGIFactory2: {e}"))?;
             let mut device: Option<ID3D12Device> = None;
-            D3D12CreateDevice(None, D3D_FEATURE_LEVEL_11_0, &mut device)
-                .map_err(|e| format!("D3D12CreateDevice: {e}"))?;
+            if std::env::args().any(|arg|arg=="--high-performance") {
+                let gpu_factory:IDXGIFactory6=factory.cast().map_err(|e|e.to_string())?;
+                let adapter:IDXGIAdapter1=gpu_factory.EnumAdapterByGpuPreference(0,DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE).map_err(|e|e.to_string())?;
+                D3D12CreateDevice(&adapter,D3D_FEATURE_LEVEL_11_0,&mut device).map_err(|e|e.to_string())?;
+            } else {D3D12CreateDevice(None,D3D_FEATURE_LEVEL_11_0,&mut device).map_err(|e|e.to_string())?;}
             let device = device.ok_or("D3D12CreateDevice 返回空")?;
             let queue = device
                 .CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
@@ -88,6 +113,7 @@ impl Dx {
                 .map_err(|e| format!("CreateDescriptorHeap(RTV): {e}"))?;
             let rtv_size = device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
             let fence_event = CreateEventW(None, false, false, None).map_err(|e| format!("CreateEventW: {e}"))?;
+            let completion:ID3D12Fence=device.CreateFence(0,D3D12_FENCE_FLAG_NONE).map_err(|e|e.to_string())?;
             Ok(Dx {
                 _factory: factory,
                 device,
@@ -105,6 +131,7 @@ impl Dx {
                 height: 0,
                 row_pitch: 0,
                 presented: 0,
+                native_slots:Vec::new(), generation:0, completion, completion_value:0, last_present:None,last_visible:false,
             })
         }
     }
@@ -127,9 +154,11 @@ impl Dx {
         unsafe {
             // SAFETY: tex_raw/fence_raw 为 engine-host 经 DuplicateHandle 复制给本进程的
             // 有效句柄;OpenSharedHandle 成功即取得 COM 引用,失败原样返回 HRESULT。
-            let tex_h = HANDLE(tex_raw as *mut c_void);
-            let fence_h = HANDLE(fence_raw as *mut c_void);
+            let tex_h = ReceivedHandle(HANDLE(tex_raw as *mut c_void));
+            let fence_h = ReceivedHandle(HANDLE(fence_raw as *mut c_void));
             self.shared = None;
+            self.native_slots.clear();
+            self.seen_fence=0;
             // 布局契约对拍:行距须 256B 对齐且容得下一行 rgba8,不符即 fail-closed
             // (与 engine-host share.rs::shared_layout 同式;任一侧漂移即接线硬错)。
             let expect = ((width as usize) * 4).div_ceil(256) * 256;
@@ -141,17 +170,16 @@ impl Dx {
             let shared = {
                 let mut sh: Option<ID3D12Resource> = None;
                 self.device
-                    .OpenSharedHandle(tex_h, &mut sh)
+                    .OpenSharedHandle(tex_h.0, &mut sh)
                     .map_err(|e| format!("OpenSharedHandle(buffer): {e}"))?;
                 sh.ok_or("OpenSharedHandle(buffer) 返回空")?
             };
             let mut fence: Option<ID3D12Fence> = None;
             self.device
-                .OpenSharedHandle(fence_h, &mut fence)
+                .OpenSharedHandle(fence_h.0, &mut fence)
                 .map_err(|e| format!("OpenSharedHandle(fence): {e}"))?;
             let fence = fence.ok_or("OpenSharedHandle(fence) 返回空")?;
-            let _ = CloseHandle(tex_h);
-            let _ = CloseHandle(fence_h);
+
             self.shared = Some(shared);
             self.fence = Some(fence);
             self.width = width;
@@ -159,6 +187,21 @@ impl Dx {
             self.row_pitch = row_pitch;
             Ok(())
         }
+    }
+
+    fn bind_native(&mut self, generation:u64, handles:[[usize;3];2], w:u32,h:u32,pitch:u32)->Result<(),String>{
+        let mut slots=Vec::with_capacity(2);
+        for [buffer,produced,consumed] in handles {
+            self.bind(buffer,produced,w,h,pitch)?;
+            // SAFETY: engine-host duplicated this NT handle for this process. Close after opening COM reference.
+            let fence=unsafe{
+                let handle=HANDLE(consumed as *mut c_void);let mut fence:Option<ID3D12Fence>=None;
+                let result=self.device.OpenSharedHandle(handle,&mut fence);let _=CloseHandle(handle);
+                result.map_err(|e|e.to_string())?;fence.ok_or("consumer fence missing")?
+            };
+            slots.push(NativeSlot{buffer:self.shared.take().unwrap(),produced:self.fence.take().unwrap(),consumed:fence,seen:0});
+        }
+        self.native_slots=slots; self.generation=generation; self.last_present=None; Ok(())
     }
 
     /// 建 swapchain 于指定 hwnd(尺寸跟随当前绑定纹理)。
@@ -198,17 +241,28 @@ impl Dx {
     }
 
     /// 呈现一帧:fence 等序 → copy → Present;返回本帧 fence 值(无新帧返回 None)。
-    fn present_latest(&mut self) -> Result<Option<u64>, String> {
-        let (Some(shared), Some(fence), Some(sc)) = (&self.shared, &self.fence, &self.swapchain) else {
-            return Ok(None);
+    fn present_latest(&mut self, window_visible:bool, polling_sleep_ms:f64, polling_iterations:u64) -> Result<Option<u64>, String> {
+        let started=Instant::now();
+        let Some(sc)=self.swapchain.as_ref() else {return Ok(None)};
+        // FIFO across two slots prevents an older slot being starved by a newer frame.
+        let candidate=self.native_slots.iter().enumerate().filter_map(|(i,s)|{
+            // SAFETY: fence is owned by the bound slot.
+            let value=unsafe{s.produced.GetCompletedValue()};
+            (value>s.seen).then_some((i,value))
+        }).min_by_key(|(_,value)|*value);
+        let (shared,target,native_index)=if self.native_slots.is_empty(){
+            let(Some(shared),Some(fence))=(&self.shared,&self.fence) else {return Ok(None)};
+            // SAFETY: bound producer fence remains live.
+            let value=unsafe{fence.GetCompletedValue()};
+            if value<=self.seen_fence{return Ok(None)}
+            (shared.clone(),value,None)
+        }else{
+            let Some((index,value))=candidate else {return Ok(None)};
+            (self.native_slots[index].buffer.clone(),value,Some(index))
         };
+        let observed_utc_micros=diagnostic_epoch_micros().map(|v|v.to_string()).unwrap_or_else(||"null".into());
         unsafe {
-            // SAFETY: 全部对象存活于 self;命令对(reset/record/close/execute)按序配对。
-            let current = fence.GetCompletedValue();
-            if current <= self.seen_fence {
-                return Ok(None); // 无新帧不重复呈现:计数器 = 已呈现新帧数(selftest 判定面)
-            }
-            let target = current;
+            // SAFETY: the previous submission was waited before returning; allocator is idle.
             self.allocator.Reset().map_err(|e| format!("allocator.Reset: {e}"))?;
             self.list.Reset(&self.allocator, None).map_err(|e| format!("list.Reset: {e}"))?;
 
@@ -269,8 +323,33 @@ impl Dx {
             self.list.Close().map_err(|e| format!("list.Close: {e}"))?;
             let cmd: ID3D12CommandList = self.list.cast().map_err(|e| format!("list cast: {e}"))?;
             self.queue.ExecuteCommandLists(&[Some(cmd)]);
-            sc.Present(1, DXGI_PRESENT(0)).ok().map_err(|e| format!("Present: {e}"))?;
-            // 记录已见帧号;不强制等 GPU(flip 队列自身节流)。
+            // GPU acknowledgements are ordered after the copy, never after CPU submission alone.
+            if let Some(index)=native_index {
+                self.queue.Signal(&self.native_slots[index].consumed,target).map_err(|e|e.to_string())?;
+            }
+            self.completion_value+=1;
+            self.queue.Signal(&self.completion,self.completion_value).map_err(|e|e.to_string())?;
+            self.completion.SetEventOnCompletion(self.completion_value,self.fence_event).map_err(|e|e.to_string())?;
+            let wait=WaitForSingleObject(self.fence_event,2000);
+            if wait.0!=0 || self.completion.GetCompletedValue()<self.completion_value || self.completion.GetCompletedValue()==u64::MAX{return Err(format!("PRESENTER_COPY_TIMEOUT: generation={} frame={} wait={}",self.generation,target,wait.0))}
+            let copy_ms=started.elapsed().as_secs_f64()*1000.;
+            let present_start=Instant::now();
+            let present_result=sc.Present(1, DXGI_PRESENT(0));
+            present_result.ok().map_err(|e| format!("Present: {e}"))?;
+            let occluded=present_result==DXGI_STATUS_OCCLUDED;
+            self.last_visible=window_visible && !occluded;
+            PRESENT_CALLS.fetch_add(1,Ordering::SeqCst);
+            let now=Instant::now();
+            let presented_utc_micros=diagnostic_epoch_micros().map(|v|v.to_string()).unwrap_or_else(||"null".into());
+            if RECORD_METRICS.load(Ordering::Relaxed) {
+                let mut stats=DXGI_FRAME_STATISTICS::default();
+                let (count,qpc)=if sc.GetFrameStatistics(&mut stats).is_ok(){(stats.PresentCount.to_string(),stats.SyncQPCTime.to_string())}else{("null".into(),"null".into())};
+                let interval=self.last_present.map(|previous|now.duration_since(previous).as_secs_f64()*1000.).map(|v|v.to_string()).unwrap_or_else(||"null".into());
+                let slot=native_index.map(|i|i.to_string()).unwrap_or_else(||"null".into());
+                record_sample(format!("{{\"sample\":{},\"generation\":{},\"slot\":{},\"producerFrame\":{},\"width\":{},\"height\":{},\"copyCompleteMs\":{},\"presentCallMs\":{},\"intervalMs\":{},\"dxgiPresentCount\":{},\"dxgiSyncQpcTime\":{},\"windowVisible\":{},\"occluded\":{},\"observedUtcMicros\":{},\"pollingSleepMs\":{},\"pollingIterations\":{},\"presentedUtcMicros\":{}}}",self.presented+1,self.generation,slot,target,self.width,self.height,copy_ms,now.duration_since(present_start).as_secs_f64()*1000.,interval,count,qpc,window_visible,occluded,observed_utc_micros,polling_sleep_ms,polling_iterations,presented_utc_micros));
+            }
+            self.last_present=Some(now);
+            if let Some(index)=native_index {self.native_slots[index].seen=target;}
             self.seen_fence = target;
             self.presented += 1;
             Ok(Some(target))
@@ -290,6 +369,7 @@ impl Drop for Dx {
 // ─────────────────────────── 窗口线程 ───────────────────────────
 
 enum Cmd {
+    BindNative { generation:u64, handles:[[usize;3];2], w:u32,h:u32,row_pitch:u32 },
     Bind { tex: usize, fence: usize, w: u32, h: u32, row_pitch: u32 },
     Move { x: i32, y: i32, w: u32, h: u32 },
     Close,
@@ -372,6 +452,12 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
             }
         }
     };
+    if parent.0.is_null() {
+        // The launcher hides the console with STARTUPINFO. Explicitly show the requested
+        // standalone viewport; counting a hidden window as presentation is forbidden.
+        // SAFETY: hwnd was created on this thread. Geometry and activation are preserved.
+        unsafe {SetWindowPos(hwnd,Some(HWND_TOP),0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_SHOWWINDOW).map_err(|e|eprintln!("[presenter] show failed: {e}")).ok();}
+    }
     HWND_SLOT.store(hwnd.0 as usize, Ordering::SeqCst);
     let mut dx = match Dx::new() {
         Ok(d) => d,
@@ -390,6 +476,7 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
     let is_child = !parent.0.is_null();
     let mut shown = !is_child;
     let mut tick: u32 = 0;
+    let mut polling_sleep_ms=0.0;let mut polling_iterations=0u64;
     let mut msg = MSG::default();
     'outer: loop {
         // 命令队列优先
@@ -418,6 +505,11 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
                         }
                     }
                 }
+                Cmd::BindNative {generation,handles,w,h,row_pitch}=>{
+                    let recreate=dx.width!=w||dx.height!=h||dx.swapchain.is_none();
+                    if let Err(e)=dx.bind_native(generation,handles,w,h,row_pitch){eprintln!("[presenter] native bind failed: {e}");break 'outer;}
+                    if recreate {dx.swapchain=None;if let Err(e)=dx.create_swapchain(hwnd){eprintln!("[presenter] resize failed: {e}");break 'outer;}}
+                }
                 Cmd::Move { x, y, w, h } => unsafe {
                     // SAFETY: hwnd 为本线程窗口。子窗口顺带提到兄弟窗口最上面(HWND_TOP,不激活)。
                     let (after, flags) = if is_child { (Some(HWND_TOP), SWP_NOACTIVATE) } else { (None, SWP_NOZORDER | SWP_NOACTIVATE) };
@@ -436,10 +528,14 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
                 DispatchMessageW(&msg);
             }
         }
-        if dx.shared.is_some() {
-            match dx.present_latest() {
+        if dx.shared.is_some() || !dx.native_slots.is_empty() {
+            // A hidden/minimized window is not evidence of visible presentation.
+            // SAFETY: hwnd belongs to this live window thread.
+            let visible=unsafe{IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool()};
+            match dx.present_latest(visible,polling_sleep_ms,polling_iterations) {
                 Ok(Some(_)) => {
-                    presented_counter().0.fetch_add(1, Ordering::SeqCst);
+                    polling_sleep_ms=0.0;polling_iterations=0;
+                    if dx.last_visible {presented_counter().0.fetch_add(1, Ordering::SeqCst);}
                     if !shown {
                         // 首帧已进 swapchain:显示并提到兄弟窗口最上面(都不激活)
                         unsafe {
@@ -468,7 +564,9 @@ fn window_thread(parent: HWND, x: i32, y: i32, w: u32, h: u32, rx: mpsc::Receive
                 }
             }
         }
-        thread::sleep(std::time::Duration::from_millis(PRESENT_TICK_MS as u64));
+        let sleep_started=Instant::now();
+        thread::sleep(std::time::Duration::from_millis(if dx.native_slots.is_empty(){PRESENT_TICK_MS as u64}else{1}));
+        polling_sleep_ms+=sleep_started.elapsed().as_secs_f64()*1000.;polling_iterations+=1;
     }
     unsafe {
         // SAFETY: 退出前销毁窗口,父窗口无悬挂子引用。
@@ -487,6 +585,12 @@ fn parse_cmd(line: &str) -> Option<Cmd> {
     let line = line.trim().trim_start_matches('\u{feff}');
     let parts: Vec<&str> = line.split_whitespace().collect();
     match parts.first().copied()? {
+        "bind" if parts.len()==12 && parts[1]=="buf2" => Some(Cmd::BindNative {
+            generation:parts[2].parse().ok()?,
+            handles:[[parts[3].parse().ok()?,parts[4].parse().ok()?,parts[5].parse().ok()?],
+                     [parts[6].parse().ok()?,parts[7].parse().ok()?,parts[8].parse().ok()?]],
+            w:parts[9].parse().ok()?,h:parts[10].parse().ok()?,row_pitch:parts[11].parse().ok()?,
+        }),
         "bind" if parts.len() == 7 && parts[1] == "buf" => Some(Cmd::Bind {
             tex: parts[2].parse().ok()?,
             fence: parts[3].parse().ok()?,
@@ -530,7 +634,7 @@ fn print_stat() {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: viewport-presenter --hwnd <parent_dec> | --selftest --tex <h> --fence <h> --w <n> --h <n> [--expect-frames <n>]");
+    eprintln!("usage: viewport-presenter --standalone [--high-performance] [--record-metrics] | --hwnd <parent_dec> | --selftest --tex <h> --fence <h> --w <n> --h <n> [--expect-frames <n>]");
     exit(2);
 }
 
@@ -542,6 +646,7 @@ fn main() {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     let args: Vec<String> = std::env::args().collect();
+    RECORD_METRICS.store(args.iter().any(|arg|arg=="--record-metrics"),Ordering::Relaxed);
     if args.len() < 2 {
         usage();
     }
@@ -590,7 +695,7 @@ fn main() {
             exit(1);
         }
         match parse_cmd(line.trim()) {
-            Some(cmd @ Cmd::Bind { .. }) => tx.send(cmd).expect("send bind"),
+            Some(cmd @ (Cmd::Bind { .. } | Cmd::BindNative { .. })) => tx.send(cmd).expect("send bind"),
             _ => {
                 eprintln!("[selftest] FAIL 首行非 bind: {}", line.trim());
                 exit(1);
@@ -617,9 +722,10 @@ fn main() {
         }
     }
 
-    if args[1] == "--hwnd" {
+    if args[1] == "--hwnd" || args[1] == "--standalone" {
+        let standalone=args[1]=="--standalone";
         let parent_raw: isize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
-        if parent_raw == 0 {
+        if parent_raw == 0 && !standalone {
             usage();
         }
         let (x, y, w, h) = (
@@ -628,6 +734,7 @@ fn main() {
             args.get(5).and_then(|s| s.parse().ok()).unwrap_or(320u32),
             args.get(6).and_then(|s| s.parse().ok()).unwrap_or(240u32),
         );
+        let (w,h)=if standalone{(1280,720)}else{(w,h)};
         let (tx, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::channel();
         let ht = thread::spawn(move || window_thread(HWND(parent_raw as *mut c_void), x, y, w, h, rx, ready_tx));
@@ -645,6 +752,9 @@ fn main() {
         // 就绪信号(desktop 冒烟据此判活)
         println!("PRESENTER_READY");
         std::io::stdout().flush().ok();
+        // Window close must end the process even while the control pipe remains open.
+        // The window thread owns and retires GPU resources before main joins it.
+        thread::spawn(move || {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines() {
             let Ok(line) = line else { break };
@@ -652,6 +762,7 @@ fn main() {
             if trimmed.is_empty() {
                 continue;
             }
+            if trimmed == "stat_json" {print_sample_stats();continue;}
             if trimmed == "stat" {
                 print_stat();
                 continue;
@@ -669,9 +780,24 @@ fn main() {
         }
         // stdin 关闭 = 调用方退出 → 收窗口线程
         tx.send(Cmd::Close).ok();
+        });
         ht.join().ok();
         exit(0);
     }
 
     usage();
+}
+
+#[cfg(test)]
+mod protocol_tests {
+    use super::*;
+    #[test]
+    fn native_bind_requires_two_complete_slots_and_generation(){
+        match parse_cmd("bind buf2 9 11 12 13 21 22 23 2560 1440 10240") {
+            Some(Cmd::BindNative{generation,handles,w,h,row_pitch})=>{assert_eq!(generation,9);assert_eq!(handles,[[11,12,13],[21,22,23]]);assert_eq!((w,h,row_pitch),(2560,1440,10240));},
+            _=>panic!("valid protocol 2 bind rejected"),
+        }
+        assert!(parse_cmd("bind buf2 9 11 12 13 2560 1440 10240").is_none());
+        assert!(matches!(parse_cmd("bind buf 11 12 640 480 2560"),Some(Cmd::Bind{..})));
+    }
 }

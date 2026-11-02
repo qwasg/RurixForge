@@ -469,9 +469,9 @@ describe('行级摘要', () => {
       { content: '进行中项', status: 'in_progress' },
     ] }))).toBe('进行中项');
     expect(todoMilestoneLabel('not-json')).toBe('更新待办');
-    expect(subagentDispatchSummary('探索后端', 'prompt')).toBe('探索后端');
-    expect(subagentDispatchSummary('', 'prompt')).toBe('prompt');
-    expect(subagentDispatchSummary('', '')).toBe('子 Agent 任务');
+    expect(subagentDispatchSummary('探索后端')).toBe('探索后端');
+    expect(subagentDispatchSummary('')).toBe('子 Agent 任务');
+    expect(subagentDispatchSummary('  ')).toBe('子 Agent 任务');
     expect(subagentLiveSummary('最终摘要', [], 'done')).toBe('最终摘要');
     expect(subagentLiveSummary('a\nb', [], 'done')).toBe('已完成（a b）');
     expect(subagentLiveSummary('', [{ kind: 'text', text: 'working…', final: false }], 'running')).toBe('working…');

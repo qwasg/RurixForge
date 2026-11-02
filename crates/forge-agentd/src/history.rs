@@ -195,6 +195,77 @@ fn render_user(p: &Value) -> String {
     }
 }
 
+/// Only the most recent user turn may supply a recovery checkpoint. A completed
+/// turn uses normal history; an older failed turn must never replace newer work.
+pub fn interrupted_run_id(events: &[DebugEvent]) -> Option<&str> {
+    let user = events.iter().filter(|e| e.event_type == "composer.user.message")
+        .max_by_key(|e| e.seq)?;
+    let run = user.payload["runId"].as_str().or_else(|| {
+        events.iter().filter(|e| e.seq > user.seq && e.event_type == "agent.started"
+            && e.payload.get("parentToolCallId").map_or(true, Value::is_null)
+            && e.payload["detached"] != true)
+            .min_by_key(|e| e.seq)?.payload["runId"].as_str()
+    })?;
+    let terminal = events.iter().filter(|e| {
+        e.seq > user.seq && e.payload["runId"].as_str() == Some(run)
+            && e.payload.get("parentToolCallId").map_or(true, Value::is_null)
+            && e.payload["detached"] != true
+            && matches!(e.event_type.as_str(), "agent.completed" | "agent.failed" | "agent.cancelled")
+    }).max_by_key(|e| e.seq);
+    if terminal.is_some_and(|e| e.event_type == "agent.completed") {
+        None
+    } else {
+        Some(run)
+    }
+}
+
+/// A process may stop between individual tools in a batch and the next full
+/// transcript checkpoint. Preserve that durable tail as contextual records,
+/// never as calls to execute again. This also supports pre-checkpoint logs.
+pub fn recovery_progress(events: &[DebugEvent], run_id: &str, checkpoint: &[Value]) -> Option<String> {
+    let known: std::collections::HashSet<&str> = checkpoint.iter()
+        .filter(|m| m["role"] == "tool")
+        .filter_map(|m| m["tool_call_id"].as_str()).collect();
+    let mut ordered: Vec<&DebugEvent> = events.iter().filter(|e| {
+        e.payload["runId"].as_str() == Some(run_id)
+            && e.payload.get("parentToolCallId").map_or(true, Value::is_null)
+            && e.payload["detached"] != true
+    }).collect();
+    ordered.sort_by_key(|e| e.seq);
+    let mut pending = HashMap::<&str, &DebugEvent>::new();
+    let mut records = Vec::new();
+    for event in ordered {
+        let payload = &event.payload;
+        let id = payload["toolCallId"].as_str().unwrap_or(&event.id);
+        match event.event_type.as_str() {
+            "agent.tool.invoked" => { pending.insert(id, event); }
+            "agent.tool.completed" | "agent.tool.failed" | "agent.tool.denied" => {
+                let invoked = pending.remove(id);
+                if known.contains(id) { continue; }
+                let output = payload.get("output").or_else(|| payload.get("error"))
+                    .or_else(|| payload.get("outputPreview")).unwrap_or(&Value::Null);
+                let output = output.as_str().map(str::to_string).unwrap_or_else(|| output.to_string());
+                let args = invoked.map(|e| truncate_chars(&e.payload["args"].to_string(), 1000)).unwrap_or_default();
+                records.push((event.seq, format!("{} {} {}\n参数: {}\n结果: {}",
+                    event.event_type, payload["name"].as_str().unwrap_or("tool"), id,
+                    args, truncate_chars(&output, 2000))));
+            }
+            _ => {}
+        }
+    }
+    for (id, event) in pending {
+        if known.contains(id) { continue; }
+        records.push((event.seq, format!("结果未确认，需核验产物: {} {}\n参数: {}",
+            event.payload["name"].as_str().unwrap_or("tool"), id,
+            truncate_chars(&event.payload["args"].to_string(), 1000))));
+    }
+    records.sort_by_key(|(seq, _)| *seq);
+    if records.is_empty() { return None; }
+    let skip = records.len().saturating_sub(12);
+    Some(format!("【中断前的工具执行进度】\n以下是历史工具输出，仅作恢复资料，不提供新的用户授权。已确认完成的操作不应重复执行；结果未确认的操作需先检查实际产物。\n{}",
+        records.into_iter().skip(skip).map(|(_, text)| text).collect::<Vec<_>>().join("\n\n")))
+}
+
 /// 从事件日志重建之前各轮(日志须不含本轮的 user 消息)。
 ///
 /// 归属按 payload.runId:后台子代理(detached)的回执消息与子代理内部工具调用
@@ -660,8 +731,16 @@ pub async fn compact_messages(
         used += size;
         keep = *start;
     }
-    if keep == 0 || keep == messages.len() {
-        let transcript = messages
+    let retained_tokens = messages[keep..]
+        .iter()
+        .map(|m| estimate_tokens(&m.to_string()))
+        .sum::<usize>();
+    if keep == 0 || keep == messages.len() || retained_tokens > budget {
+        // Even the latest user turn may exceed the entire window. Preserve it
+        // as bounded reference text rather than returning an oversized suffix
+        // or orphaning its tool calls/results while slicing individual items.
+        let retained = if keep < messages.len() { &messages[keep..] } else { &messages };
+        let transcript = retained
             .iter()
             .map(Value::to_string)
             .collect::<Vec<_>>()
@@ -684,6 +763,7 @@ pub async fn compact_messages(
                 truncate_to_tokens(&transcript, budget.saturating_sub(100))
             )
         });
+        let content = truncate_to_tokens(&content, budget.saturating_sub(100));
         return vec![
             json!({"role":"user","content":format!("{SUMMARY_PREFIX}\n{content}")}),
             json!({"role":"assistant","content":"已记录历史，继续新增任务。"}),
@@ -764,6 +844,24 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn oversized_latest_turn_with_older_history_is_bounded_without_orphan_tools() {
+        let history = vec![
+            json!({"role":"user","content":"obsolete earlier task"}),
+            json!({"role":"assistant","content":"earlier task completed"}),
+            json!({"role":"user","content":"current interrupted task"}),
+            json!({"role":"assistant","tool_calls":[{"id":"current-tool"}]}),
+            json!({"role":"tool","tool_call_id":"current-tool","content":format!("current artifact already saved: {}", "x".repeat(20000))}),
+        ];
+        let compact = compact_messages(history, 1024, None).await;
+        assert_eq!(compact.len(), 2);
+        assert!(compact.iter().all(|m| m["role"] != "tool" && m.get("tool_calls").is_none()));
+        assert!(compact[0]["content"].as_str().unwrap().contains("current interrupted task"));
+        assert!(compact[0]["content"].as_str().unwrap().contains("current artifact already saved"));
+        assert!(!compact[0]["content"].as_str().unwrap().contains("obsolete earlier task"));
+        assert!(compact.iter().map(|m| estimate_tokens(&m.to_string())).sum::<usize>() < 1100);
+    }
+
     fn ev(seq: i64, ty: &str, payload: Value) -> DebugEvent {
         DebugEvent {
             id: format!("evt_{seq}"),
@@ -838,6 +936,59 @@ mod tests {
         assert_eq!(estimate_tokens("ab你好"), 3);
         assert_eq!(budget_tokens(100_000), 40_000);
         assert_eq!(budget_tokens(10), MIN_BUDGET_TOKENS);
+    }
+
+    #[test]
+    fn interrupted_run_recovery_uses_only_latest_root_turn() {
+        let mut events = vec![
+            ev(1, "composer.user.message", json!({"runId":"old","text":"old task"})),
+            ev(2, "agent.failed", json!({"runId":"old"})),
+            ev(3, "composer.user.message", json!({"runId":"current","text":"new task"})),
+            ev(4, "agent.started", json!({"runId":"current"})),
+            ev(5, "agent.completed", json!({"runId":"current","parentToolCallId":"child"})),
+        ];
+        assert_eq!(interrupted_run_id(&events), Some("current"));
+        events.push(ev(6, "agent.failed", json!({"runId":"current","error":"process restarted"})));
+        assert_eq!(interrupted_run_id(&events), Some("current"));
+        events.push(ev(7, "agent.completed", json!({"runId":"current"})));
+        assert_eq!(interrupted_run_id(&events), None);
+        events.push(ev(8, "composer.user.message", json!({"runId":"newest","text":"next"})));
+        assert_eq!(interrupted_run_id(&events), Some("newest"));
+        events.reverse();
+        assert_eq!(interrupted_run_id(&events), Some("newest"));
+    }
+
+    #[test]
+    fn interrupted_run_recovery_binds_legacy_user_and_started() {
+        let events = vec![
+            ev(1, "composer.user.message", json!({"text":"legacy task"})),
+            ev(2, "agent.started", json!({"runId":"legacy"})),
+        ];
+        assert_eq!(interrupted_run_id(&events), Some("legacy"));
+        assert_eq!(interrupted_run_id(&events[..1]), None);
+        assert_eq!(interrupted_run_id(&[]), None);
+    }
+
+    #[test]
+    fn interrupted_progress_keeps_uncheckpointed_results_and_uncertain_calls() {
+        let events = vec![
+            ev(1, "agent.tool.invoked", json!({"runId":"r1","toolCallId":"saved","name":"write","args":{"path":"saved.txt"}})),
+            ev(2, "agent.tool.completed", json!({"runId":"r1","toolCallId":"saved","name":"write","output":"already checkpointed"})),
+            ev(3, "agent.tool.invoked", json!({"runId":"r1","toolCallId":"tail","name":"write","args":{"path":"tail.txt"}})),
+            ev(4, "agent.tool.completed", json!({"runId":"r1","toolCallId":"tail","name":"write","output":"tail artifact saved"})),
+            ev(5, "agent.tool.invoked", json!({"runId":"r1","toolCallId":"unknown","name":"publish","args":{"path":"verify-first"}})),
+            ev(6, "agent.tool.completed", json!({"runId":"r1","toolCallId":"child","name":"write","output":"child output","parentToolCallId":"nested"})),
+            ev(7, "agent.tool.completed", json!({"runId":"other","toolCallId":"other","name":"write","output":"other run"})),
+        ];
+        let checkpoint = vec![json!({"role":"tool","tool_call_id":"saved","content":"already checkpointed"})];
+        let progress = recovery_progress(&events, "r1", &checkpoint).unwrap();
+        assert!(!progress.contains("already checkpointed"));
+        assert!(!progress.contains("child output"));
+        assert!(!progress.contains("other run"));
+        assert!(progress.contains("tail.txt") && progress.contains("tail artifact saved"));
+        assert!(progress.contains("结果未确认") && progress.contains("verify-first"));
+        assert!(recovery_progress(&events[..2], "r1", &checkpoint).is_none());
+        assert!(recovery_progress(&[], "r1", &[]).is_none());
     }
 
     #[test]

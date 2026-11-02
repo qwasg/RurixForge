@@ -23,6 +23,15 @@ pub mod remote;
 pub use forge_util::timeutil;
 pub mod tmpstore;
 pub mod video_frames;
+pub mod gates;
+pub use gates::{
+    validate_gate_1_concept_art, validate_gate_2_raw_glb, validate_gate_3_polycount,
+    validate_gate_4_rigging, validate_gate_5_motion_and_publish,
+    validate_concept_art, validate_raw_glb, validate_polycount, validate_rigging, validate_motion_and_publish,
+    GateError, GateResult, ConceptArtMetrics, RawGlbMetrics, PolyMetrics, RiggingMetrics, MotionMetrics,
+    GATE1_IMAGE_INVALID, GATE2_MODEL_INVALID, GATE3_POLYCOUNT_EXCEEDED,
+    GATE3_DEGENERATE_MESH, GATE4_RIGGING_INVALID, GATE5_ANIMATION_INVALID, GATE5_PUBLISH_FAILED,
+};
 
 use std::fmt;
 

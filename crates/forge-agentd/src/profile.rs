@@ -80,6 +80,7 @@ impl AgentProfile {
                 "ultraplan",
                 // D-045:设计稿 → 审阅 → 引擎内复刻,建立在游戏项目与引擎工具面之上。
                 "design",
+                "world_build",
             ],
             AgentKind::Document | AgentKind::General | AgentKind::Studio => &["ask", "build"],
         }

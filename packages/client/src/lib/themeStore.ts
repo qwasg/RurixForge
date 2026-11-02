@@ -22,6 +22,13 @@ import { create } from 'zustand';
  * - text_2/3/4 混色基比由参考 0.42/0.62/0.78 收到 0.33/0.46/0.64(对所有预设与用户自定义
  *   双表生效;contrast 滑杆语义不变)。forge 亮表对白底对比度 5.3/3.0/2.0 → 6.9/4.6/2.8:1,
  *   text_3 过 WCAG AA。字重侧的补偿见 index.css .forge-legible。
+ *
+ * 纯色波(2026-10-08 用户拍板:各主题去掉其他颜色呈现,统一为黑色加纯色):
+ * - 全部预设共用同一套中性底/字(PURE_LIGHT / PURE_DARK:亮 = 纯白底 + 近黑字,暗 = 近黑底 +
+ *   近白字,对比度 55/60);预设之间只剩强调色(各自的「纯色」)与半透明侧栏不同。
+ *   Moonlit 奶油底、Catppuccin 紫灰底、Gruvbox 黄底等染色底/染色字随之退役。
+ * - migrateSurfaces:存档(本地与云同步下发)里某侧底/字仍是所选预设的旧值 → 换成新中性值
+ *   (对比度没动过也一并换);强调色与半透明侧栏不碰,手改过底或字的那一侧原样保留。
  */
 
 // ---------- 十六进制颜色工具(对应 appearance.rs parse_hex_rgb/mix_hex/darken_hex/lighten_hex) ----------
@@ -116,65 +123,82 @@ function palette(
   return { accent, background, foreground, translucentSidebar, contrast };
 }
 
+/** 净化波前的 moonlit 奶油表(纯色波后预设已改中性底;此表仅供旧档识别与派色对照) */
 export const MOONLIT_LIGHT: ThemePalette = palette('#C96442', '#FAF9F5', '#2A2724', false, 45);
 export const MOONLIT_DARK: ThemePalette = palette('#E2886A', '#1C1B18', '#ECE8DF', false, 60);
 
-/** 主题净化波默认预设:中性净底(去黄去暖)+ 精炼锻橙 accent;contrast 55/60 抬高二级文字对比 */
-export const FORGE_LIGHT: ThemePalette = palette('#C94F12', '#FFFFFF', '#1B1D21', false, 55);
-export const FORGE_DARK: ThemePalette = palette('#F47B33', '#191A1D', '#E8E9EC', false, 60);
+/** 纯色波:所有预设共用的中性底 / 字 / 对比度——黑白两极,颜色只留给各预设的强调色 */
+const PURE_LIGHT = { background: '#FFFFFF', foreground: '#0A0A0A', contrast: 55 };
+const PURE_DARK = { background: '#0A0A0A', foreground: '#FAFAFA', contrast: 60 };
+
+/** 纯色预设双表:中性底/字 + 亮暗各自的强调色 */
+function pure(
+  lightAccent: string,
+  darkAccent: string,
+  translucentSidebar: boolean,
+): Pick<ThemePreset, 'light' | 'dark'> {
+  return {
+    light: palette(lightAccent, PURE_LIGHT.background, PURE_LIGHT.foreground, translucentSidebar, PURE_LIGHT.contrast),
+    dark: palette(darkAccent, PURE_DARK.background, PURE_DARK.foreground, translucentSidebar, PURE_DARK.contrast),
+  };
+}
+
+/** 默认预设:中性底 + 精炼锻橙 accent */
+const FORGE = pure('#C94F12', '#F47B33', false);
+export const FORGE_LIGHT: ThemePalette = FORGE.light;
+export const FORGE_DARK: ThemePalette = FORGE.dark;
 
 export const THEME_PRESETS: ThemePreset[] = [
   { id: 'forge', name: 'Forge', swatch: '#C94F12', light: FORGE_LIGHT, dark: FORGE_DARK },
-  { id: 'moonlit', name: 'Moonlit', swatch: '#C96442', light: MOONLIT_LIGHT, dark: MOONLIT_DARK },
-  {
-    id: 'absolutely', name: 'Absolutely', swatch: '#FF6B35',
-    light: palette('#FF6B35', '#FFFBF7', '#1A1410', true, 45),
-    dark: palette('#FF8C5A', '#141210', '#F5EDE6', true, 58),
-  },
-  {
-    id: 'catppuccin', name: 'Catppuccin', swatch: '#CBA6F7',
-    light: palette('#8839EF', '#EFF1F5', '#4C4F69', true, 48),
-    dark: palette('#CBA6F7', '#1E1E2E', '#CDD6F4', true, 62),
-  },
-  {
-    id: 'codex', name: 'Codex', swatch: '#339CFF',
-    light: palette('#339CFF', '#FFFFFF', '#1A1C1F', true, 45),
-    dark: palette('#339CFF', '#181818', '#FFFFFF', true, 60),
-  },
-  {
-    id: 'everforest', name: 'Everforest', swatch: '#A7C080',
-    light: palette('#5C7A3A', '#EFEEE6', '#2B3339', true, 46),
-    dark: palette('#A7C080', '#2D353B', '#D3C6AA', true, 60),
-  },
-  {
-    id: 'github', name: 'GitHub', swatch: '#0969DA',
-    light: palette('#0969DA', '#FFFFFF', '#1F2328', true, 45),
-    dark: palette('#4493F8', '#0D1117', '#E6EDF3', true, 58),
-  },
-  {
-    id: 'gruvbox', name: 'Gruvbox', swatch: '#D79921',
-    light: palette('#B57614', '#FBF1C7', '#3C3836', true, 44),
-    dark: palette('#FABD2F', '#282828', '#EBDBB2', true, 55),
-  },
-  {
-    id: 'linear', name: 'Linear', swatch: '#5E6AD2',
-    light: palette('#5E6AD2', '#FFFFFF', '#17181C', true, 47),
-    dark: palette('#828FFF', '#121214', '#EEEFFC', true, 61),
-  },
-  {
-    id: 'notion', name: 'Notion', swatch: '#2F80ED',
-    light: palette('#2F80ED', '#FFFFFF', '#37352F', true, 43),
-    dark: palette('#5294E2', '#191919', '#FFFFFF', true, 57),
-  },
-  {
-    id: 'one', name: 'One', swatch: '#4078F2',
-    light: palette('#4078F2', '#FAFAFA', '#383A42', true, 45),
-    dark: palette('#61AFEF', '#282C34', '#ABB2BF', true, 59),
-  },
+  { id: 'moonlit', name: 'Moonlit', swatch: '#C96442', ...pure('#C96442', '#E2886A', false) },
+  { id: 'absolutely', name: 'Absolutely', swatch: '#FF6B35', ...pure('#FF6B35', '#FF8C5A', true) },
+  { id: 'catppuccin', name: 'Catppuccin', swatch: '#CBA6F7', ...pure('#8839EF', '#CBA6F7', true) },
+  { id: 'codex', name: 'Codex', swatch: '#339CFF', ...pure('#339CFF', '#339CFF', true) },
+  { id: 'everforest', name: 'Everforest', swatch: '#A7C080', ...pure('#5C7A3A', '#A7C080', true) },
+  { id: 'github', name: 'GitHub', swatch: '#0969DA', ...pure('#0969DA', '#4493F8', true) },
+  { id: 'gruvbox', name: 'Gruvbox', swatch: '#D79921', ...pure('#B57614', '#FABD2F', true) },
+  { id: 'linear', name: 'Linear', swatch: '#5E6AD2', ...pure('#5E6AD2', '#828FFF', true) },
+  { id: 'notion', name: 'Notion', swatch: '#2F80ED', ...pure('#2F80ED', '#5294E2', true) },
+  { id: 'one', name: 'One', swatch: '#4078F2', ...pure('#4078F2', '#61AFEF', true) },
 ];
 
 export function presetById(id: string): ThemePreset | undefined {
   return THEME_PRESETS.find((p) => p.id === id);
+}
+
+/** 纯色波前各预设的 [背景, 前景, 对比度](亮 / 暗),用来认出「这一侧底色从没改过」的旧档 */
+const LEGACY_SURFACES: Record<string, { light: [string, string, number]; dark: [string, string, number] }> = {
+  forge: { light: ['#FFFFFF', '#1B1D21', 55], dark: ['#191A1D', '#E8E9EC', 60] },
+  moonlit: { light: ['#FAF9F5', '#2A2724', 45], dark: ['#1C1B18', '#ECE8DF', 60] },
+  absolutely: { light: ['#FFFBF7', '#1A1410', 45], dark: ['#141210', '#F5EDE6', 58] },
+  catppuccin: { light: ['#EFF1F5', '#4C4F69', 48], dark: ['#1E1E2E', '#CDD6F4', 62] },
+  codex: { light: ['#FFFFFF', '#1A1C1F', 45], dark: ['#181818', '#FFFFFF', 60] },
+  everforest: { light: ['#EFEEE6', '#2B3339', 46], dark: ['#2D353B', '#D3C6AA', 60] },
+  github: { light: ['#FFFFFF', '#1F2328', 45], dark: ['#0D1117', '#E6EDF3', 58] },
+  gruvbox: { light: ['#FBF1C7', '#3C3836', 44], dark: ['#282828', '#EBDBB2', 55] },
+  linear: { light: ['#FFFFFF', '#17181C', 47], dark: ['#121214', '#EEEFFC', 61] },
+  notion: { light: ['#FFFFFF', '#37352F', 43], dark: ['#191919', '#FFFFFF', 57] },
+  one: { light: ['#FAFAFA', '#383A42', 45], dark: ['#282C34', '#ABB2BF', 59] },
+};
+
+/**
+ * 纯色波迁移:某侧底 / 字仍是所选预设的旧值 → 换成该预设新的中性底 / 字,对比度没动过也一并换。
+ * 强调色与半透明侧栏不碰;手改过底或字的那一侧原样保留。
+ */
+export function migrateSurfaces(s: AppearanceSettings): AppearanceSettings {
+  const legacy = LEGACY_SURFACES[s.presetId];
+  const preset = presetById(s.presetId);
+  if (!legacy || !preset) return s;
+  const side = (p: ThemePalette, [bg, fg, contrast]: [string, string, number], next: ThemePalette): ThemePalette =>
+    p.background.toUpperCase() === bg && p.foreground.toUpperCase() === fg
+      ? {
+          ...p,
+          background: next.background,
+          foreground: next.foreground,
+          contrast: p.contrast === contrast ? next.contrast : p.contrast,
+        }
+      : p;
+  return { ...s, light: side(s.light, legacy.light, preset.light), dark: side(s.dark, legacy.dark, preset.dark) };
 }
 
 // ---------- applyPalette 逐行移植(参考 appearance.rs apply_palette) ----------
@@ -334,7 +358,7 @@ function loadSettings(): AppearanceSettings {
         merged.light = { ...FORGE_LIGHT };
         merged.dark = { ...FORGE_DARK };
       }
-      return clampSettings(merged);
+      return clampSettings(migrateSurfaces(merged));
     }
   } catch {
     // 损坏持久化 → 默认
@@ -467,7 +491,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     setCodeFont: (f) => commit({ codeFont: f }),
     setDiffMarkers: (d) => commit({ diffMarkers: d }),
     replaceAppearance: (s) =>
-      commit(clampSettings({ ...s, light: { ...s.light }, dark: { ...s.dark } })),
+      commit(clampSettings(migrateSurfaces({ ...s, light: { ...s.light }, dark: { ...s.dark } }))),
     syncSystemDark: () => {
       const s = pickSettings(get());
       const dark = effectiveDark(s.mode, systemDark());

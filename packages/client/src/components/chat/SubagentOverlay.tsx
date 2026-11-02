@@ -84,7 +84,7 @@ export default function SubagentOverlay({ variant = 'column' }: { variant?: Chat
 
   const badge = STATUS_BADGE[found.status];
   const running = found.status === 'running';
-  const title = subagentDispatchSummary(found.label, found.prompt ?? '');
+  const title = subagentDispatchSummary(found.label);
   const prompt = (found.prompt ?? '').trim();
   const summary = (found.summary ?? '').trim();
   const work = found.work;

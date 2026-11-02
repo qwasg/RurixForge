@@ -4,6 +4,7 @@ members = [
   "crates/forge-scene",
   "crates/forge-logic",
   "crates/forge-util",
+  "crates/forge-rig2d",
   "crates/forge-index",
   "crates/forge-store",
   "crates/engine-host",
@@ -22,12 +23,12 @@ members = [
   "crates/viewport-presenter",
 ]
 resolver = "2"
-exclude = ["projects/code-sentinels/native-v6"]
+exclude = ["projects/code-sentinels/native-v6", "vendor/rurix-20261102"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.94"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -41,6 +42,7 @@ rurix-geom-build = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2e
 rurix-pkg = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
 rurix-physics = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
 rurix-rt = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
+rurix-render = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
 soft-raster = { git = "https://github.com/qwasg/Rurix", rev = "1478859a8f2ea3a8e17abb06aa0211a6e0871cca" }
 tokio = { version = "1.44", features = ["rt-multi-thread", "net", "macros", "time", "process", "sync"] }
 axum = "0.8"
@@ -71,11 +73,26 @@ windows = { version = "=0.61.3", features = [
 # rurix-rt = { path = "H:/rurix/src/rurix-rt" }
 # soft-raster = { path = "H:/rurix/src/soft-raster" }
 
-# Reproducible alpha/additive RasterPass patch, based on the pinned upstream
-# revision above. See vendor/rurix/FORGE_BLEND_PATCH.md; no machine-local path.
+# Frozen library closure used by the 0.2.0 desktop release. Includes the current
+# realtime renderer adapter dependencies without machine-local path overrides.
+# Provenance and per-file hashes: vendor/rurix-20261102/SNAPSHOT.json.
 [patch."https://github.com/qwasg/Rurix"]
-rurix-rt = { path = "vendor/rurix/src/rurix-rt" }
+image-io = { path = "vendor/rurix-20261102/src/image-io" }
+rurix-asset = { path = "vendor/rurix-20261102/src/rurix-asset" }
+rurix-basis-sys = { path = "vendor/rurix-20261102/src/rurix-basis-sys" }
+rurix-d3d12 = { path = "vendor/rurix-20261102/src/rurix-d3d12" }
+rurix-geom-build = { path = "vendor/rurix-20261102/src/rurix-geom-build" }
+rurix-geom-pages = { path = "vendor/rurix-20261102/src/rurix-geom-pages" }
+rurix-pkg = { path = "vendor/rurix-20261102/src/rurix-pkg" }
+rurix-render = { path = "vendor/rurix-20261102/src/rurix-render" }
+rurix-rt = { path = "vendor/rurix-20261102/src/rurix-rt" }
+rurixc = { path = "vendor/rurix-20261102/src/rurixc" }
+soft-raster = { path = "vendor/rurix-20261102/src/soft-raster" }
 
 # The V6 fixed-step simulation is a path dependency of the desktop renderer.
 [profile.dev.package.sentinels-v6]
 opt-level = 3
+
+# Shader compiler correctness patch consumed by the frozen realtime renderer.
+[patch.crates-io]
+naga = { path = "vendor/naga-25.0.1" }

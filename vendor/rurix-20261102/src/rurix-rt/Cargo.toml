@@ -1,0 +1,72 @@
+[package]
+workspace = "../.."
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+name = "rurix-rt"
+description = "Rurix 运行时(M4.3:CUDA Driver API 薄层 — Context/Stream/Buffer/Module/launch + 装载协商 + poisoned 状态机,08 §1/§2,D-230~D-234)"
+edition = "2024"
+version = "1.0.0"
+publish = false
+license = "MIT OR Apache-2.0"
+[dependencies]
+# 零外部运行时依赖:nvcuda.dll 运行时动态加载(LoadLibraryA/GetProcAddress),
+# 不依赖 CUDA Toolkit 的 nvcuda.lib 导入库(08 §9 / 14 §2 PTX-only,无再分发物)。
+# G1.1 CUDA–D3D12 互操作(feature d3d12-interop)的 D3D12/DXGI 薄 C/C++ shim 边界:
+# 可选依赖,默认关闭(RFC-0001 §4.2;D3D12 侧不进语言,D-130)。
+rurix-d3d12 = { path = "../rurix-d3d12", optional = true }
+# G8.2 M30 PSO cache(RXS-0314):pso_key 的 SHA-256 复用 rurix-pkg 手写实现(RXS-0306
+# 同源;workspace path 依赖,零外部 crate)。optional + 随 feature vulkan 启用——
+# default(CUDA-only)构建依赖面 0-byte 不动。
+rurix-pkg = { path = "../rurix-pkg", optional = true }
+
+[features]
+default = []
+# mb1 Vulkan/SPIR-V 跨端后端运行时(RFC-0011 §4.5/§4.6;RXS-0206~0207)。默认关闭——
+# Vulkan compute 后端经手写 `vulkan-1.dll` 薄 FFI loader(RFC §9 Q-Binding 默认:零外部
+# 绑定,对齐 sys.rs 无依赖纪律);运行需 Vulkan 驱动(本机 NVIDIA / AMD 桌面 / Android
+# libvulkan.so)。gated on 红线 3 解除 + RFC-0011 批准。
+vulkan = ["dep:rurix-pkg"]
+# d3d12-interop:G1.1 CUDA–D3D12 互操作呈现 Rust 类型面(RXS-0140~0143,RFC-0001):
+# 生成式 brand + ExternalBuffer/ExternalSemaphore + Ready→Acquired→Presentable typestate
+# + CUDA external-resource FFI。依赖 rurix-d3d12 的 **stub**(纯 Rust,无 C++)——故
+# `cargo build/test -p rurix-rt --features d3d12-interop` **无需 MSVC/D3D12 SDK** 即可编译,
+# 类型面编译期拦截(三类错误)与 fence 协议可在任意环境验证;运行期 shim 不可用。
+d3d12-interop = ["dep:rurix-d3d12"]
+# d3d12-interop-real:在 d3d12-interop 之上经 rurix-d3d12/real-shim 编译真实 D3D12/DXGI
+# C++ shim(需 MSVC + Windows SDK + 交互桌面会话)。仅 runner 设备真跑(步骤 40/41)启用。
+d3d12-interop-real = ["d3d12-interop", "rurix-d3d12/real-shim"]
+# taichi-tirt:G6.5 Taichi Vulkan AOT spike 的 TiRT FFI 边界(RFC-0017 §4.E)。
+# `taichi_c_api.dll` 经环境变量 `RURIX_TAICHI_C_API_DLL` 给绝对路径运行时装载
+# (LoadLibrary/GetProcAddress,镜像 sys.rs 零外部依赖纪律;未设/不存在/符号缺失 →
+# 确定性 Err,fail-closed P-01,不搜默认路径)+ 自建并行 Vk 设备上下文(vk.rs
+# pub(crate) 新增,RFC-0017 §4.E2)+ TiVulkanRuntimeInteropInfo 注入 + NdArray
+# launch + ti_export_vulkan_memory 导出 → 同 device vkCmdCopyBuffer readback。
+# 依赖 feature vulkan(vk loader/设备骨架);零新外部依赖。默认关闭。
+taichi-tirt = ["vulkan"]
+# vendor-upscale:G13.2 M-a(M167) vendor 超分 FFI 边界(U58;G13_CONTRACT §4.2):
+# Streamline SDK 2.10.3(DLSS SR,Vulkan interop 臂)+ FidelityFX SDK 2.0.0
+# (FSR 3.1.5,DX12 臂——FSR SDK 2.x 已无 Vulkan 后端)运行时装载 + 各自建并行
+# 设备上下文 + 帧级上传/evaluate/回读。SDK 目录经环境变量 RURIX_STREAMLINE_SDK_DIR /
+# RURIX_FSR_SDK_DIR 或默认 external/ 相对路径;fail-closed P-01;零新外部依赖;
+# SDK 二进制零入 git(external/ gitignored + milestones/g13/g13_vendor_sdk_registry.json
+# 许可/digest 登记)。依赖 feature vulkan(rurix-pkg sha256 用于 DLL provenance)。
+# 默认关闭,default/vulkan 构建零改动零回归。
+vendor-upscale = ["vulkan"]
+# **默认关闭全部**:常驻回归网 `cargo build/test/clippy --workspace` 不触 interop / D3D12 而绿。
+
+# build.rs 经 rurixc 库把 kernels/saxpy.rx 全管线产 PTX 嵌入 EXE(M4.4,D-M4-5);
+# 仅构建期依赖,不进运行时产物(运行时仍零依赖)。feature vulkan-backend 额外让 build.rs
+# 经 vulkan_codegen 产 saxpy.spv(纯 Rust MIR→SPIR-V,RXS-0208 marshalling anchor 支撑);
+# 只影响 build-script 那份 rurixc 副本(build-deps 与运行时依赖独立解析),不改 rurixc
+# 默认特性、不进运行时产物。
+[build-dependencies]
+rurixc = { path = "../rurixc", features = ["vulkan-backend"] }
+
+# mb1 Vulkan compute 真跑 demo(RXS-0207):须 feature vulkan(vk 模块)。
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"

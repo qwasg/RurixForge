@@ -494,7 +494,7 @@ async fn bridge_call(
         return response(Err("EDITOR_WRITE_FORBIDDEN".into()));
     }
     let args = attributed(
-        &body.get("arguments").cloned().unwrap_or_else(|| json!({})),
+        &without_play_stop_stamp(&full, body.get("arguments").cloned().unwrap_or_else(|| json!({}))),
         &actor.session_id,
         &actor.run_id,
     );
@@ -568,8 +568,26 @@ pub fn readonly_mode(mode: &str) -> bool {
 
 pub fn requires_scene_stamp(name: &str) -> bool {
     name.starts_with("mcp__engine-scene__") && crate::agent::is_write_tool(name)
+        && !is_play_stop(name)
         && !matches!(name.rsplit("__").next().unwrap_or(name),
             "scene_load" | "asset_reload" | "shader_publish" | "viewport_share_open" | "viewport_share_close")
+}
+
+/// play_exit / play_pause only stop or freeze PIE; they never change authored content.
+/// While PIE runs the host bumps the runtime revision every frame, so a stamp read
+/// beforehand is always stale and these calls would fail with CONTENT_CONFLICT forever.
+fn is_play_stop(name: &str) -> bool {
+    matches!(name, "mcp__engine-scene__play_exit" | "mcp__engine-scene__play_pause")
+}
+
+/// Drops a (necessarily stale) `expected` stamp from PIE stop calls before they reach the host.
+pub fn without_play_stop_stamp(name: &str, mut args: Value) -> Value {
+    if is_play_stop(name) {
+        if let Some(object) = args.as_object_mut() {
+            object.remove("expected");
+        }
+    }
+    args
 }
 
 pub fn validate_scene_write(name: &str, args: &Value) -> Result<(), String> {
@@ -1408,6 +1426,21 @@ mod tests {
         assert!(validate_scene_write("mcp__engine-scene__scene_load", &json!({"path":"Content/Scenes/Main.rxscene"})).is_ok());
         for mode in ["ask","plan","multitask",crate::ultraplan::MODE] { assert!(readonly_mode(mode)); }
         assert!(!readonly_mode("build"));
+    }
+    #[test]
+    fn play_stop_calls_need_no_stamp_because_pie_revision_moves_every_frame() {
+        let stale=json!({"sceneGuid":"scene","hostEpoch":"host","contentRevision":97412,"targetMode":"runtime"});
+        for name in ["mcp__engine-scene__play_exit","mcp__engine-scene__play_pause"] {
+            assert!(validate_scene_write(name,&json!({})).is_ok(),"{name}");
+            let args=without_play_stop_stamp(name,json!({"expected":stale,"note":"keep"}));
+            assert!(args.get("expected").is_none(),"{name}");
+            assert_eq!(args["note"],"keep");
+        }
+        // Entering, stepping and resuming happen from a stable (edit/paused) revision: still stamped.
+        for name in ["mcp__engine-scene__play_enter","mcp__engine-scene__play_step","mcp__engine-scene__play_resume"] {
+            assert!(validate_scene_write(name,&json!({})).is_err(),"{name}");
+            assert_eq!(without_play_stop_stamp(name,json!({"expected":stale}))["expected"],stale);
+        }
     }
     #[tokio::test]
     async fn unauthorized_bridge_and_readonly_dynamic_tools_never_reach_engine() {

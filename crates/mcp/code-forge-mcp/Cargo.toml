@@ -1,6 +1,6 @@
 [package]
 name = "code-forge-mcp"
-description = "Forge code-forge MCP 服务器:stdio NDJSON JSON-RPC;子进程包上游 rx CLI/rurixc(H:\\rurix),超时+截断;F4 wave.1"
+description = "Forge code-forge MCP 服务器:stdio NDJSON JSON-RPC;共享工具链发现及 rx CLI/rurixc 子进程，超时+截断"
 version.workspace = true
 edition.workspace = true
 

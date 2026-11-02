@@ -234,6 +234,74 @@ describe('chatStore.applyEvent(全类型)', () => {
     });
   });
 
+  it('reasoning lifecycle 按 itemId 分开，错序完成以完整摘要校准且不重复建块', () => {
+    const s = useChatStore.getState();
+    const send = (type: string, itemId: string, extra: Record<string, unknown> = {}) =>
+      s.applyEvent(evt(type, { runId: 'reasoning-items', itemId, ...extra }));
+    s.applyEvent(evt('agent.started', { runId: 'reasoning-items' }));
+    send('agent.reasoning.started', 'a');
+    send('agent.reasoning.started', 'b');
+    send('agent.reasoning.delta', 'a', { delta: 'partial A' });
+    send('agent.reasoning.delta', 'b', { delta: 'partial B' });
+    const thoughts = () => useChatStore.getState().messages[0].blocks.filter((b) => b.kind === 'reasoning');
+    expect(thoughts()).toMatchObject([
+      { itemId: 'a', text: 'partial A', status: 'running' },
+      { itemId: 'b', text: 'partial B', status: 'running' },
+    ]);
+    send('agent.reasoning.completed', 'b', { text: 'rewritten B' });
+    expect(thoughts()).toMatchObject([{ itemId: 'a', status: 'running' }, { itemId: 'b', text: 'rewritten B', status: 'done' }]);
+    send('agent.reasoning.completed', 'a', { text: '' });
+    send('agent.reasoning', 'b', { text: 'rewritten B' });
+    // Late duplicate starts/deltas cannot reopen or append to completed items.
+    send('agent.reasoning.started', 'a');
+    send('agent.reasoning.delta', 'b', { delta: 'late' });
+    expect(thoughts()).toHaveLength(2);
+    expect(thoughts()).toMatchObject([{ itemId: 'a', text: '', status: 'done' }, { itemId: 'b', text: 'rewritten B', status: 'done' }]);
+  });
+
+  it.each(['agent.completed', 'agent.failed', 'agent.cancelled'])('%s 递归结束残留思考，子代理 item 不串到父卡', (terminal) => {
+    const s = useChatStore.getState();
+    s.applyEvent(evt('agent.started', { runId: 'reasoning-nested' }));
+    s.applyEvent(evt('agent.reasoning.started', { runId: 'reasoning-nested', itemId: 'root' }));
+    s.applyEvent(evt('subagent.started', { runId: 'reasoning-nested', subRunId: 'child', description: 'child' }));
+    s.applyEvent(evt('agent.reasoning.started', { runId: 'reasoning-nested', parentToolCallId: 'child', itemId: 'nested' }));
+    s.applyEvent(evt('agent.reasoning.completed', { runId: 'reasoning-nested', parentToolCallId: 'child', itemId: 'nested', text: 'child thought' }));
+    s.applyEvent(evt('agent.reasoning.started', { runId: 'reasoning-nested', parentToolCallId: 'child', itemId: 'leftover' }));
+    s.applyEvent(evt(terminal, { runId: 'reasoning-nested' }));
+    const message = useChatStore.getState().messages[0];
+    expect(message.status).not.toBe('streaming');
+    expect(message.blocks.filter((b) => b.kind === 'reasoning')).toMatchObject([{ itemId: 'root', status: 'done' }]);
+    const child = message.blocks.find((b) => b.kind === 'subagent');
+    expect(child).toMatchObject({ work: [
+      { kind: 'reasoning', itemId: 'nested', text: 'child thought', status: 'done' },
+      { kind: 'reasoning', itemId: 'leftover', status: 'done' },
+    ] });
+  });
+
+  it('持久 started/completed 回放无需 delta 即可恢复摘要，缺 started 也可恢复已完成 item', async () => {
+    const events = [
+      evt('agent.started', { runId: 'replayed-reasoning' }),
+      evt('agent.reasoning.started', { runId: 'replayed-reasoning', itemId: 'visible' }),
+      evt('agent.reasoning.completed', { runId: 'replayed-reasoning', itemId: 'visible', text: 'restored summary' }),
+      evt('agent.reasoning.completed', { runId: 'replayed-reasoning', itemId: 'empty', text: '' }),
+      evt('agent.reasoning.started', { runId: 'replayed-reasoning', itemId: 'empty' }),
+      evt('agent.completed', { runId: 'replayed-reasoning', text: 'done' }),
+    ];
+    vi.stubGlobal('fetch', mockForgeBackend({}, {
+      '/api/forge/design-snapshot': {
+        sessions: [], activeSession: { id: 'sess_1', selectedModelId: 'mock' },
+        events, todos: [], run: null, latestSeq: seq, chatFolders: [],
+      },
+    }));
+    await useChatStore.getState().selectSession('sess_1');
+    const message = useChatStore.getState().messages[0];
+    expect(message.status).toBe('completed');
+    expect(message.blocks.filter((b) => b.kind === 'reasoning')).toMatchObject([
+      { itemId: 'visible', text: 'restored summary', status: 'done' },
+      { itemId: 'empty', text: '', status: 'done' },
+    ]);
+  });
+
   it('思考流完再吐正文后收到 reasoning 终稿:不另开第二套 Thought/正文', () => {
     const s = useChatStore.getState();
     s.applyEvent(evt('agent.started', { runId: 'rdup' }));
@@ -638,6 +706,13 @@ describe('chatStore.applyEvent(全类型)', () => {
     expect(useChatStore.getState().tokens.total).toBe(4);
     s.applyEvent({ ...f1, seq: 51 });
     expect(useChatStore.getState().tokens.total).toBe(6);
+  });
+
+  it('实时事件推进最新游标，迟到事件不回退进展游标', () => {
+    const event = evt('agent.usage', { runId: 'r9', totalTokens: 2 });
+    useChatStore.getState().applyEvent({ ...event, seq: 21 });
+    useChatStore.getState().applyEvent({ ...event, id: 'older-event', seq: 20 });
+    expect(useChatStore.getState().latestSeq).toBe(21);
   });
 
   it('user-before-assistant 校正:assistant 先建,user 后到 → 重排', () => {

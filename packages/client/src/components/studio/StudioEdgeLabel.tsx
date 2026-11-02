@@ -42,7 +42,7 @@ export default function StudioEdgeLabel({
     <div
       data-studio-edge-label={edge.id}
       title={title}
-      className="group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-acc/40 bg-shell-panel px-1.5 py-0.5 shadow-sm"
+      className="glass group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-1.5 py-0.5"
       style={{ left: x, top: y }}
     >
       <AnnotationHandle reference={editorReference('studio', { resourceId: 'main', selection: { edgeIds: [edge.id] } })} label={edge.label || '创作引用连线'} />

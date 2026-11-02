@@ -221,9 +221,9 @@ fn build(width: u32, height: u32) -> Result<Renderer, String> {
         }));
     }
     let resources = Box::leak(resource_list.into_boxed_slice());
-    let mut pass_list = vec![rex::Pass::Raster(rex::RasterPass {
+    let mut pass_list = vec![rex::Pass::RasterWithBlend(rex::RasterPass {
         name: "sentinels_v6_instanced_isometric",
-        blend: rex::BlendMode::Opaque,
+        
         vs_spirv: vs,
         fs_spirv: fs,
         vertex: rex::VertexData::Pull,
@@ -252,19 +252,15 @@ fn build(width: u32, height: u32) -> Result<Renderer, String> {
             ..Default::default()
         },
         conservative: None,
-    })];
+    }, rex::BlendMode::Opaque)];
     for (class, (vs, fs)) in sprite_shaders.into_iter().enumerate() {
-        pass_list.push(rex::Pass::Raster(rex::RasterPass {
+        pass_list.push(rex::Pass::RasterWithBlend(rex::RasterPass {
             name: match class {
                 0 => "sentinels_v6_real_frame_assets",
                 1 => "sentinels_v6_alpha_effects",
                 _ => "sentinels_v6_additive_effects",
             },
-            blend: match class {
-                0 => rex::BlendMode::AlphaDepth,
-                1 => rex::BlendMode::Alpha,
-                _ => rex::BlendMode::Additive,
-            },
+            
             vs_spirv: vs,
             fs_spirv: fs,
             vertex: rex::VertexData::Pull,
@@ -293,7 +289,11 @@ fn build(width: u32, height: u32) -> Result<Renderer, String> {
                 ..Default::default()
             },
             conservative: None,
-        }));
+        }, match class {
+                0 => rex::BlendMode::AlphaDepth,
+                1 => rex::BlendMode::Alpha,
+                _ => rex::BlendMode::Additive,
+            }));
     }
     let passes = Box::leak(pass_list.into_boxed_slice());
     let mut barriers: Vec<&'static [(u32, rex::TargetState)]> = vec![Box::leak(

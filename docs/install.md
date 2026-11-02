@@ -15,8 +15,17 @@
 ### 安装
 
 1. 打开 [Releases 页面](https://github.com/qwasg/RurixForge/releases/latest)，下载 `RurixForge-Setup-<版本>.exe`。
-2. 双击运行。安装向导只有一步：选择安装位置（缺省为 `%LOCALAPPDATA%\Programs\RurixForge`，可以改到其他盘），点「安装」。整个过程不需要管理员权限。卸载和升级时会删除整个安装文件夹，所以安装位置必须是新的或空的文件夹；选中已有其他文件的文件夹（例如源码仓库）时「安装」按钮会变灰。
-3. 安装完成后会自动启动 RurixForge，并在桌面和开始菜单创建快捷方式。
+2. 双击运行。欢迎页列出安装位置、快捷方式和数据位置，确认无误点「立即安装」；要调整就点「自定义安装选项」：
+   - **安装位置**：缺省为 `%LOCALAPPDATA%\Programs\RurixForge`，可以改到其他盘。选中的文件夹名里没有 RurixForge 时，会在里面新建 `RurixForge` 子文件夹。界面会显示所需空间和该盘的可用空间。卸载和升级时会删除整个安装文件夹，所以只能装进新的、空的或原来的安装文件夹；选中已有其他文件的文件夹（例如源码仓库）时「开始安装」按钮不可用。
+   - **数据位置**：项目、会话、设置与生成内容存放的位置，缺省为 `%APPDATA%\RurixForge\data`，可以改到空间更大的磁盘。不能放在安装文件夹里。改位置不会搬动已有的数据。
+   - **桌面快捷方式**、**开始菜单快捷方式**、**安装完成后启动**：可以分别关掉。升级时沿用上次的快捷方式选择（删掉的不会再加回来）。
+
+   整个过程不需要管理员权限。
+3. 安装完成后，3 秒后自动启动 RurixForge（可以取消），也可以直接点「启动 RurixForge」或「完成」。
+
+安装界面需要 WebView2 运行时：Windows 11 自带，Windows 10 一般已随 Edge 更新装好。系统里没有时，安装程序会自动改用经典安装向导，装出来的结果相同。
+
+再次运行安装包时，界面会显示已安装的版本；更新、重新安装都会保留你的项目与设置。如果 RurixForge 正在运行，界面会先提醒，安装时自动关闭它。
 
 安装包目前没有代码签名。Windows 可能提示「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」即可。如需核对下载的文件，Release 附有 `SHA256SUMS.txt`：
 
@@ -24,21 +33,38 @@
 Get-FileHash .\RurixForge-Setup-<版本>.exe -Algorithm SHA256
 ```
 
+### 命令行安装
+
+批量部署或脚本安装时可以不显示界面：
+
+```powershell
+.\RurixForge-Setup-<版本>.exe /S --no-desktop-shortcut "--data-dir=E:\RurixForge 数据" /D=E:\Apps\RurixForge
+```
+
+| 参数 | 作用 |
+| --- | --- |
+| `/S` | 静默安装。退出码 0 表示成功；2 表示安装位置不可用（文件夹里有其他文件），或正在运行的 RurixForge 无法关闭 |
+| `/D=<目录>` | 安装位置，按原样使用（不会再追加 `RurixForge` 子文件夹）。必须放在最后，路径含空格也不要加引号 |
+| `--no-desktop-shortcut` | 不创建桌面快捷方式（升级时删掉已有的） |
+| `--no-start-menu-shortcut` | 不创建开始菜单快捷方式（升级时删掉已有的） |
+| `--data-dir=<目录>` | 数据位置（与 `/S` 一起用；写进 `launcher.json`） |
+| `--classic` | 不用新的安装界面，打开经典安装向导 |
+
 ### 首次启动
 
-启动时会先显示一个小窗，同时在后台启动本地服务（AI 后端 `forge-agentd` 和网页宿主）；第一次启动还会创建默认工作区。随后主窗口打开，在设置里配置模型服务（自带 API Key 的渠道、Codex 或云服务）即可开始使用。
+启动时会先显示一个小窗（Windows 11 上是透出桌面的毛玻璃），依次显示「准备工作区 → 启动 AI 后端 → 启动界面服务 → 打开工作台」，同时在后台启动本地服务（AI 后端 `forge-agentd` 和网页宿主）；第一次启动还会创建默认工作区。随后主窗口打开，在设置里配置模型服务（自带 API Key 的渠道、Codex 或云服务）即可开始使用。
 
 ### 文件放在哪里
 
 | 内容 | 位置 |
 | --- | --- |
 | 程序本体 | 安装目录（缺省 `%LOCALAPPDATA%\Programs\RurixForge`） |
-| 会话、设置、密钥、生成记录、新建的项目 | `%APPDATA%\RurixForge\data` |
-| 默认工作区 | `%APPDATA%\RurixForge\data\workspaces\default` |
+| 会话、设置、密钥、生成记录、新建的项目 | 数据位置：缺省 `%APPDATA%\RurixForge\data`，或安装时另选的文件夹 |
+| 默认工作区 | 数据位置下的 `workspaces\default` |
 | 日志（`desktop.log`、`agentd.log`、`host.log`、`engine-host-*.log`） | `%APPDATA%\RurixForge\logs` |
-| 本机端口记录 | `%APPDATA%\RurixForge\launcher.json` |
+| 本机端口记录、安装时另选的数据位置（`dataDir`） | `%APPDATA%\RurixForge\launcher.json` |
 
-卸载和升级都会保留 `%APPDATA%\RurixForge`。想彻底清除，卸载后再删除这个文件夹。
+卸载和升级都会保留 `%APPDATA%\RurixForge` 和另选的数据文件夹。想彻底清除，卸载后再删除它们。
 
 ### 升级与卸载
 
@@ -58,7 +84,7 @@ Get-FileHash .\RurixForge-Setup-<版本>.exe -Algorithm SHA256
 
 | 变量 | 作用 |
 | --- | --- |
-| `FORGE_DATA_DIR` | 把用户数据改放到别的目录（例如另一块磁盘） |
+| `FORGE_DATA_DIR` | 把用户数据改放到别的目录（例如另一块磁盘）；优先于安装时选的数据位置 |
 | `FORGE_AGENTD_WORKSPACE_ROOT` | 指定默认工作区目录 |
 | `FORGE_HOST_PORT` / `FORGE_AGENTD_ADDR` | 固定网页宿主端口 / AI 后端地址（如 `127.0.0.1:8103`） |
 
@@ -96,11 +122,12 @@ pnpm package:win
 powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 ```
 
-输出在 `target\installer\out\`：
+输出在 `target\installer\`：
 
-- `RurixForge-Setup-<版本>.exe`：安装程序，版本号取自根目录 `package.json`；
-- `SHA256SUMS.txt`：安装程序的 SHA-256；
-- `win-unpacked\`：免安装的完整程序，可直接运行 `RurixForge.exe` 试用。
+- `out\RurixForge-Setup-<版本>.exe`：要发布的安装程序，版本号取自根目录 `package.json`；
+- `out\SHA256SUMS.txt`：安装程序的 SHA-256；
+- `nsis\win-unpacked\`：免安装的完整程序，可直接运行 `RurixForge.exe` 试用；
+- `nsis\RurixForge-Core-<版本>.exe`：内层安装包（单独运行就是经典安装向导），调试用，不要发布。
 
 首次出包需要完整的 release 构建，并下载约 1 GB 的 Godot 导出模板，耗时较长。参数：
 
@@ -111,7 +138,14 @@ powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1
 | `-SkipGodot` | 不带 Godot 运行时，只用于调试打包流程 |
 | `-Out <目录>` | 输出根目录，缺省 `target\installer` |
 
-安装器本身由 `tools/installer/` 里的 electron-builder 生成。这个目录用 npm 单独管理（electron-builder 需要扁平的 `node_modules`），不属于 pnpm 工作区。
+安装程序由两部分拼成一个 exe：
+
+- **内层安装包**：`tools/installer/` 里的 electron-builder 生成的 NSIS 安装包，负责解压程序、写卸载信息和快捷方式（钩子在 `installer.nsh`）。这个目录用 npm 单独管理（electron-builder 需要扁平的 `node_modules`），不属于 pnpm 工作区。
+- **安装界面**：`tools/installer/setup/`，Rust + WebView2 的小程序（独立的 Cargo 工作区，产物在 `target\forge-setup`，首次构建需要联网下载依赖）。页面在 `ui/`，出包时编进 exe。它运行时把内层安装包解到临时目录、按界面里的选择静默运行，并按安装目录的增长显示进度。`forge-setup-pack.exe` 负责把两者和元数据（产品名、版本、安装后大小、许可证）拼在一起，格式见 `src/payload.rs`。
+
+调整安装界面时不必每次重新出包：设置环境变量 `FORGE_SETUP_UI_DIR` 指向 `tools\installer\setup\ui` 后再运行已有的安装程序，页面会直接读磁盘上的文件，改完重新打开即可；`FORGE_SETUP_DEBUG_PORT=<端口>` 会打开 DevTools 协议端口，便于用 Playwright 等工具自动操作界面。
+
+electron-builder 的安装包原本会把自身完整复制一份到 `%LOCALAPPDATA%\rurixforge-updater\installer.exe`，留给自动更新做差分下载。RurixForge 没有自动更新，`installer.nsh` 会在安装完成后删掉这份副本。
 
 发布到 GitHub Releases：
 
@@ -130,7 +164,7 @@ resources\forge\
   ultraplan-runtime\       Node + playwright-core，UltraPlan 检查 Web 试玩版用
   packages\host\           网页宿主（由 Electron 自带的 Node 运行）
   packages\client\dist\    界面
-  agents\ skills\ registry\ tools\blender\ projects\demo\   随包资源（只含 git 跟踪的文件）
+  agents\ skills\ registry\ tools\blender\ tools\model\ assets\motion-packs\ projects\demo\   随包资源（只含 git 跟踪的文件）
   templates\default-workspace\   首次启动复制成默认工作区
   data\antigravity-runtime\      可选：Antigravity 桥接（构建机装有 Go 时才包含）
 ```

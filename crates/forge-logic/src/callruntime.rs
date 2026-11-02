@@ -77,7 +77,7 @@ struct LoadedModule {
 /// call_function 运行时:项目根 + rurixc 路径 + 缓存目录 + 已加载模块表。
 pub struct CallRuntime {
     root: PathBuf,
-    rurixc: PathBuf,
+    rurixc: Result<PathBuf, String>,
     rustc: PathBuf,
     cache_dir: PathBuf,
     modules: HashMap<String, LoadedModule>,
@@ -116,11 +116,10 @@ impl CallRuntime {
         }
         Ok(updates)
     }
-    /// root = 项目根;rurixc 取 FORGE_RURIXC env,缺省 H:\rurix\target\debug\rurixc.exe(F4 先例)。
+    /// root = 项目根;工具链与 MCP/发行打包共用只读解析规则。
     pub fn new(root: PathBuf) -> Self {
-        let rurixc = std::env::var("FORGE_RURIXC")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(r"H:\rurix\target\debug\rurixc.exe"));
+        let rurixc = forge_util::toolchain::resolve(forge_util::toolchain::ToolchainTool::Rurixc)
+            .into_result();
         let cache_dir = root.join(".forge").join("cache").join("rxdll");
         let rustc = std::env::var("FORGE_RUSTC").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("rustc"));
         CallRuntime { root, rurixc, rustc, cache_dir, modules: HashMap::new() }
@@ -168,14 +167,15 @@ impl CallRuntime {
         if Path::new(module).extension().and_then(|s| s.to_str()) == Some("rs") {
             return self.ensure_rust_dll(module, source);
         }
+        let rurixc = self.rurixc.as_ref().map_err(|error| CallError::Build(error.clone()))?;
         std::fs::create_dir_all(&self.cache_dir)
             .map_err(|e| CallError::Build(format!("建缓存目录 {}: {e}", self.cache_dir.display())))?;
         let mut h = rurix_pkg::sha256::Sha256::new();
         h.update(source);
         h.update(b"|");
         // rurixc 版本面:exe 字节 hash(构建器版本照 assetd cache_key 纪律)。
-        let exe = std::fs::read(&self.rurixc)
-            .map_err(|e| CallError::Build(format!("rurixc 不可读 {}: {e}", self.rurixc.display())))?;
+        let exe = std::fs::read(rurixc)
+            .map_err(|e| CallError::Build(format!("rurixc 不可读 {}: {e}", rurixc.display())))?;
         h.update(&exe);
         let key_full = rurix_pkg::sha256::hex(&h.finalize());
         let key = &key_full[..16];
@@ -199,7 +199,7 @@ impl CallRuntime {
             return Ok(dll_path);
         }
         let abs = self.root.join(module);
-        let out = Command::new(&self.rurixc)
+        let out = Command::new(rurixc)
             .arg(&abs)
             .arg("--emit=dll")
             .arg("-o")
@@ -407,6 +407,16 @@ unsafe fn call_homo<T: HomoCall>(lib: &libloading::Library, sym: &str, ret: &str
 mod tests {
     use super::*;
 
+    #[test]
+    fn missing_compiler_fails_before_creating_cache() {
+        let root = std::env::temp_dir().join(format!("forge-missing-compiler-{}-{}", std::process::id(), forge_util::timeutil::unix_millis()));
+        let mut runtime = CallRuntime::new(root.clone());
+        runtime.rurixc = Err("RX_CLI_NOT_FOUND: explicit compiler unavailable".into());
+        let error = runtime.ensure_dll("Content/Scripts/test.rx", b"fixture").unwrap_err();
+        assert!(error.to_string().contains("RX_CLI_NOT_FOUND"));
+        assert!(!root.exists());
+    }
+
     #[cfg(windows)]
     #[test]
     fn native_frame_abi_updates_in_bulk_and_rejects_bad_output_atomically(){
@@ -488,9 +498,7 @@ pub extern "C" fn frame(abi:u32,dt:f32,input:*const NativeBinding,count:u32,outp
     }
 
     fn rurixc_available() -> bool {
-        let path = std::env::var("FORGE_RURIXC").map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(r"H:\rurix\target\debug\rurixc.exe"));
-        path.is_file()
+        forge_util::toolchain::resolve(forge_util::toolchain::ToolchainTool::Rurixc).path.is_some()
     }
 
     #[test]

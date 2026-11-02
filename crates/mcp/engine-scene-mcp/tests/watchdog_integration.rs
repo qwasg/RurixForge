@@ -169,9 +169,10 @@ fn watchdog_restarts_host_after_kill() {
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    // Godot 元数据查询新增 render_backend_info / render_capabilities 两项。
-    assert_eq!(names.len(), 52, "tools/list 须为 52 个工具:{names:?}");
+    // Godot 元数据查询新增 render_backend_info / render_capabilities 两项;F-GAME-5 rig_spawn = 61。
+    assert_eq!(names.len(), 61, "tools/list 须为 61 个工具:{names:?}");
     for want in [
+        "rig_spawn",
         "prefab_instantiate",
         "prefab_revert",
         "asset_reload",
@@ -236,11 +237,11 @@ fn watchdog_restarts_host_after_kill() {
     // Category(场景分类 role/map/interaction)→ 8 类型;
     // F-GAME-3:Sprite(2D 精灵)→ 9 类型。
     // Blender runtime adds model rendering/nodes/parents/prefab/animation/collider/controller;
-    // Stage 5 registry additions bring the verified total to 24 (see forge-scene::REGISTRY).
+    // Stage 5 + Text + Rig2D registry additions bring the verified total to 26 (see forge-scene::REGISTRY).
     assert_eq!(
         types.as_array().unwrap().len(),
-        24,
-        "组件注册表须为当前 24 项"
+        26,
+        "组件注册表须为当前 26 项"
     );
     let created = mcp.call_tool(
         "entity_create",

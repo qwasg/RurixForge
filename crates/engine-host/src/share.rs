@@ -18,11 +18,12 @@ use std::sync::{Mutex, OnceLock};
 
 use windows::core::{Interface, PCWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, HANDLE, DUPLICATE_SAME_ACCESS,
+    CloseHandle, DuplicateHandle, HANDLE, DUPLICATE_SAME_ACCESS, DUPLICATE_CLOSE_SOURCE,
 };
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D12::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
+use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory2,IDXGIFactory6,IDXGIAdapter1,DXGI_CREATE_FACTORY_FLAGS,DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE};
 use windows::Win32::System::Threading::*;
 
 /// GENERIC_ALL(0x10000000):CreateSharedHandle 访问掩码。
@@ -32,6 +33,11 @@ const GENERIC_ALL_ACCESS: u32 = 0x1000_0000;
 /// Producer(CPU 上传档 / rurix 零拷贝档)与 Godot L1 的 [gmain](经 SharedTarget.fence_value)共用这一个计数器,
 /// 保证任何时候 fence 值单调、不跳号。rurix 下取值序列与原先的 `SharedBuf.fence_value += 1` 逐一相同。
 static FENCE_VALUE: AtomicU64 = AtomicU64::new(0);
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+static FRAME_LEASE: Mutex<()> = Mutex::new(());
+/// Lock before touching an imported output. Release before taking HostState.
+pub fn frame_lease() -> std::sync::MutexGuard<'static, ()> { FRAME_LEASE.lock().unwrap_or_else(|e| e.into_inner()) }
+
 
 /// Godot 后端装进来的 ID3D12Device(02 §4.2 L1 第 1-2 步)。共享 buffer / fence 必须建在消费端(presenter)的
 /// adapter 上:presenter 用 `D3D12CreateDevice(None)`,而 Godot 进程因 NvOptimusEnablement 导出、本进程的缺省卡可能不同。
@@ -100,6 +106,11 @@ struct SharedBuf {
     fence_event: HANDLE,
     /// 本进程持有的 buffer NT handle(VK import 用;Drop 关闭)。
     local_buf_handle: HANDLE,
+    consumer_fence: Option<ID3D12Fence>,
+    consumer_process: Option<HANDLE>,
+    last_produced: u64,
+    slot_index: usize,
+    generation: u64,
 }
 
 impl Drop for SharedBuf {
@@ -107,6 +118,7 @@ impl Drop for SharedBuf {
         unsafe {
             // SAFETY: fence_event/local_buf_handle 为本进程持有的内核句柄;COM 引用随 drop。
             let _ = CloseHandle(self.fence_event);
+            if let Some(process)=self.consumer_process.take(){let _=CloseHandle(process);}
             if !self.local_buf_handle.is_invalid() {
                 let _ = CloseHandle(self.local_buf_handle);
             }
@@ -116,12 +128,15 @@ impl Drop for SharedBuf {
 
 /// VK import 面(buffer 形态)。
 #[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
+#[derive(Debug,Clone,Copy)]
 pub struct ShareInfo {
     pub handle: u64,
     pub size: u64,
     pub width: u32,
     pub height: u32,
     pub row_pitch: u32,
+    pub slot: usize,
+    pub generation: u64,
 }
 
 struct Producer {
@@ -130,8 +145,11 @@ struct Producer {
     allocator: ID3D12CommandAllocator,
     list: ID3D12GraphicsCommandList,
     shared: Option<SharedBuf>,
+    spare: Option<SharedBuf>,
+    next_slot: usize,
     /// device 是 install_device 装进来的 Godot device(L1 可用)。
     on_godot_device: bool,
+    high_performance: bool,
 }
 
 // SAFETY: Producer 持有 D3D12 COM 指针(windows-rs 接口内为 *mut);仅经 SHARE 全局
@@ -148,7 +166,7 @@ fn slot() -> &'static Mutex<Option<Producer>> {
 // COMMON),原 barrier_transition helper 随之退役。
 
 impl Producer {
-    fn new() -> Result<Self, String> {
+    fn new(high_performance:bool) -> Result<Self, String> {
         unsafe {
             // SAFETY: 标准 D3D12 初始化序列;错误经 HRESULT 传播,不unwrap。
             // Godot 后端装过 device 时用它(消费端同卡);否则与原先一样取缺省 adapter。
@@ -157,8 +175,13 @@ impl Producer {
                 Some(d) => d.device.clone(),
                 None => {
                     let mut device: Option<ID3D12Device> = None;
-                    D3D12CreateDevice(None, D3D_FEATURE_LEVEL_11_0, &mut device)
-                        .map_err(|e| format!("D3D12CreateDevice: {e}"))?;
+                    if high_performance {
+                        let factory:IDXGIFactory6=CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)).map_err(|e|e.to_string())?;
+                        let adapter:IDXGIAdapter1=factory.EnumAdapterByGpuPreference(0,DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE).map_err(|e|e.to_string())?;
+                        D3D12CreateDevice(&adapter,D3D_FEATURE_LEVEL_11_0,&mut device).map_err(|e|e.to_string())?;
+                    } else {
+                        D3D12CreateDevice(None,D3D_FEATURE_LEVEL_11_0,&mut device).map_err(|e|e.to_string())?;
+                    }
                     device.ok_or("D3D12CreateDevice 返回空")?
                 }
             };
@@ -181,7 +204,9 @@ impl Producer {
                 allocator,
                 list,
                 shared: None,
-                on_godot_device,
+                spare: None,
+                next_slot: 0,
+                on_godot_device, high_performance,
             })
         }
     }
@@ -311,6 +336,8 @@ impl Producer {
                 fence,
                 fence_event,
                 local_buf_handle: tex_handle,
+                consumer_fence: None, consumer_process:None, last_produced: 0, slot_index: 0,
+                generation: GENERATION.load(Ordering::SeqCst),
             });
             Ok((dup_tex.0 as u64, dup_fence.0 as u64))
         }
@@ -378,6 +405,44 @@ impl Producer {
     /// (session 帧 fence 完成由 CPU 侧知悉,且上游帧末已录 EXTERNAL release),
     /// 此处仅推进共享 fence 通知消费者。buffer 无 layout,无需任何状态迁移。
     /// 返回本帧 fence 值。
+    fn add_consumer_fence(&mut self, target_pid: u32) -> Result<u64, String> {
+        // SAFETY: device and process handles remain live until duplication completes.
+        unsafe {
+            let fence: ID3D12Fence = self.device.CreateFence(0, D3D12_FENCE_FLAG_SHARED).map_err(|e| e.to_string())?;
+            let handle = self.device.CreateSharedHandle(&fence, None, GENERIC_ALL_ACCESS, PCWSTR::null()).map_err(|e| e.to_string())?;
+            let target = match OpenProcess(PROCESS_DUP_HANDLE|PROCESS_SYNCHRONIZE, false, target_pid) { Ok(p) => p, Err(e) => { let _=CloseHandle(handle); return Err(e.to_string()); } };
+            let mut duplicate = HANDLE::default();
+            let result = DuplicateHandle(GetCurrentProcess(), handle, target, &mut duplicate, 0, false, DUPLICATE_SAME_ACCESS);
+            let _=CloseHandle(handle);
+            if let Err(error)=result {let _=CloseHandle(target);return Err(error.to_string())}
+            let process=target;
+            let slot=self.shared.as_mut().ok_or("shared buffer absent")?;
+            slot.consumer_fence=Some(fence);slot.consumer_process=Some(process);
+            Ok(duplicate.0 as u64)
+        }
+    }
+
+    fn consumer_exited(slot:&SharedBuf)->bool {
+        // SAFETY: retained process handle identifies the actual consumer even if its PID is reused.
+        slot.consumer_process.is_some_and(|p|unsafe{WaitForSingleObject(p,0).0==0})
+    }
+
+    fn wait_slot(slot: &SharedBuf) -> Result<(), String> {
+        let Some(fence) = &slot.consumer_fence else { return Ok(()) };
+        if Self::consumer_exited(slot){return Err("NATIVE_CONSUMER_EXITED: output must be detached and reopened".into())}
+        if slot.last_produced == 0 { return Ok(()) }
+        // SAFETY: slot owns fence/event; caller serializes slot reuse through FRAME_LEASE.
+        unsafe {
+            let completed=fence.GetCompletedValue();
+            if completed==u64::MAX{return Err("NATIVE_DEVICE_REMOVED: consumer fence invalid".into())}
+            if completed >= slot.last_produced { return Ok(()) }
+            fence.SetEventOnCompletion(slot.last_produced, slot.fence_event).map_err(|e| e.to_string())?;
+            let result=WaitForSingleObject(slot.fence_event,2000);
+            if result.0 != 0 || fence.GetCompletedValue()<slot.last_produced || fence.GetCompletedValue()==u64::MAX { return Err(format!("NATIVE_CONSUMER_TIMEOUT: generation={} slot={} frame={} wait={}",slot.generation,slot.slot_index,slot.last_produced,result.0)) }
+        }
+        Ok(())
+    }
+
     fn signal(&mut self) -> Result<u64, String> {
         let Some(shared) = &mut self.shared else {
             return Err("共享 buffer 未打开".into());
@@ -388,6 +453,7 @@ impl Producer {
             self.queue
                 .Signal(&shared.fence, v)
                 .map_err(|e| format!("queue.Signal: {e}"))?;
+            shared.last_produced = v;
             Ok(v)
         }
     }
@@ -396,6 +462,7 @@ impl Producer {
         // SharedTex::Drop 统一关闭 fence_event/local_tex_handle;重建(open 内 `= None`)
         // 与显式 close 同路,杜绝 wave.2 遗留的 fence_event 重建泄漏。
         self.shared = None;
+        self.spare = None;
     }
 }
 
@@ -414,12 +481,98 @@ pub fn open(
 ) -> Result<(u64, u64, u32, u32, u32, u64), String> {
     let mut g = slot().lock().unwrap_or_else(|e| e.into_inner());
     if g.is_none() {
-        *g = Some(Producer::new()?);
+        *g = Some(Producer::new(false)?);
     }
     let p = g.as_mut().expect("producer 刚初始化");
+    GENERATION.fetch_add(1, Ordering::SeqCst);
+    p.spare=None;
     let (t, f) = p.open(width, height, target_pid)?;
     let (row_pitch, size) = shared_layout(width, height);
     Ok((t, f, width, height, row_pitch as u32, size))
+}
+
+/// Two immutable imported buffers; each has independent producer and consumer fences.
+/// Caller holds frame_lease across detach/open and renderer output attachment.
+pub fn open_native(width:u32,height:u32,target_pid:u32) -> Result<serde_json::Value,String> {
+    let mut g=slot().lock().unwrap_or_else(|e|e.into_inner());
+    if g.as_ref().is_some_and(|p|!p.high_performance) {
+        let p=g.as_ref().unwrap();for s in [&p.shared,&p.spare].into_iter().flatten(){if !Producer::consumer_exited(s){Producer::wait_slot(s)?;}}
+        *g=None;
+    }
+    if g.is_none(){*g=Some(Producer::new(true)?);}
+    let p=g.as_mut().unwrap();
+    if let Some(s)=&p.shared { if !Producer::consumer_exited(s){Producer::wait_slot(s)?;} }
+    if let Some(s)=&p.spare { if !Producer::consumer_exited(s){Producer::wait_slot(s)?;} }
+    p.close();
+    let generation=GENERATION.fetch_add(1,Ordering::SeqCst)+1;
+    let mut remote_handles=Vec::new();
+    let result=(||->Result<serde_json::Value,String>{
+        let (a,af)=p.open(width,height,target_pid)?;remote_handles.extend([a,af]);
+        let ac=p.add_consumer_fence(target_pid)?;remote_handles.push(ac);
+        let first=p.shared.take();
+        let (b,bf)=p.open(width,height,target_pid)?;remote_handles.extend([b,bf]);
+        let bc=p.add_consumer_fence(target_pid)?;remote_handles.push(bc);
+        p.shared.as_mut().unwrap().slot_index=1;
+        p.spare=p.shared.take(); p.shared=first; p.next_slot=0;
+        let (pitch,size)=shared_layout(width,height);
+        Ok(serde_json::json!({"handleKind":"buffer","protocol":2,"generation":generation,
+            "width":width,"height":height,"rowPitch":pitch,"bufferSize":size,"format":"rgba8",
+            "slots":[{"slot":0,"texHandle":a,"fenceHandle":af,"consumerFenceHandle":ac},
+                     {"slot":1,"texHandle":b,"fenceHandle":bf,"consumerFenceHandle":bc}]}))
+    })();
+    if result.is_err(){
+        // Only handles duplicated by this failed open are reclaimed, before their values were published.
+        // SAFETY: target is the requested consumer; DUPLICATE_CLOSE_SOURCE closes that exact duplicate.
+        unsafe{if let Ok(target)=OpenProcess(PROCESS_DUP_HANDLE,false,target_pid){
+            for raw in remote_handles {let mut copy=HANDLE::default();if DuplicateHandle(target,HANDLE(raw as *mut c_void),GetCurrentProcess(),&mut copy,0,false,DUPLICATE_SAME_ACCESS|DUPLICATE_CLOSE_SOURCE).is_ok(){let _=CloseHandle(copy);}}
+            let _=CloseHandle(target);
+        }}
+        p.close();
+    }
+    result
+}
+
+/// Acquire one of the two bounded slots before recording Vulkan commands.
+pub fn begin_native_frame(width:u32,height:u32)->Result<usize,String>{
+    let mut g=slot().lock().unwrap_or_else(|e|e.into_inner());
+    let p=g.as_mut().ok_or("NATIVE_NOT_READY: presenter has not opened output")?;
+    if p.spare.is_none() {return Err("NATIVE_NOT_READY: protocol 2 output required".into())}
+    if p.shared.as_ref().is_some_and(|s|s.slot_index!=p.next_slot){std::mem::swap(&mut p.shared,&mut p.spare);}
+    let s=p.shared.as_ref().ok_or("NATIVE_NOT_READY: missing slot")?;
+    if (s.width,s.height)!=(width,height){return Err("NATIVE_SIZE_MISMATCH: waiting for presenter resize".into())}
+    // Current runtime acquires/releases the complete imported set; drain both before any submission.
+    Producer::wait_slot(s)?;
+    if let Some(other)=&p.spare { Producer::wait_slot(other)?; }
+    let index=s.slot_index;p.next_slot=1-index;Ok(index)
+}
+
+pub fn wait_consumed()->Result<(),String>{
+    let g=slot().lock().unwrap_or_else(|e|e.into_inner());
+    if let Some(p)=g.as_ref(){for s in [&p.shared,&p.spare].into_iter().flatten(){Producer::wait_slot(s)?;}}
+    Ok(())
+}
+
+/// Detach waits for actual GPU reads, or drops an exited consumer's allocation without reuse.
+pub fn close_checked()->Result<(),String>{
+    let mut g=slot().lock().unwrap_or_else(|e|e.into_inner());
+    if let Some(p)=g.as_mut(){
+        for s in [&p.shared,&p.spare].into_iter().flatten(){if !Producer::consumer_exited(s){Producer::wait_slot(s)?;}}
+        p.close();
+    }
+    Ok(())
+}
+
+/// Identity of the last signal submitted for the currently leased native slot.
+pub(crate) fn last_native_submission()->Option<(u64,usize,u64)>{
+    let g=slot().lock().unwrap_or_else(|e|e.into_inner());let s=g.as_ref()?.shared.as_ref()?;
+    s.consumer_fence.as_ref()?;Some((s.generation,s.slot_index,s.last_produced))
+}
+
+pub fn native_output_infos()->Option<[ShareInfo;2]>{
+    let g=slot().lock().unwrap_or_else(|e|e.into_inner());let p=g.as_ref()?;
+    let a=p.shared.as_ref()?;let b=p.spare.as_ref()?;
+    let info=|s:&SharedBuf|ShareInfo{handle:s.local_buf_handle.0 as u64,size:s.size,width:s.width,height:s.height,row_pitch:s.row_pitch as u32,slot:s.slot_index,generation:s.generation};
+    Some(if a.slot_index==0 {[info(a),info(b)]}else{[info(b),info(a)]})
 }
 
 /// D3D12 adapter LUID(与 VK physical device LUID 对拍;producer 未初始化 = None)。
@@ -464,6 +617,7 @@ pub fn vk_import_info() -> Option<ShareInfo> {
         width: s.width,
         height: s.height,
         row_pitch: s.row_pitch as u32,
+        slot: s.slot_index, generation: s.generation,
     })
 }
 
@@ -495,7 +649,7 @@ mod tests {
     /// 即接线硬错,故此处看门。
     #[test]
     fn shared_layout_contract() {
-        for (w, h) in [(128u32, 96u32), (64, 64), (512, 288), (960, 540), (1024, 540), (1920, 1080)]
+        for (w, h) in [(128u32, 96u32), (64, 64), (512, 288), (960, 540), (1024, 540), (1920, 1080), (2560, 1440), (2559, 1439)]
         {
             let (row_pitch, size) = shared_layout(w, h);
             assert_eq!(row_pitch % 256, 0, "{w}x{h}: 行距 {row_pitch} 未 256B 对齐");

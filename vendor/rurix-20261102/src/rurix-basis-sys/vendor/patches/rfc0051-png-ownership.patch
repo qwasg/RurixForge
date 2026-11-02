@@ -1,0 +1,57 @@
+diff --git a/src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.cpp b/src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.cpp
+index 46639f27..46ac4e5c 100644
+--- a/src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.cpp
++++ b/src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.cpp
+@@ -24,6 +24,7 @@
+ #include <math.h>
+ #include <string.h>
+ #include <vector>
++#include <memory>
+ #include <assert.h>
+ 
+ #define PVPNG_IDAT_CRC_CHECKING (1)
+@@ -551,7 +552,10 @@ void* png_decoder::png_malloc(uint32_t len)
+ 			break;
+ 
+ 	if (j == PNG_MAX_ALLOC_BLOCKS)
++	{
++		free(p);
+ 		return nullptr;
++	}
+ 
+ 	m_pMalloc_blocks[j] = p;
+ 
+@@ -2319,13 +2323,14 @@ void* load_png(const void* pImage_buf, size_t buf_size, uint32_t desired_chans,
+ 	if (total_size > 0x7FFFFFFFULL)
+ 		return nullptr;
+ 	
+-	uint8_t* pBuf = (uint8_t*)malloc((size_t)total_size);
++	// Rurix RFC-0051: retain output ownership if Adam7's vector allocation throws.
++	std::unique_ptr<uint8_t, decltype(&free)> output((uint8_t*)malloc((size_t)total_size), &free);
++	uint8_t* pBuf = output.get();
+ 	if (!pBuf)
+ 		return nullptr;
+ 	
+ 	if (dec.png_decode_start() != 0)
+ 	{
+-		free(pBuf);
+ 		return nullptr;
+ 	}
+ 
+@@ -2337,7 +2342,6 @@ void* load_png(const void* pImage_buf, size_t buf_size, uint32_t desired_chans,
+ 		uint32_t line_bytes;
+ 		if (dec.png_decode((void**)&pLine, &line_bytes) != 0)
+ 		{
+-			free(pBuf);
+ 			return nullptr;
+ 		}
+ 
+@@ -2626,7 +2630,7 @@ void* load_png(const void* pImage_buf, size_t buf_size, uint32_t desired_chans,
+ 
+ 	} // y
+ 
+-	return pBuf;
++	return output.release();
+ }
+ 
+ } // namespace pv_png

@@ -184,8 +184,9 @@ function ViewportPanel() {
               type="button"
               onClick={() => setCenterTab(t.id)}
               className={cn(
-                'rounded px-2 py-0.5 text-xs capitalize transition-colors',
-                centerTab === t.id ? 'bg-shell-panel text-fg shadow-sm' : 'text-fg-3 hover:text-fg-2',
+                'rounded border px-2 py-0.5 text-xs capitalize transition-colors',
+                // 选中页签 = 白色毛玻璃(index.css .glass);未选中留透明描边,切换时不跳宽
+                centerTab === t.id ? 'glass text-fg' : 'border-transparent text-fg-3 hover:text-fg',
               )}
             >
               {t.label}

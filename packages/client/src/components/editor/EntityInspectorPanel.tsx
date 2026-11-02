@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink, X, Zap } from 'lucide-react';
-import { cn } from '@/lib/cn';
 import {
   CATEGORY_META,
   CATEGORY_ORDER,
@@ -15,6 +14,7 @@ import { useEditorStore } from '@/lib/editorStore';
 import { useGraphStore, type GraphDoc } from '@/lib/graphStore';
 import TemplateControls from './TemplateControls';
 import TextPropsEditor from './TextPropsEditor';
+import RigPropsEditor from '@/components/rig/RigPropsEditor';
 
 const iconBtn =
   'flex h-6 w-6 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-3';
@@ -195,10 +195,7 @@ export default function EntityInspectorPanel() {
               <AnnotationHandle reference={entityReference(entity)} label={entity.name} />
               {category && (
                 <span
-                  className={cn(
-                    'rounded-full border px-2 py-px text-2xs font-medium',
-                    CATEGORY_META[category].chipClass,
-                  )}
+                  className="rounded-full border border-edge-strong bg-shell-sunk px-2 py-px text-2xs font-medium text-fg-2"
                   data-testid="entity-category-chip"
                 >
                   {CATEGORY_META[category].label}
@@ -267,7 +264,7 @@ export default function EntityInspectorPanel() {
                   className="flex items-start gap-2 rounded-md border border-edge bg-shell-panel px-2 py-1"
                   data-testid="entity-trigger-info"
                 >
-                  <Zap size={13} className="mt-0.5 shrink-0 text-warn" strokeWidth={1.6} />
+                  <Zap size={13} className="mt-0.5 shrink-0 text-fg-2" strokeWidth={1.6} />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-fg-2">触发区 · {String(trigger.props.kind ?? 'box')}</p>
                     <p className="truncate font-mono text-2xs text-fg-4">
@@ -303,7 +300,7 @@ export default function EntityInspectorPanel() {
                       onClick={openNodeGraph}
                       className="mt-1 flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left hover:bg-shell-hover"
                     >
-                      <span className="rounded bg-warn/15 px-1.5 py-px text-2xs text-warn">{ev.label}</span>
+                      <span className="rounded bg-shell-sunk px-1.5 py-px text-2xs text-fg-2">{ev.label}</span>
                       <span className="truncate font-mono text-2xs text-fg-4">{ev.type}</span>
                     </button>
                   ))}
@@ -360,6 +357,7 @@ export default function EntityInspectorPanel() {
                 </div>
                 <div className="px-2 pl-7 font-mono text-2xs text-fg-3">
                   {c.type === 'Text' && <TextPropsEditor entityId={entity.id} props={c.props} />}
+                  {c.type === 'Rig2D' && <RigPropsEditor entityId={entity.id} props={c.props} />}
                   {c.type !== 'Text' && Object.keys(c.props).length === 0 && <p className="text-fg-4">(无属性)</p>}
                   {c.type !== 'Text' && Object.entries(c.props).map(([k, v]) => (
                     <p key={k} className="truncate py-px" title={JSON.stringify(v)}>

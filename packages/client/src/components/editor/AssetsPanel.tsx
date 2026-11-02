@@ -13,6 +13,7 @@ import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { useAssetStore, type AssetItem, type AssetMenuAction, type AssetTypeFilter } from '@/lib/assetStore';
 import { useEditorStore } from '@/lib/editorStore';
 import { useSpriteStore } from '@/lib/spriteStore';
+import { openRigEditor } from '@/lib/rigStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
 import { useGenStore } from '@/lib/genStore';
@@ -27,6 +28,7 @@ const TYPE_FILTERS: Array<{ key: AssetTypeFilter; label: string }> = [
   { key: 'texture', label: 'Texture' },
   { key: 'material', label: 'Material' },
   { key: 'sprite', label: 'Sprite' },
+  { key: 'rig', label: 'Rig' },
   { key: 'prefab', label: 'Prefab' },
   { key: 'scene', label: 'Scene' },
   { key: 'script', label: 'Script' },
@@ -47,15 +49,16 @@ function deriveFolders(items: AssetItem[]): string[] {
   return [...FOLDER_ORDER.filter((f) => set.has(f)), ...rest];
 }
 
+/** 构建角标:只用黑灰深浅 + 强调色(构建中),不再红黄蓝绿 */
 function BuildBadge({ state }: { state?: string }) {
   const color =
     state === 'failed'
-      ? 'bg-info'
+      ? 'bg-fg'
       : state === 'stale'
-        ? 'bg-warn'
+        ? 'bg-fg-3'
         : state === 'building'
-          ? 'bg-info'
-          : 'bg-sage';
+          ? 'bg-acc'
+          : 'bg-fg-4';
   return (
     <span
       className={cn('absolute right-1 top-1 h-2 w-2 rounded-full', color)}
@@ -236,6 +239,7 @@ export default function AssetsPanel() {
   const onOpenItem = useCallback(
     (item: AssetItem) => {
       if (item.type === 'sprite') openSpriteEditor(item);
+      else if (item.type === 'rig') openRigEditor(item.path);
       else if (item.type === 'scene') {
         // asset_list 路径以 Content/ 为根;scene_load 按项目根解析,须补前缀。
         const path = item.path.startsWith('Content/') ? item.path : `Content/${item.path}`;
@@ -290,6 +294,9 @@ export default function AssetsPanel() {
       case 'sprite-edit':
         openSpriteEditor(item);
         break;
+      case 'rig-edit':
+        openRigEditor(item.path);
+        break;
     }
   };
 
@@ -316,6 +323,9 @@ export default function AssetsPanel() {
     menuItems.push({ label: '编辑精灵(新建 .rxsprite)', action: 'sprite-edit' });
   } else if (menu?.item.type === 'sprite') {
     menuItems.push({ label: '编辑精灵', action: 'sprite-edit' });
+  } else if (menu?.item.type === 'rig') {
+    // F-GAME-5:.rxrig → 绑骨编辑器。
+    menuItems.push({ label: '编辑绑骨', action: 'rig-edit' });
   }
 
   const refsResult = store.refsResult;
@@ -389,7 +399,7 @@ export default function AssetsPanel() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-2xs text-info" title={pendingDelete.blocked.join('\n')}>
+              <span className="min-w-0 flex-1 truncate text-2xs text-fg-2" title={pendingDelete.blocked.join('\n')}>
                 引用阻断,未删除。引用方:{pendingDelete.blocked.join('; ')}
               </span>
               <button type="button" className="shrink-0 text-2xs text-fg-3" onClick={store.cancelDelete}>

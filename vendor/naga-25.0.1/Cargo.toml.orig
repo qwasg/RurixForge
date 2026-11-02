@@ -1,0 +1,135 @@
+[package]
+name = "naga"
+version = "25.0.1"
+authors = ["gfx-rs developers"]
+edition = "2021"
+description = "Shader translator and validator. Part of the wgpu project"
+repository = "https://github.com/gfx-rs/wgpu/tree/trunk/naga"
+keywords = ["shader", "SPIR-V", "GLSL", "MSL"]
+license = "MIT OR Apache-2.0"
+exclude = ["bin/**/*", "tests/**/*", "Cargo.lock", "target/**/*"]
+resolver = "2"
+
+# Override the workspace's `rust-version` key. Firefox uses `cargo vendor` to
+# copy the crates it actually uses out of the workspace, so it's meaningful for
+# them to have less restrictive MSRVs individually than the workspace as a
+# whole, if their code permits. See `../README.md` for details.
+rust-version = "1.82.0"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = []
+dot-out = []
+glsl-in = ["dep:pp-rs"]
+glsl-out = []
+
+## Enables outputting to the Metal Shading Language (MSL).
+##
+## This enables MSL output regardless of the target platform.
+## If you want to enable it only when targeting iOS/tvOS/watchOS/macOS, use `naga/msl-out-if-target-apple`.
+msl-out = []
+
+## Enables outputting to the Metal Shading Language (MSL) only if the target platform is iOS/tvOS/watchOS/macOS.
+##
+## If you want to enable MSL output it regardless of the target platform, use `naga/msl-out`.
+msl-out-if-target-apple = []
+
+serialize = [
+    "dep:serde",
+    "bitflags/serde",
+    "half/serde",
+    "hashbrown/serde",
+    "indexmap/serde",
+]
+deserialize = [
+    "dep:serde",
+    "bitflags/serde",
+    "half/serde",
+    "hashbrown/serde",
+    "indexmap/serde",
+]
+arbitrary = [
+    "dep:arbitrary",
+    "bitflags/arbitrary",
+    "indexmap/arbitrary",
+    "half/arbitrary",
+    "half/std",
+]
+spv-in = ["dep:petgraph", "dep:spirv"]
+spv-out = ["dep:spirv"]
+wgsl-in = [
+    "dep:hexf-parse",
+    "dep:strum",
+    "dep:unicode-ident",
+    "indexmap/std",
+    "compact",
+]
+wgsl-out = []
+
+## Enables outputting to HLSL (Microsoft's High-Level Shader Language).
+##
+## This enables HLSL output regardless of the target platform.
+## If you want to enable it only when targeting Windows, use `hlsl-out-if-target-windows`.
+hlsl-out = []
+
+## Enables outputting to HLSL (Microsoft's High-Level Shader Language) only if the target platform is Windows.
+##
+## If you want to enable HLSL output it regardless of the target platform, use `naga/hlsl-out`.
+hlsl-out-if-target-windows = []
+
+compact = []
+
+[dependencies]
+arbitrary = { version = "1.4", features = ["derive"], optional = true }
+arrayvec.workspace = true
+bitflags.workspace = true
+bit-set.workspace = true
+codespan-reporting = { workspace = true, default-features = false, features = [
+    "std",
+    "termcolor",
+] }
+hashbrown.workspace = true
+half = { workspace = true, default-features = false, features = ["num-traits"] }
+rustc-hash.workspace = true
+indexmap.workspace = true
+log = "0.4"
+# `half` requires 0.2.16 for `FromBytes` and `ToBytes`.
+num-traits = { version = "0.2.16", default-features = false }
+once_cell = { workspace = true, features = ["alloc", "race"] }
+strum = { workspace = true, optional = true }
+spirv = { version = "0.3", optional = true }
+thiserror.workspace = true
+serde = { version = "1.0.219", features = [
+    "default",
+    "derive",
+], optional = true }
+petgraph = { version = "0.8", optional = true }
+pp-rs = { version = "0.2.1", optional = true }
+hexf-parse = { version = "0.2.1", optional = true }
+unicode-ident = { version = "1.0", optional = true }
+
+[build-dependencies]
+cfg_aliases.workspace = true
+
+[dev-dependencies]
+diff = "0.1"
+env_logger.workspace = true
+hashbrown = { workspace = true, features = ["serde"] }
+# This _cannot_ have a version specified. If it does, crates.io will look
+# for a version of the package on crates when we publish naga. Path dependencies
+# are allowed through though.
+hlsl-snapshots = { path = "./hlsl-snapshots" }
+itertools.workspace = true
+ron.workspace = true
+rspirv = { version = "0.11", git = "https://github.com/gfx-rs/rspirv", rev = "b969f175d5663258b4891e44b76c1544da9661ab" }
+serde = { workspace = true, features = ["default", "derive"] }
+spirv = { version = "0.3", features = ["deserialize"] }
+toml = "0.8"
+walkdir.workspace = true
+
+[lints.clippy]
+std_instead_of_alloc = "warn"
+std_instead_of_core = "warn"
+alloc_instead_of_core = "warn"

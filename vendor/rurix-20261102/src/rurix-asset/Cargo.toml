@@ -1,0 +1,33 @@
+[package]
+workspace = "../.."
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+name = "rurix-asset"
+description = "Rurix 资产管线（G8.3；RFC-0020）——M01 逻辑页装箱、M81 glTF/schema、M83 纹理 cook 增量；rxcook CLI"
+edition = "2024"
+version = "1.0.0"
+publish = false
+license = "MIT OR Apache-2.0"
+[dependencies]
+rurix-pkg = { path = "../rurix-pkg" }
+rurix-geom-pages = { path = "../rurix-geom-pages" }
+rurix-geom-build = { path = "../rurix-geom-build" }
+rurix-render = { path = "../rurix-render" }
+rurix-basis-sys = { path = "../rurix-basis-sys" }
+# G10.5a M130 双端核验腿 + 场景渲染 harness（bin g10_5_scene_render）：EXR 帧容器
+# 编解码（自研最小子集，spec/imageio.md §2A；workspace path 依赖，零外部 crate）。
+image-io = { path = "../image-io" }
+# G12.4 M163 UE PT 对标 Rurix 臂（bin g12_4_ue_pt_parity_render）：device 执行底座
+# （可选；rurix-rt vk ray query 执行面——rurix-render vulkan feature 同构形态，
+# default 不拉 GPU 面）。
+rurix-rt = { path = "../rurix-rt", optional = true }
+
+[features]
+default = []
+# vulkan:device 执行腿（经 rurix-rt vk 底座真派发；rurix-render vulkan feature 联动）。
+vulkan = ["dep:rurix-rt", "rurix-rt/vulkan", "rurix-render/vulkan"]
+
+[lints]
+workspace = true

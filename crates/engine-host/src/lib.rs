@@ -8,6 +8,7 @@
 //! 与渲染后端接缝里出现的类型,外部 crate 据此实现 [`RenderBackend`]。
 
 mod anim;
+mod rigrt;
 mod frame;
 mod meshres;
 mod modelrt;
@@ -53,8 +54,10 @@ pub use render_core::camera::{view_basis, EditorCamera, Projection, ViewSetup, V
 pub use render_core::delta::RenderDelta;
 pub use render_core::list::{
     clear_rgb8, ExtractStats, ItemBody, ItemKey, Leg, LightItem, LightKind, MeshData, MeshRef, ModelData, ModelPrim,
-    ParticleItem, RenderItem, RenderList, SpriteBlend, SpriteDraw, TexData, V6Frame, V6SpriteDraw, MODEL_CLEAR_RGBA, SPRITE_MESH_CLEAR_RGBA, V6_CLEAR_RGBA,
+    ParticleItem, RenderItem, RenderList, RigDraw, SpriteBlend, SpriteDraw, TexData, V6Frame, V6SpriteDraw, MODEL_CLEAR_RGBA, SPRITE_MESH_CLEAR_RGBA, V6_CLEAR_RGBA,
 };
+/// F-GAME-5:RigDraw 顶点布局(每顶点 f32 数)与容量桶(godot-host 与 rurix 同一判据)。
+pub use render_core::rig::{rig_capacity, RIG_MIN_CAPACITY, RIG_VERTEX_F32};
 /// FORGE_GPU_PARTICLES 开关(与 rurix gpu_particles::enabled 同一判据;godot-host 据此填 Capabilities.particles)。
 pub use render_core::particles::enabled as particles_enabled;
 pub use render_core::math::M4;
@@ -403,6 +406,7 @@ fn spawn_physics_thread(state: Arc<Mutex<HostState>>) {
 
 /// 单连接服务循环:读帧 → 分派 → 写帧;坏 JSON 回 -32700 后继续服务。
 fn serve_conn(mut stream: TcpStream, state: Arc<Mutex<HostState>>) {
+    #[cfg(feature="backend-rurix")] let _realtime_thread=crate::modelrender::realtime::RealtimeThreadGuard;
     loop {
         let raw = match frame::read_frame_raw(&mut stream) {
             Ok(b) => b,

@@ -10,11 +10,10 @@ import {
   type StudioNode,
   type StudioNodeStatus,
 } from '@/lib/studioStore';
-import { TONE_META } from '../editor/DesignBoardNode';
 import StudioPreview, { KIND_ICON } from './StudioPreview';
 
 /**
- * 素材创作主画布的创作卡:类型色条 + 名称(点击改名)+ 状态点 + 产物预览缩略 +
+ * 素材创作主画布的创作卡:黑色顶条 + 名称(点击改名)+ 状态点 + 产物预览缩略 +
  * 打开(下钻详情画布,双击卡身同效)/ 删除;左右各一个连线 port——
  * 右 = 出线(本节点产物作为对方的上游参考),左 = 入线。
  * 改名态由 store 的 pendingRenameId 也能点起来:右键菜单「重命名」与 F2 走的是
@@ -31,11 +30,12 @@ export const STUDIO_NODE_H = BAR_H + TITLE_H + PREVIEW_H + STATUS_H;
 /** 连线锚点纵坐标(标题行中线) */
 export const STUDIO_ANCHOR_Y = BAR_H + TITLE_H / 2;
 
+/** 状态点只用黑灰深浅 + 强调色(生成中),不再红黄蓝绿 */
 const STATUS_META: Record<StudioNodeStatus, { dot: string; label: string }> = {
   empty: { dot: 'bg-dot-idle', label: '草稿' },
-  busy: { dot: 'bg-warn animate-pulse', label: '生成中…' },
-  done: { dot: 'bg-info', label: '有产物' },
-  accepted: { dot: 'bg-dot-done', label: '已入库' },
+  busy: { dot: 'bg-acc animate-pulse', label: '生成中…' },
+  done: { dot: 'bg-fg-3', label: '有产物' },
+  accepted: { dot: 'bg-fg', label: '已入库' },
 };
 
 export interface StudioLinkHandlers {
@@ -91,7 +91,6 @@ export default function StudioNodeCard({
   }, [pendingRenameId, node.id, node.name, clearPendingRename]);
 
   if (!preset) return null; // 读档已挡未知 preset,不伪造默认类型
-  const tone = TONE_META[preset.tone];
   const Icon = KIND_ICON[preset.kind];
   const status = nodeStatus(node, busyIds);
   const cur = currentVersion(node);
@@ -120,10 +119,10 @@ export default function StudioNodeCard({
         openNode(node.id);
       }}
     >
-      <div className={cn('rounded-t-md', tone.bar)} style={{ height: BAR_H }} />
+      <div className="rounded-t-md bg-fg" style={{ height: BAR_H }} />
       <div className="flex items-center gap-1 px-1.5" style={{ height: TITLE_H }}>
         <AnnotationHandle reference={editorReference('studio', { resourceId: 'main', selection: { nodeIds: selectedIds.includes(node.id) ? selectedIds : [node.id], ...(selectedIds.length < 2 ? { versionId: cur?.id } : {}) } })} label={node.name} />
-        <Icon size={11} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
+        <Icon size={11} strokeWidth={1.8} className="shrink-0 text-fg" />
         {editingName ? (
           <input
             autoFocus
@@ -157,7 +156,7 @@ export default function StudioNodeCard({
             {node.name}
           </span>
         )}
-        <span className={cn('shrink-0 text-[10px]', tone.text)}>{preset.label}</span>
+        <span className="shrink-0 text-[10px] text-fg-3">{preset.label}</span>
         <button
           type="button"
           data-no-drag

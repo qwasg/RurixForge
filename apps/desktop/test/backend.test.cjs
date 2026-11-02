@@ -72,6 +72,28 @@ test('FORGE_DATA_DIR and FORGE_AGENTD_WORKSPACE_ROOT relocate user data on reque
   assert.equal(paths.workspace, path.join('E:', 'games', 'main'));
 });
 
+test('the data location chosen in the installer (launcher.json dataDir) is honoured', () => {
+  const dir = tempDir('chosen');
+  try {
+    const layout = backend.resolveLayout({ packaged: true, resourcesPath: path.join(dir, 'res'), sourceDir: 'x' });
+    const userData = path.join(dir, 'ud');
+    const chosen = path.join(dir, 'Forge Data');
+    fs.mkdirSync(userData, { recursive: true });
+    fs.writeFileSync(path.join(userData, 'launcher.json'), JSON.stringify({ hostPort: 3080, dataDir: chosen }));
+    const paths = backend.packagedPaths({ layout, userData, env: {} });
+    assert.equal(paths.dataDir, chosen);
+    assert.equal(paths.workspace, path.join(chosen, 'workspaces', 'default'));
+    assert.equal(paths.env.FORGE_DATA_DIR, chosen);
+    assert.equal(paths.logsDir, path.join(userData, 'logs'), 'logs stay with the install profile');
+    // 环境变量仍然优先;相对路径(损坏的记录)不采用。
+    assert.equal(backend.packagedPaths({ layout, userData, env: { FORGE_DATA_DIR: path.join(dir, 'env') } }).dataDir, path.join(dir, 'env'));
+    fs.writeFileSync(path.join(userData, 'launcher.json'), JSON.stringify({ dataDir: 'relative\\data' }));
+    assert.equal(backend.packagedPaths({ layout, userData, env: {} }).dataDir, path.join(userData, 'data'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the default workspace is seeded once and never overwritten', () => {
   const dir = tempDir('seed');
   try {
@@ -189,4 +211,14 @@ test('an agentd that exits before becoming healthy fails fast with its log file'
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('explicit agentd executable override preserves installed candidates and rejects missing paths', (t) => {
+  const dir=tempDir('agentd-override');t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const executable=path.join(dir,'forge-agentd.exe');fs.writeFileSync(executable,'fixture');
+  const layout={agentdCandidates:['unchanged-default.exe']};
+  assert.equal(backend.agentdExecutable(layout,{FORGE_AGENTD_BIN:executable}),executable);
+  assert.deepEqual(layout.agentdCandidates,['unchanged-default.exe']);
+  assert.throws(()=>backend.agentdExecutable(layout,{FORGE_AGENTD_BIN:path.join(dir,'missing.exe')}),/existing absolute/);
+  assert.throws(()=>backend.agentdExecutable(layout,{FORGE_AGENTD_BIN:dir}),/existing absolute/);
 });

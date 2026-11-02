@@ -144,6 +144,18 @@ pub(crate) fn start(state: &Arc<AppState>) {
     });
 }
 
+fn can_wake_member_from_message(state: &AppState, agent_id: &str) -> bool {
+    let Some(config) = state.collaboration.member_config(agent_id) else {
+        return false;
+    };
+    if config["_taskAssignedOnly"] != true {
+        return true;
+    }
+    // Automatic role envelopes are not first-task assignments. Keep incoming
+    // messages queued until a leader-authored task has established this member.
+    state.collaboration.history(agent_id).iter().any(|message| message["role"] == "assistant")
+}
+
 fn tick(state: &Arc<AppState>) {
     let workers: Vec<Worker> = state
         .team_runtime
@@ -187,6 +199,11 @@ fn tick(state: &Arc<AppState>) {
         if team.status != "active" || member.status != "idle" {
             continue;
         }
+        if state.collaboration.member_config(&worker.agent_id).is_none() {
+            // A legacy member needs fresh explicit configuration; do not claim
+            // work or synthesize a message-only activation on its behalf.
+            continue;
+        }
         {
             let mut reserved = state.team_runtime.reserved.lock().unwrap();
             let occupied = team
@@ -225,7 +242,9 @@ fn tick(state: &Arc<AppState>) {
                     .claim_task(&worker.team_id, &worker.agent_id, Some(&task.id))
                     .ok()
             });
-        if !pending && task.is_none() {
+        if task.is_none()
+            && (!pending || !can_wake_member_from_message(state, &worker.agent_id))
+        {
             state
                 .team_runtime
                 .reserved
@@ -414,24 +433,44 @@ pub(crate) fn receive(state: &AppState, agent_id: &str, run_id: &str) -> Option<
 }
 
 pub(crate) fn accept_context(state: &AppState, agent_id: &str, run_id: &str, messages: &[Value]) {
+    let key = (agent_id.to_owned(), run_id.to_owned());
     let keys = state
         .team_runtime
         .leases
         .lock()
         .unwrap()
-        .remove(&(agent_id.into(), run_id.into()))
+        .get(&key)
+        .cloned()
         .unwrap_or_default();
-    for key in keys {
-        let _ = state.collaboration.commit_lease(&key);
-    }
     // Compaction runs before the next activation through history's shared
     // summarizer; checkpoints themselves never silently discard older context.
     let history: Vec<Value> = messages
         .iter()
-        .filter(|m| m["role"] != "system")
+        .filter(|m| {
+            m["role"] != "system"
+                || m["content"].as_str().is_some_and(|text| {
+                    text.starts_with(crate::history::SUMMARY_PREFIX)
+                })
+        })
         .cloned()
         .collect();
-    let _ = state.collaboration.save_history(agent_id, history);
+    if let Err(error) = state
+        .collaboration
+        .save_context_checkpoint(agent_id, run_id, history, &keys)
+    {
+        // Retain pending leases for a later checkpoint. If the run ends first,
+        // the store leaves their delivery uncertain instead of losing input.
+        eprintln!("[collaboration-checkpoint] {agent_id}/{run_id}: {error}");
+        return;
+    }
+    let mut leases = state.team_runtime.leases.lock().unwrap();
+    if let Some(pending) = leases.get_mut(&key) {
+        pending.retain(|id| !keys.contains(id));
+        if pending.is_empty() {
+            leases.remove(&key);
+        }
+    }
+    drop(leases);
     emit_snapshot(
         state,
         state
@@ -497,7 +536,7 @@ pub(crate) fn tool_specs(team: bool) -> Vec<Value> {
 }
 
 pub(crate) fn plan_spec() -> Value {
-    json!({"type":"function","function":{"name":"plan_write","description":"创建或更新本团队的共享任务图。依赖和明确阶段由系统强制；成员保留身份上下文。更新时传expectedRevision防止覆盖较新计划；已有任务以id更新，失败任务status=queued请求返修。", "parameters":{"type":"object","properties":{"teamId":{"type":"string"},"expectedRevision":{"type":"integer"},"todos":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"},"prompt":{"type":"string"},"role":{"type":"string"},"stage":{"type":"string"},"deps":{"type":"array","items":{"type":"string"}},"ownerAgentId":{"type":"string"},"status":{"type":"string","enum":["queued"]}},"required":["title"]}}},"required":["todos"]}}})
+    json!({"type":"function","function":{"name":"plan_write","description":"创建或更新本团队的共享任务图。主 agent 先阅读用户需求，再为每个新任务编写非空、详细、自足的 prompt（背景、目标、范围与路径、约束与依赖、预期产物、验证方法和回报格式）；新任务缺少 prompt 会被拒绝，不使用标题补全。已有任务以 id 更新，省略 prompt 时保留原委派词。依赖和明确阶段由系统强制；成员保留身份上下文。更新时传 expectedRevision 防止覆盖较新计划；失败任务 status=queued 请求返修。", "parameters":{"type":"object","properties":{"teamId":{"type":"string"},"expectedRevision":{"type":"integer"},"todos":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"},"prompt":{"type":"string"},"role":{"type":"string"},"stage":{"type":"string"},"deps":{"type":"array","items":{"type":"string"}},"ownerAgentId":{"type":"string"},"status":{"type":"string","enum":["queued"]}},"required":["title"]}}},"required":["todos"]}}})
 }
 
 pub(crate) fn is_tool(name: &str) -> bool {
@@ -574,7 +613,7 @@ async fn bridge_list(State(state): State<Arc<AppState>>, headers: HeaderMap) -> 
     // Native root IDs are stable across teams and intentionally have no teamId.
     // The required bridge inventory must therefore not depend on membership.
     let mut specs = tool_specs(true);
-    specs.push(json!({"type":"function","function":{"name":"task","description":"派发独立子代理，返回结果；子代理可通过 agent_list/send_message 与主代理和其他子代理沟通。","parameters":{"type":"object","properties":{"prompt":{"type":"string"},"description":{"type":"string"},"subagent_type":{"type":"string"}},"required":["prompt"]}}}));
+    specs.push(json!({"type":"function","function":{"name":"task","description":format!("派发独立子代理，返回结果；子代理可通过 agent_list/send_message 与主代理和其他子代理沟通。{}", agent::DELEGATION_PROMPT),"parameters":{"type":"object","properties":{"prompt":{"type":"string"},"description":{"type":"string"},"subagent_type":{"type":"string"}},"required":["prompt"]}}}));
     let tools: Vec<Value> = specs.iter().map(|s| json!({"name":s["function"]["name"],"description":s["function"]["description"],"inputSchema":s["function"]["parameters"]})).collect();
     Json(json!({"tools":tools})).into_response()
 }
@@ -710,6 +749,101 @@ mod tests {
     use super::*;
 
     #[test]
+    fn context_checkpoint_retries_failed_write_before_acknowledging_mail() {
+        let (state, dir) = crate::test_app_state("checkpoint-retry");
+        let session = state.sessions.create("checkpoint", "coding", None, true, None);
+        let root = c::root_id(&session.id);
+        state.collaboration.register(c::AgentRegistration {
+            id: root.clone(), session_id: session.id.clone(), parent_agent_id: None,
+            team_id: None, name: "root".into(), role: "root".into(), engine: "local".into(),
+        }).unwrap();
+        state.collaboration.begin_run(&root, "run").unwrap();
+        state.collaboration.enqueue(&session.id, None, &root, &c::SendMessageRequest {
+            text: "Preserve the completed edit.".into(), ..Default::default()
+        }).unwrap();
+        let injected = receive(&state, &root, "run").unwrap();
+        let messages = vec![
+            json!({"role":"system","content":"do not save this prompt"}),
+            json!({"role":"system","content":format!("{}\nUser decided to preserve the existing database schema.", crate::history::SUMMARY_PREFIX)}),
+            json!({"role":"user","content":injected}),
+            json!({"role":"assistant","content":"The edit is saved; verifying next."}),
+        ];
+        let staging = dir.join("agent-sessions/collaboration.json.tmp");
+        std::fs::create_dir(&staging).unwrap();
+        accept_context(&state, &root, "run", &messages);
+        assert_eq!(state.collaboration.messages(&root)[0].status, "leased");
+        assert!(state.collaboration.history_for_run(&root, "run").is_none());
+        assert_eq!(state.team_runtime.leases.lock().unwrap()[&(root.clone(), "run".into())].len(), 1);
+
+        std::fs::remove_dir(&staging).unwrap();
+        accept_context(&state, &root, "run", &messages);
+        assert_eq!(state.collaboration.messages(&root)[0].status, "injected");
+        assert!(!state.team_runtime.leases.lock().unwrap().contains_key(&(root.clone(), "run".into())));
+        assert_eq!(state.collaboration.history_for_run(&root, "run"), Some(messages[1..].to_vec()));
+        drop(state);
+        let restored = c::CollaborationStore::load(dir.join("agent-sessions/collaboration.json"));
+        assert_eq!(restored.history_for_run(&root, "run"), Some(messages[1..].to_vec()));
+        assert_eq!(restored.messages(&root)[0].status, "injected");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn automatic_member_keeps_first_message_until_a_leader_task_is_ready() {
+        let (state, _) = crate::test_app_state("initial-member-message");
+        let session = state.sessions.create("team", "coding", None, true, None);
+        let root = c::root_id(&session.id);
+        state.collaboration.register(c::AgentRegistration {
+            id: root.clone(), session_id: session.id.clone(), parent_agent_id: None,
+            team_id: None, name: "root".into(), role: "root".into(), engine: "local".into(),
+        }).unwrap();
+        let team = state.collaboration.create_team(&session.id, &root,
+            &serde_json::from_value(json!({"name":"team"})).unwrap()).unwrap();
+        for id in ["automatic", "explicit", "legacy"] {
+            state.collaboration.register(c::AgentRegistration {
+                id: id.into(), session_id: session.id.clone(), parent_agent_id: Some(root.clone()),
+                team_id: Some(team.id.clone()), name: id.into(), role: "member".into(), engine: "local".into(),
+            }).unwrap();
+        }
+        state.collaboration.save_member_config("automatic", json!({
+            "_taskAssignedOnly":true,"prompt":"Follow the current assigned task."
+        })).unwrap();
+        state.collaboration.save_member_config("explicit", json!({
+            "prompt":"Read interface questions from the leader, inspect src without writes, and report file references."
+        })).unwrap();
+        assert!(!can_wake_member_from_message(&state, "automatic"));
+        assert!(can_wake_member_from_message(&state, "explicit"));
+        assert!(!can_wake_member_from_message(&state, "legacy"));
+        state.collaboration.save_history("automatic", vec![
+            json!({"role":"user","content":"A pending instruction is not completed execution."})
+        ]).unwrap();
+        assert!(!can_wake_member_from_message(&state, "automatic"));
+        state.collaboration.enqueue(&session.id, Some(&root), "automatic", &c::SendMessageRequest {
+            text: "Keep this interface note for your assigned task.".into(),
+            ..Default::default()
+        }).unwrap();
+        assert!(state.collaboration.has_wake_messages("automatic"));
+        assert!(!can_wake_member_from_message(&state, "automatic"));
+        assert_eq!(state.collaboration.messages("automatic")[0].status, "queued");
+        assert!(state.collaboration.participant("automatic").unwrap().active_run_id.is_none());
+
+        state.collaboration.update_plan(&team.id, &root, None, &json!([
+            {"id":"inspect","title":"Inspect interfaces","prompt":"Read src interfaces, incorporate the queued note, and report verified file references.","ownerAgentId":"automatic"}
+        ])).unwrap();
+        let task = state.collaboration.claim_task(&team.id, "automatic", Some("inspect")).unwrap();
+        assert!(!task.prompt.is_empty());
+        // The ready task path bypasses message-only gating and delivers the
+        // still-queued note during the task's first real activation.
+        state.collaboration.begin_run("automatic", "first-task").unwrap();
+        let injected = receive(&state, "automatic", "first-task").unwrap();
+        assert!(injected.contains("Keep this interface note"));
+        state.collaboration.save_history("automatic", vec![
+            json!({"role":"assistant","content":"Inspected interfaces and recorded the requested evidence."})
+        ]).unwrap();
+        assert!(can_wake_member_from_message(&state, "automatic"));
+        assert!(!can_wake_member_from_message(&state, "legacy"));
+    }
+
+    #[test]
     fn activation_settles_self_claimed_work_without_overwriting_previous_report() {
         let (state, _) = crate::test_app_state("self-claim-settle");
         let session = state.sessions.create("team", "coding", None, true, None);
@@ -752,7 +886,7 @@ mod tests {
                 &team.id,
                 &root,
                 None,
-                &json!([{"id":"one","title":"one"},{"id":"two","title":"two","deps":["one"]}]),
+                &json!([{"id":"one","title":"one","prompt":"Read the assigned source and report verified interfaces with file references."},{"id":"two","title":"two","prompt":"Use task one findings to verify dependencies and report any missing interfaces.","deps":["one"]}]),
             )
             .unwrap();
         state

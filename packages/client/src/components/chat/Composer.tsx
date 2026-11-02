@@ -537,7 +537,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                   data-testid="composer-mode-chip"
                   className="flex items-center gap-1 whitespace-nowrap text-[11px]"
                 >
-                  <modeMeta.icon size={11} className={modeMeta.iconClassName} />
+                  <modeMeta.icon size={11} />
                   {modeMeta.label}
                 </span>
               )}
@@ -769,7 +769,7 @@ export default function Composer({ variant = 'column' }: { variant?: ChatVariant
                   m.id === mode ? 'text-acc' : 'text-fg-2',
                 )}
               >
-                <m.icon size={12} className={m.iconClassName} />
+                <m.icon size={12} />
                 <span className="min-w-0 flex-1 truncate">{m.label}</span>
                 {m.id === mode && <Check size={11} />}
               </button>

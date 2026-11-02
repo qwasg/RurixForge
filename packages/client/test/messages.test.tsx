@@ -641,6 +641,73 @@ describe('<AssistantMessage />', () => {
     expect(screen.getByTestId('turn-status')).toHaveAttribute('data-state', 'approval');
   });
 
+  it('无摘要的思考生命周期：开始后持续 Thinking，结束后真实空档仍提示慢', () => {
+    vi.useFakeTimers();
+    try {
+      let seq = 0;
+      const emit = (type: string, payload: Record<string, unknown>) => useChatStore.getState().applyEvent({
+        id: `reasoning-ui-${++seq}`, sessionId: 'reasoning-ui', seq, type,
+        ts: new Date(Date.now()).toISOString(), payload: { runId: 'reasoning-ui', ...payload },
+      });
+      const message = () => useChatStore.getState().messages.find((m) => m.runId === 'reasoning-ui')!;
+      emit('agent.started', {});
+      const { rerender } = render(<AssistantMessage msg={message()} />);
+      emit('agent.reasoning.started', { itemId: 'opaque-thought' });
+      rerender(<AssistantMessage msg={message()} />);
+      expect(screen.getByTestId('reasoning-line')).toHaveTextContent('Thinking');
+      act(() => { vi.advanceTimersByTime(30_000); });
+      expect(screen.queryByTestId('turn-status')).not.toBeInTheDocument();
+      emit('agent.reasoning.completed', { itemId: 'opaque-thought', text: '' });
+      rerender(<AssistantMessage msg={message()} />);
+      expect(screen.getByTestId('reasoning-line')).toHaveTextContent('Thought 30s');
+      expect(screen.getByTestId('reasoning-line').querySelector('.forge-shimmer')).toBeNull();
+      act(() => { vi.advanceTimersByTime(15_000); });
+      expect(screen.getByTestId('turn-status')).toHaveAttribute('data-state', 'slow');
+      emit('agent.completed', {});
+      rerender(<AssistantMessage msg={message()} />);
+      expect(screen.queryByTestId('turn-status')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('已收束的活动段不因旧尾思考块恢复进行中文案', () => {
+    render(<AssistantMessage msg={{
+      id: 'historical-thought', role: 'assistant', text: '', status: 'completed', time: '', blocks: [
+        toolBlock({ name: 'read_file', args: '{"path":"a.ts"}', mcp: null }),
+        { kind: 'reasoning', text: 'legacy thought' },
+      ],
+    }} />);
+    expect(screen.getByTestId('activity-segment')).toHaveTextContent('Explored 1 file');
+    expect(screen.getByTestId('activity-segment').querySelector('.forge-shimmer')).toBeNull();
+  });
+
+  it('历史工具收尾后开始无摘要思考，默认折叠标题明确显示 Thinking', () => {
+    let seq = 0;
+    const emit = (type: string, payload: Record<string, unknown>) => useChatStore.getState().applyEvent({
+      id: `tool-thinking-${++seq}`, sessionId: 'tool-thinking', seq, type,
+      ts: '2026-10-18T00:00:00.000Z', payload: { runId: 'tool-thinking', ...payload },
+    });
+    const message = () => useChatStore.getState().messages.find((m) => m.runId === 'tool-thinking')!;
+    emit('agent.started', {});
+    emit('agent.tool.invoked', { toolCallId: 'read', name: 'read_file', args: { path: 'a.ts' } });
+    emit('agent.tool.completed', { toolCallId: 'read', name: 'read_file', output: 'source' });
+    emit('agent.reasoning.started', { itemId: 'after-read' });
+    const { rerender } = render(<AssistantMessage msg={message()} />);
+    const segment = screen.getByTestId('activity-segment');
+    expect(segment.textContent).toBe('Thinking ');
+    expect(segment.querySelector('.forge-shimmer')).not.toBeNull();
+    expect(screen.queryByTestId('turn-status')).not.toBeInTheDocument();
+    // Historical tools remain available when the user opens the process details.
+    fireEvent.click(segment);
+    expect(screen.getByTestId('tool-line-read')).toHaveTextContent('Read a.ts');
+    expect(screen.getByTestId('reasoning-line')).toHaveTextContent('Thinking');
+    emit('agent.reasoning.completed', { itemId: 'after-read', text: '' });
+    rerender(<AssistantMessage msg={message()} />);
+    expect(screen.getByTestId('activity-segment')).toHaveTextContent('Explored 1 file');
+    expect(screen.getByTestId('activity-segment').querySelector('.forge-shimmer')).toBeNull();
+  });
+
   it('流式中新块自上而下入场;历史(已收束)消息不播入场', () => {
     const base: ChatMsg = {
       id: 'a-in', role: 'assistant', text: '', status: 'streaming', time: '',

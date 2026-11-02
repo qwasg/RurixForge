@@ -148,6 +148,20 @@ pub fn collect_closure(scene_abs: &Path, project_root: &Path) -> (BTreeSet<Strin
                     if let Some(reference)=p["default"].as_str().filter(|s|!s.is_empty()){found.push(reference.to_string());}
                 }
             }
+        } else if rel.ends_with(".rxscene") || rel.ends_with(".rxprefab") {
+            // Persistent authoring identities describe the document/entity itself;
+            // they are not assets. Keep every component property in the scan so
+            // genuine missing model/material/texture GUIDs still fail packaging.
+            let mut references = doc.clone();
+            if let Some(object) = references.as_object_mut() {
+                object.remove("sceneGuid");
+                if let Some(entities) = object.get_mut("entities").and_then(Value::as_array_mut) {
+                    for entity in entities {
+                        if let Some(entity) = entity.as_object_mut() { entity.remove("entityGuid"); }
+                    }
+                }
+            }
+            collect_strings(&references, &mut found);
         } else { collect_strings(&doc, &mut found); }
         for reference in found {
             if reference.starts_with("Content/") {
@@ -237,17 +251,9 @@ fn validate_pack_runtime(runtime_dir: &Path) -> Result<(), String> {
 }
 
 fn locate_rurixc(engine_bin: &Path) -> Option<PathBuf> {
-    if let Ok(value) = std::env::var("FORGE_RURIXC") {
-        if !value.trim().is_empty() {
-            return Some(PathBuf::from(value));
-        }
-    }
-    let sibling = engine_bin.parent().map(|p| p.join("rurixc.exe"));
-    if let Some(path) = sibling.filter(|p| p.is_file()) {
-        return Some(path);
-    }
-    let workspace = workspace_root().join("target/debug/rurixc.exe");
-    workspace.is_file().then_some(workspace)
+    forge_util::toolchain::resolve_for_engine(
+        forge_util::toolchain::ToolchainTool::Rurixc, Some(engine_bin),
+    ).path
 }
 
 fn cache_key_for_native_rx(source: &[u8], compiler: &[u8]) -> String {
@@ -994,6 +1000,55 @@ mod tests {
         assert!(!closure.contains("Content/Graphs/other.rxgraph"));
         assert!(warnings.is_empty(), "{warnings:?}");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn closure_ignores_scene_identity_but_retains_missing_asset_errors() {
+        let root = fixture_project("scene-identities");
+        let path = root.join("Content/Scenes/s.rxscene");
+        let mut scene: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        scene["sceneGuid"] = json!("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        scene["entities"][0]["entityGuid"] = json!("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        std::fs::write(&path, serde_json::to_vec(&scene).unwrap()).unwrap();
+        let (closure, warnings) = collect_closure(&path, &root);
+        assert!(warnings.is_empty(), "identity UUIDs are not dangling assets: {warnings:?}");
+        assert!(closure.contains("Content/Graphs/g.rxgraph"));
+        scene["entities"][0]["components"][0]["props"]["props"]["texture"] =
+            json!("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+        std::fs::write(&path, serde_json::to_vec(&scene).unwrap()).unwrap();
+        let (_, warnings) = collect_closure(&path, &root);
+        assert!(warnings.iter().any(|w| w.contains("cccccccc-cccc-4ccc-8ccc-cccccccccccc")));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn helix_scene_closure_resolves_real_models_and_projected_decal() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap();
+        let root = workspace.join("projects/aaa-scene-lab");
+        let path = root.join("Content/Scenes/Main.rxscene");
+        let scene: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(scene["sceneGuid"].is_string());
+        let entities = scene["entities"].as_array().unwrap();
+        assert!(entities.iter().all(|e| e["entityGuid"].is_string()));
+        let (closure, warnings) = collect_closure(&path, &root);
+        assert!(warnings.is_empty(), "actual authored project must package: {warnings:?}");
+        let index = build_guid_index(&root);
+        let mut model_count = 0;
+        let mut decal_count = 0;
+        for entity in entities {
+            for component in entity["components"].as_array().unwrap() {
+                if component["type"] == "ModelRenderer" {
+                    model_count += 1;
+                    assert!(closure.contains(component["props"]["model"].as_str().unwrap()));
+                }
+                if component["type"] == "Decal" {
+                    decal_count += 1;
+                    let texture = component["props"]["textureAlbedo"].as_str().unwrap();
+                    assert!(closure.contains(index.get(texture).expect("projected decal texture sidecar")));
+                }
+            }
+        }
+        assert!(model_count > 0 && decal_count > 0, "empty scenes are not an end-to-end closure test");
     }
 
     #[test]

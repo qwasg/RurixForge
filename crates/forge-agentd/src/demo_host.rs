@@ -74,6 +74,10 @@ const ALLOWED_EXT: &[(&str, &str)] = &[
     ("ttf", "font/ttf"),
     ("txt", "text/plain; charset=utf-8"),
     ("md", "text/markdown; charset=utf-8"),
+    // Milestone 3 3D Preview Assets
+    ("glb", "model/gltf-binary"),
+    ("gltf", "model/gltf+json"),
+    ("bin", "application/octet-stream"),
 ];
 
 /// Windows 保留设备名(按「第一个点之前」的部分、不分大小写比较;`con.js` 一样打开的是控制台)。
@@ -268,7 +272,7 @@ impl DemoRegistry {
             .remove(token);
     }
 
-    fn root(&self, token: &str) -> Option<PathBuf> {
+    pub fn root(&self, token: &str) -> Option<PathBuf> {
         if !token_ok(token) {
             return None;
         }
@@ -894,5 +898,59 @@ frame-ancestors http://127.0.0.1:* http://localhost:*"
             local_url(PORT, TOKEN),
             format!("http://127.0.0.1:{PORT}/u/{TOKEN}/")
         );
+    }
+
+    #[test]
+    fn resolve_demo_file_allows_3d_extensions() {
+        let base = temp_root("3d-ext");
+        let root = base.join("demo");
+        std::fs::write(root.join("scene.glb"), b"glTF\x02\0\0\0").unwrap();
+        std::fs::write(root.join("model.gltf"), r#"{"asset":{"version":"2.0"}}"#).unwrap();
+        std::fs::write(root.join("buffer.bin"), b"\x00\x01\x02\x03").unwrap();
+        std::fs::write(root.join("model.fbx"), b"Kaydara FBX Binary").unwrap();
+        std::fs::write(root.join("model.obj"), "v 0 0 0\n").unwrap();
+
+        let (p_glb, mime_glb) = resolve_demo_file(&root, "scene.glb").unwrap();
+        assert!(p_glb.ends_with("scene.glb"));
+        assert_eq!(mime_glb, "model/gltf-binary");
+
+        let (p_gltf, mime_gltf) = resolve_demo_file(&root, "model.gltf").unwrap();
+        assert!(p_gltf.ends_with("model.gltf"));
+        assert_eq!(mime_gltf, "model/gltf+json");
+
+        let (p_bin, mime_bin) = resolve_demo_file(&root, "buffer.bin").unwrap();
+        assert!(p_bin.ends_with("buffer.bin"));
+        assert_eq!(mime_bin, "application/octet-stream");
+
+        // Case insensitivity check
+        std::fs::write(root.join("BIG.GLB"), b"glTF").unwrap();
+        assert_eq!(resolve_demo_file(&root, "BIG.GLB").unwrap().1, "model/gltf-binary");
+
+        // Non-whitelisted 3D formats must be rejected
+        assert_eq!(resolve_demo_file(&root, "model.fbx").unwrap_err(), ServeErr::ExtNotAllowed);
+        assert_eq!(resolve_demo_file(&root, "model.obj").unwrap_err(), ServeErr::ExtNotAllowed);
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[tokio::test]
+    async fn router_serves_3d_assets_with_correct_mime_and_csp() {
+        let base = temp_root("router-3d");
+        let root = base.join("demo");
+        std::fs::write(root.join("model.glb"), b"glTF binary payload").unwrap();
+        let reg = DemoRegistry::for_test(PORT);
+        reg.register(TOKEN, &root);
+        let host = format!("127.0.0.1:{PORT}");
+
+        let resp = demo_router(reg.clone())
+            .oneshot(get_req(&format!("/u/{TOKEN}/model.glb"), Some(&host), None))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_security_headers(&resp);
+        assert_eq!(resp.headers()[header::CONTENT_TYPE], "model/gltf-binary");
+
+        std::fs::remove_dir_all(&base).ok();
     }
 }

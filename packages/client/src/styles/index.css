@@ -510,6 +510,31 @@
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border border-edge bg-shell-panel px-2.5 py-1 text-xs text-fg-3 transition-colors hover:bg-shell-hover;
   }
+  /* 纯色波(2026-10-08 用户拍板:编辑器按钮花花绿绿太丑,统一白色毛玻璃):半透白底 + 背景模糊 +
+     细描边 + 顶缘内高光,图标与文字一律前景色,不再按类型分色;暗色同语义换低透明度白玻璃
+     (token 见 theme.css --glass-*)。.glass = 浮在画布上的面(缩放条、连线标签),.glass-btn = 工具栏按钮。 */
+  .glass {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(12px) saturate(1.5);
+    backdrop-filter: blur(12px) saturate(1.5);
+  }
+  .glass-btn {
+    @apply inline-flex items-center justify-center gap-1 rounded-md px-2 py-0.5 text-2xs text-fg transition-colors;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: blur(12px) saturate(1.5);
+    backdrop-filter: blur(12px) saturate(1.5);
+  }
+  /* :where 压低权重,叠加的工具类(如危险态文字色、强调色底)照常生效 */
+  .glass-btn:where(:hover:not(:disabled)) {
+    background: var(--glass-bg-hover);
+  }
+  .glass-btn:where(:disabled) {
+    opacity: 0.4;
+  }
 }
 /* Aligned overview cards above a full-width activity calendar. */
 .account-columns {

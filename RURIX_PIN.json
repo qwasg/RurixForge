@@ -5,7 +5,11 @@
   "head": "bece24e7cafe1c91cce6e66005b3990819fbaad7",
   "head_date": "2026-08-28",
   "head_subject": "feat(g36): W4-W5 互斥项修复收口——粒子×OIT×geo 组合 + 门体系全量 + 十 facts 真跑 PASS",
-  "tags_version": ["v1.0.0", "v1.0.1-dist.1", "v1.0.1-dist.2"],
+  "tags_version": [
+    "v1.0.0",
+    "v1.0.1-dist.1",
+    "v1.0.1-dist.2"
+  ],
   "consumed_crates": [
     "rurix-rt(vulkan)",
     "rurix-physics",
@@ -14,5 +18,14 @@
     "rurix-geom-build",
     "rurix-pkg"
   ],
-  "note": "D-016/D-029:path 依赖为开发期常态,本件为双仓对账时点的上游事实记录,非锚定切换;正式 tag 锚定(D-003)留发行形态裁决。校验:scripts/rurix-pin-check.ps1"
+  "note": "D-016/D-029:path 依赖为开发期常态,本件为双仓对账时点的上游事实记录,非锚定切换;正式 tag 锚定(D-003)留发行形态裁决。校验:scripts/rurix-pin-check.ps1",
+  "release_snapshot": {
+    "forge_version": "0.2.0",
+    "recorded_at": "2026-11-02",
+    "directory": "vendor/rurix-20261102",
+    "manifest": "vendor/rurix-20261102/SNAPSHOT.json",
+    "base_commit": "86dff3706006bfdba5995b840d6834533b69905c",
+    "includes_uncommitted_library_changes": true,
+    "note": "Historical upstream fields above are retained; current release library inputs are frozen with per-file hashes. No machine-local path is required."
+  }
 }

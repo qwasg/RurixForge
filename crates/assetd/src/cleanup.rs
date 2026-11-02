@@ -48,6 +48,7 @@ fn expected_folder(atype: &str) -> Option<&'static str> {
         "script" => "Scripts",
         "audio" => "Audio",
         "sprite" => "Sprites",
+        "rig" => "Rigs",
         _ => return None,
     })
 }

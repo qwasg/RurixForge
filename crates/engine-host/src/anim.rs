@@ -82,14 +82,7 @@ impl AnimSystem {
         // 命令按目标实体分组(组内保持声明序)。
         let mut cmd_map: HashMap<u64, Vec<AnimCommand>> = HashMap::new();
         for c in cmds {
-            let eid = match &c {
-                AnimCommand::Play { entity, .. }
-                | AnimCommand::Stop { entity }
-                | AnimCommand::SetFrame { entity, .. }
-                | AnimCommand::SetBool { entity, .. }
-                | AnimCommand::SetTrigger { entity, .. } => *entity,
-            };
-            cmd_map.entry(eid).or_default().push(c);
+            cmd_map.entry(c.entity()).or_default().push(c);
         }
 
         let mut changed = false;
@@ -241,6 +234,15 @@ impl AnimSystem {
                         logs.push((
                             "anim.warn".into(),
                             json!({ "entityId": eid, "reason": format!("实体非 animator 模式(无 animator 段或场景显式写了 clip),参数 {param} 被忽略") }),
+                        ));
+                    }
+                    // F-GAME-5:rig.* 由 rigrt::route 分流给 RigSystem,正常不会到这里;防御性如实告警。
+                    (_, AnimCommand::RigPlay { .. })
+                    | (_, AnimCommand::RigStop { .. })
+                    | (_, AnimCommand::RigSetParam { .. }) => {
+                        logs.push((
+                            "anim.warn".into(),
+                            json!({ "entityId": eid, "reason": "rig.* 命令目标为精灵实体(无 Rig2D),已忽略" }),
                         ));
                     }
                 }

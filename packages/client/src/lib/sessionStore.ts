@@ -93,6 +93,25 @@ function toastError(err: unknown, prefix: string): void {
   useToastStore.getState().push('error', `${prefix}:${msg}`);
 }
 
+const ACTIVE_SESSION_KEY = 'forge:activeSessionId';
+
+function readActiveSessionId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_SESSION_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveSessionId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(ACTIVE_SESSION_KEY, id);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
+  } catch {
+    // 存储不可用时仍可正常选择会话。
+  }
+}
+
 export const useSessionStore = create<SessionState>((set, get) => ({
   sessions: [],
   folders: [],
@@ -104,18 +123,38 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   draftAgentEngineTouched: false,
 
   loadAll: async () => {
+    const activeAtRequest = get().activeSessionId;
     set({ loading: true });
     try {
       const [s, f] = await Promise.all([
         apiGet<{ sessions: ForgeSession[] }>('/api/forge/sessions'),
         apiGet<{ folders: ChatFolder[] }>('/api/forge/chat-folders'),
       ]);
+      // 重启后恢复最后查看的会话，再由 ChatColumn 拉持久化快照。必须先验证
+      // 服务端仍有此会话，避免已删除的 id 触发永不结束的快照加载重试。
+      // 请求途中用户已选了新会话时，以当前选择为准。
+      const active = get().activeSessionId;
+      const saved = active ?? readActiveSessionId();
+      const selectedWhileLoading = active !== activeAtRequest;
+      const activeSessionId = selectedWhileLoading
+        ? active
+        : saved && s.sessions.some((session) => session.id === saved) ? saved : null;
+      // 新建/分叉可能晚于这次 GET 的快照；保留刚选中的本地记录，避免它
+      // 只有 active id 却从列表和侧栏消失。既有选择则必须验证仍存在。
+      const selected = selectedWhileLoading && active
+        ? get().sessions.find((session) => session.id === active)
+        : undefined;
+      const sessions = selected && !s.sessions.some((session) => session.id === selected.id)
+        ? [selected, ...s.sessions]
+        : s.sessions;
+      writeActiveSessionId(activeSessionId);
       set({
-        sessions: s.sessions.map((session) => ({
+        sessions: sessions.map((session) => ({
           ...session,
           agentEngine: session.agentEngine === 'codex' ? 'codex' : 'local',
         })),
         folders: f.folders,
+        activeSessionId,
         loading: false,
         offline: false,
       });
@@ -154,6 +193,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         activeSessionId: session.id,
         offline: false,
       }));
+      writeActiveSessionId(session.id);
       return session;
     } catch (err) {
       toastError(err, '新建会话失败');
@@ -161,7 +201,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  select: (id) => set({ activeSessionId: id }),
+  select: (id) => {
+    writeActiveSessionId(id);
+    set({ activeSessionId: id });
+  },
 
   rename: async (id, title) => {
     const prev = get().sessions;
@@ -210,10 +253,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sessions: st.sessions.filter((s) => s.id !== id),
       activeSessionId: st.activeSessionId === id ? null : st.activeSessionId,
     }));
+    if (prevActive === id) writeActiveSessionId(null);
     try {
       await apiDelete(`/api/forge/sessions/${id}`);
     } catch (err) {
       set({ sessions: prev, activeSessionId: prevActive });
+      writeActiveSessionId(prevActive);
       toastError(err, '删除会话失败');
     }
   },
@@ -311,6 +356,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         sessions: [r.session, ...st.sessions],
         activeSessionId: r.session.id,
       }));
+      writeActiveSessionId(r.session.id);
       useToastStore.getState().push('info', '已基于当前会话创建分支');
       return r.session;
     } catch (err) {

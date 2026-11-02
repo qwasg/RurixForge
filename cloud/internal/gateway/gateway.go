@@ -386,7 +386,7 @@ func (c *call) dispatch() {
 		return
 	}
 	if len(cands) == 0 {
-		c.fail(core.E(http.StatusServiceUnavailable, core.CodeNoAvailableAccount, "当前没有可用的上游账号"))
+		c.noAvailableAccount("当前没有可用的上游账号")
 		return
 	}
 	byID := map[int64]*accounts.Account{}
@@ -404,7 +404,7 @@ func (c *call) dispatch() {
 	}
 	if len(pool) == 0 {
 		if !modelSupported {
-			c.fail(core.E(http.StatusServiceUnavailable, core.CodeNoAvailableAccount, "当前没有支持该模型的上游账号"))
+			c.noAvailableAccount("当前没有支持该模型的上游账号")
 			return
 		}
 		c.fail(core.BadRequest(core.CodeEndpointNotSupported, "该模型的上游账号不支持此端点"))
@@ -455,13 +455,24 @@ func (c *call) dispatch() {
 	c.exhausted(last)
 }
 
+func (c *call) noAvailableAccount(message string) {
+	e := core.E(http.StatusServiceUnavailable, core.CodeNoAvailableAccount, message)
+	if wait, err := c.s.d.Accounts.RetryAfterCooldown(c.ctx, c.p.Group.ID, c.model, c.endpoint); err == nil && wait > 0 {
+		e.RetryAfter = retryAfterSeconds(wait)
+	}
+	c.fail(e)
+}
+
 // exhausted：重试用尽，转发最后一次上游状态（429/5xx 原样，其余 502）与信息。
 func (c *call) exhausted(last *upstreamFailure) {
 	if last == nil {
-		c.fail(core.E(http.StatusServiceUnavailable, core.CodeNoAvailableAccount, "当前没有可用的上游账号"))
+		c.noAvailableAccount("当前没有可用的上游账号")
 		return
 	}
 	e := &core.Error{Status: http.StatusBadGateway, Code: core.CodeUpstreamError, Message: "上游请求失败：" + last.message}
+	if last.retryAfter > 0 {
+		e.RetryAfter = retryAfterSeconds(last.retryAfter)
+	}
 	switch {
 	case last.status == http.StatusTooManyRequests:
 		e.Status = http.StatusTooManyRequests
@@ -513,7 +524,7 @@ func (c *call) attempt(a *accounts.Account) *upstreamFailure {
 				return nil
 			}
 			_ = acc.Cooldown(bg, a.ID, networkCooldown, "上游网络错误："+err.Error())
-			return &upstreamFailure{message: "上游网络错误"}
+			return &upstreamFailure{message: "上游网络错误", retryAfter: networkCooldown}
 		}
 		if a.IsCodex() && hasCodexQuota(resp.Header) {
 			c.quotas = append(c.quotas, quotaRecord{accountID: a.ID, header: resp.Header.Clone()})

@@ -4,11 +4,13 @@ import { normalizeTodoStatus, type TodoStatus } from '@/lib/todoStatus';
 const STATUS: Record<TodoStatus, { label: string; color: string }> = {
   pending: { label: '待办', color: 'var(--dot-queued)' },
   running: { label: '制作中', color: 'var(--dot-running)' },
+  verifying: { label: '验证中', color: 'var(--dot-running)' },
   completed: { label: '完成', color: 'var(--dot-done)' },
   failed: { label: '失败', color: 'var(--dot-blocked)' },
+  blocked: { label: '受阻', color: 'var(--dot-blocked)' },
 };
 
-/** 四态圆圈随任务状态更新；以轮廓与中心符号区分，颜色沿用当前主题。 */
+/** 状态随宿主交接结果更新；受阻及验证中都不显示完成勾选。 */
 export default function TodoStatusIndicator({ status, className }: { status: string; className?: string }) {
   const state = normalizeTodoStatus(status);
   const { label, color } = STATUS[state];
@@ -34,6 +36,8 @@ export default function TodoStatusIndicator({ status, className }: { status: str
         strokeDasharray={state === 'pending' ? undefined : '2 2'}
       />
       {state === 'running' && <circle cx={8} cy={8} r={4.25} fill="currentColor" />}
+      {state === 'verifying' && <circle cx={8} cy={8} r={3} stroke="currentColor" strokeWidth={1.5} />}
+      {state === 'blocked' && <path d="M5.5 5.5v5m5-5v5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />}
       {state === 'completed' && (
         <path d="M4.5 8 6.75 10.25 11.5 5.75" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
       )}

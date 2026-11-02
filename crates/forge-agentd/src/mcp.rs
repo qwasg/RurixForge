@@ -46,6 +46,8 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__sprite_create",
     // D-045:Text 组件一步创建
     "mcp__engine-scene__text_create",
+    // F-GAME-5 / D-050:2D 绑骨一步挂场景(实体 + Rig2D 组件)
+    "mcp__engine-scene__rig_spawn",
     "mcp__engine-scene__entity_destroy",
     "mcp__engine-scene__entity_rename",
     "mcp__engine-scene__entity_get",
@@ -59,6 +61,7 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__engine-scene__transform_set",
     "mcp__engine-scene__transform_get",
     "mcp__engine-scene__transform_batch_set",
+    "mcp__engine-scene__runtime_transforms",
     "mcp__engine-scene__scene_save",
     "mcp__engine-scene__scene_load",
     // F3 wave.3:debug 三件套——场景图全量转储
@@ -81,6 +84,7 @@ pub const KNOWN_TOOLS: &[&str] = &[
     // 指针点击注入(归一化视口坐标 → 游戏平面世界坐标 → <action>_x/_y/_z + <action>)
     "mcp__engine-scene__logic_inject_pointer",
     "mcp__engine-scene__viewport_frame",
+    "mcp__engine-scene__viewport_render_stats",
     "mcp__engine-scene__viewport_pick",
     "mcp__engine-scene__viewport_set_camera",
     "mcp__engine-scene__viewport_get_camera",
@@ -114,11 +118,24 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "mcp__asset-pipeline__sprite_get",
     "mcp__asset-pipeline__sprite_set",
     "mcp__asset-pipeline__sprite_autoslice",
+    // F-GAME-5 / D-050:2D 绑骨资产面(.rxrig 创建/读写/编辑/自动网格权重/求值/预览/PSD/部件表/校验)
+    "mcp__asset-pipeline__rig_create",
+    "mcp__asset-pipeline__rig_get",
+    "mcp__asset-pipeline__rig_set",
+    "mcp__asset-pipeline__rig_patch",
+    "mcp__asset-pipeline__rig_mesh_auto",
+    "mcp__asset-pipeline__rig_weights_auto",
+    "mcp__asset-pipeline__rig_evaluate",
+    "mcp__asset-pipeline__rig_preview",
+    "mcp__asset-pipeline__rig_import_psd",
+    "mcp__asset-pipeline__rig_parts_from_sheet",
+    "mcp__asset-pipeline__rig_validate",
     // D-045:字体资产(列可用字体 / 导入入库)
     "mcp__asset-pipeline__font_list",
     "mcp__asset-pipeline__font_import",
     // F4 wave.1:code-forge(rx 工具链五工具,子进程包上游 rx CLI/rurixc)
     "mcp__code-forge__rx_check",
+    "mcp__code-forge__toolchain_capabilities",
     "mcp__code-forge__rx_build",
     "mcp__code-forge__rx_run",
     "mcp__code-forge__rx_fmt",
@@ -145,6 +162,9 @@ pub const KNOWN_TOOLS: &[&str] = &[
     // gen_accept 走 asset_import 同一构建链)
     "mcp__gen-model__gen_mesh",
     "mcp__gen-model__gen_mesh_refine",
+    "mcp__gen-model__gen_mesh_rig",
+    "mcp__gen-model__gen_mesh_animate",
+    "mcp__gen-model__gen_character_publish",
     "mcp__gen-model__gen_accept",
     // F10:context(语义索引/RAG 检索六工具;词法/混合档显式标注 I-5)
     "mcp__context__context_index_build",
@@ -210,7 +230,16 @@ fn call_timeout(tool: &str) -> Duration {
         | "mcp__engine-scene__asset_reload" | "mcp__engine-scene__play_enter"
         // 系统字体逐个解析表头,字体多时超出交互级 10s。
         | "mcp__asset-pipeline__font_list" => Duration::from_secs(40),
-        "mcp__gen-model__gen_mesh" => GEN_MESH_TIMEOUT,
+        // F-GAME-5:约束 Delaunay 网格化 / CPU 光栅预览 / PSD 解码 + 图集打包,大图集超出交互级 10s。
+        "mcp__asset-pipeline__rig_mesh_auto"
+        | "mcp__asset-pipeline__rig_preview"
+        | "mcp__asset-pipeline__rig_import_psd"
+        | "mcp__asset-pipeline__rig_parts_from_sheet" => Duration::from_secs(60),
+        "mcp__gen-model__gen_mesh"
+        | "mcp__gen-model__gen_mesh_refine"
+        | "mcp__gen-model__gen_mesh_rig"
+        | "mcp__gen-model__gen_mesh_animate"
+        | "mcp__gen-model__gen_character_publish" => GEN_MESH_TIMEOUT,
         "mcp__gen-image__gen_image"
         | "mcp__gen-image__gen_edit"
         | "mcp__gen-image__gen_texture_set"
@@ -884,7 +913,7 @@ pub async fn list_tools_in(project_root: &Path) -> Vec<ServerTools> {
         out.push(list_one(kind, project_root).await);
     }
     // 全失败不进缓存:多半是这一刻二进制还没构建出来,下次调用该重试。
-    if out.iter().any(|s| !s.tools.is_empty()) {
+    if out.iter().all(|s| s.error.is_none()) && out.iter().any(|s| !s.tools.is_empty()) {
         let mut guard = cache.lock().await;
         guard.insert(
             project_root.to_path_buf(),
@@ -992,10 +1021,17 @@ mod tests {
     #[test]
     fn long_running_tools_get_budget_above_their_inner_timeout() {
         // 3D 生成:gend::media 两阶段各 900s 预算 → 外层须 > 1800s。
-        assert!(
-            call_timeout("mcp__gen-model__gen_mesh").as_secs() > 1800,
-            "gen_mesh 外层预算须覆盖适配器两阶段"
-        );
+        for t in [
+            "mcp__gen-model__gen_mesh",
+            "mcp__gen-model__gen_mesh_refine",
+            "mcp__gen-model__gen_mesh_rig",
+            "mcp__gen-model__gen_mesh_animate",
+        ] {
+            assert!(
+                call_timeout(t).as_secs() > 1800,
+                "{t} 外层预算须覆盖适配器两阶段"
+            );
+        }
         // rx_build/rx_test 子进程缺省 120s。
         for t in ["mcp__code-forge__rx_build", "mcp__code-forge__rx_test"] {
             assert!(
@@ -1090,6 +1126,9 @@ while ($null -ne ($line = [Console]::ReadLine())) {
     fn timeout_table_names_exist_in_known_tools() {
         for t in [
             "mcp__gen-model__gen_mesh",
+            "mcp__gen-model__gen_mesh_refine",
+            "mcp__gen-model__gen_mesh_rig",
+            "mcp__gen-model__gen_mesh_animate",
             "mcp__gen-image__gen_image",
             "mcp__gen-image__gen_texture_set",
             "mcp__gen-image__gen_variations",

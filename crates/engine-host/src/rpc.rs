@@ -305,6 +305,8 @@ pub struct HostState {
     pub logic: Option<LogicRuntime>,
     /// 精灵帧动画系统(F-GAME-4;play 会话生命周期,Sprite.frame/clip 唯一写者)。
     pub anim: crate::anim::AnimSystem,
+    /// F-GAME-5 2D 绑骨运行时(play 会话生命周期,Rig2D.params/clip/time 唯一写者)。
+    pub rig: crate::rigrt::RigSystem,
     pub controllers: crate::character::Controllers,
     pub preview_animations:std::collections::HashSet<u64>,
     /// 实体 ↔ body 映射(F4 wave.3 D-F4-I;play.enter 批建,play.exit 批删)。
@@ -438,6 +440,7 @@ impl HostState {
             events,
             logic: None,
             anim: crate::anim::AnimSystem::default(),
+            rig: crate::rigrt::RigSystem::default(),
             controllers: crate::character::Controllers::default(),
             preview_animations:std::collections::HashSet::new(),
             body_map: HashMap::new(),
@@ -751,7 +754,10 @@ pub(crate) fn advance_frame(st: &mut HostState) {
         .map(|rt| rt.take_anim_commands())
         .unwrap_or_default();
     if let Some(run) = st.run_scene.as_mut() {
+        // F-GAME-5:rig.* 与目标带 Rig2D 的 animator.* 分流给 RigSystem(契约 E),其余照旧进 AnimSystem。
+        let (anim_cmds, rig_cmds) = crate::rigrt::route(run, anim_cmds);
         st.anim.advance(run, anim_cmds, DT_FIXED, &mut logs);
+        st.rig.advance(run, rig_cmds, DT_FIXED, &mut logs);
         crate::modelrt::advance(run,DT_FIXED);
     }
     for (name, payload) in logs {
@@ -1003,6 +1009,7 @@ const READONLY_METHODS: &[&str] = &[
     // 02 §4.6:渲染后端信息 / 能力(只读)。
     "render.backendInfo",
     "render.capabilities",
+    "viewport.renderStats",
 ];
 
 /// 分派单条请求(请求已合法解析为 JSON;坏 JSON 由连接层回 -32700)。
@@ -1105,6 +1112,8 @@ fn pipelined_frame_rpc(state: &Mutex<HostState>, method: &str, params: &Value) -
             }
         }
         let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8").to_string();
+        if !matches!(format.as_str(),"rgba8"|"h264"|"none"|"file"){return param_err("invalid format: expected rgba8, h264, none or file")}
+        if format=="file"&&!exact_size{return param_err("format=file requires exact offscreen capture")}
         let selected = params.get("selectedId").and_then(Value::as_u64);
         let sp = crate::render::SnapshotParams {
             width: w,
@@ -1160,6 +1169,7 @@ fn pipelined_frame_rpc(state: &Mutex<HostState>, method: &str, params: &Value) -
         "cpuUploads": cpu_uploads,
     });
     match format.as_str() {
+        "file" => {let capture=capture_frame_file(f,frames)?;v.as_object_mut().unwrap().extend(capture.as_object().unwrap().clone());}
         "none" => v["format"] = json!("none"),
         "h264" => {
             let (nal, keyframe) = st
@@ -1297,6 +1307,8 @@ const GAME_ALLOWED: &[&str] = &[
     // 02 §4.6
     "render.backendInfo",
     "render.capabilities",
+    "viewport.renderStats",
+    "runtime.transforms",
 ];
 
 /// --game 启动(F6 wave.4):项目根相对场景 → scene_load → play_enter;失败如实 Err(main 退出)。
@@ -1336,7 +1348,13 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "render.once" => Ok(render_once(st)),
         // 02 §4.6:不接受参数(params 忽略)。
         "render.backendInfo" => Ok(crate::render::backend_info_json(crate::render::backend())),
-        "render.capabilities" => Ok(crate::render::capabilities_json(crate::render::backend())),
+        "render.capabilities" => {
+            let mut capabilities=crate::render::capabilities_json(crate::render::backend());
+            capabilities["frameExits"]["nativeOnly"]=json!(native_profile_enabled(st.active()));
+            Ok(capabilities)
+        },
+        "viewport.renderStats" => Ok(if scene_realtime_enabled(st.active()){realtime_metrics()}else{json!({"status":"inactive","renderer":"current scene does not enable Rurix realtime"})}),
+        "runtime.transforms" => runtime_transforms(st,params),
         "events.drain" => {
             let drained: Vec<Value> = st.events.drain(..).collect();
             Ok(Value::Array(drained))
@@ -1382,10 +1400,11 @@ fn handle(st: &mut HostState, method: &str, params: &Value) -> HResult {
         "viewport.getCamera" => Ok(st.camera.to_json()),
         "viewport.pick" => viewport_pick(st, params),
         "viewport.streamInfo" => viewport_stream_info(),
-        "viewport.shareOpen" => viewport_share_open(params),
+        "viewport.shareOpen" => viewport_share_open(st,params),
         "viewport.shareClose" => {
+            #[cfg(windows)] let _lease=crate::share::frame_lease();
             pipelined_share_detach(); // §4.5 第 13 项;rurix 下是空操作
-            crate::share::close();
+            crate::share::close_checked().map_err(|e|(-32000,e))?;
             Ok(json!({ "closed": true }))
         }
         _ => Err((-32601, format!("method not found: {method}"))),
@@ -1613,8 +1632,9 @@ pub(crate) fn viewport_size(params: &Value) -> Result<(u32, u32), (i64, String)>
     if !params.is_null() && !params.is_object() {
         return param_err("invalid params: 须为对象");
     }
-    let w = g("width", 960).clamp(16, 1920);
-    let h = g("height", 540).clamp(16, 1080);
+    let output = matches!(params.get("format").and_then(Value::as_str),Some("file"|"none")) || params.get("protocol").and_then(Value::as_u64)==Some(2);
+    let w = g("width", 960).clamp(16, if output {crate::stream::NATIVE_W}else{1920});
+    let h = g("height", 540).clamp(16, if output {crate::stream::NATIVE_H}else{1080});
     Ok((w, h))
 }
 
@@ -1664,7 +1684,7 @@ pub(crate) fn flush_text_issues(st: &mut HostState) {
 /// rurix 与 pipelined(Godot)两条取帧路径共用本函数,校验口径一致。
 fn frame_options(params: &Value) -> Result<(bool, bool), (i64, String)> {
     let exact = match params.get("exact") {
-        None | Some(Value::Null) => false,
+        None | Some(Value::Null) => params.get("format").and_then(Value::as_str)==Some("file"),
         Some(Value::Bool(b)) => *b,
         Some(_) => return param_err("invalid params: exact 须为布尔"),
     };
@@ -1677,10 +1697,109 @@ fn frame_options(params: &Value) -> Result<(bool, bool), (i64, String)> {
     Ok((exact, scene_camera))
 }
 
+/// RXS-0408: transient Play/Pause motion input. Prevalidate all updates before committing;
+/// editor undo, source files, and the frozen edit scene are never touched.
+fn runtime_transforms(st:&mut HostState,params:&Value)->HResult {
+    if st.play==PlayState::Edit || st.run_scene.is_none(){return domain_err("RUNTIME_STATE: runtime.transforms requires Play or Pause")}
+    let updates=params.get("updates").and_then(Value::as_array).ok_or((-32602,"updates must be an array".to_string()))?;
+    if updates.is_empty()||updates.len()>256{return param_err("updates must contain 1..256 existing entities")}
+    let mut seen=std::collections::HashSet::new();
+    let mut prepared=Vec::with_capacity(updates.len());
+    for update in updates {
+        let object=update.as_object().ok_or((-32602,"update must be an object".to_string()))?;
+        if object.keys().any(|key|!matches!(key.as_str(),"id"|"translation"|"rotation"|"scale"|"cameraFov")){return param_err("runtime transforms do not accept arbitrary component properties")}
+        let id=req_id(update)?;
+        if !seen.insert(id){return param_err("duplicate runtime entity id")}
+        let entity=st.active().entity(id).ok_or((-32602,format!("unknown runtime entity {id}")))?;
+        let physics_owned=st.body_map.contains_key(&id)||crate::prefab::root_id(st.active(),id).ok().is_some_and(|root|st.body_map.contains_key(&root));
+        if physics_owned{return param_err("RUNTIME_PHYSICS_BOUND: use physics control for a body-owned transform")}
+        if !["translation","rotation","scale","cameraFov"].iter().any(|field|object.contains_key(*field)){return param_err("runtime update contains no fields")}
+        let transform=merge_transform(entity.transform,update)?;
+        if !transform.translation.iter().chain(transform.rotation.iter()).chain(transform.scale.iter()).all(|v|v.is_finite()) {return param_err("runtime transform must be finite")}
+        let norm=transform.rotation.iter().map(|v|(*v as f64)*(*v as f64)).sum::<f64>();
+        if norm<1e-12 || transform.scale.iter().any(|v|v.abs()<1e-6){return param_err("runtime transform must have a nonzero quaternion and nonsingular scale")}
+        let camera=if let Some(value)=update.get("cameraFov") {
+            let fov=value.as_f64().filter(|v|v.is_finite()&&*v>0.0&&*v<180.0).ok_or((-32602,"cameraFov must be finite and between 0 and 180 degrees".to_string()))?;
+            let index=entity.components.iter().position(|c|c.ctype=="Camera"&&c.enabled).ok_or((-32602,"cameraFov requires an enabled Camera".to_string()))?;
+            let mut camera=entity.components[index].clone();
+            camera.props=forge_scene::normalize_props("Camera",&camera.props).map_err(|e|(-32602,e))?;
+            camera.props["fov"]=json!(fov);
+            forge_scene::validate_component(&camera).map_err(|e|(-32602,e))?;
+            Some((index,camera))
+        }else{None};
+        prepared.push((id,transform,camera));
+    }
+    for (id,transform,camera) in prepared {
+        let entity=st.active_mut().entity_mut(id).expect("runtime entity validated under HostState lock");
+        entity.transform=transform;
+        if let Some((index,camera))=camera{entity.components[index]=camera;}
+    }
+    st.runtime_revision=st.runtime_revision.wrapping_add(1);
+    Ok(json!({"updated":updates.len(),"runtimeOnly":true}))
+}
+
+fn scene_realtime_enabled(scene:&Scene)->bool{
+    #[cfg(feature="backend-rurix")] {crate::modelrender::realtime::enabled(scene)}
+    #[cfg(not(feature="backend-rurix"))] {let _=scene;false}
+}
+pub(crate) fn native_profile_enabled(scene:&Scene)->bool{crate::render::backend().native_present()&&scene_realtime_enabled(scene)}
+
+/// One bounded PNG capture path for both Rurix and pipelined Godot output.
+fn validate_capture_directory(dir:&std::path::Path)->Result<(),(i64,String)> {
+    if !dir.is_absolute() || dir.components().any(|c|matches!(c,std::path::Component::ParentDir)) {
+        return domain_err("capture directory must be absolute and must not contain parent traversal")
+    }
+    for parent in dir.ancestors() {
+        match std::fs::symlink_metadata(parent) {
+            Ok(meta)=>{
+                #[cfg(windows)] {use std::os::windows::fs::MetadataExt;if meta.file_attributes()&0x400!=0{return domain_err("capture directory must not contain a reparse point")}}
+                if meta.file_type().is_symlink(){return domain_err("capture directory must not contain a symlink")}
+                if !meta.is_dir(){return domain_err("capture directory ancestor is not a directory")}
+            }
+            Err(e) if e.kind()==std::io::ErrorKind::NotFound=>{},
+            Err(e)=>return domain_err(format!("capture directory inspection failed: {e}")),
+        }
+    }
+    Ok(())
+}
+
+fn capture_frame_file(f:&crate::viewport::FramePixels,frames:u64)->HResult {
+    if f.rgba8.len()!=f.width as usize*f.height as usize*4{return domain_err("CAPTURE_PIXELS_MISSING: exact RGBA8 readback required")}
+    // Only the host launch environment selects this root; RPC callers cannot
+    // choose arbitrary output paths. The default project capture path is retained.
+    let dir=std::env::var_os("FORGE_CAPTURE_DIR").map(PathBuf::from)
+        .unwrap_or_else(||project_root().join(".forge").join("captures"));
+    validate_capture_directory(&dir)?;
+    std::fs::create_dir_all(&dir).map_err(|e|(-32000,e.to_string()))?;
+    validate_capture_directory(&dir)?;
+    let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e|(-32000,e.to_string()))?.as_nanos();
+    let path=dir.join(format!("frame-{stamp}-{}-{frames}.png",std::process::id()));
+    if path.exists(){return domain_err("capture destination already exists")}
+    assetd::rig::write_png(&path,f.width,f.height,f.rgba8.clone()).map_err(|e|(-32000,e.to_string()))?;
+    let hash=forge_util::hashutil::sha256_file(&path).map_err(|e|(-32000,e.to_string()))?;
+    Ok(json!({"format":"png","capturePath":path,"sha256":hash,"width":f.width,"height":f.height,
+        "deviceName":f.device_name,"draws":f.draws,"triangles":f.triangles,"framePath":"exact_offscreen","frames":frames}))
+}
+
+pub(crate) fn realtime_metrics()->Value{
+    #[cfg(feature="backend-rurix")] {
+        let mut value=crate::modelrender::realtime::metrics();
+        if let Some(object)=value.as_object_mut(){
+            object.insert("validationRequested".into(),json!(std::env::var("RURIX_VK_VALIDATION").is_ok_and(|v|v=="1")));
+            object.insert("validationMessengerInstalled".into(),json!(rurix_rt::render_exec::validation_messenger_installed()));
+            object.insert("validationErrorTotal".into(),json!(rurix_rt::render_exec::validation_error_total()));
+        }
+        value
+    }
+    #[cfg(not(feature="backend-rurix"))] {json!({"status":"unavailable","reason":"Rurix backend not compiled"})}
+}
+
 /// viewport.frame:GPU 场景实渲染 + 回读;无设备 → DEV_ENV_DEGRADE 结构化错误(不充绿)。
 /// `format` = "rgba8"(默认) | "h264"(F1 wave.4 流腿:Annex B 码流,供纯 web 客户端)。
 fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
     crate::shader::set_frame_time(if st.play==PlayState::Edit {0.0} else {st.steps as f32*DT_FIXED});
+    #[cfg(windows)] let _lease=crate::share::frame_lease();
+    #[cfg(windows)] crate::share::wait_consumed().map_err(|e|(-32000,e))?;
     let (mut w, mut h) = viewport_size(params)?;
     // D-045:exact=true 按请求尺寸离屏出帧(设计稿验收要像素对齐),不让位于推流尺寸、不喂共享纹理;
     // 代价是可能触发一次会话重建(1-5s),只给低频的验收截帧用。
@@ -1694,6 +1813,8 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
         }
     }
     let format = params.get("format").and_then(Value::as_str).unwrap_or("rgba8");
+    if !matches!(format,"rgba8"|"h264"|"none"|"file") {return param_err("invalid format: expected rgba8, h264, none or file")}
+    if format=="file" && !exact {return param_err("format=file requires exact offscreen capture")}
     let selected = params.get("selectedId").and_then(Value::as_u64);
     let cam = st.camera;
     // F-GAME-2:PIE 期间视口由场景相机实体驱动(游戏画面 = 游戏相机);编辑态走编辑器相机。
@@ -1736,6 +1857,11 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 "viewport.frame",
                 json!({ "frames": frames, "draws": f.draws, "nonZeroPixels": f.nonzero, "framePath": frame_path }),
             );
+            if format == "file" {
+                let mut capture=capture_frame_file(&f,frames)?;
+                capture["realtimeMetrics"]=if scene_realtime_enabled(st.active()){realtime_metrics()}else{json!({"status":"inactive"})};
+                return Ok(capture);
+            }
             if format == "none" {
                 // F6 wave.5 性能测量档:渲染+统计照常,跳过像素编码/回传
                 // (1080p rgba8 pixelsB64 ≈11MB/帧,传输开销会污染渲染 fps 测量)。
@@ -1743,6 +1869,7 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                     "width": f.width,
                     "height": f.height,
                     "format": "none",
+                    "realtimeMetrics": realtime_metrics(),
                     "deviceName": f.device_name,
                     "draws": f.draws,
                     "truncated": f.truncated,
@@ -1766,6 +1893,7 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                     "format": "h264",
                     "nalB64": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &nal),
                     "keyframe": keyframe,
+                    "realtimeMetrics": realtime_metrics(),
                     "deviceName": f.device_name,
                     "draws": f.draws,
                     "truncated": f.truncated,
@@ -1783,7 +1911,8 @@ fn viewport_frame(st: &mut HostState, params: &Value) -> HResult {
                 "height": f.height,
                 "format": "rgba8",
                 "pixelsB64": f.pixels_b64(),
-                "deviceName": f.device_name,
+                "realtimeMetrics": realtime_metrics(),
+                    "deviceName": f.device_name,
                 "draws": f.draws,
                 "truncated": f.truncated,
                 "triangles": f.triangles,
@@ -1865,13 +1994,19 @@ fn viewport_pick(st: &mut HostState, params: &Value) -> HResult {
 /// viewport.shareOpen:创建/重建 D3D12 共享 buffer,句柄 DuplicateHandle 移交 pid 进程。
 /// 共享体为线性 buffer(见 share.rs 头注:纹理两侧补齐规则不一致会致设备丢失),
 /// 消费者按 `rowPitch` 的 PLACED_FOOTPRINT 从 buffer 拷进自己的纹理。
-fn viewport_share_open(params: &Value) -> HResult {
+fn viewport_share_open(st:&HostState,params: &Value) -> HResult {
+    #[cfg(windows)] let _lease=crate::share::frame_lease();
     let pid = params
         .get("pid")
         .and_then(Value::as_u64)
         .ok_or((-32602, "invalid params: 缺 pid".to_string()))? as u32;
     let (w, h) = viewport_size(params)?;
     pipelined_share_detach(); // §4.5 第 12 项:重建前让 [gmain] 放开旧 buffer;rurix 下是空操作
+    if params.get("protocol").and_then(Value::as_u64)==Some(2) {
+        if !native_profile_enabled(st.active()){return domain_err("NATIVE_PROFILE_MISMATCH: backend and scene must both enable Rurix realtime")}
+        return crate::share::open_native(w,h,pid).map_err(|e|(-32000,e));
+    }
+    crate::share::close_checked().map_err(|e|(-32000,e))?;
     let r = crate::share::open(w, h, pid)
         .map(|(buf, fence, w, h, row_pitch, size)| {
             json!({
@@ -2433,6 +2568,7 @@ fn play_enter(st: &mut HostState) -> HResult {
     }
     st.logic = Some(rt);
     st.anim.clear(); // F-GAME-4:动画状态随 play 会话从零起
+    st.rig.clear(); // F-GAME-5:RigSim 随 play 会话从零起
     st.controllers.clear();
     st.play = PlayState::Running;
     // Runtime edits have their own history; entering PIE must not erase editor undo.
@@ -2457,6 +2593,7 @@ fn play_enter_rollback(st: &mut HostState) {
     st.run_scene = None;
     st.logic = None;
     st.anim.clear();
+    st.rig.clear();
 }
 
 fn play_pause(st: &mut HostState) -> HResult {
@@ -2504,6 +2641,7 @@ fn play_exit(st: &mut HostState) -> HResult {
     st.body_map.clear();
     st.logic = None;
     st.anim.clear();
+    st.rig.clear();
     st.input_queue.clear();
     st.controllers.clear();
     st.run_scene = None;
@@ -2757,6 +2895,45 @@ pub(crate) mod tests {
             )
             .unwrap();
             crate::viewport::write_sprite_variant_fixture(&dir);
+            // F-GAME-5:Rig2D 全链测试夹具——独立图集 + .rxrig + rig.rxgraph。
+            let rigs = dir.join("Content").join("Rigs");
+            std::fs::create_dir_all(&rigs).unwrap();
+            {
+                use base64::Engine;
+                let png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAYAAACzzX7wAAAAEklEQVR4nGO4I8f1Hx9moL0CAJTkQGFPOmAjAAAAAElFTkSuQmCC";
+                std::fs::write(
+                    rigs.join("hero_atlas.png"),
+                    base64::engine::general_purpose::STANDARD.decode(png).unwrap(),
+                )
+                .unwrap();
+                std::fs::write(
+                    rigs.join("hero_atlas.png.meta"),
+                    "guid: test-rig-atlas-guid\ntype: texture\nimporter: texture\nbuild_state: current\n",
+                )
+                .unwrap();
+                let mut rig_doc = crate::render_core::rig::tests::rig_doc_json();
+                rig_doc["texture"] = json!("test-rig-atlas-guid");
+                std::fs::write(rigs.join("hero.rxrig"), serde_json::to_vec(&rig_doc).unwrap()).unwrap();
+                std::fs::write(
+                    rigs.join("hero.rxrig.meta"),
+                    "guid: test-rig-hero-guid\ntype: rig\nimporter: rig\nbuild_state: current\n",
+                )
+                .unwrap();
+            }
+            std::fs::write(
+                graphs.join("rig.rxgraph"),
+                r#"{
+  "version": 1, "id": "g_rig", "name": "Rig",
+  "nodes": [
+    { "id": "s", "type": "event.on_start", "pos": [0, 0] },
+    { "id": "sp", "type": "rig.set_param", "pos": [1, 0],
+      "inputs": { "entity": { "const": "$self" }, "param": { "const": "ParamX" }, "value": { "const": 50.0 } } }
+  ],
+  "edges": [ { "from": ["s", "exec"], "to": ["sp", "exec"] } ]
+}
+"#,
+            )
+            .unwrap();
             std::env::set_var("FORGE_PROJECT_ROOT", &dir);
             dir
         })
@@ -2996,6 +3173,78 @@ pub(crate) mod tests {
         assert_eq!(frame_edit, 0.0);
         let guard = lock(&st);
         assert!(guard.anim.debug_state(id).is_none(), "play.exit 应清动画状态");
+    }
+
+    /// F-GAME-5 全链:临时项目 .rxrig + 图 on_start rig.set_param → PIE 帧推进 →
+    /// run_scene 组件 Rig2D.params/clip/time 被宿主回写;play.exit 清 rig 状态且不污染编辑态。
+    #[test]
+    fn rig_set_param_full_loop_via_play() {
+        test_project_root();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while crate::render_core::assets::rig_doc_cached("test-rig-hero-guid").is_none() {
+            assert!(std::time::Instant::now() < deadline, "rig fixture never became resolvable");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let st = host();
+        call(&st, "scene.new", json!({ "name": "rig_pie", "mode": "2d" }));
+        let e = call(
+            &st,
+            "entity.create",
+            json!({
+                "name": "hero_rig",
+                "components": [
+                    {
+                        "type": "Rig2D",
+                        "props": {
+                            "rig": "test-rig-hero-guid",
+                            "clip": "slide",
+                            "params": { "ParamX": -40.0 },
+                            "autoBlink": false,
+                            "autoBreath": false,
+                            "physics": false
+                        }
+                    },
+                    {
+                        "type": "Script",
+                        "props": { "graphRef": "Content/Graphs/rig.rxgraph", "module": "", "props": {} }
+                    }
+                ]
+            }),
+        );
+        let id = e["entity"]["id"].as_u64().expect("缺实体 id");
+        call(&st, "play.enter", json!({}));
+        call(&st, "play.pause", json!({}));
+
+        let rig_props = |st: &Mutex<HostState>| -> Value {
+            let got = call(st, "entity.get", json!({ "id": id }));
+            got["components"]
+                .as_array()
+                .expect("entity.get 应含 components")
+                .iter()
+                .find(|c| c["type"] == "Rig2D")
+                .expect("应有 Rig2D 组件")["props"]
+                .clone()
+        };
+
+        step_n(&st, 2);
+        let props = rig_props(&st);
+        assert_eq!(props["clip"], json!("slide"));
+        assert!(props["time"].as_f64().unwrap() > 0.0, "PIE 步进后 time 应推进");
+        assert_eq!(
+            props["params"]["ParamX"].as_f64(),
+            Some(50.0),
+            "rig.set_param 应覆盖 clip 轨道并回写 props.params: {props}"
+        );
+        assert!(lock(&st).rig.debug_state(id).is_some(), "play 态 RigSystem 应持有实体状态");
+
+        call(&st, "play.exit", json!({}));
+        let props_edit = rig_props(&st);
+        assert_eq!(
+            props_edit["params"]["ParamX"].as_f64(),
+            Some(-40.0),
+            "play.exit 后编辑态 params 不受运行态污染"
+        );
+        assert!(lock(&st).rig.debug_state(id).is_none(), "play.exit 应清 RigSystem 状态");
     }
 
     /// contact Begin 进环 + 同帧规范序 logic.input < logic.contact < logic.update。
@@ -3360,4 +3609,28 @@ pub(crate) mod tests {
     }
     #[test]
     fn deleting_parent_removes_subtree_and_undo_restores_it(){let st=host();let root=call(&st,"entity.create",json!({"name":"parent"}))["id"].as_u64().unwrap();call(&st,"entity.create",json!({"name":"child","components":[{"type":"Parent","props":{"entity":root}}]}));let result=call(&st,"entity.destroy",json!({"id":root}));assert_eq!(result["entityIds"].as_array().unwrap().len(),2);assert!(lock(&st).scene.entities.is_empty());call(&st,"edit.undo",json!({}));assert_eq!(lock(&st).scene.entities.len(),2);}
+    #[test]
+    fn runtime_transforms_are_atomic_transient_and_restore_on_stop(){
+        let state=host();call(&state,"scene.new",json!({"name":"runtime-transform-test"}));
+        let camera=call(&state,"entity.create",json!({"name":"camera","components":[{"type":"Camera","props":{}}]}))["id"].as_u64().unwrap();
+        let light=call(&state,"entity.create",json!({"name":"light","components":[{"type":"Light","props":{"kind":"point","color":[1,1,1],"intensity":1,"castShadow":true}}]}))["id"].as_u64().unwrap();
+        let baseline=lock(&state).scene.clone();let edit_undo=lock(&state).undo.len();
+        assert!(call_err(&state,"runtime.transforms",json!({"updates":[{"id":camera,"translation":[1,2,3]}]})).1.contains("RUNTIME_STATE"));
+        call(&state,"play.enter",json!({}));call(&state,"play.pause",json!({}));
+        let before=lock(&state).active().clone();let revision=lock(&state).runtime_revision;
+        for bad in [json!({"id":999999,"translation":[0,0,0]}),json!({"id":light,"cameraFov":40}),json!({"id":light,"translation":[1e300,0,0]}),json!({"id":light,"rotation":[0,0,0,0]}),json!({"id":light,"props":{}})] {
+            call_err(&state,"runtime.transforms",json!({"updates":[{"id":camera,"translation":[8,8,8]},bad]}));
+            assert_eq!(*lock(&state).active(),before,"invalid batch must be atomic");
+            assert_eq!(lock(&state).runtime_revision,revision);
+        }
+        let undo=lock(&state).undo.len();let render_revision=lock(&state).scene_rev;
+        for i in 0..100 {
+            call(&state,"runtime.transforms",json!({"updates":[{"id":camera,"translation":[i,2,3],"cameraFov":55},{"id":light,"translation":[3,4,5]}]}));
+        }
+        assert_eq!(lock(&state).undo.len(),undo,"per-frame motion must not grow edit history");
+        assert!(lock(&state).scene_rev>render_revision);assert_eq!(lock(&state).active().entity(camera).unwrap().component("Camera").unwrap().props["fov"].as_f64(),Some(55.0));
+        assert_eq!(lock(&state).scene,baseline,"frozen edit scene stays untouched");
+        call(&state,"play.exit",json!({}));assert_eq!(*lock(&state).active(),baseline);assert_eq!(lock(&state).undo.len(),edit_undo);
+    }
+
 }

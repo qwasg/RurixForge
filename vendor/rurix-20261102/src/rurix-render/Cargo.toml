@@ -1,0 +1,49 @@
+[package]
+workspace = "../.."
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+name = "rurix-render"
+description = "Rurix 原生引擎渲染器库(G5,RFC-0016,渲染器调研七报告 P0–P2 主线)——声明式 render graph(逐 pass 读写声明 + EB 三轴屏障推导 + transient 池化别名 + 编译期校验 + 异步 compute 车道)/ 虚拟化几何(GPU 两级剔除 + 64 位 VisBuffer SW/HW 双路光栅 + 材质 classify-resolve)/ VSM clipmap 阴影 / 屏幕探针 GI / AS 管理 + ray query 效果 / 单层材质闭合 + GPU scene + PSO precache + 页式流送 / 时域重建(MV/TAA/TSR/UpscaleBackend)。渲染器是库不进语言(06 §8.3);host 侧全 safe 纯 Rust 可单测(uc04-demo 先例),device 执行经 rurix-rt vk 底座(feature vulkan gate)"
+edition = "2024"
+version = "1.0.0"
+publish = false
+license = "MIT OR Apache-2.0"
+[dependencies]
+# device 执行底座(可选):rurix-rt vk 执行器 + graph 双后端映射。host 逻辑(图编译/
+# 屏障推导/transient/几何/时域数学/页表)零外部依赖、default 不拉 GPU 面。
+rurix-rt = { path = "../rurix-rt", optional = true }
+# M25 ABI hash 与 M31 同源 SHA-256(rurix-pkg)。
+rurix-pkg = { path = "../rurix-pkg" }
+# G9.4 M97(RXS-0358):Card 图集页复用 M91 RXPL v2 页 ABI(encode/decode 冻结面
+# 直接消费,禁私定磁盘格式;workspace path 依赖,零外部 crate)。
+rurix-geom-pages = { path = "../rurix-geom-pages" }
+# G10.4a M134/M137(RXS-0385/RXS-0388):EXR HDR 帧容器编解码(自研最小子集,
+# spec/imageio.md §2A;workspace path 依赖,零外部 crate)。
+image-io = { path = "../image-io" }
+rurix-basis-sys = { path = "../rurix-basis-sys", optional = true }
+# RFC-0052 primary-cell proposal: exact binary64 rational ticket allocation.
+# Only the opt-in HQ full-material lane needs these host-side arithmetic crates.
+num-bigint = { version = "0.4", optional = true }
+num-traits = { version = "0.2", optional = true }
+# RXS-0408..0411: native real-time scene session; shader translation has no GPU backend.
+naga = { version = "=25.0.1", default-features = false, features = ["wgsl-in", "spv-out"], optional = true }
+self_cell = { version = "1.2", optional = true }
+
+[features]
+default = []
+realtime = ["vulkan", "dep:naga", "dep:self_cell"]
+# RFC-0051: opt-in raster texture decoding; default renderer remains codec-free.
+gltf-textures = ["dep:rurix-basis-sys", "dep:num-bigint", "dep:num-traits"]
+# vulkan:device 执行腿(经 rurix-rt vk 底座真派发)。默认关闭:无 Vulkan SDK 环境
+# `cargo build --workspace` 仍全绿(uc04-demo real-shim 先例,host 逻辑常驻回归网)。
+vulkan = ["dep:rurix-rt", "rurix-rt/vulkan"]
+# vendor-upscale:G13.2 M-a(M167) vendor 超分 harness 门(DLSS/FSR session 经
+# rurix-rt vendor_upscale 双臂;G13_CONTRACT §4.2 M-a 行)。默认关闭。
+vendor-upscale = ["vulkan", "rurix-rt/vendor-upscale"]
+
+[lints]
+workspace = true
+
+# RFC-0051 full glTF SSBO sampler device parity and UV/constant red controls.

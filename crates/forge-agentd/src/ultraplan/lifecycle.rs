@@ -9,11 +9,16 @@ use std::collections::HashMap;
 #[path = "flow_tests.rs"]
 mod flow_tests;
 
+#[cfg(test)]
+#[path = "native_smoke.rs"]
+mod native_smoke;
+
 pub const VERIFY_TOOL: &str = "ultraplan_verify";
 const TARGET: &str = "target.json";
 const MANIFEST: &str = "requirements.json";
 const FEEDBACK: &str = "feedback.md";
 const DELIVERY: &str = "delivery.json";
+const DELEGATIONS: &str = "production-delegations.json";
 
 fn failure(message: impl std::fmt::Display) -> String {
     format!("{ERR_TURN_INVALID}: {message}")
@@ -167,24 +172,6 @@ pub fn validate_answers(questionnaire: &Value, answers: &Value) -> Result<Value,
         }
     }
     Ok(answers.clone())
-}
-
-pub fn discovery_tasks(rt: &UltraRuntime) -> Vec<Value> {
-    if !matches!(rt.kind, TurnKind::Discovery { .. })
-        || !rt.facts.has_content
-        || explore_reports(&rt.dir_abs).len() >= 2
-    {
-        return vec![];
-    }
-    [
-        ("资产与美术", "检查素材目录、复用资产、美术风格与缺失项，记录真实路径"),
-        ("场景与玩法", "检查场景、实体、脚本与核心玩法，确认当前引擎能力和限制"),
-        ("文档与约定", "检查设计文档、项目配置、目标后端、命名与已有约定，记录冲突和风险"),
-    ].iter().enumerate().map(|(i, (title, goal))| json!({
-        "subagent_type": "explore", "description": title,
-        "_toolCallId": format!("ultra-explore-{}-{i}", rt.flow_id),
-        "prompt": format!("只读探索当前项目。{goal}。先全文读取 {}/{BRIEF_FILE}，不修改任何内容。返回带文件路径的事实、可复用项与需要澄清的问题。", rt.dir_rel)
-    })).collect()
 }
 
 fn target_for(scope: &crate::scope::ScopeProject) -> Result<Value, String> {
@@ -473,7 +460,10 @@ pub(super) fn begin_followup(
             json!({"id":snap.id,"runId":rid,"phase":phase.as_str(),"rev":snap.plan_rev}),
         );
     }
-    let context = requirement_context(&dir, snap)?;
+    let mut context = requirement_context(&dir, snap)?;
+    if matches!(ut.kind, TurnKind::Production(_)) {
+        context.push_str(&production_delegation_context(state, sid, snap, &dir)?);
+    }
     let (prompt, specs) = match ut.kind {
         TurnKind::SpecAndDemo { .. } => (SPEC_PROMPT, vec![spec_tool()]),
         TurnKind::Planning { .. } => (PLAN_PROMPT, vec![plan_doc_tool(), plan_tasks_tool()]),
@@ -561,6 +551,49 @@ fn requirement_context(dir: &Path, up: &UltraPlanState) -> Result<String, String
     )?;
     Ok(context)
 }
+
+/// Expose real task IDs and failure context before the leader's first tool call.
+/// Keep the complete snapshot readable even when individual prompts are long.
+fn production_delegation_context(
+    state: &AppState,
+    sid: &str,
+    up: &UltraPlanState,
+    dir: &Path,
+) -> Result<String, String> {
+    let report = read_json(&dir.join(PRODUCTION_FILE)).ok_or_else(|| failure("制作记录缺失"))?;
+    let ids = report.get("repairTodoIds").unwrap_or(&report["activeTodoIds"])
+        .as_array()
+        .ok_or_else(|| failure("当前制作任务缺失"))?;
+    let source = format!("ultraplan:{}:{}", up.id, up.plan_rev);
+    let todos = state.todos.list_by_session(sid);
+    let mut records = Vec::new();
+    let mut context = format!("\n本轮开始时的制作任务真实 id 和内容预览如下。开工前全文读取 {}/{DELEGATIONS} 快照中的 description/prompt 及关联需求；空 prompt 必须由主 agent 编写详细委派后用 todo_update {{id,prompt}} 补齐，不得猜测任务 id。后续修改以 todo_update 返回结果为准。\n", up.dir);
+    for id in ids {
+        let todo = todos
+            .iter()
+            .find(|todo| todo.source == source && Some(todo.id.as_str()) == id.as_str())
+            .ok_or_else(|| failure("当前任务不属于本流程"))?;
+        records.push(json!({"id":todo.id,"title":todo.title,"status":todo.status,"prompt":todo.prompt,"description":todo.description}));
+        let preview =
+            |text: Option<&str>| text.map(|text| text.chars().take(800).collect::<String>());
+        context.push_str(&format!("{}\n", json!({"id":todo.id,"title":todo.title,"status":todo.status,
+            "prompt":preview(todo.prompt.as_deref()),"description":preview(todo.description.as_deref())})));
+    }
+    save(
+        dir,
+        DELEGATIONS,
+        &json!({"flowId":up.id,"planRev":up.plan_rev,"tasks":records}),
+    )?;
+    let checks = read_json(&dir.join(CHECKS_FILE)).ok_or_else(|| failure("检查清单缺失"))?;
+    let mut check_context = super::verify::check_context(&checks);
+    check_context
+        .as_object_mut()
+        .unwrap()
+        .remove("matrixSchema");
+    context.push_str(&format!("\n最终集中QA的合法检查上下文：{check_context}\n调用ultraplan_verify时id必须来自allowedCheckIds，不是流程id或todo id；matrix.scene使用对应批准scene，矩阵字段遵循工具schema。\n"));
+    Ok(context)
+}
+
 pub fn production_context(rt: &UltraRuntime) -> String {
     let mut out = rt.preamble.clone();
     for file in [
@@ -578,9 +611,9 @@ pub fn production_context(rt: &UltraRuntime) -> String {
     out
 }
 
-const SPEC_PROMPT: &str = "\nUltraPlan · 需求定稿。先全文读取需求包所有文件，包括原始需求、问卷选项、答案、target.json 与探索报告。使用 ultraplan_spec 提交完整 spec、gameMode(2d/3d)、renderBackend(rurix/godot)，必须与询问阶段已确认的 implementation_stack 和 target.json 一致，禁止到定稿或制作时再代选后端。新项目 2D 默认 Godot，3D 由用户确认 Godot 或 rurix；已有项目沿用已确认的目标配置。spec 必须包含每条需求、委托决策及理由、可玩核心循环、操作/胜负/重开、美术/UI/音频方向、MVP取舍、资产引用和Demo与正式游戏差异。需规划好技术与实施细节：玩法状态与数据结构、场景/资源组织、模块职责及接口、输入与存档方案、目标后端能力和限制、关键技术风险与验证办法。你只读，不自行实现或派Demo任务；提交后系统自动派恰一个 web-demo-builder。";
-const PLAN_PROMPT: &str = "\nUltraPlan · 制作计划。先全文读取需求包、target.json、Demo批准记录和反馈；沿用询问阶段已确认的维度与后端，核实 render_backend_info/render_capabilities。使用 ultraplan_plan_doc 提交 name/overview/plan，正文必须包含范围、技术选型及理由、目标后端、资产复用、模块接口、制作步骤、Team职责、自动画面/玩法验证和最终人工行为检查。必须规划好技术与实施细节，不能只有功能标题：逐项写清场景/资源/脚本路径与命名、数据结构与玩法状态转换、模块接口和输入/存档方案、后端组件及能力限制、任务依赖与执行顺序、风险处理；每步注明实现方法、交付物、验收步骤与预期结果，并让任务 prompt 带齐这些细节。再用 ultraplan_plan_tasks 提交完整tasks、checks和delivery。delivery.entry是工作区相对的正式游戏入口场景，delivery.controls是完整操作说明。任务字段 id/title/role/prompt/stage/deps/verify=qa/checkIds；deps使用任务id。仅派 material-smith、asset-wrangler、scene-builder、logic-programmer。共享场景/play任务串行。checks.automated 每项 id/kind(visual|gameplay)/scene/steps/expected，checks.manual 每项 id/title/steps/expected/required。人工检查只在最终集中验收。至少一个画面和一个玩法自动检查，所有检查关联产出任务。不要实现游戏或改项目。";
-const PRODUCTION_PROMPT: &str = "\nUltraPlan · 连续制作。批准的任务已由系统物化，不重新创建同名任务或改变批准范围。先全文读取需求包、批准计划和checks。已有queued任务时直接说明开始，系统接管派工。修复轮对应失败检查的任务也已由系统创建，请执行这些任务并保留已通过的功能。只在全部自动检查和reviewer通过后进入人工验收，不用口头完成代替证据。";
+const SPEC_PROMPT: &str = "\nUltraPlan · 需求定稿。先全文读取需求包所有文件，包括原始需求、问卷选项、答案、target.json、探索报告和当前反馈。由你理解需求后，使用 ultraplan_spec 提交完整 spec、gameMode(2d/3d)、renderBackend(rurix/godot) 和本轮亲自编写的 demoPrompt。技术栈必须与询问阶段已确认的 implementation_stack 和 target.json 一致，禁止到定稿或制作时再代选后端。新项目 2D 默认 Godot，3D 由用户确认 Godot 或 rurix；已有项目沿用已确认的目标配置。spec 必须包含每条需求、委托决策及理由、可玩核心循环、操作/胜负/重开、美术/UI/音频方向、MVP取舍、资产引用和Demo与正式游戏差异。需规划好技术与实施细节：玩法状态与数据结构、场景/资源组织、模块职责及接口、输入与存档方案、目标后端能力和限制、关键技术风险与验证办法。demoPrompt 是你给 web-demo-builder 的明确委派，首次和修订轮都必须根据已读需求和答案重新编写；写成自足、针对本项目的详细提示词，包含具体目标、玩法/操作/胜负/重开、视觉与资产方向、读取需求包及仅写隔离目录的范围、实现要求、预期产物和可执行验收步骤，不可只说开始或使用通用模板。你只读，不自行实现 Demo；调用 ultraplan_spec 即提交你编写的这份 Demo 委派，协调器随后将原文交给恰一个 web-demo-builder 执行。";
+const PLAN_PROMPT: &str = "\nUltraPlan · 制作计划。先全文读取需求包、target.json、Demo批准记录和反馈；沿用询问阶段已确认的维度与后端，核实 render_backend_info/render_capabilities。使用 ultraplan_plan_doc 提交 name/overview/plan，正文必须包含范围、技术选型及理由、目标后端、资产复用、模块接口、制作步骤、Team职责、自动画面/玩法验证和最终人工行为检查。必须规划好技术与实施细节，不能只有功能标题：逐项写清场景/资源/脚本路径与命名、数据结构与玩法状态转换、模块接口和输入/存档方案、后端组件及能力限制、任务依赖与执行顺序、风险处理；每步注明实现方法、交付物、验收步骤与预期结果，并让任务 prompt 带齐这些细节。再用 ultraplan_plan_tasks 提交完整tasks、checks和delivery。delivery.entry是工作区相对的正式游戏入口场景，delivery.controls是完整操作说明。任务字段 id/title/role/prompt/stage/deps/verify=qa/checkIds/requiredTools/outputs/handoffChecks；deps使用任务id。requiredTools列工种实际需要的宿主工具原名；outputs列明确工作区相对文件；handoffChecks逐产物声明file/json/scene/graph/rx或matrix检查，matrix绑定输出场景并遵守playtest矩阵schema。上游仅通过轻量、可执行交接门槛才放行下游；checkIds对应最终集中QA，禁止以本阶段尚未实现的完整成品作为局部交接。仅派 material-smith、asset-wrangler、scene-builder、logic-programmer。共享场景/play任务串行。checks.automated 每项 id/kind(visual|gameplay)/scene/steps/expected，checks.manual 每项 id/title/steps/expected/required。人工检查只在最终集中验收。至少一个画面和一个玩法自动检查，所有检查关联产出任务。不要实现游戏或改项目。";
+const PRODUCTION_PROMPT: &str = "\nUltraPlan · 连续制作。使用系统物化的既有任务id与批准契约，不用plan_write追加替代任务或改变范围。先核对任务快照、当前阻塞、上游结构化交接及本模块必要需求；已读信息沿用，不要求所有子agent重复全文领读。按requiredTools核验当前工种能力，缺宿主能力先提交blocked及明确恢复条件，暂停依赖链，不把其余未执行任务都转成修复。修复只针对可确认的代码/资产缺陷：用todo_update {id,prompt}更新原任务，保留已通过内容与批准outputs/handoffChecks；外部条件未变化时不重派。子agent结束须提交结构化结果，包含实际产物、执行过的交接检查、失败原因和恢复条件；宿主验证交接后才记completed。全部产出交接完成后集中执行checkIds对应自动QA与reviewer，仅实际断言失败触发定向修复；missing/stale证据要求补验证，不新建整条生产链。全部自动检查与reviewer通过后才集中人工验收。";
 
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
     json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required}}})
@@ -588,9 +621,9 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
 fn spec_tool() -> Value {
     tool(
         SPEC_TOOL,
-        "保存完整需求规格，系统随后派单个Demo子代理",
-        json!({"spec":{"type":"string"},"gameMode":{"type":"string","enum":["2d","3d"]},"renderBackend":{"type":"string","enum":["rurix","godot"]}}),
-        &["spec", "gameMode", "renderBackend"],
+        "保存完整需求规格，并提交主 agent 阅读需求后亲自编写的详细 demoPrompt，交给单个 Demo 子代理执行",
+        json!({"spec":{"type":"string"},"gameMode":{"type":"string","enum":["2d","3d"]},"renderBackend":{"type":"string","enum":["rurix","godot"]},"demoPrompt":{"type":"string","minLength":1,"description":"主 agent 针对本轮项目需求编写的自足 Demo 委派：目标、玩法和视觉、读写范围、实现要求、产物与验收"}}),
+        &["spec", "gameMode", "renderBackend", "demoPrompt"],
     )
 }
 fn plan_doc_tool() -> Value {
@@ -602,7 +635,18 @@ fn plan_doc_tool() -> Value {
     )
 }
 fn plan_tasks_tool() -> Value {
-    tool(PLAN_TASKS_TOOL,"保存tasks任务图及checks自动/人工检查；delivery包含entry(工作区相对游戏入口场景)及controls(操作方法)",json!({"tasks":{"type":"array","items":{"type":"object"}},"checks":{"type":"object"},"delivery":{"type":"object","properties":{"entry":{"type":"string"},"controls":{"type":"string"}},"required":["entry","controls"]}}), &["tasks","checks","delivery"])
+    tool(PLAN_TASKS_TOOL,"保存批准任务契约及最终集中自动/人工检查。requiredTools 使用宿主工具名；每个 outputs 文件须有可执行 handoffChecks，交接通过后才放行依赖。",json!({
+        "tasks":{"type":"array","minItems":1,"maxItems":64,"items":{"type":"object","properties":{
+            "id":{"type":"string"},"title":{"type":"string"},"role":{"type":"string","enum":["material-smith","asset-wrangler","scene-builder","logic-programmer"]},
+            "prompt":{"type":"string"},"stage":{"type":"string"},"deps":{"type":"array","items":{"type":"string"}},"verify":{"type":"string","enum":["qa"]},"checkIds":{"type":"array","items":{"type":"string"}},
+            "requiredTools":{"type":"array","minItems":1,"uniqueItems":true,"items":{"type":"string"},"description":"当前工种必须具备的宿主工具，使用 mcp__.../read_file 等原名，不加 forge__ 前缀"},
+            "outputs":{"type":"array","minItems":1,"uniqueItems":true,"items":{"type":"string"},"description":"工作区相对文件路径，不可为目录、通配符或外部路径"},
+            "handoffChecks":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"properties":{
+                "kind":{"type":"string","enum":["file","json","scene","graph","rx","matrix"]},"path":{"type":"string","description":"必须列在 outputs 中"},"matrix":super::verify::matrix_schema()
+            },"required":["kind","path"]}}
+        },"required":["id","title","role","prompt","stage","deps","verify","checkIds","requiredTools","outputs","handoffChecks"]}},
+        "checks":{"type":"object"},"delivery":{"type":"object","properties":{"entry":{"type":"string"},"controls":{"type":"string"}},"required":["entry","controls"]}
+    }), &["tasks","checks","delivery"])
 }
 
 pub(super) fn handle_spec(
@@ -613,8 +657,12 @@ pub(super) fn handle_spec(
     args: &Value,
 ) -> (bool, String) {
     let result = (|| -> Result<(), String> {
+        // Keep each spec and its leader-authored assignment paired even when
+        // the model submits multiple tool calls concurrently.
+        let mut delegation = rt.tracker.demo_prompt.lock().unwrap();
         let up = get_flow(state, sid, rt)?;
         let spec = text_field(args, "spec")?;
+        let demo_prompt = text_field(args, "demoPrompt")?;
         let mode = text_field(args, "gameMode")?;
         let backend = text_field(args, "renderBackend")?;
         if !["2d", "3d"].contains(&mode) || !["rurix", "godot"].contains(&backend) {
@@ -636,9 +684,13 @@ pub(super) fn handle_spec(
         if confirmed_mode != mode || confirmed_backend != backend {
             return Err("gameMode 和 renderBackend 必须沿用询问阶段已确认的技术栈；不得在需求定稿时更换后端".into());
         }
+        *delegation = None;
         write_atomic(&rt.dir_abs.join(SPEC_FILE), spec).map_err(failure)?;
         save(&rt.dir_abs, TARGET, &target)?;
         requirement_context(&rt.dir_abs, &up)?;
+        // A fresh runtime must receive a fresh leader delegation even if an old
+        // spec survived a failed run or was loaded from an earlier session.
+        *delegation = Some(demo_prompt.to_owned());
         emit(
             state,
             sid,
@@ -648,7 +700,10 @@ pub(super) fn handle_spec(
         Ok(())
     })();
     match result {
-        Ok(()) => (true, "需求已保存；本轮结束后自动制作Demo。".into()),
+        Ok(()) => (
+            true,
+            "需求与本轮 Demo 委派已保存；本轮结束后按你的 demoPrompt 执行。".into(),
+        ),
         Err(e) => (false, e),
     }
 }
@@ -736,6 +791,120 @@ pub(super) fn handle_plan(
     }
 }
 
+/// A missing contract is an explicit plan upgrade, never an implicit rewrite of
+/// an already approved plan or its hash. Runtime validates role capabilities.
+pub(super) fn validate_task_contract(task: &Value) -> Result<(), String> {
+    for key in ["requiredTools", "outputs", "handoffChecks"] {
+        if !task.get(key).is_some_and(Value::is_array) {
+            return Err(format!("UP_CONTRACT_UPGRADE_REQUIRED: 任务 {} 缺少 {key}；请重新提交并确认契约，保留原批准版本", task["id"]));
+        }
+    }
+    let strings = |key: &str| -> Result<Vec<&str>, String> {
+        let entries = task[key].as_array().unwrap();
+        if entries.is_empty() || entries.len() > 128 {
+            return Err(format!("{key} 需要1–128项"));
+        }
+        let mut seen = HashSet::new();
+        entries
+            .iter()
+            .map(|value| {
+                let text = value
+                    .as_str()
+                    .filter(|s| !s.trim().is_empty() && s.trim() == *s)
+                    .ok_or_else(|| format!("{key} 须为非空字符串数组"))?;
+                if !seen.insert(text) {
+                    return Err(format!("{key} 不可重复"));
+                }
+                Ok(text)
+            })
+            .collect()
+    };
+    for name in strings("requiredTools")? {
+        if name.starts_with("forge__")
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_-".contains(c))
+        {
+            return Err("requiredTools 须使用宿主工具原名，不加 forge__ 前缀".into());
+        }
+    }
+    let outputs = strings("outputs")?;
+    for path in &outputs {
+        safe_relative(path)?;
+        if path.contains(['*', '?', '\0'])
+            || path
+                .split(['/', '\\'])
+                .any(|part| part.ends_with([' ', '.']))
+            || path.split(['/', '\\']).next().is_some_and(|part| {
+                part.eq_ignore_ascii_case(".forge") || part.eq_ignore_ascii_case(".git")
+            })
+        {
+            return Err("outputs 必须是明确文件路径".into());
+        }
+    }
+    let checks = task["handoffChecks"].as_array().unwrap();
+    if checks.is_empty() || checks.len() > 256 {
+        return Err("handoffChecks 需要1–256项".into());
+    }
+    let mut covered = HashSet::new();
+    for check in checks {
+        let kind = text_field(check, "kind")?;
+        let path = text_field(check, "path")?;
+        if !outputs.contains(&path) {
+            return Err(format!("交接路径 {path} 未列入 outputs"));
+        }
+        if !["file", "json", "scene", "graph", "rx", "matrix"].contains(&kind) {
+            return Err(format!("未知交接检查 {kind}"));
+        }
+        if check
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|k| !["kind", "path", "matrix"].contains(&k.as_str()))
+        {
+            return Err("handoffChecks 仅接受 kind/path/matrix".into());
+        }
+        if kind == "matrix" {
+            let matrix: crate::playtest::Matrix = serde_json::from_value(check["matrix"].clone())
+                .map_err(|e| format!("交接 matrix 无效: {e}"))?;
+            super::verify::validate_matrix_shape(&matrix)?;
+            if matrix.scene != path || matrix.cases.is_empty() || !path.ends_with(".rxscene") {
+                return Err("交接 matrix 必须绑定 outputs 中的 .rxscene，且包含非空 cases".into());
+            }
+        } else if check.get("matrix").is_some() {
+            return Err("只有 matrix 交接检查可包含 matrix".into());
+        }
+        covered.insert(path);
+    }
+    if outputs.iter().any(|path| !covered.contains(path)) {
+        return Err("每个 outputs 文件都必须包含 handoffChecks".into());
+    }
+    for path in outputs {
+        let required = match Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("rx") => Some("rx"),
+            Some("rxgraph") => Some("graph"),
+            Some("rxscene") => Some("scene"),
+            _ => None,
+        };
+        if let Some(kind) = required {
+            if !checks
+                .iter()
+                .any(|check| check["path"] == path && check["kind"] == kind)
+            {
+                return Err(format!(
+                    "产物 {path} 必须包含 {kind} 交接检查；file/json/matrix不能替代结构或编译检查"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_tasks(v: &Value) -> Result<(), String> {
     let entry = text_field(&v["delivery"], "entry")?;
     text_field(&v["delivery"], "controls")?;
@@ -785,6 +954,7 @@ fn validate_tasks(v: &Value) -> Result<(), String> {
     let mut titles = HashSet::new();
     let mut covered = HashSet::new();
     for t in tasks {
+        validate_task_contract(t)?;
         for key in ["id", "title", "role", "prompt", "stage"] {
             text_field(t, key)?;
         }
@@ -930,6 +1100,9 @@ fn materialize(
         .as_array()
         .filter(|a| !a.is_empty())
         .ok_or_else(|| failure("禁止空任务制作"))?;
+    for task in tasks {
+        validate_task_contract(task)?;
+    }
     let source = format!("ultraplan:{}:{}", up.id, up.plan_rev);
     let existing: Vec<_> = state
         .todos
@@ -954,11 +1127,14 @@ fn materialize(
     } else {
         None
     };
-    let failed: HashSet<&str> = if let Some(round) = repair_round {
+    let repair_record = repair_round.and_then(|round| {
         acceptance
             .as_ref()
             .and_then(|a| a["rounds"].as_array())
             .and_then(|rs| rs.iter().find(|r| r["round"] == round))
+    });
+    let failed: HashSet<&str> = if repair_round.is_some() {
+        repair_record
             .and_then(|r| r["failed"].as_array())
             .ok_or("ULTRAPLAN_FIX_NO_TASKS: 修复轮的失败记录不存在")?
             .iter()
@@ -970,6 +1146,15 @@ fn materialize(
     if repair_round.is_some() && failed.is_empty() {
         return Err("ULTRAPLAN_FIX_NO_TASKS: 没有失败检查".into());
     }
+    // Reuse the selected original tasks once per repair round. Historical fix
+    // chains remain reference only; unaffected completed tasks and modern
+    // leader delegations are preserved.
+    let migrate_repair_delegations = repair_round.is_some()
+        && !old.as_ref().is_some_and(|report| {
+            same_plan
+                && report["repairRound"].as_u64() == repair_round
+                && report["repairDelegationVersion"] == 2
+        });
     let selected: HashSet<&str> = tasks
         .iter()
         .filter(|t| {
@@ -984,6 +1169,20 @@ fn materialize(
     if selected.is_empty() {
         return Err("ULTRAPLAN_FIX_NO_TASKS: 失败检查没有对应制作任务".into());
     }
+    let repair_ids: Vec<String> = if repair_round.is_some() {
+        let mut ids = Vec::new();
+        for id in &selected {
+            let key = format!("{prefix}{id}");
+            let task = existing.iter().find(|task| task.plan_todo_id.as_deref() == Some(key.as_str()))
+                .ok_or_else(|| format!("UP_REPAIR_ORIGINAL_MISSING: 缺少原批准任务{id}，保留产物先恢复交接；禁止新建第二条修复链"))?;
+            ids.push(task.id.clone());
+        }
+        ids.sort();
+        ids
+    } else { Vec::new() };
+    if migrate_repair_delegations {
+        crate::plan::authorize_production_retry(dir, &repair_ids, super::MAX_FIX_ROUNDS)?;
+    }
     // Topological order makes the additional serial-engine edge safe even when
     // the model emitted tasks in reverse order. Use todo IDs, never shared titles.
     let ordered = ordered_tasks(tasks)?;
@@ -992,32 +1191,70 @@ fn materialize(
     let mut active_ids = Vec::new();
     for task in ordered {
         let id = task["id"].as_str().ok_or_else(|| failure("任务id缺失"))?;
-        if !selected.contains(id) {
-            continue;
-        }
-        let key = match repair_round {
-            Some(round) => format!("{prefix}fix:{round}:{id}"),
-            None => format!("{prefix}{id}"),
-        };
+        let key = format!("{prefix}{id}");
+        let prepare_repair = repair_round.is_some() && selected.contains(id) && migrate_repair_delegations;
         let engine = matches!(
             task["role"].as_str(),
             Some("scene-builder" | "logic-programmer" | "material-smith")
         );
+        let approved_prompt = format!("{}\n\n需求来源: {}/{MANIFEST}；批准计划: {}。按本任务契约及上游交接定向读取，接续已读上下文，不重复遍历无关文件。最终集中检查id: {}。当前目标后端: {}。本任务必需工具: {}；产物: {}；宿主交接检查: {}。交付后由宿主检查输出并放行依赖；阻塞须提交结构化原因与恢复条件，不以会话正常结束表示任务完成。全局QA/reviewer与人工验收在制作交接完成后集中执行。",
+            task["prompt"].as_str().unwrap(), up.dir, up.plan_path.as_deref().unwrap_or_default(), task["checkIds"], read_json(&dir.join(TARGET)).unwrap_or(Value::Null), task["requiredTools"], task["outputs"], task["handoffChecks"]);
+        let repair_description = repair_round.map(|round| {
+            let feedback: Vec<_> = repair_record
+                .and_then(|record| record["results"].as_array())
+                .into_iter()
+                .flatten()
+                .filter(|result| {
+                    result["id"].as_str().is_some_and(|check| failed.contains(check))
+                        && task["checkIds"].as_array().is_some_and(|checks| checks.contains(&result["id"]))
+                })
+                .collect();
+            format!("待主 agent 阅读后编写修复委派；本段只供参考，不可作为子 agent 提示词直接派发。\n\n原批准任务：\n{approved_prompt}\n\n第 {round} 轮本任务的失败反馈：{}\n读取 {}/{ACCEPTANCE_FILE} 全部反馈，只修复本任务关联的失败检查，保留已通过功能，不重做批准的全部范围。主 agent 必须用 todo_update {{id,prompt}} 保存具体目标、读写范围、修复方法、产物和验收步骤后才允许执行。",
+                json!(feedback), up.dir)
+        });
         if let Some(old) = existing
             .iter()
             .find(|t| t.plan_todo_id.as_deref() == Some(&key))
         {
-            if old.status != "completed" {
-                let patched = state
+            if old.status != "completed" || prepare_repair {
+                let description = if prepare_repair {
+                    let mut context = repair_description.clone().unwrap_or_default();
+                    if let Some(previous) =
+                        old.description.as_deref().filter(|s| !s.trim().is_empty())
+                    {
+                        context.push_str(&format!("\n\n旧任务说明（保留参考）：\n{previous}"));
+                    }
+                    if let Some(previous) = old.prompt.as_deref().filter(|s| !s.trim().is_empty()) {
+                        context.push_str(&format!(
+                            "\n\n旧修复提示词（须由主 agent 重新审阅和编写）：\n{previous}"
+                        ));
+                    }
+                    for legacy in existing.iter().filter(|legacy| legacy.plan_todo_id.as_deref().is_some_and(|key| key.starts_with(&format!("{prefix}fix:")) && key.ends_with(&format!(":{id}")))) {
+                        context.push_str(&format!("\n\n历史修复记录（只保留证据，不再派发）：\n{}", serde_json::to_string(legacy).map_err(failure)?));
+                    }
+                    Some(context)
+                } else {
+                    None
+                };
+                let mut patched = state
                     .todos
                     .patch(
                         &old.id,
                         &PatchTodoRequest {
-                            status: Some("queued".into()),
+                            // Resume does not authorize replay. The scheduler
+                            // reconciles interrupted work from host receipts.
+                            status: prepare_repair.then(|| "queued".into()),
+                            description,
                             ..Default::default()
                         },
                     )
                     .map_err(|e| failure(format!("{e:?}")))?;
+                if prepare_repair {
+                    patched = state
+                        .todos
+                        .clear_delegation(&old.id)
+                        .map_err(|e| failure(format!("{e:?}")))?;
+                }
                 emit(
                     state,
                     sid,
@@ -1045,21 +1282,17 @@ fn materialize(
                 }
             }
         }
-        let repair=repair_round.map(|round|format!("本任务仅修复第{round}轮失败检查 {:?}；读取 {}/{ACCEPTANCE_FILE} 全部反馈。保留已通过功能，不重做批准的全部范围。",failed,up.dir)).unwrap_or_default();
-        let prompt=format!("{}\n\n完整需求包: {}/{MANIFEST}。开工前读取全部内容。批准计划: {}。检查id: {}。当前目标后端: {}。人工检查只在最终进行。{}",
-            task["prompt"].as_str().unwrap(),up.dir,up.plan_path.as_deref().unwrap_or_default(),task["checkIds"],read_json(&dir.join(TARGET)).unwrap_or(Value::Null),
-            repair);
-        let title = repair_round
-            .map(|round| format!("修复第{round}轮 · {}", task["title"].as_str().unwrap()))
-            .unwrap_or_else(|| task["title"].as_str().unwrap().into());
+        if repair_round.is_some() { return Err(format!("UP_REPAIR_ORIGINAL_MISSING: 缺少原批准任务{id}")); }
+        let title = task["title"].as_str().unwrap().to_string();
         let todo = state
             .todos
             .create(
                 sid,
                 NewTodo {
                     title,
+                    description: repair_description,
                     role: task["role"].as_str().map(str::to_string),
-                    prompt: Some(prompt),
+                    prompt: repair_round.is_none().then_some(approved_prompt),
                     stage: task["stage"].as_str().map(str::to_string),
                     deps,
                     verify: Some("qa".into()),
@@ -1102,7 +1335,12 @@ fn materialize(
     report["phase"] = json!(phase.as_str());
     report["status"] = json!("running");
     report["activeTodoIds"] = json!(active_ids);
+    if repair_round.is_some() {
+        report["repairDelegationVersion"] = json!(2);
+        report["repairTodoIds"] = json!(repair_ids);
+    }
     save(dir, PRODUCTION_FILE, &report)?;
+    crate::plan::advance_production_plan(dir)?;
     Ok(())
 }
 
@@ -1134,6 +1372,14 @@ fn ordered_tasks(tasks: &[Value]) -> Result<Vec<&Value>, String> {
 /// Demo revisions are independent directories; a failed attempt cannot destroy
 /// the last playable build. The builder sees full text copies in _requirements.
 pub fn prepare_demo(rt: &UltraRuntime) -> Result<(PathBuf, String), String> {
+    let demo_prompt = rt
+        .tracker
+        .demo_prompt
+        .lock()
+        .unwrap()
+        .clone()
+        .filter(|prompt| !prompt.trim().is_empty())
+        .ok_or("ULTRAPLAN_DEMO_DELEGATION_MISSING: 主 agent 尚未提交本轮 demoPrompt，请阅读需求后编写详细委派")?;
     if !rt.dir_abs.join(SPEC_FILE).is_file() {
         return Err("ULTRAPLAN_SPEC_MISSING: 未提交完整需求".into());
     }
@@ -1166,7 +1412,15 @@ pub fn prepare_demo(rt: &UltraRuntime) -> Result<(PathBuf, String), String> {
         "version":package["version"],"questionnaireRev":package["questionnaireRev"],
         "demoIteration":package["demoIteration"],"planRev":package["planRev"],"files":manifest}),
     )?;
-    Ok((work, "读取 requirements.json 及其中每个文件的完整内容，然后制作可玩的核心循环 Web Demo。入口 index.html。包含真实操作、目标、胜负反馈、重开及主要视觉方向；已有资产使用需求中确认的本地引用或自包含临时素材。输出 probe.json，包含真实键鼠 inputs 和基于 window.__demo.getState() 的 assertions；暴露 reset/getState。不得访问外部网络。不要修改 _requirements 或 requirements.json。只写当前目录。完成后说明操作方法、目标和Demo范围。".into()))
+    // The manifest itself may exceed the tool feedback limit. Include every
+    // short chunk path in the delegation so its tail cannot become invisible.
+    let read_list = manifest
+        .iter()
+        .filter_map(|entry| entry["path"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!("{demo_prompt}\n\n协调器强制执行约束：\n开工前全文读取 requirements.json 及其中每个需求文件，长文件逐段读完。工具结果超过 4000 字符会被截断，优先逐个 read_file 读取以下短分段；完整读取对应原文也会计入，分页读取会累计，输出截断不代表读完。若写入或探测返回 ULTRAPLAN_REQUIREMENTS_INCOMPLETE，先补读错误列出的分段再重试操作。\n需求分段完整清单：\n{read_list}\n当前目录是本轮隔离 Demo 目录，只能写当前目录；不得修改 _requirements 或 requirements.json，不得访问外部网络。入口必须为 index.html。输出 probe.json，包含真实键鼠 inputs 和基于 window.__demo.getState() 的 assertions；暴露 reset/getState，供浏览器实际验证操作和状态变化。完成后说明操作方法、目标和 Demo 范围，并报告验证结果。\n");
+    Ok((work, prompt))
 }
 fn requirement_chunks(text: &str) -> Vec<String> {
     let mut chunks = Vec::new();
@@ -1377,12 +1631,25 @@ pub(super) fn demo_face(up: Option<&UltraPlanState>, dir: Option<&Path>) -> Valu
 }
 
 pub fn verification_tool_spec() -> Value {
-    tool(VERIFY_TOOL,"执行计划中的自动检查。matrix是真实玩法断言矩阵；自动结果和证据由服务端生成，不能自报pass。",json!({"id":{"type":"string"},"matrix":{"type":"object"}}), &["id","matrix"])
+    tool(VERIFY_TOOL,"执行批准的单项自动检查。id必须是当前checks.automated的检查id（不是flowId/todoId）；matrix必须包含scene和cases。返回逐case真实结果，禁止自报pass。",json!({"id":{"type":"string","description":"当前批准checks.automated中的唯一id"},"matrix":super::verify::matrix_schema()}), &["id","matrix"])
 }
 
 pub fn record_check(dir: &Path, id: &str, result: Value) -> Result<(), String> {
     let mut production =
         read_json(&dir.join(PRODUCTION_FILE)).ok_or_else(|| failure("没有制作记录"))?;
+    let previous = production["checks"][id].clone();
+    if previous.is_object() && previous != result {
+        if !production["checkHistory"].is_object() {
+            production["checkHistory"] = json!({});
+        }
+        if !production["checkHistory"][id].is_array() {
+            production["checkHistory"][id] = json!([]);
+        }
+        production["checkHistory"][id]
+            .as_array_mut()
+            .unwrap()
+            .push(previous);
+    }
     production["checks"][id] = result;
     save(dir, PRODUCTION_FILE, &production)
 }
@@ -1419,6 +1686,126 @@ pub fn validation_summary(rt: &UltraRuntime) -> Result<Value, String> {
     validated_evidence(&rt.flow_id, ws, &rt.dir_abs)
 }
 
+fn evidence_issues(
+    checks: &Value,
+    production: &Value,
+    target: &Value,
+    flow_id: &str,
+    ws: &Path,
+    project_relative: &str,
+    fingerprint: &str,
+) -> Vec<Value> {
+    checks["automated"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|check| {
+            let id = check["id"].as_str().unwrap_or_default();
+            let report = &production["checks"][id];
+            let result = (|| -> Result<(), (&str, String)> {
+                if report.is_null() {
+                    if let Some(attempt) =
+                        production["verificationErrors"]
+                            .as_array()
+                            .and_then(|attempts| {
+                                attempts.iter().rev().find(|attempt| attempt["id"] == id)
+                            })
+                    {
+                        let status = if attempt["failureKind"] == "blocked" {
+                            "blocked"
+                        } else {
+                            "invalid_request"
+                        };
+                        return Err((
+                            status,
+                            attempt["error"].as_str().unwrap_or("验证请求未执行").into(),
+                        ));
+                    }
+                    return Err(("missing", "尚未执行自动检查".into()));
+                }
+                if report["projectRoot"] != project_relative
+                    || report["projectFingerprint"] != fingerprint
+                {
+                    return Err((
+                        "stale",
+                        "报告对应的项目内容已变化，须对当前产物重新验证".into(),
+                    ));
+                }
+                if report["id"] != id
+                    || report["flowId"] != flow_id
+                    || report["kind"] != check["kind"]
+                    || report["approvedCheck"] != *check
+                {
+                    return Err(("stale", "报告与当前批准检查不匹配".into()));
+                }
+                if report["ok"] != true {
+                    let category = match report["failureKind"].as_str() {
+                        Some("stale") => "stale",
+                        Some("invalid_request") => "invalid_request",
+                        Some("execution" | "blocked") => "blocked",
+                        _ => "failed",
+                    };
+                    let reason = report["error"].as_str().unwrap_or("断言未通过");
+                    return Err((category, reason.into()));
+                }
+                if report["backendInfo"]["renderBackend"] != target["renderBackend"] {
+                    return Err(("stale", "验证后端与批准目标不一致".into()));
+                }
+                let path = text_field(report, "reportPath").map_err(|e| ("missing", e))?;
+                let report_path = evidence_file(ws, path).map_err(|e| ("missing", e))?;
+                if read_json(&report_path).as_ref() != Some(report) {
+                    return Err(("stale", "落盘报告与验证记录不匹配".into()));
+                }
+                let shots = report["screenshots"]
+                    .as_array()
+                    .filter(|s| !s.is_empty())
+                    .ok_or(("missing", "没有截图证据".to_string()))?;
+                for shot in shots {
+                    let path = text_field(shot, "path").map_err(|e| ("missing", e))?;
+                    let file = evidence_file(ws, path).map_err(|e| ("missing", e))?;
+                    let bytes = std::fs::read(file).map_err(|e| ("missing", e.to_string()))?;
+                    if shot["sha256"] != sha256_hex(&bytes) {
+                        return Err(("stale", "截图证据已修改".into()));
+                    }
+                }
+                Ok(())
+            })();
+            result.err().map(|(status, reason)| {
+                json!({"id":id,"status":status,"reason":reason,
+            "cases":report["matrix"]["cases"],"reportPath":report["reportPath"]})
+            })
+        })
+        .collect()
+}
+
+/// Diagnostics for targeted recovery: missing/stale evidence asks for another
+/// verification, while only actual failed checks justify implementation repair.
+pub fn verification_issues(rt: &UltraRuntime) -> Result<Vec<Value>, String> {
+    let ws = rt.dir_abs.ancestors().nth(3).ok_or("流程目录非法")?;
+    let checks = read_json(&rt.dir_abs.join(CHECKS_FILE)).ok_or("缺少检查清单")?;
+    let production = read_json(&rt.dir_abs.join(PRODUCTION_FILE)).ok_or("缺少制作记录")?;
+    let target = read_json(&rt.dir_abs.join(TARGET)).ok_or("缺少制作目标")?;
+    let relative = target["projectRoot"].as_str().unwrap_or(".");
+    if relative != "." {
+        safe_relative(relative)?;
+    }
+    let workspace = ws.canonicalize().map_err(failure)?;
+    let project = workspace.join(relative).canonicalize().map_err(failure)?;
+    if !project.starts_with(&workspace) {
+        return Err(failure("制作项目不属于当前工作区"));
+    }
+    let fingerprint = super::evidence::project_fingerprint(&project)?;
+    Ok(evidence_issues(
+        &checks,
+        &production,
+        &target,
+        &rt.flow_id,
+        ws,
+        relative,
+        &fingerprint,
+    ))
+}
+
 fn validated_evidence(flow_id: &str, ws: &Path, dir: &Path) -> Result<Value, String> {
     let checks = read_json(&dir.join(CHECKS_FILE)).ok_or_else(|| failure("缺少检查清单"))?;
     let production =
@@ -1441,50 +1828,23 @@ fn validated_evidence(flow_id: &str, ws: &Path, dir: &Path) -> Result<Value, Str
     if production["flowId"] != flow_id || production["planHash"] != plan_hash(ws, path, dir)? {
         return Err("ULTRAPLAN_PLAN_CHANGED: 验证记录对应的计划已变化".into());
     }
-    let mut failed = Vec::new();
-    for check in checks["automated"]
+    checks["automated"]
         .as_array()
-        .ok_or_else(|| failure("自动检查缺失"))?
-    {
-        let id = check["id"].as_str().ok_or_else(|| failure("检查id缺失"))?;
-        let report = &production["checks"][id];
-        let valid = (|| -> Result<(), String> {
-            if report["projectRoot"] != project_relative
-                || report["projectFingerprint"] != fingerprint
-                || report["ok"] != true
-                || report["id"] != id
-                || report["flowId"] != flow_id
-                || report["kind"] != check["kind"]
-                || report["approvedCheck"] != *check
-                || report["backendInfo"]["renderBackend"] != target["renderBackend"]
-            {
-                return Err("验证报告不匹配".into());
-            }
-            let report_path = evidence_file(ws, text_field(report, "reportPath")?)?;
-            if read_json(&report_path).as_ref() != Some(report) {
-                return Err("落盘报告与验证记录不匹配".into());
-            }
-            let shots = report["screenshots"]
-                .as_array()
-                .filter(|s| !s.is_empty())
-                .ok_or("没有截图证据")?;
-            for shot in shots {
-                let file = evidence_file(ws, text_field(shot, "path")?)?;
-                let bytes = std::fs::read(file).map_err(failure)?;
-                if shot["sha256"] != sha256_hex(&bytes) {
-                    return Err("截图证据已修改".into());
-                }
-            }
-            Ok(())
-        })();
-        if valid.is_err() {
-            failed.push(id.to_string());
-        }
-    }
+        .filter(|items| !items.is_empty())
+        .ok_or_else(|| failure("自动检查缺失"))?;
+    let failed = evidence_issues(
+        &checks,
+        &production,
+        &target,
+        flow_id,
+        ws,
+        project_relative,
+        &fingerprint,
+    );
     if !failed.is_empty() {
         return Err(format!(
-            "ULTRAPLAN_PRODUCTION_INCOMPLETE: 自动检查未通过或未执行: {}",
-            failed.join(", ")
+            "ULTRAPLAN_PRODUCTION_INCOMPLETE: {}",
+            json!({"checks":failed,"recovery":"missing/stale补验证；blocked先解除能力阻塞；failed仅定向修复关联既有任务"})
         ));
     }
     let delivery = read_json(&dir.join(DELIVERY)).ok_or_else(|| failure("缺少游戏交付入口"))?;
@@ -1740,8 +2100,8 @@ mod tests {
 
     fn plan() -> Value {
         json!({"tasks":[
-            {"id":"logic","title":"Gameplay","role":"logic-programmer","prompt":"Implement loop","stage":"build","deps":["scene"],"verify":"qa","checkIds":["g","m"]},
-            {"id":"scene","title":"Scene","role":"scene-builder","prompt":"Build scene","stage":"build","deps":[],"verify":"qa","checkIds":["v"]}],
+            {"id":"logic","title":"Gameplay","role":"logic-programmer","prompt":"Implement loop","stage":"build","deps":["scene"],"verify":"qa","checkIds":["g","m"],"requiredTools":["mcp__code-forge__rx_check"],"outputs":["Content/Scripts/game.rx"],"handoffChecks":[{"kind":"rx","path":"Content/Scripts/game.rx"}]},
+            {"id":"scene","title":"Scene","role":"scene-builder","prompt":"Build scene","stage":"build","deps":[],"verify":"qa","checkIds":["v"],"requiredTools":["mcp__engine-scene__scene_save"],"outputs":["Content/Scenes/game.rxscene"],"handoffChecks":[{"kind":"scene","path":"Content/Scenes/game.rxscene"}]}],
             "checks":{"automated":[{"id":"v","kind":"visual","scene":"Content/Scenes/main.rxscene","steps":"Capture","expected":"Visible"},{"id":"g","kind":"gameplay","scene":"Content/Scenes/main.rxscene","steps":"Move","expected":"Moved"}],"manual":[{"id":"m","title":"Feel","steps":"Play","expected":"Responsive","required":true}]},
             "delivery":{"entry":"Content/Scenes/main.rxscene","controls":"Arrow keys; R to restart"}})
     }
@@ -1866,6 +2226,148 @@ mod tests {
     }
 
     #[test]
+    fn task_contract_requires_covered_outputs_and_executable_matrix_shape() {
+        let mut task = plan()["tasks"][1].clone();
+        validate_task_contract(&task).unwrap();
+        task["outputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!("Content/missing.json"));
+        assert!(validate_task_contract(&task)
+            .unwrap_err()
+            .contains("每个 outputs"));
+        task["outputs"] = json!(["Content/Scenes/game.rxscene"]);
+        task["handoffChecks"] = json!([{"kind":"matrix","path":"Content/Scenes/game.rxscene",
+            "matrix":{"scene":"Content/Scenes/game.rxscene","enter_play":false,
+                "cases":[{"name":"entity exists","assert":{"kind":"entity_count","op":"ge","expected":1}}]}},
+            {"kind":"scene","path":"Content/Scenes/game.rxscene"}]);
+        validate_task_contract(&task).unwrap();
+        task["handoffChecks"][0]["matrix"]["cases"][0]["assert"]["op"] = json!("gte");
+        assert!(validate_task_contract(&task).unwrap_err().contains("op"));
+        task["requiredTools"] = json!(["forge__mcp__engine-scene__scene_save"]);
+        assert!(validate_task_contract(&task).unwrap_err().contains("原名"));
+    }
+
+    #[test]
+    fn known_output_types_require_semantic_handoff_checks() {
+        for (extension, kind) in [("rx", "rx"), ("rxgraph", "graph"), ("rxscene", "scene")] {
+            let path = format!("Content/game.{extension}");
+            let mut task = plan()["tasks"][1].clone();
+            task["outputs"] = json!([path]);
+            task["handoffChecks"] =
+                json!([{"kind":"file","path":path},{"kind":"json","path":path}]);
+            assert!(validate_task_contract(&task)
+                .unwrap_err()
+                .contains("不能替代"));
+            task["handoffChecks"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"kind":kind,"path":path}));
+            validate_task_contract(&task).unwrap();
+        }
+    }
+
+    #[test]
+    fn legacy_contract_requires_explicit_upgrade_without_mutating_approved_files() {
+        let (state, base, ws, sid, mut up) = fixture("up-legacy-contract");
+        let dir = up.dir_abs(&ws).unwrap();
+        let mut tasks = read_json(&dir.join(TEAM_PLAN_FILE)).unwrap();
+        tasks[0].as_object_mut().unwrap().remove("outputs");
+        save(&dir, TEAM_PLAN_FILE, &tasks).unwrap();
+        up.plan_hash = Some(plan_hash(&ws, up.plan_path.as_deref().unwrap(), &dir).unwrap());
+        let approved_hash = up.plan_hash.clone();
+        let bytes = std::fs::read(dir.join(TEAM_PLAN_FILE)).unwrap();
+        assert!(materialize(&state, &sid, &up, &dir, ProductionPhase::Start)
+            .unwrap_err()
+            .starts_with("UP_CONTRACT_UPGRADE_REQUIRED"));
+        assert!(state.todos.list_by_session(&sid).is_empty());
+        assert!(!dir.join(PRODUCTION_FILE).exists());
+        assert_eq!(std::fs::read(dir.join(TEAM_PLAN_FILE)).unwrap(), bytes);
+        assert_eq!(up.plan_hash, approved_hash);
+        assert_eq!(
+            Some(plan_hash(&ws, up.plan_path.as_deref().unwrap(), &dir).unwrap()),
+            approved_hash
+        );
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn resume_preserves_failure_and_blocked_status_until_targeted_retry() {
+        let (state, base, ws, sid, up) = fixture("up-resume-preserve-failure");
+        let dir = up.dir_abs(&ws).unwrap();
+        materialize(&state, &sid, &up, &dir, ProductionPhase::Start).unwrap();
+        for status in ["failed", "blocked", "running", "verifying"] {
+            for todo in state.todos.list_by_session(&sid) {
+                state
+                    .todos
+                    .patch(
+                        &todo.id,
+                        &PatchTodoRequest {
+                            status: Some(status.into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+            }
+            materialize(&state, &sid, &up, &dir, ProductionPhase::Resume).unwrap();
+            assert!(state
+                .todos
+                .list_by_session(&sid)
+                .iter()
+                .all(|t| t.status == status));
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn evidence_recovery_preserves_failed_cases_and_distinguishes_missing_and_stale() {
+        let check = json!({"id":"g","kind":"gameplay","scene":"Content/Scenes/game.rxscene"});
+        let checks = json!({"automated":[check.clone()]});
+        let report = json!({"id":"g","flowId":"flow","kind":"gameplay","approvedCheck":check,
+            "projectRoot":".","projectFingerprint":"current","ok":false,"failureKind":"assertion",
+            "error":"player did not move","matrix":{"cases":[{"name":"move right","pass":false,"detail":"x remains 0"}]}});
+        let target = json!({"renderBackend":"rurix"});
+        let issues = |production: &Value| {
+            evidence_issues(
+                &checks,
+                production,
+                &target,
+                "flow",
+                Path::new("."),
+                ".",
+                "current",
+            )
+        };
+        assert_eq!(issues(&json!({"checks":{}}))[0]["status"], "missing");
+        let mut production = json!({"checks":{"g":report}});
+        let failure = issues(&production);
+        assert_eq!(failure[0]["status"], "failed");
+        assert_eq!(failure[0]["reason"], "player did not move");
+        assert_eq!(failure[0]["cases"][0]["detail"], "x remains 0");
+        production["checks"]["g"]["projectFingerprint"] = json!("old");
+        assert_eq!(issues(&production)[0]["status"], "stale");
+        production["checks"]["g"]["projectFingerprint"] = json!("current");
+        production["checks"]["g"]["failureKind"] = json!("execution");
+        assert_eq!(issues(&production)[0]["status"], "blocked");
+    }
+
+    #[test]
+    fn replacing_check_keeps_previous_failure_reason_in_history() {
+        let (_state, base, ws, _sid, up) = fixture("up-check-history");
+        let dir = up.dir_abs(&ws).unwrap();
+        save(&dir, PRODUCTION_FILE, &json!({"checks":{}})).unwrap();
+        record_check(&dir, "g", json!({"ok":false,"error":"missing movement"})).unwrap();
+        record_check(&dir, "g", json!({"ok":true})).unwrap();
+        let production = read_json(&dir.join(PRODUCTION_FILE)).unwrap();
+        assert_eq!(production["checks"]["g"]["ok"], true);
+        assert_eq!(
+            production["checkHistory"]["g"][0]["error"],
+            "missing movement"
+        );
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn reverse_order_materializes_safe_ids_and_resume_preserves_evidence() {
         let (state, base, ws, sid, up) = fixture("up-materialize-resume");
         let dir = up.dir_abs(&ws).unwrap();
@@ -1942,21 +2444,113 @@ mod tests {
         save(&dir,ACCEPTANCE_FILE,&json!({"rounds":[{"round":1,"failed":["m"],"results":[{"id":"m","status":"fail","note":"Movement too slow"}]}]})).unwrap();
         materialize(&state, &sid, &up, &dir, ProductionPhase::Fix).unwrap();
         let todos = state.todos.list_by_session(&sid);
-        assert_eq!(todos.len(), 3);
-        let fix = todos.iter().find(|t| t.title.starts_with("修复")).unwrap();
+        assert_eq!(todos.len(), 2);
+        let fix = todos.iter().find(|t| t.title == "Gameplay").unwrap();
+        let scene = todos.iter().find(|t| t.title == "Scene").unwrap();
         assert_eq!(fix.role.as_deref(), Some("logic-programmer"));
-        assert!(fix.deps.is_empty());
+        assert_eq!(fix.deps, vec![scene.id.clone()]);
+        assert_eq!(scene.status, "completed", "已通过依赖保持完成");
+        assert!(fix.prompt.is_none());
+        assert!(fix
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("Movement too slow"));
+        assert!(fix
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("Implement loop"));
         let report = read_json(&dir.join(PRODUCTION_FILE)).unwrap();
-        assert_eq!(report["activeTodoIds"], json!([fix.id]));
+        assert_eq!(report["repairDelegationVersion"], 2);
+        assert_eq!(report["repairTodoIds"], json!([fix.id]));
+        assert_eq!(report["activeTodoIds"].as_array().unwrap().len(), 2);
         assert_eq!(report["checks"], json!({}));
         assert_eq!(report["history"][0]["checks"]["v"]["ok"], true);
         record_check(&dir, "v", json!({"ok":true,"generation":2})).unwrap();
         materialize(&state, &sid, &up, &dir, ProductionPhase::Resume).unwrap();
-        assert_eq!(state.todos.list_by_session(&sid).len(), 3);
+        assert_eq!(state.todos.list_by_session(&sid).len(), 2);
         assert_eq!(
             read_json(&dir.join(PRODUCTION_FILE)).unwrap()["checks"]["v"]["generation"],
             2
         );
+        assert!(state
+            .todos
+            .list_by_session(&sid)
+            .iter()
+            .find(|todo| todo.id == fix.id)
+            .unwrap()
+            .prompt
+            .is_none());
+        let prompt = "Read the approved loop and failed movement-speed feedback. Adjust only the existing movement script to apply input each frame; preserve scene, win, and restart behavior. Deliver the script change and evidence from the gameplay check, then describe how to repeat the manual feel check.";
+        let (ok, message) = crate::native_tools::dispatch_native_scoped(
+            &ws,
+            &state.events,
+            &state.todos,
+            &sid,
+            "leader-repair-fixture",
+            "todo_update",
+            &json!({"id":fix.id,"prompt":prompt}),
+            &fix.source,
+        );
+        assert!(ok, "{message}");
+        materialize(&state, &sid, &up, &dir, ProductionPhase::Resume).unwrap();
+        assert_eq!(
+            state
+                .todos
+                .list_by_session(&sid)
+                .iter()
+                .find(|todo| todo.id == fix.id)
+                .unwrap()
+                .prompt
+                .as_deref(),
+            Some(prompt)
+        );
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn legacy_repair_delegations_are_retained_as_context_before_reassignment() {
+        let (state, base, ws, sid, up) = fixture("up-materialize-legacy-fix");
+        let dir = up.dir_abs(&ws).unwrap();
+        materialize(&state, &sid, &up, &dir, ProductionPhase::Start).unwrap();
+        let originals = state.todos.list_by_session(&sid);
+        let original = originals.iter().find(|todo| todo.title == "Gameplay").unwrap();
+        for todo in &originals {
+            state.todos.patch(&todo.id, &PatchTodoRequest { status: Some("completed".into()), ..Default::default() }).unwrap();
+        }
+        let legacy = state.todos.create(&sid, NewTodo {
+            title: "修复第1轮 · Gameplay".into(), role: Some("logic-programmer".into()),
+            source: Some(original.source.clone()), plan_todo_id: Some(format!("{}:{}:fix:1:logic", up.id, up.plan_rev)),
+            prompt: Some("Historical coordinator-generated repair instruction".into()),
+            description: Some("Retained historical context".into()), ..Default::default()
+        }).unwrap();
+        save(&dir, ACCEPTANCE_FILE, &json!({"rounds":[{"round":1,"failed":["m"],"results":[{"id":"m","status":"fail","note":"Movement too slow"}]}]})).unwrap();
+        let mut report = read_json(&dir.join(PRODUCTION_FILE)).unwrap();
+        report["repairRound"] = json!(1);
+        report["repairDelegationVersion"] = json!(1);
+        report["activeTodoIds"] = json!([legacy.id]);
+        save(&dir, PRODUCTION_FILE, &report).unwrap();
+        materialize(&state, &sid, &up, &dir, ProductionPhase::Resume).unwrap();
+        let tasks = state.todos.list_by_session(&sid);
+        assert_eq!(tasks.len(), 3, "保留2个原任务和1个历史修复，不创建新链");
+        let migrated = tasks.iter().find(|todo| todo.id == original.id).unwrap();
+        assert_eq!(migrated.status, "queued");
+        assert!(migrated.prompt.is_none());
+        let context = migrated.description.as_deref().unwrap();
+        assert!(context.contains("Movement too slow"));
+        assert!(context.contains("Retained historical context"));
+        assert!(context.contains("Historical coordinator-generated repair instruction"));
+        let current = read_json(&dir.join(PRODUCTION_FILE)).unwrap();
+        assert_eq!(current["repairDelegationVersion"], 2);
+        assert_eq!(current["repairTodoIds"], json!([original.id]));
+        assert!(!current["activeTodoIds"].as_array().unwrap().contains(&json!(legacy.id)));
+        let retained = tasks.iter().find(|todo| todo.id == legacy.id).unwrap();
+        assert_eq!(retained.prompt, legacy.prompt);
+        assert_eq!(retained.description, legacy.description);
+        assert_eq!(retained.updated_at, legacy.updated_at);
+        materialize(&state, &sid, &up, &dir, ProductionPhase::Resume).unwrap();
+        assert_eq!(state.todos.list_by_session(&sid).len(), 3);
         std::fs::remove_dir_all(base).unwrap();
     }
 

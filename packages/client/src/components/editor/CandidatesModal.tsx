@@ -75,7 +75,7 @@ export default function CandidatesModal() {
                     onClick={() => void accept(c)}
                     className={cn(
                       'shrink-0 rounded px-2 py-0.5 text-2xs text-fg-inv',
-                      busy ? 'cursor-not-allowed bg-fg-4' : accepted ? 'bg-sage' : 'bg-fg',
+                      busy ? 'cursor-not-allowed bg-fg-4' : accepted ? 'bg-fg-3' : 'bg-fg',
                     )}
                   >
                     {busy ? '入库中…' : accepted ? '已入库' : 'Accept'}

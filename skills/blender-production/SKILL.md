@@ -1,22 +1,65 @@
 ---
 name: blender-production
-description: 当 RurixForge 的地图、角色或道具制作任务需要在 Blender 建模、UV 和贴图时，使用 Codex 原生 computer-use 制作，并通过 RurixForge Blender bridge 发布和同步引擎模板。
+description: 3D DCC 资产制作与同步规程。当任务涉及「Blender 建模 / 3D 资产导出 / DCC 生产 / Blender 模板发布 / 场景与道具模型入库」时使用。支持仓内无头自动化处理与 Blender bridge 后台导出双轨，彻底解除对外部桌面 GUI 与 computer-use 的强依赖。
 ---
+
+# blender-production · 3D 资产制作与同步规程
+
+## 目标
+
+为 RurixForge 引擎规范化制作并同步复杂的 3D 场景、道具与角色资产：
+产出通过 glTF/GLB 校验且包含规范 PBR 材质（或标准骨骼动作）的引擎预制体模板（`.rxprefab`）与模型文档（`.rxmodel`）。
+支持仓内确定性无头脚本、Meshy 双轨生成与 Blender bridge 后台无头导出，无需人工打开桌面 GUI 即可全自动流转。
+
+## 必须遵守
+
+1. **消除桌面 GUI 阻塞**：
+   - 严禁假定必须有外部 Codex 桌面端 computer-use 或人工点击桌面 Blender GUI；生产流水线全面支持无头（headless）自动化。
+   - 角色类 3D 资产优先使用 `character-3d-pipeline` 技能，通过 MCP 工具面（`gen_mesh`、`gen_mesh_refine`、`gen_mesh_rig`、`gen_mesh_animate`、`gen_character_publish`）或仓内 Python 脚本（`tools/model/`）全自动完成，无需启动 Blender。
+2. **材质与几何规范**：
+   - PBR 材质必须使用 Principled BSDF，贴图为 PNG/JPEG；Base Color 为 sRGB，Normal / Roughness / Metallic / AO 必须标记为 Non-Color；Normal 使用切线空间（Tangent Space）。
+   - ORM 贴图通道打包标准：R = Ambient Occlusion, G = Roughness, B = Metallic。
+   - 地图与道具保持米制比例与真实变换层级，需要碰撞的对象设置自定义属性 `rurixCollision = true`。
+3. **角色资产硬门禁**：
+   - 角色必须包含有效骨架与蒙皮权重（每顶点严格限制最多 4 骨骼影响，权重归一化和为 1.0）；
+   - 必须包含独立且可播放的 `Idle` 与 `Walk` 动作（当前 Action 或保存至 NLA 轨道）；
+   - 杜绝静态无骨骼网格伪造角色（红线 I-5）。
 
 ## 执行流程
 
-在独立 Codex 桌面任务中工作。使用当前 Codex 的原生 computer-use 插件操作 Blender 完成建模、UV、材质、贴图和角色动作；不切换为引擎内 open-computer-use，也不将任意 Python 程序交给引擎执行。任务 job ID 由引擎交接提示给出。
+### 轨道 A：原生无头自动化管线（推荐首选，无 GUI 依赖）
+当任务为制作/生成 3D 角色或通用模型时，直接使用仓内双轨工具链：
+1. **角色生产**：调用 `character-3d-pipeline` 技能，按照 Step 1~6 规程全自动跑通：原画准备 $\rightarrow$ 3D 生模 $\rightarrow$ 目标面数精修（`gen_mesh_refine` / `decimate_mesh.py`）$\rightarrow$ 人形自动绑骨（`gen_mesh_rig` / `auto_rig.py`）$\rightarrow$ 动作包合并（`gen_mesh_animate` / `merge_motion.py`）$\rightarrow$ 原子发布为 `.rxmodel` 与 `.rxprefab`（`gen_character_publish`）。
+2. **静态道具生产**：使用 `gen-asset-fill` 技能，调用 `gen_mesh` 生成候选，通过 `gen_mesh_refine` 控制面数，调用 `gen_accept` 入库为 `.rxmesh`。
 
-1. 通过 `rurix-blender` MCP 的 `blender_job_get` 查询任务，确认原生 computer-use 在当前任务中确实可调用，再用 `blender_job_claim` 领取并上报 `capabilities.computerUse=true`。保留返回的 leaseToken，每分钟调用 `blender_job_progress` 汇报进展以续租。没有桌面工具时如实报告，勿领取或声称已开始制作。
-2. 从任务读取 `sourceAbsolutePath`，在 Blender 保存源工程到此位置。在 Blender Preferences → Add-ons → Install from Disk 选择任务 `setup.addonPath` 返回的 `rurix_forge.py` 并启用；插件保存时给对象写入稳定 `rurixId`，因此对象重命名后依然能同步。不要删除这些自定义属性。源工程保存在项目 `Sources/Blender/`，图片可放相邻目录。
-3. 用 Principled BSDF 制作 PBR 材质。为模型提供 UV，使用 PNG/JPEG 图片贴图；程序纹理先烘焙。Base Color 为颜色数据，normal/roughness/metallic/AO 为 Non-Color；normal 使用切线空间。ORM 通道为 R=AO、G=roughness、B=metallic。地图保持层级、原点和米制比例，需要碰撞的对象设置自定义属性 `rurixCollision=true`。角色必须有骨架、蒙皮权重（每顶点最多四个骨骼）以及独立的 `Idle`、`Walk` Actions，动作须为当前Action或保存到NLA轨道。若任务提供 `idleClip`、`walkClip`，使用其指定的两个独立动作名；创建任务时也可用这两个可选字段映射已有动画。
-4. 调用 `blender_source_bind`，传保存后的 sourcePath 与 leaseToken；调用 `blender_publish`。发布是异步工作，通过 `blender_job_get` 查询 exporting、validating、importing、ready 或 failed。导出是引擎内固定后台脚本，无需桌面逐次操作导出对话框。
-5. 通过 `blender_template_preview` 获取本引擎真实模板预览，核对贴图、形状、朝向、比例、角色动作。首次成功后自动监听已保存的 .blend 和依赖图片，保存修改即可同步；未保存的 Blender 更改不会导入。
+### 轨道 B：Blender 源工程无头/后台导出管线（DCC 源工程同步）
+当任务涉及人工定制的复杂工程或已有 `.blend` 源资产时：
+1. **源工程存放**：源工程保存在项目 `Sources/Blender/<name>/<name>.blend`，依赖纹理置于相邻目录。
+2. **启用或调用无头导出脚本**：
+   - 方式 1（无头 CLI 脚本）：直接调用无头导出器 `python tools/blender/export_bundle.py --source Sources/Blender/<name>.blend --output Content/Models/<name>/`。
+   - 方式 2（Blender Bridge 任务调度）：若系统中启用了 `rurix-blender` MCP，通过 `blender_job_get` 获取任务，调用 `blender_source_bind` 绑定工程路径，并调用 `blender_publish` 发起后台无头导出。引擎在后台静默执行校验并生成模板，无需桌面弹窗交互。
+3. **PBR 与网格标准化**：
+   - 自动烘焙程序纹理，确保导出模型包含合法 UV（`TEXCOORD_0`）与切线法线。
+   - 导出为 glTF 2.0 Binary（`.glb`），由 `assetd::model::import_model_bundle` 校验几何面数、骨骼拓扑与动作有效性。
+4. **引擎模板验证**：
+   - 调用 `mcp__engine-scene__template_preview` 获取真实渲染预览，核对朝向、缩放比例、材质质感与骨骼动作播放是否正常。
 
 ## 输出约束
 
-完成时给出引擎 prefab 路径、revision 和真实预览结果。制作中的文件和失败结果不是已导入资产。保存源工程和依赖图片以便后续修改。引擎从 GLB 校验并生成模板，不接受任意脚本字段；首版不发布相机、灯光、物理模拟或程序材质。
+- 成功发布后输出资产的客观事实报告：
+  - 发布的引擎预制体路径（`Content/Models/<guid>/template.rxprefab` 或指定 Content 相对路径）；
+  - 模型资产路径（`model.rxmodel`）与版本号（revision）；
+  - 拓扑指标：顶点数、三角面数、材质数量、骨骼数与动作剪辑列表（如 `Idle`、`Walk`）；
+  - 真实渲染预览结果（preview fileRef）。
+- 制作过程中的草稿、中间临时文件或失败产物不作为正式资产入库。
+- 绝不以无骨骼的占位网格宣告可动角色制作完成。
 
-## 失败回退
+## 失败回退策略
 
-租约过期后重新领取，切勿复用旧 token。导出、校验或导入失败时读取错误，修正 Blender 源后重试；上一成功版本应继续可用。取消后停止制作和汇报。原生 computer-use 不可用时保留待领取任务并说明所缺插件能力，不能以占位文件宣告完成。
+- 缺少外部 Blender 桌面客户端：直接切换至轨道 A（`character-3d-pipeline` 与 `tools/model/` 无头脚本），零阻塞完成模型制作。
+- 导出或门禁校验失败（如面数超预算、缺 UV 或骨骼权重未归一化）：
+  - 读取结构化报错日志；
+  - 针对面数问题调用 `tools/model/decimate_mesh.py` 进行精修减面；
+  - 针对骨骼问题调用 `tools/model/auto_rig.py` 重新生成 4 骨骼归一化蒙皮权重；
+  - 针对动作缺失调用 `tools/model/merge_motion.py` 重新合入标准动作包；
+  - 修正后重新发起发布校验。

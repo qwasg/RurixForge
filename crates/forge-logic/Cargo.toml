@@ -7,6 +7,7 @@ edition.workspace = true
 [dependencies]
 # F4 wave.3:interp 图解释器消费场景模型(Entity/Component/Transform),不依赖 engine-host。
 forge-scene = { path = "../forge-scene" }
+forge-util = { path = "../forge-util" }
 serde.workspace = true
 serde_json.workspace = true
 # RD-F4-004:call_function dll 运行时(rurixc --emit=dll 产物加载 + 标量编组)。

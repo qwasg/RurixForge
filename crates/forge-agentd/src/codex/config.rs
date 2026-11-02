@@ -276,6 +276,9 @@ mod tests {
         let _lock = crate::llm::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        let _f7 = crate::tests::F7_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _g = DataDirGuard::new("rt");
         let cfg = load();
         assert_eq!(cfg.default_engine, ENGINE_LOCAL);

@@ -459,7 +459,7 @@ describe('Codex 页', () => {
 });
 
 describe('模型页', () => {
-  it('deepseek 卡 availability(design-snapshot 实测)+ 配置展开保存(POST llm/key)', async () => {
+  it('deepseek 内置卡 availability(design-snapshot 实测)+ 配置展开保存(POST llm/key)', async () => {
     const posts: Array<{ url: string; body: string }> = [];
     vi.stubGlobal(
       'fetch',
@@ -484,6 +484,9 @@ describe('模型页', () => {
         if (u === '/api/forge/llm/key' && init?.method === 'POST') {
           posts.push({ url: u, body: init.body ?? '' });
           return { ok: true, status: 200, json: async () => ({ ok: true, configured: true }) } as Response;
+        }
+        if (u === '/api/forge/llm/custom-models') {
+          return { ok: true, status: 200, json: async () => ({ models: [], defaultId: null }) } as Response;
         }
         if (u === '/api/forge/gen/backends') {
           return { ok: true, status: 200, json: async () => ({ backends: [] }) } as Response;
@@ -676,146 +679,245 @@ describe('模型页', () => {
   });
 });
 
-describe('模型页 · OpenAI-Compatible 渠道卡(F8 wave.2)', () => {
-  /** 三端点公共 mock 面(design-snapshot=deepseek 卡;status=本卡;gen/backends=生成后端区)。 */
-  function stubBase(statusBody: unknown, posts: Array<{ url: string; body: string }>) {
+describe('模型页 · 自定义模型卡片页(D-049)', () => {
+  type Call = { method: string; url: string; body?: Record<string, unknown> };
+
+  const relay = {
+    id: 'custom:0a1b2c3d',
+    name: 'Claude 中转',
+    label: 'Claude 中转',
+    apiFormat: 'anthropic',
+    baseUrl: 'https://relay.example.com/v1',
+    model: 'claude-sonnet-5-5',
+    endpoint: 'https://relay.example.com/v1/messages',
+    contextWindow: 204800,
+    contextWindowSet: true,
+    maxOutputTokens: null,
+    vision: true,
+    keyConfigured: true,
+    configured: true,
+    isDefault: true,
+  };
+  const legacy = {
+    id: 'openai-compat',
+    name: '',
+    label: 'qwen2.5-7b',
+    apiFormat: 'openai',
+    baseUrl: 'http://127.0.0.1:8000',
+    model: 'qwen2.5-7b',
+    endpoint: 'http://127.0.0.1:8000/v1/chat/completions',
+    contextWindow: 1048576,
+    contextWindowSet: false,
+    maxOutputTokens: null,
+    vision: false,
+    keyConfigured: false,
+    configured: false,
+    isDefault: false,
+  };
+
+  function reply(body: unknown, status = 200): Response {
+    return {
+      ok: status < 400,
+      status,
+      json: async () => body,
+      text: async () => (body === undefined ? '' : JSON.stringify(body)),
+    } as Response;
+  }
+
+  /** 目录 GET 每次取 list() 的当前值;POST/DELETE/test 记入 calls 并按 handler 回包。 */
+  function stubCatalog(
+    list: () => unknown[],
+    calls: Call[],
+    handlers: { save?: (b: Record<string, unknown>) => unknown; test?: unknown } = {},
+  ) {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
         const hit = tryAccountStatusFetch(url, init);
         if (hit) return hit;
         const u = String(url);
-        if (u === '/api/forge/design-snapshot') {
-          return { ok: true, status: 200, json: async () => ({ models: { models: [] } }) } as Response;
+        const method = init?.method ?? 'GET';
+        const body = init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : undefined;
+        if (u === '/api/forge/design-snapshot') return reply({ models: { models: [] } });
+        if (u === '/api/forge/llm/custom-models' && method === 'GET') return reply({ models: list(), defaultId: null });
+        if (u === '/api/forge/llm/custom-models' && method === 'POST') {
+          calls.push({ method, url: u, body });
+          return reply({ ok: true, model: handlers.save?.(body ?? {}) ?? { ...relay, ...body } });
         }
-        if (u === '/api/forge/llm/openai-compat/status') {
-          return { ok: true, status: 200, json: async () => statusBody } as Response;
+        if (u === '/api/forge/llm/custom-models/test' && method === 'POST') {
+          calls.push({ method, url: u, body });
+          return reply(handlers.test ?? { ok: true, latencyMs: 321, endpoint: relay.endpoint, reply: 'pong' });
         }
-        if (u === '/api/forge/llm/openai-compat/config' && init?.method === 'POST') {
-          posts.push({ url: u, body: init.body ?? '' });
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ ok: true, configured: true, baseUrl: 'http://127.0.0.1:8000', model: 'qwen2.5-7b', keyConfigured: true }),
-          } as Response;
+        if (u.startsWith('/api/forge/llm/custom-models/') && method === 'DELETE') {
+          calls.push({ method, url: u });
+          return reply({ ok: true });
         }
-        if (u === '/api/forge/gen/backends') {
-          return { ok: true, status: 200, json: async () => ({ backends: [] }) } as Response;
-        }
-        throw new Error(`未 mock: ${u}`);
+        if (u === '/api/forge/gen/backends') return reply({ backends: [] });
+        throw new Error(`未 mock: ${method} ${u}`);
       }),
     );
   }
 
-  it('未配置腿:needs-key 徽标 + 无配置行', async () => {
-    stubBase({ configured: false, baseUrl: '', model: '', keyConfigured: false }, []);
-    render(<SettingsOverlay />);
-    await openModelsWithByo();
-    expect(await screen.findByTestId('channel-openai-compat')).toBeInTheDocument();
-    expect(screen.getByTestId('oai-availability')).toHaveTextContent('needs-key');
-    expect(screen.queryByTestId('oai-status-line')).not.toBeInTheDocument();
-  });
-
-  it('已配置腿:available 徽标 + 状态行显示 baseUrl/model/key 已配置(无 key 串)', async () => {
-    stubBase(
-      { configured: true, baseUrl: 'http://127.0.0.1:8000', model: 'qwen2.5-7b', keyConfigured: true },
-      [],
-    );
-    render(<SettingsOverlay />);
-    await openModelsWithByo();
-    expect(await screen.findByTestId('oai-availability')).toHaveTextContent('available');
-    const line = await screen.findByTestId('oai-status-line');
-    expect(line).toHaveTextContent('http://127.0.0.1:8000');
-    expect(line).toHaveTextContent('qwen2.5-7b');
-    expect(line).toHaveTextContent('key 已配置');
-    // R-5:整卡无 sk- 串。
-    expect(screen.getByTestId('channel-openai-compat').textContent ?? '').not.toContain('sk-');
-  });
-
-  it('配置展开:预填 baseUrl/model + 保存 POST(key 进 body 不回显;key 留空则省略)', async () => {
-    const posts: Array<{ url: string; body: string }> = [];
-    stubBase(
-      { configured: true, baseUrl: 'http://127.0.0.1:8000', model: 'qwen2.5-7b', keyConfigured: true },
-      posts,
-    );
-    render(<SettingsOverlay />);
-    await openModelsWithByo();
-    // 展开:预填已配置 baseUrl/model,key 空(password 不回显)。
-    fireEvent.click(await screen.findByTestId('oai-config-toggle'));
-    const buInput = await screen.findByTestId('oai-baseurl-input');
-    expect(buInput).toHaveValue('http://127.0.0.1:8000');
-    expect(screen.getByTestId('oai-model-input')).toHaveValue('qwen2.5-7b');
-    const keyInput = screen.getByTestId('oai-key-input');
-    expect(keyInput).toHaveAttribute('type', 'password');
-    expect(keyInput).toHaveValue('');
-    // 改 model + 填 key → 保存 → POST 全量三联。
-    fireEvent.change(screen.getByTestId('oai-model-input'), { target: { value: 'glm-4-air' } });
-    fireEvent.change(keyInput, { target: { value: 'sk-test-oai-card' } });
-    fireEvent.click(screen.getByTestId('oai-config-save'));
+  async function flush() {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(posts.length).toBe(1);
-    // vision 恒随体上送(不同于 key 的「留空即省略」):它是开关不是密钥,
-    // 省略会被后端当成「保留既有」,那样用户关不掉它。
-    expect(JSON.parse(posts[0].body)).toEqual({
-      baseUrl: 'http://127.0.0.1:8000',
-      model: 'glm-4-air',
-      key: 'sk-test-oai-card',
-      vision: false,
-    });
-    // 保存后收起 + 状态刷新(第二轮 status 仍为 stub 值)。
-    expect(screen.queryByTestId('oai-config-form')).not.toBeInTheDocument();
-    // key 留空保存 → body 省略 key 域(只改 baseUrl/model)。
-    fireEvent.click(screen.getByTestId('oai-config-toggle'));
-    fireEvent.click(await screen.findByTestId('oai-config-save'));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(posts.length).toBe(2);
-    const body2 = JSON.parse(posts[1].body) as Record<string, unknown>;
-    expect(body2.baseUrl).toBe('http://127.0.0.1:8000');
-    expect(body2.model).toBe('qwen2.5-7b');
-    expect('key' in body2).toBe(false);
-    expect(body2.vision).toBe(false);
+  }
+
+  it('卡片如实呈现格式/地址/窗口/输出/图片输入与状态;整页不含密钥', async () => {
+    stubCatalog(() => [relay, legacy], []);
+    render(<SettingsOverlay />);
+    await openModelsWithByo();
+    const card = await screen.findByTestId('custom-model-custom:0a1b2c3d');
+    expect(card).toHaveTextContent('Claude 中转');
+    expect(card).toHaveTextContent('Anthropic 兼容');
+    expect(card).toHaveTextContent('https://relay.example.com/v1/messages');
+    expect(card).toHaveTextContent('200K');
+    expect(card).toHaveTextContent('32K · 默认');
+    expect(card).toHaveTextContent('支持');
+    expect(screen.getByTestId('custom-model-status-custom:0a1b2c3d')).toHaveTextContent('可用');
+    expect(screen.getByTestId('custom-model-default-custom:0a1b2c3d')).toBeInTheDocument();
+    // 旧单槽迁移来的条目:未声明窗口标「默认」,缺 key 不可用。
+    const old = screen.getByTestId('custom-model-openai-compat');
+    expect(old).toHaveTextContent('1M · 默认');
+    expect(old).toHaveTextContent('自动');
+    expect(screen.getByTestId('custom-model-status-openai-compat')).toHaveTextContent('缺少密钥');
+    expect(screen.getByTestId('custom-model-use-openai-compat')).toBeDisabled();
+    expect(screen.getByTestId('custom-models-count')).toHaveTextContent('1/2 可用');
+    // DeepSeek 官方作为内置卡片同列;RAG/Embedding 与 Mock 行已撤下。
+    expect(screen.getByTestId('channel-deepseek')).toBeInTheDocument();
+    expect(screen.queryByTestId('channel-embedding')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('models-mock-row')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('models-open-generation')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-page-models').textContent ?? '').not.toContain('sk-');
   });
 
-  it('图片输入开关:从 status 预填并随保存上送', async () => {
-    const posts: Array<{ url: string; body: string }> = [];
-    stubBase(
-      {
-        configured: true,
-        baseUrl: 'http://127.0.0.1:8000',
-        model: 'gpt-4o-mini',
-        keyConfigured: true,
-        vision: true,
+  it('添加:双格式切换实时预览请求地址;窗口/输出/图片输入随保存上送', async () => {
+    const calls: Call[] = [];
+    let saved = false;
+    stubCatalog(() => (saved ? [relay] : []), calls, {
+      save: () => {
+        saved = true;
+        return relay;
       },
-      posts,
+    });
+    render(<SettingsOverlay />);
+    await openModelsWithByo();
+    expect(await screen.findByTestId('custom-models-empty')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('custom-models-add'));
+    const form = await screen.findByTestId('cm-form-new');
+    const save = screen.getByTestId('cm-save');
+    expect(save).toBeDisabled();
+    // 默认 OpenAI 格式 → /v1/chat/completions;切 Anthropic → /v1/messages(版本段不重复)。
+    fireEvent.change(screen.getByTestId('cm-baseurl-input'), { target: { value: 'https://relay.example.com/v1/' } });
+    expect(screen.getByTestId('cm-endpoint-preview')).toHaveTextContent('https://relay.example.com/v1/chat/completions');
+    fireEvent.click(screen.getByTestId('cm-format-anthropic'));
+    expect(screen.getByTestId('cm-format-anthropic')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('cm-endpoint-preview')).toHaveTextContent('https://relay.example.com/v1/messages');
+    expect(form).toHaveTextContent('选「自动」时按 32K 发送');
+    fireEvent.change(screen.getByTestId('cm-name-input'), { target: { value: ' Claude 中转 ' } });
+    fireEvent.change(screen.getByTestId('cm-model-input'), { target: { value: 'claude-sonnet-5-5' } });
+    // 新建必须填 key。
+    expect(save).toBeDisabled();
+    expect(screen.getByTestId('cm-problem')).toHaveTextContent('API Key');
+    fireEvent.change(screen.getByTestId('cm-key-input'), { target: { value: 'sk-test-custom-card' } });
+    fireEvent.click(screen.getByTestId('cm-context-200K'));
+    fireEvent.click(screen.getByTestId('cm-output-64K'));
+    fireEvent.click(screen.getByTestId('cm-vision-toggle'));
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await flush();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toEqual({
+      name: 'Claude 中转',
+      apiFormat: 'anthropic',
+      baseUrl: 'https://relay.example.com/v1/',
+      model: 'claude-sonnet-5-5',
+      key: 'sk-test-custom-card',
+      contextWindow: 204800,
+      maxOutputTokens: 65536,
+      vision: true,
+    });
+    // 保存后表单收起、清单重拉出新卡;密钥不回显。
+    expect(await screen.findByTestId('custom-model-custom:0a1b2c3d')).toBeInTheDocument();
+    expect(screen.queryByTestId('cm-form-new')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('sk-test-custom-card')).not.toBeInTheDocument();
+  });
+
+  it('编辑:预填既有值,key 留空则省略(保留原密钥);自定义窗口按 K 换算;输出超窗口拦截', async () => {
+    const calls: Call[] = [];
+    stubCatalog(() => [relay], calls);
+    render(<SettingsOverlay />);
+    await openModelsWithByo();
+    fireEvent.click(await screen.findByTestId('custom-model-edit-custom:0a1b2c3d'));
+    await screen.findByTestId('cm-form-custom:0a1b2c3d');
+    expect(screen.getByTestId('cm-model-input')).toHaveValue('claude-sonnet-5-5');
+    expect(screen.getByTestId('cm-baseurl-input')).toHaveValue('https://relay.example.com/v1');
+    expect(screen.getByTestId('cm-key-input')).toHaveValue('');
+    expect(screen.getByTestId('cm-key-input').getAttribute('placeholder')).toContain('已配置');
+    expect(screen.getByTestId('cm-format-anthropic')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('cm-context-200K')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('cm-output-auto')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('cm-vision-toggle')).toHaveAttribute('aria-checked', 'true');
+    // 自定义 96K 窗口 + 128K 输出 → 超窗口,保存钮禁用并说明原因。
+    fireEvent.change(screen.getByTestId('cm-context-custom'), { target: { value: '96' } });
+    fireEvent.click(screen.getByTestId('cm-output-128K'));
+    expect(screen.getByTestId('cm-save')).toBeDisabled();
+    expect(screen.getByTestId('cm-problem')).toHaveTextContent('最大输出不能超过上下文窗口');
+    fireEvent.click(screen.getByTestId('cm-output-8K'));
+    fireEvent.click(screen.getByTestId('cm-save'));
+    await flush();
+    expect(calls).toHaveLength(1);
+    const body = calls[0].body ?? {};
+    expect(body.id).toBe('custom:0a1b2c3d');
+    expect('key' in body).toBe(false);
+    expect(body.contextWindow).toBe(96 * 1024);
+    expect(body.maxOutputTokens).toBe(8192);
+    expect(body.apiFormat).toBe('anthropic');
+  });
+
+  it('卡片测试连接带 id(后端取已存密钥)并如实回显结果;删除需二次确认', async () => {
+    const calls: Call[] = [];
+    let list: unknown[] = [relay];
+    stubCatalog(() => list, calls, { test: { ok: false, latencyMs: 88, endpoint: relay.endpoint, error: 'anthropic-compat HTTP 401: invalid x-api-key' } });
+    render(<SettingsOverlay />);
+    await openModelsWithByo();
+    fireEvent.click(await screen.findByTestId('custom-model-test-custom:0a1b2c3d'));
+    await flush();
+    expect(calls[0].url).toBe('/api/forge/llm/custom-models/test');
+    expect(calls[0].body).toMatchObject({ id: 'custom:0a1b2c3d', apiFormat: 'anthropic', model: 'claude-sonnet-5-5' });
+    expect('key' in (calls[0].body ?? {})).toBe(false);
+    expect(await screen.findByTestId('custom-model-test-result-custom:0a1b2c3d')).toHaveTextContent('invalid x-api-key');
+    // 删除:第一次点只出确认条,确认后才发 DELETE(id 做 URL 编码)。
+    fireEvent.click(screen.getByTestId('custom-model-delete-custom:0a1b2c3d'));
+    expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(0);
+    list = [];
+    fireEvent.click(screen.getByTestId('custom-model-delete-confirm-custom:0a1b2c3d'));
+    await flush();
+    expect(calls.find((c) => c.method === 'DELETE')?.url).toBe('/api/forge/llm/custom-models/custom%3A0a1b2c3d');
+    expect(await screen.findByTestId('custom-models-empty')).toBeInTheDocument();
+  });
+
+  it('旧版 agentd(无目录路由 404)如实提示重启,不是空白死胡同', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown, init?: { method?: string }) => {
+        const hit = tryAccountStatusFetch(url, init);
+        if (hit) return hit;
+        const u = String(url);
+        if (u === '/api/forge/design-snapshot') return reply({ models: { models: [] } });
+        if (u === '/api/forge/llm/custom-models') {
+          return { ok: false, status: 404, json: async () => { throw new SyntaxError('Unexpected end of JSON input'); } } as unknown as Response;
+        }
+        throw new Error(`未 mock: ${u}`);
+      }),
     );
     render(<SettingsOverlay />);
     await openModelsWithByo();
-    fireEvent.click(await screen.findByTestId('oai-config-toggle'));
-    // 已开启态须按 status 预填,否则「只改 model」的保存会把它悄悄关掉。
-    const toggle = await screen.findByTestId('oai-vision-toggle');
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(toggle);
-    fireEvent.click(screen.getByTestId('oai-config-save'));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect((JSON.parse(posts[0].body) as Record<string, unknown>).vision).toBe(false);
-  });
-
-  it('空 baseUrl/model 保存钮禁用(400 防线前置)', async () => {
-    stubBase({ configured: false, baseUrl: '', model: '', keyConfigured: false }, []);
-    render(<SettingsOverlay />);
-    await openModelsWithByo();
-    fireEvent.click(await screen.findByTestId('oai-config-toggle'));
-    expect(await screen.findByTestId('oai-config-save')).toBeDisabled();
-    fireEvent.change(screen.getByTestId('oai-baseurl-input'), { target: { value: 'http://x' } });
-    expect(screen.getByTestId('oai-config-save')).toBeDisabled();
-    fireEvent.change(screen.getByTestId('oai-model-input'), { target: { value: 'm' } });
-    expect(screen.getByTestId('oai-config-save')).toBeEnabled();
+    expect(await screen.findByTestId('custom-models-error')).toHaveTextContent('重启 agentd');
+    expect(screen.getByTestId('custom-models-add')).toBeDisabled();
+    // DeepSeek 内置卡不依赖目录接口,照常可配。
+    expect(screen.getByTestId('deepseek-key-toggle')).toBeInTheDocument();
   });
 });
 

@@ -38,12 +38,15 @@ export interface StreamStatus {
   truncated: boolean;
   fps: number;
   shareError?: string;
+  transport?: 'rgba8' | 'native';
+  width?: number; height?: number; pixelReadback?: boolean;
 }
 
 export interface ViewportStreamOptions {
   width: number;
   height: number;
   maxFps?: number;
+  transport?: 'rgba8' | 'native';
   /** 二进制帧到达(已解析;latest-wins 由调用方 rAF 侧自然形成) */
   onFrame: (f: StreamFrame) => void;
   /** 服务端 1Hz 状态 */
@@ -67,7 +70,7 @@ export interface ViewportStreamHandle {
   /** 选中高亮(null 清除) */
   setSelected(id: number | null): void;
   /** 流分辨率协商(客户端已去抖) */
-  resize(width: number, height: number): void;
+  resize(width: number, height: number, transport?: 'rgba8' | 'native'): void;
   /** 通道当前是否可用 */
   readonly up: boolean;
   close(): void;
@@ -142,7 +145,7 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
   let up = false;
   let fails = 0;
   let retryTimer: number | undefined;
-  let cfg = { width: opts.width, height: opts.height, maxFps: opts.maxFps ?? 60 };
+  let cfg = { width: opts.width, height: opts.height, maxFps: opts.maxFps ?? 60, transport: opts.transport };
   let selected: number | null = null;
 
   const setUp = (next: boolean, reason: string) => {
@@ -249,9 +252,9 @@ export function openViewportStream(opts: ViewportStreamOptions): ViewportStreamH
       selected = id;
       sendJson({ type: 'select', ...(id != null ? { id } : {}) });
     },
-    resize(width, height) {
-      cfg = { ...cfg, width, height };
-      sendJson({ type: 'resize', width, height });
+    resize(width, height, transport) {
+      cfg = { ...cfg, width, height, transport: transport ?? cfg.transport };
+      sendJson({ type: 'resize', width, height, ...(cfg.transport ? { transport: cfg.transport } : {}) });
     },
     close() {
       closed = true;

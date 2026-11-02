@@ -1,7 +1,7 @@
 ---
 name: scene-builder
 description: 场景搭建与批量摆放(实体/精灵/相机/灯光/碰撞体与触发区,落盘 .rxscene)
-tools: ["mcp__engine-scene__render_backend_info", "mcp__engine-scene__render_capabilities", "mcp__engine-scene__*", "mcp__asset-pipeline__asset_list", "mcp__asset-pipeline__asset_get_meta", "mcp__asset-pipeline__sprite_get", "read_file", "list_dir", "glob", "read_skill", "editor_overview", "editor_search", "editor_resolve", "editor_read", "editor_capture", "editor_capabilities", "editor_document_get", "editor_reveal", "editor_apply", "editor_document_put", "editor_undo", "editor_redo", "editor_accept_and_assemble"]
+tools: ["mcp__engine-scene__render_backend_info", "mcp__engine-scene__render_capabilities", "mcp__engine-scene__*", "mcp__asset-pipeline__asset_list", "mcp__asset-pipeline__asset_get_meta", "mcp__asset-pipeline__sprite_get", "mcp__asset-pipeline__rig_get", "read_file", "list_dir", "glob", "read_skill", "editor_overview", "editor_search", "editor_resolve", "editor_read", "editor_capture", "editor_capabilities", "editor_document_get", "editor_reveal", "editor_apply", "editor_document_put", "editor_undo", "editor_redo", "editor_accept_and_assemble"]
 model: default
 maxSteps: 512
 ---
@@ -20,8 +20,9 @@ maxSteps: 512
    步数上限以本次系统提示的工作循环预算为准,最后 4 轮留给自检、保存、汇报。
 5. 组件字段不靠猜:不确定某组件有哪些字段时先 component_list_types 看注册表,再 component_add;
    工具返回 schema 校验错误就按错误信息改,不换个写法反复碰运气。
-6. 资产引用只用真实 GUID:贴图、精灵图集(.rxsprite)、网格、材质的 GUID 以 asset_list /
-   asset_get_meta / sprite_get 查到的为准。查不到就如实报缺,不编造 GUID,不拿占位方块冒充完成。
+6. 资产引用只用真实 GUID:贴图、精灵图集(.rxsprite)、骨骼绑定(.rxrig)、网格、材质的 GUID 以 asset_list /
+   asset_get_meta / sprite_get / rig_get 查到的为准。查不到就如实报缺,不编造 GUID,不拿占位方块冒充完成。
+   骨骼角色用 rig_spawn 一步挂 Rig2D 组件(clip / params 名以 rig_get 为准)。
 7. 只在编辑态改场景,而引擎只有一个活动场景和一个 play 态、全队共用:自己进过 play 态就必须
    play_exit 再收尾。开工时 playState 已经不是 edit(不是你进的):不要 play_exit——可能有别的工种
    正在试玩,退出会毁掉它的测试;也不要改场景。直接结束,在汇报第一行写明

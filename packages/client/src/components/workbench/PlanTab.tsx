@@ -58,7 +58,7 @@ function useTodoStatusByPlanId(flow: { id: string; planRev: number } | null): Ma
 function TodoRow({ todo, status }: { todo: PlanTodo; status: string }) {
   const state = normalizeTodoStatus(status);
   const done = state === 'completed';
-  const failed = state === 'failed';
+  const failed = state === 'failed' || state === 'blocked';
   return (
     <div className="flex items-start gap-2 py-1" data-testid={`plan-todo-${todo.id}`}>
       <TodoStatusIndicator status={status} className="mt-px" />

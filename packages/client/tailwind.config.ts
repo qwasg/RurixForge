@@ -111,7 +111,8 @@ export default {
         '2xl': '16px',
       },
       boxShadow: {
-        composer: '0 1px 2px rgba(0,0,0,0.04), 0 0 0 1px #e8e6e2',
+        // 纯色波:外圈描边原为写死的暖灰 #e8e6e2(暗色下发白),改跟主题线色
+        composer: '0 1px 2px rgba(0,0,0,0.04), 0 0 0 1px var(--line)',
         pop: '0 8px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)',
         // F7:参考 sh1/sh_float
         sh1: 'var(--sh-1)',

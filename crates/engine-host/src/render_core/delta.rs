@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use super::camera::ViewSetup;
 use super::env::{SceneEnv, VolumeItem};
-use super::list::{ItemKey, LightItem, ParticleItem, RenderItem, RenderList, V6Frame};
+use super::list::{ItemBody, ItemKey, LightItem, ParticleItem, RenderItem, RenderList, V6Frame};
 use super::math::M4;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -36,6 +36,8 @@ pub struct RenderDelta {
     pub volumes: Option<Vec<VolumeItem>>,
     /// 共有 key 的绘制序变了(2D sorting / 透明远近序;不透明 3D 只作记录)。
     pub reordered: bool,
+    /// F-GAME-5:同 key 同 content 的 RigMesh 顶点变了(只换姿态):后端只重传顶点,不重建实例。
+    pub rig_verts: Vec<(ItemKey, Arc<Vec<f32>>)>,
 }
 
 fn pose_bits(p: &Option<Arc<Vec<M4>>>) -> Option<Vec<u32>> {
@@ -132,6 +134,11 @@ impl RenderDelta {
                                 d.content.push(y.clone());
                             }
                         }
+                        if let (ItemBody::RigMesh(rx), ItemBody::RigMesh(ry)) = (&x.body, &y.body) {
+                            if !rx.same_vertices(ry) {
+                                d.rig_verts.push((y.key, Arc::clone(&ry.verts)));
+                            }
+                        }
                     }
                     i += 1;
                     j += 1;
@@ -172,6 +179,7 @@ impl RenderDelta {
             && self.env.is_none()
             && self.volumes.is_none()
             && !self.reordered
+            && self.rig_verts.is_empty()
     }
 }
 

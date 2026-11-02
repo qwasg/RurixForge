@@ -75,6 +75,7 @@ impl ImmediateRender for RurixBackend {
 }
 
 impl RenderBackend for RurixBackend {
+    fn native_present(&self) -> bool { cfg!(windows) && std::env::var("FORGE_RURIX_REALTIME").is_ok_and(|v| v == "1") }
     fn info(&self) -> &BackendInfo {
         &self.info
     }

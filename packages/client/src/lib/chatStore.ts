@@ -398,6 +398,25 @@ type ToolBlock = Extract<ChatBlock, { kind: 'tool' }>;
 type UltraBlock = Extract<ChatBlock, { kind: 'ultraplan' }>;
 type DesignBlock = Extract<ChatBlock, { kind: 'design' }>;
 
+/** Older persisted dispatch events stored instructions in the title field. */
+function subagentPresentation(evt: ForgeEventWire): { label: string; prompt: string } {
+  const payload = evt.payload ?? {};
+  const description = payloadStr(evt, 'description')?.trim() || payloadStr(evt, 'label')?.trim() || '';
+  const prompt = payloadStr(evt, 'prompt') ?? '';
+  // The old Codex mapper did not emit a separate prompt field. Its description
+  // is ambiguous, so preserve that text in details and use a neutral title.
+  if (!Object.hasOwn(payload, 'prompt') && Object.hasOwn(payload, 'subagentType') && Array.isArray(payload.receiverThreadIds)) {
+    return { label: 'Codex 子代理', prompt: description === 'Codex 子代理' ? '' : description };
+  }
+  const firstPromptLine = prompt.split('\n').find((line) => line.trim() !== '')?.trim() ?? '';
+  const isPromptTitle = prompt.trim() !== '' && (
+    description === prompt.trim() ||
+    description === firstPromptLine ||
+    description === [...firstPromptLine].slice(0, 48).join('').trim()
+  );
+  return { label: isPromptTitle ? '子代理任务' : description || '子代理任务', prompt };
+}
+
 /** D-045:design.* 建卡事件 → 卡片 step + 版本号键。 */
 const DESIGN_CARD_EVENTS: Record<string, { step: DesignBlock['step']; revKey: string }> = {
   'design.review.ready': { step: 'review', revKey: 'rev' },
@@ -764,16 +783,36 @@ function mergeDiffIntoLastFileChange(blocks: ChatBlock[], diff: string): boolean
   return false;
 }
 
-/** 终稿 reasoning:覆盖本轮最后一块思考(流式后正文已接在后面时,不能只认尾块)。 */
-function settleReasoning(blocks: ChatBlock[], text: string, ts: string): void {
+function startReasoning(blocks: ChatBlock[], itemId: string, ts: string): void {
+  // Replayed/duplicate starts must not reopen an item that already completed.
+  if (blocks.some((b) => b.kind === 'reasoning' && b.itemId === itemId)) return;
+  blocks.push({ kind: 'reasoning', itemId, text: '', status: 'running', startedTs: ts });
+}
+
+/** Match persisted lifecycle and legacy final summaries by item, never by completion order. */
+function settleReasoning(blocks: ChatBlock[], text: string, ts: string, itemId?: string): void {
   for (let i = blocks.length - 1; i >= 0; i -= 1) {
     const last = blocks[i];
-    if (last.kind === 'reasoning') {
-      blocks[i] = { ...last, text, startedTs: last.startedTs ?? ts, endedTs: ts };
+    if (last.kind === 'reasoning' && (itemId === undefined || last.itemId === itemId)) {
+      blocks[i] = { ...last, text, status: 'done', startedTs: last.startedTs ?? ts, endedTs: last.status === 'done' ? last.endedTs ?? ts : ts };
       return;
     }
   }
-  blocks.push({ kind: 'reasoning', text, startedTs: ts, endedTs: ts });
+  blocks.push({ kind: 'reasoning', itemId, text, status: 'done', startedTs: ts, endedTs: ts });
+}
+
+/** Turn/subagent termination also closes items whose completion notification was lost. */
+function closeReasoning(blocks: ChatBlock[], ts: string): void {
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    if (block.kind === 'reasoning' && block.status !== 'done') {
+      blocks[i] = { ...block, status: 'done', endedTs: ts };
+    } else if (block.kind === 'subagent') {
+      const work = [...block.work];
+      closeReasoning(work, ts);
+      blocks[i] = { ...block, work };
+    }
+  }
 }
 
 /** 终稿正文:覆盖本轮最后一块 text(中间若又插了思考块,不能只认尾块)。 */
@@ -788,17 +827,21 @@ function settleFinalText(blocks: ChatBlock[], text: string): void {
 }
 
 /** ts = 本帧末一条 reasoning 事件的 ts;首末之差即思考行显示的时长(合帧误差 ≤ 1 帧)。 */
-function appendReasoningDelta(blocks: ChatBlock[], delta: string, ts: string): void {
-  const last = blocks[blocks.length - 1];
-  if (last?.kind === 'reasoning') {
-    blocks[blocks.length - 1] = {
+function appendReasoningDelta(blocks: ChatBlock[], delta: string, ts: string, itemId?: string): void {
+  const index = itemId === undefined
+    ? blocks.length - 1
+    : blocks.findIndex((b) => b.kind === 'reasoning' && b.itemId === itemId);
+  const last = blocks[index];
+  if (last?.kind === 'reasoning' && last.status !== 'done') {
+    blocks[index] = {
       ...last,
       text: last.text + delta,
+      status: 'running',
       startedTs: last.startedTs ?? ts,
       endedTs: ts,
     };
-  } else {
-    blocks.push({ kind: 'reasoning', text: delta, startedTs: ts, endedTs: ts });
+  } else if (last?.kind !== 'reasoning' || itemId === undefined) {
+    blocks.push({ kind: 'reasoning', itemId, text: delta, status: 'running', startedTs: ts, endedTs: ts });
   }
 }
 
@@ -921,7 +964,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   let sse: SseSubscription | null = null;
   let pendingSelection: { id: string | null; promise: Promise<void> } | null = null;
 
-  const streamKey = (runId: string | null, parent?: string) => `${runId ?? ''}\0${parent ?? ''}`;
+  const streamKey = (runId: string | null, parent?: string, itemId?: string) => `${runId ?? ''}\0${parent ?? ''}\0${itemId ?? ''}`;
 
   const applyStreamChunk = (
     runId: string | null,
@@ -929,12 +972,13 @@ export const useChatStore = create<ChatState>((set, get) => {
     kind: 'token' | 'reasoning' | 'plan',
     text: string,
     ts: string,
+    itemId?: string,
   ) => {
     let messages = get().messages;
     messages = mutateAssistant(messages, runId, (m) => {
       const dest = targetBlocks(m.blocks, parent);
       if (kind === 'token') appendTextDelta(dest, text);
-      else if (kind === 'reasoning') appendReasoningDelta(dest, text, ts);
+      else if (kind === 'reasoning') appendReasoningDelta(dest, text, ts, itemId);
       else appendPlanDelta(dest, text);
     });
     set({ messages: normalize(messages) });
@@ -949,10 +993,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     const pending = [...streamBuf.entries()];
     streamBuf.clear();
     for (const [key, buf] of pending) {
-      const [runId, parent] = key.split('\0');
+      const [runId, parent, itemId] = key.split('\0');
       const rid = runId === '' ? null : runId;
       const pid = parent === '' ? undefined : parent;
-      if (buf.reasoning) applyStreamChunk(rid, pid, 'reasoning', buf.reasoning, buf.ts);
+      if (buf.reasoning) applyStreamChunk(rid, pid, 'reasoning', buf.reasoning, buf.ts, itemId || undefined);
       if (buf.plan) applyStreamChunk(rid, pid, 'plan', buf.plan, buf.ts);
       if (buf.token) applyStreamChunk(rid, pid, 'token', buf.token, buf.ts);
     }
@@ -973,8 +1017,9 @@ export const useChatStore = create<ChatState>((set, get) => {
     kind: 'token' | 'reasoning' | 'plan',
     text: string,
     ts: string,
+    itemId?: string,
   ) => {
-    const key = streamKey(runId, parent);
+    const key = streamKey(runId, parent, itemId);
     const cur = streamBuf.get(key) ?? { token: '', reasoning: '', plan: '', ts };
     if (kind === 'token') cur.token += text;
     else if (kind === 'reasoning') cur.reasoning += text;
@@ -1394,7 +1439,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (collaboration.sessionId === null) collaboration.reset(evt.sessionId);
       useCollaborationStore.getState().applyEvent(evt);
       // 全类型入原始事件环(底部面板 Agent Logs/Output 数据源;在去重后、语义 switch 前)。
-      set((st) => ({ eventsRing: ringPush(st.eventsRing, evt) }));
+      set((st) => ({
+        eventsRing: ringPush(st.eventsRing, evt),
+        latestSeq: Math.max(st.latestSeq, evt.seq),
+      }));
       const isDelta =
         evt.type === 'agent.token.stream.delta' ||
         evt.type === 'agent.reasoning.delta' ||
@@ -1512,9 +1560,8 @@ export const useChatStore = create<ChatState>((set, get) => {
               const a = (evt.payload?.args ?? {}) as Record<string, unknown>;
               const prompt = typeof a.prompt === 'string' ? a.prompt : '';
               const label =
-                (typeof a.description === 'string' && a.description) ||
-                (typeof a.title === 'string' && a.title) ||
-                prompt.split('\n').find((l) => l.trim() !== '')?.trim() ||
+                (typeof a.description === 'string' && a.description.trim()) ||
+                (typeof a.title === 'string' && a.title.trim()) ||
                 '子代理任务';
               ensureSubagent(parent ? dest : m.blocks, toolCallId, {
                 label,
@@ -1597,8 +1644,16 @@ export const useChatStore = create<ChatState>((set, get) => {
         }
         case 'agent.reasoning.delta': {
           const delta = payloadStr(evt, 'delta') ?? payloadStr(evt, 'text') ?? '';
-          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'reasoning', delta, evt.ts);
+          if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'reasoning', delta, evt.ts, payloadStr(evt, 'itemId'));
           return;
+        }
+        case 'agent.reasoning.started': {
+          const itemId = payloadStr(evt, 'itemId');
+          if (!itemId) return;
+          messages = mutateAssistant(messages, runIdOf(evt), (m) => {
+            if (m.status === 'streaming' || parentOf(evt)) startReasoning(targetBlocks(m.blocks, parentOf(evt)), itemId, evt.ts);
+          });
+          break;
         }
         case 'agent.tool.output.delta': {
           const delta = payloadStr(evt, 'delta') ?? payloadStr(evt, 'output') ?? '';
@@ -1617,6 +1672,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           if (delta !== '') enqueueStream(runIdOf(evt), parentOf(evt), 'plan', delta, evt.ts);
           return;
         }
+        case 'agent.reasoning.completed':
         case 'agent.reasoning': {
           const text = payloadStr(evt, 'text') ?? '';
           const runId = runIdOf(evt);
@@ -1624,7 +1680,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             const dest = targetBlocks(m.blocks, parentOf(evt));
             // 终稿覆盖本轮思考块:流式时思考在前、正文在后,尾块已是 text,
             // 只认尾块会再插一条 Thought,一句话看起来重复两遍。
-            settleReasoning(dest, text, evt.ts);
+            settleReasoning(dest, text, evt.ts, payloadStr(evt, 'itemId'));
           });
           break;
         }
@@ -1661,9 +1717,12 @@ export const useChatStore = create<ChatState>((set, get) => {
         }
         case 'agent.stream.reset': {
           const runId = runIdOf(evt);
-          streamBuf.delete(streamKey(runId, parentOf(evt)));
+          const prefix = streamKey(runId, parentOf(evt));
+          for (const key of streamBuf.keys()) if (key.startsWith(prefix)) streamBuf.delete(key);
           messages = mutateAssistant(messages, runId, (m) => {
-            resetStreamingBlocks(targetBlocks(m.blocks, parentOf(evt)));
+            const dest = targetBlocks(m.blocks, parentOf(evt));
+            resetStreamingBlocks(dest);
+            closeReasoning(dest, evt.ts);
           });
           break;
         }
@@ -1674,8 +1733,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             payloadStr(evt, 'subagentId') ??
             payloadStr(evt, 'parentToolCallId') ??
             `sub-${evt.seq}`;
-          const prompt = payloadStr(evt, 'prompt') ?? '';
-          const label = payloadStr(evt, 'description') ?? payloadStr(evt, 'label') ?? '子代理任务';
+          const { prompt, label } = subagentPresentation(evt);
           // D-036:后台子代理(detached)自己占一张助手卡 —— 它的 parentRunId 就是自己的
           // 后台 runId,派它的那一轮早已收束。卡片元数据(时间/模型/流式态)此前只由
           // agent.started 填,而后台腿刻意不发 agent.started(发了会顶掉前端 activeRunId、
@@ -1721,6 +1779,7 @@ export const useChatStore = create<ChatState>((set, get) => {
                 agentRunId: payloadStr(evt, 'agentRunId'),
               });
               expireApprovals(sub.work);
+              closeReasoning(sub.work, evt.ts);
             }
           });
           if (actorId) {
@@ -1844,6 +1903,7 @@ export const useChatStore = create<ChatState>((set, get) => {
               const work = targetBlocks(message.blocks, parent);
               if (text) settleFinalText(work, text);
               expireApprovals(work);
+              closeReasoning(work, evt.ts);
               ensureSubagent(message.blocks, parent, { status: 'done' });
             });
             const queue = get().pendingPermissions.filter((permission) => actorId ? permission.agentId !== actorId : permission.runId !== payloadStr(evt, 'agentRunId'));
@@ -1853,6 +1913,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           messages = mutateAssistant(messages, runId, (m) => {
             if (text !== '') settleFinalText(m.blocks, text);
             expireApprovals(m.blocks);
+            closeReasoning(m.blocks, evt.ts);
             m.status = 'completed';
             m.finishedTs = evt.ts;
           });
@@ -1871,6 +1932,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           if (parent) {
             messages = mutateAssistant(messages, runId, (message) => {
               expireApprovals(targetBlocks(message.blocks, parent));
+              closeReasoning(targetBlocks(message.blocks, parent), evt.ts);
               ensureSubagent(message.blocks, parent, { status: 'error', summary: error });
             });
             const queue = get().pendingPermissions.filter((permission) => actorId ? permission.agentId !== actorId : permission.runId !== payloadStr(evt, 'agentRunId'));
@@ -1879,6 +1941,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           }
           messages = mutateAssistant(messages, runId, (m) => {
             expireApprovals(m.blocks);
+            closeReasoning(m.blocks, evt.ts);
             m.status = 'failed';
             m.finishedTs = evt.ts;
             if (error) m.error = error;
@@ -1898,6 +1961,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           if (parent) {
             messages = mutateAssistant(messages, runId, (message) => {
               expireApprovals(targetBlocks(message.blocks, parent));
+              closeReasoning(targetBlocks(message.blocks, parent), evt.ts);
               ensureSubagent(message.blocks, parent, { status: 'error', summary: '已中止' });
             });
             const queue = get().pendingPermissions.filter((permission) => actorId ? permission.agentId !== actorId : permission.runId !== payloadStr(evt, 'agentRunId'));
@@ -1906,6 +1970,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           }
           messages = mutateAssistant(messages, runId, (m) => {
             expireApprovals(m.blocks);
+            closeReasoning(m.blocks, evt.ts);
             m.status = 'cancelled';
             m.finishedTs = evt.ts;
           });

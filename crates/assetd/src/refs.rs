@@ -136,6 +136,7 @@ impl RefGraph {
                             "model" => "scene→model",
                             "material" => "scene→material",
                             "sprite" => "scene→sprite",
+                            "rig" => "scene→rig",
                             _ => "scene→asset",
                         },
                         ("prefab", "mesh") => "prefab→mesh",
@@ -148,6 +149,8 @@ impl RefGraph {
                         ("shadergraph", "texture") => "shadergraph→texture",
                         // F-GAME-4:.rxsprite 引用贴图(删除阻断链:scene→sprite→texture)。
                         ("sprite", "texture") => "sprite→texture",
+                        // F-GAME-5:.rxrig 引用图集贴图(删除阻断链:scene→rig→texture)。
+                        ("rig", "texture") => "rig→texture",
                         (a, b) => match (a, b) {
                             _ => "asset→asset",
                         },

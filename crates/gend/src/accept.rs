@@ -66,6 +66,94 @@ pub fn accept_asset(
         .map(str::to_ascii_lowercase)
         .filter(|e| !e.is_empty())
         .ok_or_else(|| GenError::new(GEN_BAD_PARAMS, format!("产物无扩展名: {file_ref}")))?;
+
+    // Redline I-5: 检测是否为可动角色资产 (kind: character, destFolder: Characters, 或 provenance 标明角色)
+    let is_character = {
+        let settings_kind = import_settings
+            .and_then(|s| s.get("kind").or_else(|| s.get("assetKind")).or_else(|| s.get("type")))
+            .and_then(Value::as_str);
+        let prov_kind = provenance_detail
+            .get("kind")
+            .or_else(|| provenance_detail.get("assetKind"))
+            .and_then(Value::as_str);
+
+        settings_kind == Some("character")
+            || prov_kind == Some("character")
+            || dest_folder.eq_ignore_ascii_case("characters")
+    };
+
+    if is_character {
+        // 角色类资产必须是 glb 或 gltf
+        if ext != "glb" && ext != "gltf" {
+            return Err(GenError::new(
+                GEN_BAD_PARAMS,
+                format!("角色资产必须是 glb 或 gltf 格式, 实际为: {ext}"),
+            ));
+        }
+
+        let revision = import_settings
+            .and_then(|s| s.get("revision"))
+            .and_then(Value::as_u64)
+            .unwrap_or(1);
+        let idle_clip = import_settings
+            .and_then(|s| s.get("idleClip"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let walk_clip = import_settings
+            .and_then(|s| s.get("walkClip"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        let source_id = format!("gen_character_{name}");
+        let manifest = assetd::model::ModelManifest {
+            version: 1,
+            source_id,
+            name: name.to_string(),
+            kind: "character".into(),
+            revision,
+            source_blend: None,
+            object_ids: std::collections::BTreeMap::new(),
+            idle_clip,
+            walk_clip,
+        };
+
+        // 红线 I-5 核心门禁: 严禁静默生成无骨骼静态 .rxmesh。
+        // 调用 assetd::model::import_model_bundle; 若未绑骨或缺失 Idle/Walk 动作，直接显式报错阻断。
+        let published = assetd::model::import_model_bundle(project, &src, &manifest).map_err(|e| {
+            let code = match e.code {
+                "MODEL_CHARACTER_INVALID" => GEN_BAD_PARAMS,
+                "MODEL_REVISION_CONFLICT" => GEN_BAD_PARAMS,
+                _ => GEN_BACKEND_ERROR,
+            };
+            GenError::new(code, format!("角色入管线校验失败 (Redline I-5): [{}] {}", e.code, e.message))
+        })?;
+
+        // 校验发布的 model 与 template.rxprefab 文档合法性
+        assetd::model::validate_asset_document(project, &published.asset_path).map_err(|e| {
+            GenError::new(GEN_BACKEND_ERROR, format!("published model asset validation failed: {e}"))
+        })?;
+        assetd::model::validate_asset_document(project, &published.prefab_path).map_err(|e| {
+            GenError::new(GEN_BACKEND_ERROR, format!("published prefab asset validation failed: {e}"))
+        })?;
+
+        // 写入 provenance 溯源
+        let meta_path = meta_path_for(&project.content_root(), &published.asset_path);
+        if let Ok(mut meta) = MetaDoc::load(&meta_path) {
+            meta.provenance = Some(Provenance {
+                origin: origin.into(),
+                detail: Some(provenance_detail),
+            });
+            let _ = meta.save(&meta_path);
+        }
+
+        return Ok(AcceptedAsset {
+            asset_path: published.asset_path,
+            guid: published.guid,
+            artifact: Some(published.prefab_path),
+            cache_hit: !published.changed,
+        });
+    }
+
     let staged_rel = format!(".forge/tmp/gen/{name}.{ext}");
     let staged_abs = project.root.join(&staged_rel);
     if src != staged_abs {
@@ -212,6 +300,69 @@ mod tests {
         assert_eq!(acc2.asset_path, "Meshes/chair2.gltf");
         assert!(acc2.cache_hit, "同源同设置二次 accept 须缓存命中(08 §4.3)");
         assert_eq!(acc2.artifact, acc.artifact, "同缓存键 → 同 .rxmesh 产物");
+        std::fs::remove_dir_all(&p.root).ok();
+    }
+
+    #[test]
+    fn accept_character_routes_to_model_bundle_publication() {
+        let p = temp_project("char-pub");
+        let gen_dir = crate::tmpstore::gen_dir(&p).unwrap();
+        let cfg = crate::gates::SyntheticGlbConfig {
+            include_skin: true,
+            include_animations: true,
+            include_idle: true,
+            include_walk: true,
+            ..Default::default()
+        };
+        let glb_bytes = crate::gates::build_synthetic_glb(&cfg);
+        let char_path = gen_dir.join("valid_hero.glb");
+        std::fs::write(&char_path, glb_bytes).unwrap();
+        let mesh_ref = ".forge/tmp/gen/valid_hero.glb";
+
+        let detail = json!({
+            "backendId": "test-builder",
+            "sourceRefs": [mesh_ref],
+            "kind": "character",
+        });
+
+        let acc = accept_asset(&p, mesh_ref, "Characters", "hero", "gen-model", detail, None).unwrap();
+        assert!(acc.asset_path.starts_with("Models/"));
+        assert!(acc.asset_path.ends_with("/model.rxmodel"));
+        assert!(acc.artifact.is_some());
+        assert!(acc.artifact.as_ref().unwrap().ends_with("/template.rxprefab"));
+        assert!(p.content_root().join(&acc.asset_path).is_file());
+
+        // Validate template.rxprefab contains Animator and CharacterController
+        let prefab_file = p.content_root().join(acc.artifact.unwrap());
+        assert!(prefab_file.is_file());
+        let prefab_str = std::fs::read_to_string(&prefab_file).unwrap();
+        assert!(prefab_str.contains("Animator"));
+        assert!(prefab_str.contains("CharacterController"));
+
+        std::fs::remove_dir_all(&p.root).ok();
+    }
+
+    #[test]
+    fn accept_character_rejects_static_mesh_redline_i5() {
+        let p = temp_project("char-reject");
+        let gen_dir = crate::tmpstore::gen_dir(&p).unwrap();
+        // Unskinned mesh
+        std::fs::write(gen_dir.join("static_prop.gltf"), TRI_MIN_GLTF).unwrap();
+        let mesh_ref = ".forge/tmp/gen/static_prop.gltf";
+
+        let detail = json!({
+            "backendId": "user-provided",
+            "sourceRefs": [mesh_ref],
+            "kind": "character",
+        });
+
+        let err = accept_asset(&p, mesh_ref, "Characters", "prop_disguised", "gen-model", detail, None).unwrap_err();
+        assert!(err.message.contains("Redline I-5") || err.message.contains("MODEL_CHARACTER_INVALID") || err.message.contains("character requires a bound skin"));
+
+        // Redline I-5: ensure NO static .rxmesh was created under cache or Content/Characters
+        assert!(!p.cache_root().join("rxmesh/prop_disguised.rxmesh").is_file());
+        assert!(!p.content_root().join("Characters/prop_disguised.gltf").is_file());
+
         std::fs::remove_dir_all(&p.root).ok();
     }
 }

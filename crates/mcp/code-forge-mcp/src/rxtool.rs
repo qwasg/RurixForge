@@ -34,28 +34,30 @@ fn terr(code: &str, message: impl Into<String>) -> ToolError {
     ToolError { code: code.to_string(), message: message.into() }
 }
 
-/// rx.exe:env FORGE_RX_CLI 优先,缺省 H:\rurix\target\debug\rx.exe。
+/// Shared read-only resolution: explicit env, engine sibling/runtime, workspace target.
 pub fn rx_cli() -> TResult<PathBuf> {
-    let p = std::env::var("FORGE_RX_CLI")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"H:\rurix\target\debug\rx.exe"));
-    if p.is_file() {
-        Ok(p)
-    } else {
-        Err(terr("RX_CLI_NOT_FOUND", format!("rx CLI 不存在: {}(env FORGE_RX_CLI 可覆盖)", p.display())))
-    }
+    forge_util::toolchain::resolve(forge_util::toolchain::ToolchainTool::Rx)
+        .into_result().map_err(|message| terr("RX_CLI_NOT_FOUND", message))
 }
 
 /// rurixc.exe:env FORGE_RURIXC 优先(rx_check 必须走 rurixc 拿 JSON 诊断,契约决策 D-F4-A)。
 pub fn rurixc() -> TResult<PathBuf> {
-    let p = std::env::var("FORGE_RURIXC")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"H:\rurix\target\debug\rurixc.exe"));
-    if p.is_file() {
-        Ok(p)
-    } else {
-        Err(terr("RX_CLI_NOT_FOUND", format!("rurixc 不存在: {}(env FORGE_RURIXC 可覆盖)", p.display())))
+    forge_util::toolchain::resolve(forge_util::toolchain::ToolchainTool::Rurixc)
+        .into_result().map_err(|message| terr("RX_CLI_NOT_FOUND", message))
+}
+
+/// Capability discovery never invokes a compiler or writes a project/cache.
+pub fn toolchain_capabilities() -> Value {
+    use forge_util::toolchain::{resolve, ToolchainResolution, ToolchainTool};
+    fn status(resolution: ToolchainResolution) -> Value {
+        json!({"available":resolution.path.is_some(), "path":resolution.path,
+            "source":resolution.source, "attempted":resolution.attempted, "error":resolution.error})
     }
+    let rx = status(resolve(ToolchainTool::Rx));
+    let rurixc = status(resolve(ToolchainTool::Rurixc));
+    json!({"ready":rx["available"] == true && rurixc["available"] == true,
+        "inspection":"readable binaries only; compiler execution is not tested",
+        "tools":{"rx":rx,"rurixc":rurixc}})
 }
 
 /// 子进程一次执行结果。
@@ -196,6 +198,10 @@ pub fn check(args: &Value) -> TResult<Value> {
         &[file.to_string(), "--emit=check".into(), "--error-format=json".into()],
         timeout_of(args, 60_000),
     )?;
+    check_report(&out, file)
+}
+
+fn check_report(out: &RunOut, file: &str) -> TResult<Value> {
     let diags: Vec<Value> = serde_json::from_str(out.stdout.trim()).map_err(|e| {
         terr(
             "TOOL_ERROR",
@@ -207,7 +213,41 @@ pub fn check(args: &Value) -> TResult<Value> {
             ),
         )
     })?;
-    Ok(json!({ "diagnostics": diags.iter().map(|d| map_check_diag(d, file)).collect::<Vec<_>>() }))
+    let diagnostics: Vec<Value> = diags.iter().map(|d| map_check_diag(d, file)).collect();
+    let errors = diagnostics.iter().any(|d| d["severity"].as_str()
+        .map_or(true, |s| s.eq_ignore_ascii_case("error") || s.eq_ignore_ascii_case("fatal")));
+    let mut report = json!({"diagnostics":diagnostics, "exitCode":out.exit_code,
+        "ok":out.exit_code == 0 && !errors && !out.stdout_truncated && !out.stderr_truncated});
+    if out.exit_code != 0 || out.stderr_truncated {
+        report["stderr"] = json!(marked(&out.stderr, out.stderr_truncated));
+    }
+    Ok(report)
+}
+
+#[cfg(test)]
+mod check_tests {
+    use super::*;
+
+    #[test]
+    fn check_report_requires_successful_exit_and_no_error_diagnostics() {
+        let mut out = RunOut { exit_code: 0, stdout: "[]".into(), stderr: String::new(),
+            stdout_truncated: false, stderr_truncated: false };
+        assert_eq!(check_report(&out, "main.rx").unwrap()["ok"], true);
+        out.exit_code = 1;
+        out.stderr = "compiler crashed before diagnostics".into();
+        let report = check_report(&out, "main.rx").unwrap();
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["exitCode"], 1);
+        assert_eq!(report["diagnostics"], json!([]));
+        assert_eq!(report["stderr"], out.stderr);
+        out.exit_code = 0;
+        out.stdout = r#"[{"level":"error","message":"invalid source"}]"#.into();
+        assert_eq!(check_report(&out, "main.rx").unwrap()["ok"], false);
+        out.stdout = r#"[{"level":"warning","message":"unused value"}]"#.into();
+        assert_eq!(check_report(&out, "main.rx").unwrap()["ok"], true);
+        out.stdout_truncated = true;
+        assert_eq!(check_report(&out, "main.rx").unwrap()["ok"], false);
+    }
 }
 
 /// 从 rx/rurixc 文本 stderr 提取 error[RXnnnn]/warning[RXnnnn] 行(code + message)。

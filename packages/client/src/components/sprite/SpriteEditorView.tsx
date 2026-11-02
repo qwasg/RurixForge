@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Save, Scissors, Undo2, Wand2, X } from 'lucide-react';
-import { cn } from '@/lib/cn';
 import { useSpriteStore } from '@/lib/spriteStore';
 import SpriteCanvas from './SpriteCanvas';
 import SpritePreview from './SpritePreview';
@@ -14,8 +13,8 @@ import SpriteRightPanel from './SpriteRightPanel';
  * 入口:资产面板右键 texture「编辑精灵(新建 .rxsprite)」/ sprite「编辑精灵」/ 双击 .rxsprite。
  */
 
-const toolBtn =
-  'flex h-6 items-center gap-1 rounded-md border border-edge px-2 text-2xs text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:cursor-not-allowed disabled:opacity-40';
+/** 工具栏按钮:白色毛玻璃(index.css .glass-btn),与编辑器各画板工具栏一致 */
+const toolBtn = 'glass-btn h-6 disabled:cursor-not-allowed';
 
 export default function SpriteEditorView() {
   const assetPath = useSpriteStore((s) => s.assetPath);
@@ -122,10 +121,11 @@ export default function SpriteEditorView() {
           disabled={!doc || saving || animatorError !== null}
           title={animatorError !== null ? `animator JSON 无效,禁存:${animatorError}` : 'sprite_set 整文档写回'}
           onClick={() => void st().save()}
-          className={cn(
-            'flex h-6 items-center gap-1 rounded-md px-2.5 text-2xs transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-            dirty ? 'bg-acc text-white' : 'border border-edge text-fg-3 hover:bg-shell-hover',
-          )}
+          className={
+            dirty
+              ? 'flex h-6 items-center gap-1 rounded-md bg-acc px-2.5 text-2xs text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40'
+              : toolBtn
+          }
         >
           <Save size={11} />
           {saving ? '保存中…' : dirty ? '保存 ●' : '保存'}

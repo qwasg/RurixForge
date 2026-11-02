@@ -8,7 +8,7 @@ import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, type CanvasViewport } from '@/lib/useCan
  */
 
 const hudBtn =
-  'flex h-6 w-6 items-center justify-center rounded text-fg-3 transition-colors hover:bg-shell-hover hover:text-fg-2 disabled:opacity-40 disabled:hover:bg-transparent';
+  'flex h-6 w-6 items-center justify-center rounded text-fg-2 transition-colors hover:bg-shell-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent';
 
 export interface CanvasHudProps {
   vp: CanvasViewport;
@@ -22,7 +22,7 @@ export default function CanvasHud({ vp, onFit, prefix }: CanvasHudProps) {
   return (
     <div
       data-testid={`${prefix}-canvas-hud`}
-      className="absolute bottom-2 right-2 z-20 flex items-center gap-0.5 rounded-md border border-edge-strong bg-shell-panel p-0.5 shadow-composer"
+      className="glass absolute bottom-2 right-2 z-20 flex items-center gap-0.5 rounded-md p-0.5"
     >
       <button
         type="button"

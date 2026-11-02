@@ -56,15 +56,43 @@ describe('generation connections', () => {
   });
 });
 
-it('shows a compact model catalog with names only', async () => {
+it('cloud model list: vendor tiles with window/capabilities, search + vendor filter, raw ids only in tooltips', async () => {
   useAccountStore.setState({ status: makeAccountStatus({ loggedIn: true }) });
-  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ currency: 'USD', defaultModel: 'model-a', models: [{ id: 'model-a', displayName: 'Model A', platform: 'openai', available: true, capabilities: { vision: true, contextWindow: 1000000, reasoningEfforts: ['high'] }, pricing: { inputPer1M: 123, outputPer1M: 456 } }, { id: 'model-b', displayName: 'Model B', available: false }] })));
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    currency: 'USD',
+    defaultModel: 'gpt-x',
+    models: [
+      { id: 'gpt-x', displayName: 'GPT X', platform: 'openai', available: true, capabilities: { vision: true, contextWindow: 1050000, maxOutput: 128000, reasoningEfforts: ['low', 'high'], tools: true }, pricing: { inputPer1M: 0, outputPer1M: 0 } },
+      { id: 'claude-y', displayName: 'Claude Y', platform: 'anthropic', available: true, capabilities: { vision: false, contextWindow: 1048576, maxOutput: 65536, reasoningEfforts: [], tools: true }, pricing: { inputPer1M: 3_000_000, outputPer1M: 15_000_000 } },
+      { id: 'gemini-z', displayName: 'Gemini Z', platform: 'openai', available: false },
+    ],
+  })));
   render(<CloudModelsSection />);
-  const catalog = await screen.findByTestId('cloud-models-names');
-  expect(catalog).toHaveTextContent('Model AModel B');
-  expect(catalog).not.toHaveTextContent('model-a');
-  expect(catalog).not.toHaveTextContent('USD');
-  expect(catalog).not.toHaveTextContent('上下文');
-  expect(catalog).not.toHaveTextContent('视觉');
-  expect(screen.getByTestId('cloud-model-model-b')).toHaveAttribute('title', 'Model B · 暂不可用');
+  const list = await screen.findByTestId('cloud-models-list');
+  expect(screen.getByTestId('cloud-models-summary')).toHaveTextContent('2/3 可用 · 默认 GPT X');
+  const gpt = screen.getByTestId('cloud-model-gpt-x');
+  expect(gpt).toHaveTextContent('OpenAI');
+  expect(gpt).toHaveTextContent('1.05M 上下文 · 128K 输出');
+  expect(gpt).toHaveTextContent('默认');
+  expect(gpt).toHaveTextContent('视觉');
+  expect(gpt).toHaveTextContent('推理');
+  expect(gpt).not.toHaveTextContent('USD');
+  // Gemini 经 openai 协议上游,厂商按模型族归类而不是 platform。
+  expect(screen.getByTestId('cloud-model-gemini-z')).toHaveTextContent('Google');
+  expect(screen.getByTestId('cloud-model-gemini-z')).toHaveTextContent('暂不可用');
+  expect(screen.getByTestId('cloud-model-use-gemini-z')).toBeDisabled();
+  const claude = screen.getByTestId('cloud-model-claude-y');
+  expect(claude).toHaveTextContent('1M 上下文 · 64K 输出');
+  expect(claude).toHaveTextContent('输入 3.00 / 输出 15.00 USD 每百万 tokens');
+  expect(claude).toHaveAttribute('title', 'Claude Y(claude-y)');
+  expect(list).not.toHaveTextContent('claude-y');
+  fireEvent.change(screen.getByTestId('cloud-models-search'), { target: { value: 'claude' } });
+  expect(screen.queryByTestId('cloud-model-gpt-x')).not.toBeInTheDocument();
+  expect(screen.getByTestId('cloud-model-claude-y')).toBeInTheDocument();
+  fireEvent.change(screen.getByTestId('cloud-models-search'), { target: { value: '' } });
+  fireEvent.click(screen.getByTestId('cloud-models-vendor-Google'));
+  expect(screen.getByTestId('cloud-model-gemini-z')).toBeInTheDocument();
+  expect(screen.queryByTestId('cloud-model-claude-y')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByTestId('cloud-models-search'), { target: { value: 'nothing-here' } });
+  expect(screen.getByTestId('cloud-models-no-match')).toBeInTheDocument();
 });

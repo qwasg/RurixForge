@@ -29,10 +29,11 @@ import { SetCard, SetH1, SetRow, SetSectionLabel, SetSelect, SetSlider, SetStepp
 // ---------- 主题模式三卡(72px 缩略窗;参考 theme_thumbnail) ----------
 
 function MiniWindow({ dark, narrow = false }: { dark: boolean; narrow?: boolean }) {
-  const titleBg = dark ? '#232220' : '#EDEBE6';
-  const bar = dark ? '#3A382F' : '#D8D4CC';
-  const bar2 = dark ? '#2E2C26' : '#E4E1DA';
-  const content = dark ? '#1C1B18' : '#FAF9F5';
+  // 纯色波:缩略窗与预设同为中性黑白,不带暖色底
+  const titleBg = dark ? '#1F1F1F' : '#EDEDED';
+  const bar = dark ? '#383838' : '#D6D6D6';
+  const bar2 = dark ? '#2B2B2B' : '#E3E3E3';
+  const content = dark ? '#0A0A0A' : '#FFFFFF';
   const widths = narrow ? [16, 12, 14] : [34, 26, 30];
   return (
     <div className={cn('overflow-hidden rounded-[4px]', narrow ? 'h-full w-full' : 'w-[54px]')}>
@@ -75,12 +76,12 @@ function ModeCard({
           'flex h-[72px] w-full items-center justify-center overflow-hidden rounded-lg border-2',
           active ? 'border-acc' : 'border-edge',
         )}
-        style={{ background: mode === 'dark' ? '#232220' : mode === 'light' ? '#F5F3EE' : undefined }}
+        style={{ background: mode === 'dark' ? '#1F1F1F' : mode === 'light' ? '#F5F5F5' : undefined }}
       >
         {mode === 'auto' ? (
           <span className="relative flex h-full w-full">
-            <span className="flex-1" style={{ background: '#F5F3EE' }} />
-            <span className="flex-1" style={{ background: '#232220' }} />
+            <span className="flex-1" style={{ background: '#F5F5F5' }} />
+            <span className="flex-1" style={{ background: '#1F1F1F' }} />
             <span className="absolute inset-0 flex items-center justify-center">
               <span className="flex w-[54px] overflow-hidden rounded-[4px]">
                 <span className="min-w-0 flex-1">

@@ -169,6 +169,11 @@ fn import_one(
         crate::sprite::validate_rxsprite(&v)?;
         meta.build_state = Some("current".into());
         meta.save(&meta_path)?;
+    } else if atype == AssetType::Rig {
+        // F-GAME-5:.rxrig 导入即校验(坏文档 → 导入失败,不静默登记)。
+        crate::rig::load_rxrig(dest_abs)?;
+        meta.build_state = Some("current".into());
+        meta.save(&meta_path)?;
     } else if atype == AssetType::ShaderGraph {
         let document:Value=serde_json::from_slice(&std::fs::read(dest_abs)?)
             .map_err(|e|AssetError::new("SHADER_PARSE",e.to_string()))?;

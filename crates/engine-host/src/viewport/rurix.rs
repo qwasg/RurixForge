@@ -201,6 +201,90 @@ pub(super) fn shader_tex_bytes() -> Result<(&'static [u8], &'static [u8]), Strin
         .clone()
 }
 
+/// F-GAME-5 Rig2D 变体(契约 F 优先方案):顶点布局 / push constants / 绑定与精灵管线逐字相同,
+/// 只差两处——VS 不经 model 变换原样透传法线(nrm.z = 部件 opacity,rig 顶点法线恒 (0,0,opacity)),
+/// FS 在 FS_TEX 的 alpha 上再乘 nrm.z。uv_rect 恒 [0,0,1,1]、flags 恒 0 → uv 直通(顶点 uv 已归一化到图集)。
+const VS_RIG_WGSL: &str = r#"
+struct CameraUbo { view_proj: mat4x4<f32>, };
+@group(0) @binding(0) var<storage, read> albedo_texels: array<u32>;
+@group(0) @binding(1) var<uniform> u_cam: CameraUbo;
+struct PushConsts { model: mat4x4<f32>, color: vec4<f32>, tex_size: vec2<u32>, flags: vec2<f32>, uv_rect: vec4<f32>, compositing: vec4<f32>, };
+var<push_constant> pc: PushConsts;
+struct VsOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) nrm: vec3<f32>,
+    @location(1) uv: vec2<f32>,
+};
+@vertex
+fn main(@location(0) pos: vec3<f32>, @location(1) nrm: vec3<f32>, @location(2) uv: vec2<f32>) -> VsOut {
+    var o: VsOut;
+    o.clip = u_cam.view_proj * (pc.model * vec4<f32>(pos, 1.0));
+    o.nrm = nrm;
+    let fu = vec2<f32>(mix(uv.x, 1.0 - uv.x, pc.flags.x), mix(uv.y, 1.0 - uv.y, pc.flags.y));
+    o.uv = pc.uv_rect.xy + fu * pc.uv_rect.zw;
+    return o;
+}
+"#;
+
+const FS_RIG_WGSL: &str = r#"
+struct PushConsts { model: mat4x4<f32>, color: vec4<f32>, tex_size: vec2<u32>, flags: vec2<f32>, uv_rect: vec4<f32>, compositing: vec4<f32>, };
+var<push_constant> pc: PushConsts;
+@group(0) @binding(0) var<storage, read> albedo_texels: array<u32>;
+fn texel_at(x: i32, y: i32) -> vec4<f32> {
+    let idx = y * i32(pc.tex_size.x) + x;
+    let p = albedo_texels[idx];
+    return vec4<f32>(
+        f32((p) & 0xffu) / 255.0,
+        f32((p >> 8u) & 0xffu) / 255.0,
+        f32((p >> 16u) & 0xffu) / 255.0,
+        f32((p >> 24u) & 0xffu) / 255.0,
+    );
+}
+@fragment
+fn main(@location(0) nrm: vec3<f32>, @location(1) uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let w = f32(pc.tex_size.x);
+    let h = f32(pc.tex_size.y);
+    let x = i32(clamp(uv.x * w, max(pc.uv_rect.x * w, 0.0), min((pc.uv_rect.x + pc.uv_rect.z) * w, w) - 1.0));
+    let y = i32(clamp(uv.y * h, max(pc.uv_rect.y * h, 0.0), min((pc.uv_rect.y + pc.uv_rect.w) * h, h) - 1.0));
+    let texel = texel_at(x, y);
+    if (texel.a <= 0.0 || (pc.compositing.y < 0.5 && texel.a < 0.02)) { discard; }
+    let g_dom = 0.5 * min(texel.r, texel.b);
+    if (pc.compositing.x > 0.5 && texel.g < g_dom) { discard; }
+    let alpha = mix(pc.color.a, texel.a * pc.color.a, pc.compositing.y) * clamp(nrm.z, 0.0, 1.0);
+    if (alpha <= 0.0) { discard; }
+    return vec4<f32>(texel.rgb * pc.color.rgb, alpha);
+}
+"#;
+
+pub(super) fn shader_rig_bytes() -> Result<(&'static [u8], &'static [u8]), String> {
+    static SHADERS: OnceLock<Result<(&'static [u8], &'static [u8]), String>> = OnceLock::new();
+    SHADERS
+        .get_or_init(|| Ok((compile_wgsl(VS_RIG_WGSL, "vs_rig")?, compile_wgsl(FS_RIG_WGSL, "fs_rig")?)))
+        .clone()
+}
+
+/// rig pass push constants(128B,与精灵槽同布局):model + tint + 图集尺寸 + flags(0,0)+
+/// uv_rect [0,0,1,1] + compositing [色键开, alpha 混合, 0, 0](色键同 Sprite 缺省与 rig_preview)。
+pub(super) fn rig_push_constants(model: M4, tint: [f32; 4], tex: &TexGpu) -> Vec<u8> {
+    let mut pc = Vec::with_capacity(SPRITE_PC_LEN);
+    pc.extend_from_slice(&m4_col_bytes(model));
+    for f in tint {
+        pc.extend_from_slice(&f.to_le_bytes());
+    }
+    pc.extend_from_slice(&tex.w.to_le_bytes());
+    pc.extend_from_slice(&tex.h.to_le_bytes());
+    for f in [0.0f32, 0.0] {
+        pc.extend_from_slice(&f.to_le_bytes());
+    }
+    for f in FULL_UV_RECT {
+        pc.extend_from_slice(&f.to_le_bytes());
+    }
+    for f in [1.0f32, 1.0, 0.0, 0.0] {
+        pc.extend_from_slice(&f.to_le_bytes());
+    }
+    pc
+}
+
 const VS_WGSL: &str = r#"
 struct CameraUbo { view_proj: mat4x4<f32>, };
 @group(0) @binding(0) var<uniform> u_cam: CameraUbo;
@@ -343,6 +427,10 @@ pub(super) struct ViewportRenderer {
     particles: Option<crate::gpu_particles::ParticlePasses>,
     texture_resources: Vec<(&'static TexGpu, u32)>,
     graph_resources: Vec<Option<u32>>,
+    /// F-GAME-5:第 k 个 rig pass(pass 下标 = slots + k)的动态顶点缓冲资源下标。
+    rig_res: Vec<u32>,
+    /// 本会话 rig 布局 (图集指针, 容量);押后重建帧里布局不符的 rig 本帧跳过(不错绑贴图 / 越界)。
+    rig_layout: Vec<(usize, u32)>,
     _graph: SessionGraph,
 }
 
@@ -415,6 +503,7 @@ fn current_import(width: u32, height: u32) -> Option<ShareImport> {
 /// 4..=各网格类 VB,随后=零拷贝共享 SSBO)。零拷贝优先:有共享纹理可 import 时先建
 /// import 会话;失败(如无 external memory 扩展)如实 eprintln 并回退纯 readback 腿
 /// (G-F1-10 证据面能区分两档)。
+#[allow(clippy::too_many_arguments)]
 fn build_session(
     width: u32,
     height: u32,
@@ -424,22 +513,24 @@ fn build_session(
     slot_blend: &[rex::BlendMode],
     slot_graph: &[Option<std::sync::Arc<crate::shader::Material>>],
     extra_tex: &[&'static TexGpu],
+    rig_slots: &[(&'static TexGpu, u32)],
     mesh_sig: u64,
 ) -> Result<ViewportRenderer, String> {
     let import = current_import(width, height);
-    match build_session_graph(width, height, import, slots, slot_mesh, slot_tex, slot_blend, slot_graph, extra_tex, mesh_sig) {
+    match build_session_graph(width, height, import, slots, slot_mesh, slot_tex, slot_blend, slot_graph, extra_tex, rig_slots, mesh_sig) {
         Ok(r) => Ok(r),
         Err(e) if import.is_some() => {
             eprintln!("[viewport] 零拷贝 import 会话创建失败,回退 readback 上传腿: {e}");
-            build_session_graph(width, height, None, slots, slot_mesh, slot_tex, slot_blend, slot_graph, extra_tex, mesh_sig)
+            build_session_graph(width, height, None, slots, slot_mesh, slot_tex, slot_blend, slot_graph, extra_tex, rig_slots, mesh_sig)
         }
         Err(e) => Err(e),
     }
 }
 
 pub(super) fn build_session_with(width:u32,height:u32,import:Option<ShareImport>,slots:usize,slot_mesh:&[Option<&'static MeshGpu>],slot_tex:&[Option<&'static TexGpu>],slot_blend:&[rex::BlendMode],extra_tex:&[&'static TexGpu],mesh_sig:u64)->Result<ViewportRenderer,String>{
-    build_session_graph(width,height,import,slots,slot_mesh,slot_tex,slot_blend,&vec![None;slots],extra_tex,mesh_sig)
+    build_session_graph(width,height,import,slots,slot_mesh,slot_tex,slot_blend,&vec![None;slots],extra_tex,&[],mesh_sig)
 }
+#[allow(clippy::too_many_arguments)]
 fn build_session_graph(
     width: u32,
     height: u32,
@@ -450,6 +541,7 @@ fn build_session_graph(
     slot_blend: &[rex::BlendMode],
     slot_graph: &[Option<std::sync::Arc<crate::shader::Material>>],
     extra_tex: &[&'static TexGpu],
+    rig_slots: &[(&'static TexGpu, u32)],
     mesh_sig: u64,
 ) -> Result<ViewportRenderer, String> {
     assert_eq!(slot_mesh.len(), slots, "槽位→网格类表长度须等于槽数");
@@ -466,6 +558,7 @@ fn build_session_graph(
     }
     let (vs, fs) = shader_bytes()?;
     let (vs_tex, fs_tex) = shader_tex_bytes()?;
+    let (vs_rig, fs_rig) = shader_rig_bytes()?;
     let cube = cube_mesh_bytes();
 
     // 槽位→网格类 VB 资源下标:cube 恒 res 0;不同网格按首现序 4..;共享 SSBO 随后。
@@ -549,7 +642,7 @@ fn build_session_graph(
     }));
     // 不同 albedo 贴图各一资源(首现序),跨槽复用同一资源下标。
     let mut distinct_tex: Vec<&'static TexGpu> = Vec::new();
-    for t in slot_tex.iter().flatten().chain(extra_tex.iter()) {
+    for t in slot_tex.iter().flatten().chain(extra_tex.iter()).chain(rig_slots.iter().map(|(t, _)| t)) {
         if !distinct_tex
             .iter()
             .any(|x| std::ptr::eq(*x, *t))
@@ -597,6 +690,19 @@ fn build_session_graph(
         graph_resources[i]=Some(resources.len()as u32);
         resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc{size:data.len()as u64,usage:rex::BufferUsage{storage:true,..Default::default()},data:None,device_local:false}));
     }}
+    let mut rig_res = Vec::with_capacity(rig_slots.len());
+    for (_, cap) in rig_slots {
+        rig_res.push(resources.len() as u32);
+        resources.push(rex::ResourceDesc::Buffer(rex::BufferDesc {
+            size: (*cap as u64) * (QUAD_STRIDE as u64),
+            usage: rex::BufferUsage {
+                vertex: true,
+                ..Default::default()
+            },
+            data: None,
+            device_local: false,
+        }));
+    }
     // 消隐槽模型:远埋 + 微缩(全有限值,规避 NaN 顶点未定义光栅化)。
     let hidden_model = trs_model(&Transform {
         translation: [0.0, -1000.0, 0.0],
@@ -621,14 +727,14 @@ fn build_session_graph(
         hidden_pc_tex.extend_from_slice(&f.to_le_bytes());
     }
 
-    let mut passes: Vec<rex::Pass> = Vec::with_capacity(slots);
-    let mut barrier_plan: Vec<Vec<(u32, rex::TargetState)>> = Vec::with_capacity(slots);
+    let mut passes: Vec<rex::Pass> = Vec::with_capacity(slots + rig_slots.len());
+    let mut barrier_plan: Vec<Vec<(u32, rex::TargetState)>> = Vec::with_capacity(slots + rig_slots.len());
     for (k, s) in slot_mesh.iter().enumerate() {
         let first = k == 0;
         if let Some(t) = slot_tex[k] {
             // 贴图精灵槽:四边形 + albedo 采样(品红色键在 FS 内 discard)。
-            passes.push(rex::Pass::Raster(rex::RasterPass {
-                blend: slot_blend[k],
+            passes.push(rex::Pass::RasterWithBlend(rex::RasterPass {
+                
                 name: "forge_viewport_sprite",
                 vs_spirv: vs_tex,
                 fs_spirv: if let Some(g)=&slot_graph[k]{unsafe{std::slice::from_raw_parts(g.program.sprite_spirv.as_ptr(),g.program.sprite_spirv.len())}}else{fs_tex},
@@ -664,7 +770,7 @@ fn build_session_graph(
                     ..Default::default()
                 },
                 conservative: None,
-            }));
+            }, slot_blend[k]));
             barrier_plan.push(vec![
                 (2, rex::TargetState::ColorAttachmentWrite),
                 (3, rex::TargetState::DepthAttachmentWrite),
@@ -679,8 +785,8 @@ fn build_session_graph(
             ),
         };
         let first = k == 0;
-        passes.push(rex::Pass::Raster(rex::RasterPass {
-            blend: rex::BlendMode::Opaque,
+        passes.push(rex::Pass::RasterWithBlend(rex::RasterPass {
+            
             name: "forge_viewport_entity",
             vs_spirv: vs,
             fs_spirv: fs,
@@ -715,7 +821,51 @@ fn build_session_graph(
                 ..Default::default()
             },
             conservative: None,
-        }));
+        }, rex::BlendMode::Opaque));
+        barrier_plan.push(vec![
+            (2, rex::TargetState::ColorAttachmentWrite),
+            (3, rex::TargetState::DepthAttachmentWrite),
+        ]);
+    }
+    for (k, (t, cap)) in rig_slots.iter().enumerate() {
+        passes.push(rex::Pass::RasterWithBlend(rex::RasterPass {
+            
+            name: "forge_viewport_rig",
+            vs_spirv: vs_rig,
+            fs_spirv: fs_rig,
+            vertex: rex::VertexData::Resource {
+                res: rig_res[k],
+                offset: 0,
+                stride: QUAD_STRIDE,
+                attrs: &VERTEX_ATTRS_TEX,
+            },
+            draw: rex::DrawSpec::Direct {
+                vertex_count: *cap,
+                instance_count: 1,
+                first_vertex: 0,
+                first_instance: 0,
+            },
+            colors: vec![rex::ColorAttachmentRef {
+                res: 2,
+                clear: None,
+            }],
+            depth: Some(rex::DepthAttachmentRef {
+                res: 3,
+                clear: None,
+            }),
+            viewport: None,
+            bindings: rex::Bindings {
+                uniform: Some(rex::UniformRef {
+                    res: 1,
+                    offset: 0,
+                    size: 64,
+                }),
+                storage_buffers: vec![tex_res(t)],
+                push_constants: hidden_pc_tex.clone(),
+                ..Default::default()
+            },
+            conservative: None,
+        }, rex::BlendMode::Alpha));
         barrier_plan.push(vec![
             (2, rex::TargetState::ColorAttachmentWrite),
             (3, rex::TargetState::DepthAttachmentWrite),
@@ -810,7 +960,10 @@ fn build_session_graph(
         import_key: import.map(|im| (im.handle, im.size)),
         particles,
         texture_resources: distinct_tex.iter().map(|t| (*t, tex_res(*t))).collect(),
-        graph_resources, _graph:graph_owner,
+        graph_resources,
+        rig_res,
+        rig_layout: rig_slots.iter().map(|(t, cap)| (*t as *const TexGpu as usize, *cap)).collect(),
+        _graph:graph_owner,
     })
 }
 
@@ -864,6 +1017,22 @@ pub fn render_scene_frame(
     // F-GAME-4:Sprite 组件经 resolve_sprite_render 统一出口(texture 直贴 /
     // .rxsprite 图集帧);否则沿旧路 MeshRenderer.material → albedo(整图)。
     let project_root = crate::rpc::project_root();
+    let mut rig_draws: Vec<(&forge_scene::Entity, crate::render_core::rig::RigRender)> = scene
+        .entities
+        .iter()
+        .filter(|e| crate::render_core::rig::is_rig(e))
+        .filter_map(|e| crate::render_core::rig::resolve_rig_render(e, &project_root).map(|r| (e, r)))
+        .collect();
+    rig_draws.sort_by(|a, b| {
+        a.1.sorting_order
+            .partial_cmp(&b.1.sorting_order)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let rig_slots: Vec<(&'static TexGpu, u32)> = rig_draws
+        .iter()
+        .map(|(_, r)| (r.tex, r.frame.capacity))
+        .collect();
+
     let entity_sprite: Vec<Option<SpriteRenderInfo>> = renderables
         .iter()
         .map(|(e, _)| {
@@ -1045,6 +1214,13 @@ pub fn render_scene_frame(
             sig_src.extend_from_slice(&len.to_le_bytes());
         }
     }
+    // F-GAME-5(契约 F):mesh_sig 只计 rig 的 (贴图, 容量, 混合),不计顶点——姿态变形不触发会话重建。
+    sig_src.extend_from_slice(&(rig_slots.len() as u32).to_le_bytes());
+    for (t, cap) in &rig_slots {
+        sig_src.extend_from_slice(&(*t as *const TexGpu as usize).to_le_bytes());
+        sig_src.extend_from_slice(&cap.to_le_bytes());
+        sig_src.push(rex::BlendMode::Alpha as u8);
+    }
     let mesh_sig = meshres::fnv1a64(&sig_src);
 
     // 懒初始化 / 改尺寸或共享纹理 import 键变化或网格类布局变化时重建
@@ -1070,7 +1246,7 @@ pub fn render_scene_frame(
     match &*guard {
         RendererState::Uninit => {
             REBUILD_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
-            *guard = match build_session(width, height, want_slots, &slot_mesh, &slot_tex, &slot_blend, &slot_graph, extra_tex, mesh_sig)
+            *guard = match build_session(width, height, want_slots, &slot_mesh, &slot_tex, &slot_blend, &slot_graph, extra_tex, &rig_slots, mesh_sig)
             {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => {for graph in slot_graph.iter().flatten(){crate::shader::report_backend(&graph.program.compiled.hash,"rurix",Err(e.clone()));}return Err(e);},
@@ -1095,7 +1271,7 @@ pub fn render_scene_frame(
             }
         } =>
         {
-            *guard = match build_session(width, height, want_slots, &slot_mesh, &slot_tex, &slot_blend, &slot_graph, extra_tex, mesh_sig)
+            *guard = match build_session(width, height, want_slots, &slot_mesh, &slot_tex, &slot_blend, &slot_graph, extra_tex, &rig_slots, mesh_sig)
             {
                 Ok(r) => RendererState::Ready(r),
                 Err(e) => {for graph in slot_graph.iter().flatten(){crate::shader::report_backend(&graph.program.compiled.hash,"rurix",Err(e.clone()));}return Err(e);},
@@ -1259,6 +1435,44 @@ pub fn render_scene_frame(
             update.push_constant_overrides.push(((class_start[c] + j) as u32, pc));
         }
     }
+    let sprite_mesh_draws = draws;
+    for (k, &vb_res) in r.rig_res.iter().enumerate() {
+        let pass_idx = (slots + k) as u32;
+        let expected_layout = r.rig_layout[k];
+        if let Some((e, rd)) = rig_draws
+            .get(k)
+            .filter(|(_, rd)| (rd.tex as *const TexGpu as usize, rd.frame.capacity) == expected_layout)
+        {
+            let bytes = crate::render_core::rig::padded_vertex_bytes(&rd.frame.verts, rd.frame.capacity);
+            update.buffer_uploads.push((rex::StableResourceId(vb_res as u64 + 1), 0, bytes));
+            let tint = if selected == Some(e.id) {
+                [rd.tint[0], rd.tint[1] * 0.62, rd.tint[2] * 0.18, rd.tint[3]]
+            } else {
+                rd.tint
+            };
+            let pc = rig_push_constants(trs_model(&e.transform), tint, rd.tex);
+            update.push_constant_overrides.push((pass_idx, pc));
+            draws += 1;
+            triangles += (rd.frame.vertex_count as usize) / 3;
+        } else {
+            let bytes = vec![0u8; expected_layout.1 as usize * (QUAD_STRIDE as usize)];
+            update.buffer_uploads.push((rex::StableResourceId(vb_res as u64 + 1), 0, bytes));
+            let mut pc = Vec::with_capacity(SPRITE_PC_LEN);
+            pc.extend_from_slice(&m4_col_bytes(hidden_model));
+            pc.extend_from_slice(&[0u8; 16]);
+            pc.extend_from_slice(&1u32.to_le_bytes());
+            pc.extend_from_slice(&1u32.to_le_bytes());
+            pc.extend_from_slice(&0f32.to_le_bytes());
+            pc.extend_from_slice(&0f32.to_le_bytes());
+            for f in FULL_UV_RECT {
+                pc.extend_from_slice(&f.to_le_bytes());
+            }
+            for f in [1.0f32, 0., 0., 0.] {
+                pc.extend_from_slice(&f.to_le_bytes());
+            }
+            update.push_constant_overrides.push((pass_idx, pc));
+        }
+    }
     // F6 wave.5 瓶颈分解:format=none 性能测量档不回读(跳过 submit→wait 同步
     // 阻塞 + 8MB 拷贝 + 2M 像素统计),纯渲染+提交产能与帧通道端到端成本可拆分留档。
     update.readback_subset = if want_readback { Some(vec![0]) } else { None };
@@ -1321,7 +1535,7 @@ pub fn render_scene_frame(
         rgba8,
         device_name: r.device_name.clone(),
         draws,
-        truncated: renderable_n > draws,
+        truncated: renderable_n > sprite_mesh_draws,
         nonzero,
         triangles,
         mesh_fallbacks,

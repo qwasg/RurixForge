@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
 
-function harness(rpc) {
+function harness(rpc, env = {}) {
   const source = fs.readFileSync(path.join(__dirname, '../src/main.cjs'), 'utf8');
   const start = source.indexOf('const presenter = {');
   const end = source.indexOf('\nfunction smokeLog(msg)', start);
@@ -14,7 +14,7 @@ function harness(rpc) {
   const processes = [];
   const timers = new Set();
   const context = vm.createContext({
-    Buffer, console, quitting: false, useOffscreen: false, isSmokeVisible: false,
+    Buffer, console, path, process: { env }, quitting: false, useOffscreen: false, isSmokeVisible: false,
     PRESENTER_EXE_CANDIDATES: ['presenter.exe'],
     fs: { existsSync: () => true },
     mainWindow: { getNativeWindowHandle: () => Buffer.alloc(8) },
@@ -22,9 +22,9 @@ function harness(rpc) {
     setTimeout(fn, ms) { const t = setTimeout(fn, ms); timers.add(t); return t; },
     clearTimeout(t) { clearTimeout(t); timers.delete(t); },
     clearInterval, setInterval,
-    spawn() {
+    spawn(executable, args) {
       const proc = new EventEmitter();
-      Object.assign(proc, { pid: 100 + processes.length, exitCode: null, signalCode: null,
+      Object.assign(proc, { executable, args, pid: 100 + processes.length, exitCode: null, signalCode: null,
         stdout: new EventEmitter(), stderr: new EventEmitter(), commands: [] });
       proc.stdin = { write(line) {
         proc.commands.push(line);
@@ -37,7 +37,7 @@ function harness(rpc) {
       return proc;
     },
   });
-  vm.runInContext(source.slice(start, end) + '\nmcpCallHost = __rpc; globalThis.api = { presenter, syncPresenter, stopPresenter };', context);
+  vm.runInContext(source.slice(start, end) + '\nmcpCallHost = __rpc; globalThis.api = { presenter, syncPresenter, stopPresenter, normalizeViewportBounds };', context);
   return { ...context.api, processes, dispose() { for (const t of timers) clearTimeout(t); } };
 }
 const bounds = (workspaceId) => ({ x: 0, y: 0, w: 320, h: 180, dpr: 1.25, streamW: 320, streamH: 180, visible: true, workspaceId });
@@ -92,4 +92,33 @@ test('share-open failure releases the presenter so web rendering can continue', 
   assert.equal(h.presenter.proc, null);
   assert.equal(h.presenter.shareOpen, false);
   assert.ok(h.processes[0].commands.includes('close\n'));
+});
+
+test('native 1440p binds two acknowledged slots and an explicit presenter executable', async (t) => {
+  const calls=[];
+  const nativeShare={handleKind:'buffer',protocol:2,generation:7,width:2560,height:1440,rowPitch:10240,slots:[{texHandle:11,fenceHandle:12,consumerFenceHandle:13},{texHandle:21,fenceHandle:22,consumerFenceHandle:23}]};
+  const executable=path.resolve('test-presenter.exe');
+  const h=harness(async(tool,args,workspace)=>{calls.push({tool,args,workspace});return nativeShare;},{FORGE_VIEWPORT_PRESENTER_BIN:executable});
+  t.after(h.dispose);
+  h.syncPresenter({...bounds('A'),streamW:2560,streamH:1440,nativeOnly:true});await h.presenter.chain;
+  assert.equal(h.processes[0].executable,executable);
+  assert.ok(h.processes[0].args.includes('--high-performance'));
+  assert.equal(calls[0].args.protocol,2);assert.equal(calls[0].args.width,2560);assert.equal(calls[0].args.height,1440);
+  assert.match(h.processes[0].commands[0],/^bind buf2 7 11 12 13 21 22 23 2560 1440 10240/);
+});
+
+test('normal stop drains GPU consumers before sending close to the presenter', async (t) => {
+  let release;
+  const h=harness(async(tool)=>{if(tool.endsWith('share_close'))await new Promise(resolve=>{release=resolve;});return share;});
+  t.after(h.dispose);h.syncPresenter(bounds('A'));await h.presenter.chain;
+  const stopping=h.stopPresenter();await tick();
+  assert.equal(h.processes[0].commands.includes('close\n'),false);
+  release();await stopping;assert.ok(h.processes[0].commands.includes('close\n'));
+});
+
+test('actual IPC bounds normalization preserves native mode and rejects string truthiness', (t) => {
+  const h=harness(async()=>share);t.after(h.dispose);
+  const native=h.normalizeViewportBounds({...bounds('A'),streamW:2560,streamH:1440,nativeOnly:true});
+  assert.equal(native.nativeOnly,true);assert.equal(native.streamW,2560);assert.equal(native.streamH,1440);
+  assert.equal(h.normalizeViewportBounds({...bounds('A'),nativeOnly:'true'}).nativeOnly,false);
 });

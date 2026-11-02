@@ -108,10 +108,12 @@ pub struct SpriteAssets {
     pub graphs: crate::shader_graph::GraphMaterials,
     canvas_materials: Vec<Owned>,
     spatial_materials: HashMap<(String, usize, u64, [u32; 11], usize), Owned>,
+    rig_spatial_materials: HashMap<(String, usize, u64, [u32; 5], usize), Owned>,
     textures: HashMap<(String, usize, u64), Gd<ImageTexture>>,
     #[allow(dead_code)]
     canvas_shaders: Vec<Owned>,
     spatial_shaders: Vec<Owned>,
+    rig_spatial_shaders: Vec<Owned>,
     spatial_quad: Option<Owned>,
 }
 
@@ -120,6 +122,7 @@ impl SpriteAssets {
         let mut canvas_shaders = Vec::with_capacity(6);
         let mut canvas_materials = Vec::with_capacity(6);
         let mut spatial_shaders = Vec::with_capacity(6);
+        let mut rig_spatial_shaders = Vec::with_capacity(6);
         for blend in [SpriteBlend::Opaque, SpriteBlend::Alpha, SpriteBlend::Additive] {
             for chroma in [false, true] {
                 let canvas_code = canvas_shader(blend, chroma);
@@ -134,15 +137,22 @@ impl SpriteAssets {
                 let spatial_shader_rid = Owned::new(rs.shader_create());
                 rs.shader_set_code(spatial_shader_rid.rid(), &spatial_code);
                 spatial_shaders.push(spatial_shader_rid);
+
+                let rig_code = crate::rig::spatial_shader(blend, chroma);
+                let rig_shader_rid = Owned::new(rs.shader_create());
+                rs.shader_set_code(rig_shader_rid.rid(), &rig_code);
+                rig_spatial_shaders.push(rig_shader_rid);
             }
         }
         Self {
             graphs: crate::shader_graph::GraphMaterials::new(),
             canvas_materials,
             spatial_materials: HashMap::new(),
+            rig_spatial_materials: HashMap::new(),
             textures: HashMap::new(),
             canvas_shaders,
             spatial_shaders,
+            rig_spatial_shaders,
             spatial_quad: None,
         }
     }
@@ -150,6 +160,7 @@ impl SpriteAssets {
     pub fn clear(&mut self) {
         self.graphs.clear();
         self.spatial_materials.clear();
+        self.rig_spatial_materials.clear();
         self.textures.clear();
         self.spatial_quad = None;
     }
@@ -169,6 +180,45 @@ impl SpriteAssets {
 
     pub fn canvas_texture(&mut self, draw: &SpriteDraw, generation: u64) -> Option<Rid> {
         self.texture(&draw.tex, generation)
+    }
+
+    pub fn rig_texture(&mut self, tex: &TexData, generation: u64) -> Option<Rid> {
+        self.texture(tex, generation)
+    }
+
+    pub fn rig_canvas_material(&self, blend: SpriteBlend) -> Rid {
+        self.canvas_materials[material_index(blend, true)].rid()
+    }
+
+    pub fn rig_spatial_material(
+        &mut self,
+        rs: &mut Gd<RenderingServer>,
+        draw: &engine_host::RigDraw,
+        generation: u64,
+        compensate_reinhard: bool,
+    ) -> Option<Rid> {
+        let texture = self.texture(&draw.tex, generation)?;
+        let tint = crate::rig::tint_values(draw);
+        let identity = tex_key(&draw.tex, generation);
+        let tbits = tint.map(f32::to_bits);
+        let idx = material_index(draw.blend, true);
+        let key = (
+            identity.0,
+            identity.1,
+            identity.2,
+            [tbits[0], tbits[1], tbits[2], tbits[3], u32::from(compensate_reinhard)],
+            idx,
+        );
+        if !self.rig_spatial_materials.contains_key(&key) {
+            let shader = self.rig_spatial_shaders[idx].rid();
+            let mat = Owned::new(rs.material_create());
+            rs.material_set_shader(mat.rid(), shader);
+            rs.material_set_param(mat.rid(), "forge_tex", &texture.to_variant());
+            rs.material_set_param(mat.rid(), "forge_tint", &Vector4::new(tint[0], tint[1], tint[2], tint[3]).to_variant());
+            rs.material_set_param(mat.rid(), "forge_reinhard_compensation", &compensate_reinhard.to_variant());
+            self.rig_spatial_materials.insert(key.clone(), mat);
+        }
+        Some(self.rig_spatial_materials[&key].rid())
     }
 
     pub fn spatial_quad(&mut self, rs: &mut Gd<RenderingServer>) -> Rid {
@@ -233,7 +283,6 @@ impl SpriteAssets {
 
 struct CanvasSprite {
     item: Owned,
-    draw: SpriteDraw,
 }
 
 /// 纯正交 2D 场景的 Canvas 绘制会话。保留 item RID，差量帧更新命令/变换，不逐帧重建资源。
@@ -251,7 +300,7 @@ impl CanvasSprites {
         Self { items: BTreeMap::new(), canvas, viewport }
     }
 
-    fn item_transform(world: &M4) -> Transform2D {
+    pub(crate) fn item_transform(world: &M4) -> Transform2D {
         let x = Vector2::new(world[0][0], -world[1][0]);
         // Canvas quad local +Y points down, whereas the world quad local +Y points up.
         let y = Vector2::new(-world[0][1], world[1][1]);
@@ -263,45 +312,56 @@ impl CanvasSprites {
     }
 
     pub fn update(&mut self, rs: &mut Gd<RenderingServer>, assets: &mut SpriteAssets, list: &RenderList) {
-        let live: BTreeSet<ItemKey> = list.items.iter().filter_map(|item| matches!(&item.body, ItemBody::Sprite(_)).then_some(item.key)).collect();
+        let is_2d = |b: &ItemBody| matches!(b, ItemBody::Sprite(_) | ItemBody::RigMesh(_));
+        let live: BTreeSet<ItemKey> = list.items.iter().filter_map(|item| is_2d(&item.body).then_some(item.key)).collect();
         self.items.retain(|key, _| live.contains(key));
-        let mut order: Vec<&RenderItem> = list.items.iter().filter(|item| matches!(&item.body, ItemBody::Sprite(_))).collect();
+        let mut order: Vec<&RenderItem> = list.items.iter().filter(|item| is_2d(&item.body)).collect();
         order.sort_by(|a, b| {
-            let get = |item: &RenderItem| match &item.body { ItemBody::Sprite(d) => d.sorting_order, _ => 0.0 };
+            let get = |item: &RenderItem| match &item.body {
+                ItemBody::Sprite(d) => d.sorting_order,
+                ItemBody::RigMesh(d) => d.sorting_order,
+                _ => 0.0,
+            };
             get(a).total_cmp(&get(b)).then_with(|| a.key.entity.cmp(&b.key.entity)).then_with(|| a.order.cmp(&b.order))
         });
         for (draw_index, item) in order.into_iter().enumerate() {
-            let ItemBody::Sprite(draw) = &item.body else { continue };
             if !self.items.contains_key(&item.key) {
                 let rid = Owned::new(rs.canvas_item_create());
                 rs.canvas_item_set_parent(rid.rid(), self.canvas.rid());
                 rs.canvas_item_set_default_texture_filter(rid.rid(), CanvasItemTextureFilter::NEAREST);
-                self.items.insert(item.key, CanvasSprite { item: rid, draw: draw.clone() });
+                self.items.insert(item.key, CanvasSprite { item: rid });
             }
-            let Some(texture) = assets.canvas_texture(draw, list.asset_generation) else {
-                rs.canvas_item_set_visible(self.items[&item.key].item.rid(), false);
-                continue;
-            };
-            let entry = self.items.get_mut(&item.key).unwrap();
-            rs.canvas_item_set_visible(entry.item.rid(), true);
-            rs.canvas_item_set_draw_index(entry.item.rid(), draw_index as i32);
-            let Some(material)=assets.canvas_material(rs,draw)else{continue;};
-            rs.canvas_item_set_material(entry.item.rid(),material);
-            rs.canvas_item_set_modulate(entry.item.rid(), rgba(draw));
-            rs.canvas_item_set_transform(entry.item.rid(), Self::item_transform(&item.world));
-            rs.canvas_item_clear(entry.item.rid());
-            // RS treats a negative size as a UV-flip flag and takes its absolute size;
-            // it does not move the rectangle origin as a geometric negative extent would.
-            let rect_origin = Vector2::new(-0.5, -0.5);
-            let rect_size = Vector2::new(if draw.flip[0] { -1.0 } else { 1.0 }, if draw.flip[1] { -1.0 } else { 1.0 });
-            let src = Rect2::new(
-                Vector2::new(draw.uv_rect[0] * draw.tex.w as f32, draw.uv_rect[1] * draw.tex.h as f32),
-                Vector2::new(draw.uv_rect[2] * draw.tex.w as f32, draw.uv_rect[3] * draw.tex.h as f32),
-            );
-            rs.canvas_item_add_texture_rect_region_ex(
-                entry.item.rid(), Rect2::new(rect_origin, rect_size), texture, src,
-            ).clip_uv(true).done();
-            entry.draw = draw.clone();
+            let item_rid = self.items[&item.key].item.rid();
+            rs.canvas_item_set_draw_index(item_rid, draw_index as i32);
+            match &item.body {
+                ItemBody::Sprite(draw) => {
+                    let Some(texture) = assets.canvas_texture(draw, list.asset_generation) else {
+                        rs.canvas_item_set_visible(item_rid, false);
+                        continue;
+                    };
+                    rs.canvas_item_set_visible(item_rid, true);
+                    let Some(material) = assets.canvas_material(rs, draw) else { continue };
+                    rs.canvas_item_set_material(item_rid, material);
+                    rs.canvas_item_set_modulate(item_rid, rgba(draw));
+                    rs.canvas_item_set_transform(item_rid, Self::item_transform(&item.world));
+                    rs.canvas_item_clear(item_rid);
+                    // RS treats a negative size as a UV-flip flag and takes its absolute size;
+                    // it does not move the rectangle origin as a geometric negative extent would.
+                    let rect_origin = Vector2::new(-0.5, -0.5);
+                    let rect_size = Vector2::new(if draw.flip[0] { -1.0 } else { 1.0 }, if draw.flip[1] { -1.0 } else { 1.0 });
+                    let src = Rect2::new(
+                        Vector2::new(draw.uv_rect[0] * draw.tex.w as f32, draw.uv_rect[1] * draw.tex.h as f32),
+                        Vector2::new(draw.uv_rect[2] * draw.tex.w as f32, draw.uv_rect[3] * draw.tex.h as f32),
+                    );
+                    rs.canvas_item_add_texture_rect_region_ex(
+                        item_rid, Rect2::new(rect_origin, rect_size), texture, src,
+                    ).clip_uv(true).done();
+                }
+                ItemBody::RigMesh(draw) => {
+                    crate::rig::draw_canvas_rig(rs, assets, item_rid, &item.world, draw, list.asset_generation);
+                }
+                _ => {}
+            }
         }
         let Projection::Orthographic { half_h } = list.view.projection else { return };
         let scale = list.height as f32 / (2.0 * half_h.max(1e-5));

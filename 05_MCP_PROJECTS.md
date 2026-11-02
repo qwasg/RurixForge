@@ -1,4 +1,4 @@
-﻿# 05 · MCP 工程集(核心设计点)
+# 05 · MCP 工程集(核心设计点)
 
 > 全部重复性/批量性/可程序化操作的**唯一执行面**(不变量 I-2,红线 R-1/R-2)。
 > agent 经 `mcp__{server}__{tool}` 调用;人类用户的 UI 操作在底层也复用同一工具面
@@ -204,6 +204,25 @@
 3. 任何 UI 新操作先问「对应工具是哪个」;没有就先补工具(P-2)。
 
 ## Errata(只追加区)
+
+- **E-05-005(2026-10-11,F-GAME-5 / D-050)——asset-pipeline 加 11 件 `rig_*`、engine-scene 加 1 件 `rig_spawn`(2D 骨骼绑定工具面)**:领域错误沿用现状以成功结果返回 `{error, message}`;除 `rig_import_psd` / `rig_parts_from_sheet` / `rig_create` 外均接受 `assetPath` 或 `guid` 二选一。`rig_patch` 原子执行(任一 op 失败整批不生效,消息带 `ops[i](op名)` 前缀),删除类 op 级联清理悬空引用并在返回 `destructive` 中列出,超阈值或非用户明确授权走 Proposal 门(12 §3)。
+
+  | 工具 | 参数 | 返回 | 错误码 |
+  |---|---|---|---|
+  | `rig_create` | `name, texture, canvasSize?, template?: bust\|fullbody, destFolder?` | `{assetPath, guid, textureGuid, stats}` | `INVALID_OPS` / `UNKNOWN_GUID` / `WRONG_TYPE` / `RIG_INVALID` |
+  | `rig_get` | `assetPath\|guid, sections?, includeMesh?=false` | `{assetPath, guid, stats, doc}`(缺省省略网格数组与 keyform 偏移数组,只给计数) | `NO_META` / `RIG_INVALID` |
+  | `rig_set` | `assetPath\|guid, doc` | `{assetPath, guid, stats}` | `RIG_INVALID` / `RIG_TOO_LARGE` / `RIG_FEATURE_UNSUPPORTED` |
+  | `rig_patch` | `assetPath\|guid, ops[], dryRun?` | `{applied, dryRun, stats, destructive}` | `INVALID_OPS` / `RIG_INVALID` |
+  | `rig_mesh_auto` | `assetPath\|guid, parts?, maxError?=2, interiorSpacing?=24, alphaThreshold?=0.05, maxVertices?=1500` | `{parts:[{id, vertices, triangles}], weightsCleared, stats}` | `RIG_MESH_FAILED` / `RIG_TOO_LARGE` |
+  | `rig_weights_auto` | `assetPath\|guid, parts?, bones?, falloff?=2, smooth?=true` | `{parts:[{id, dominantBones}]}` | `RIG_INVALID` |
+  | `rig_evaluate` | `assetPath\|guid, params?, clip?, time?, parts?` | `{bbox, parts:[{id, drawOrder, opacity, positions}], bones:[{id, head, tail}], unknown}` | `RIG_INVALID` |
+  | `rig_preview` | `assetPath\|guid, params?, clip?, time?, size?=512, overlay?: none\|mesh\|bones\|weights:<骨骼>, compareTo?, grid?` | `{fileRef, width, height, silhouetteIoU?}`(PNG 落 `.forge/tmp/`) | `RIG_INVALID` / `UNKNOWN_GUID` |
+  | `rig_import_psd` | `psdRef, name, destFolder?` | `{assetPath, guid, atlasGuid, atlasPath, parts}` | `RIG_PSD_UNSUPPORTED` / `RIG_TOO_LARGE` |
+  | `rig_parts_from_sheet` | `texture, name, canvasSize, parts:[{name, bbox, position, drawOrder?}], destFolder?` | `{assetPath, guid, stats}` | `INVALID_OPS` / `UNKNOWN_GUID` / `RIG_INVALID` |
+  | `rig_validate` | `assetPath\|guid` 或 `doc` | `{ok, error?}` | — |
+  | `rig_spawn`(engine-scene) | `name, rig, position?, scale?, sortingOrder?, clip?, params?` | 同 `sprite_create` | 同 `sprite_create` |
+
+  `rig_patch` op 集合(`crates/forge-rig2d/src/patch.rs`):`add_part / set_part / remove_part`、`add_bone / set_bone / remove_bone`、`set_weights`、`add_parameter / set_parameter / remove_parameter`、`add_deformer / set_deformer / remove_deformer`、`set_keyform`(按参数值坐标写单个形态,组不存在时以 `keys` 新建)、`set_keyform_group / remove_keyform_group`、`set_physics / remove_physics`、`set_auto`、`set_clip / remove_clip`、`set_animator`、`set_canvas`、`merge_scaffold`;`set_*` 的 `fields` 为 RFC 7386 merge-patch。
 
 - **E-05-004(2026-10-06,D-045)——gen-image / asset-pipeline / engine-scene 工具面扩展(as-built)**:①gen-image `gen_image` 增 `aspect`(square|landscape|portrait;横竖版直出 1536×1024 / 1024×1536)、`quality`、`background`;新工具 `gen_edit{prompt, imageRefs[1..4], maskRef?, aspect?, quality?, background?, n?, seed?, backend?}`(img2img;后端不支持 → `GEN_UNSUPPORTED`;sidecar `op:"edit"` 与 `sourceRefs`)。工具数 6→7。②asset-pipeline 新增 `font_list{includeSystem?, query?, cjkOnly?, limit?}`(项目字体含 GUID + 系统字体候选)与 `font_import{sourcePath, destFolder?="Fonts"}`(校验后入库,provenance 记来源与授权提醒)。③engine-scene 新增 `text_create`(实体 + Text 组件 + TRS,形态同 `sprite_create`);`viewport_frame` 增 `camera: editor|scene`(scene = 编辑态也用场景相机)与 `exact: bool`(严格按请求尺寸离屏出帧、不让位推流、不喂共享纹理,`framePath` 回 `exact_offscreen`;可能触发一次会话重建)。rurix 与 Godot 两条取帧路径共用 `rpc::frame_options` 校验:非法值(`camera` 不是 editor|scene、`exact` 不是布尔)→ -32602;`camera:"scene"` 而场景没有启用的 Camera → 域错误,不静默回落编辑器相机。④agentd 侧:`gen_edit / text_create / font_import` 入 `WRITE_TOOLS`;`gen_edit` 超时同 gen_image(360s),`font_list` 40s。
 

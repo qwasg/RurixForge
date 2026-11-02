@@ -692,22 +692,51 @@ pub fn antigravity_step(
                     format!("{clean}/v1/chat/completions")
                 };
 
-                if let Some(sink) = stream {
-                    crate::llm::chat_completions_stream(
-                        &url,
-                        "antigravity",
-                        &model,
-                        &key,
-                        &messages,
-                        &tools,
-                        &spec,
-                        Some(&sink),
-                        &[],
-                    )
+                let primary = if let Some(m) = &spec.model {
+                    m.as_str()
                 } else {
-                    let body = crate::llm::build_request_body(&model, &messages, &tools, &spec);
-                    crate::llm::post_chat_completions(&url, "antigravity", &key, &body, &[])
+                    crate::modelspec::upstream_model(&model)
+                };
+
+                let mut candidates = vec![primary];
+                for fb in ["gemini-3-flash", "gemini-3.8-flash-high", "gemini-2.5-flash"] {
+                    if !candidates.contains(&fb) {
+                        candidates.push(fb);
+                    }
                 }
+
+                let mut last_err = None;
+                for wire_model in candidates {
+                    let mut try_spec = spec.clone();
+                    try_spec.model = Some(wire_model.to_string());
+                    let res = if let Some(ref sink) = stream {
+                        crate::llm::chat_completions_stream(
+                            &url,
+                            "antigravity",
+                            wire_model,
+                            &key,
+                            &messages,
+                            &tools,
+                            &try_spec,
+                            Some(sink),
+                            &[],
+                        )
+                    } else {
+                        let body = crate::llm::build_request_body(wire_model, &messages, &tools, &try_spec);
+                        crate::llm::post_chat_completions(&url, "antigravity", &key, &body, &[])
+                    };
+                    match res {
+                        Ok(val) => return Ok(val),
+                        Err(e) => {
+                            let msg = e.to_string();
+                            last_err = Some(e);
+                            if !msg.contains("unknown provider for model") && !msg.contains("429") {
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(last_err.unwrap_or_else(|| crate::llm::LlmError::new("antigravity step failed")))
             })
             .await
             .map_err(|e| crate::llm::LlmError::new(format!("spawn_blocking join 失败: {e}")))??;

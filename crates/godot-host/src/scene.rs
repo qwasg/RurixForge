@@ -105,6 +105,7 @@ struct Inst {
     // replacement has already become the latest extracted RenderList.
     _graph_material: Option<Arc<engine_host::shader::Material>>,
     skeleton: Option<Owned>,
+    rig_mesh: Option<Owned>,
 }
 
 /// Mobile 的输出视口(有意修正 2,02 §9.5 Stage 5 step 4):内层 3D 视口开 use_hdr_2d(3D 缓冲 RGBA16F,不再经 RGB10A2
@@ -350,6 +351,11 @@ impl Slot {
                     }
                 }
             }
+            for (k, verts) in &d.rig_verts {
+                if let Some(m) = self.instances.get(k).and_then(|i| i.rig_mesh.as_ref()) {
+                    crate::rig::update_spatial_mesh(rs, m.rid(), verts);
+                }
+            }
         }
         self.redraw(rs);
         self.applied = Some(list);
@@ -368,11 +374,23 @@ impl Slot {
 
     fn instance(&self, rs: &mut Gd<RenderingServer>, assets: &mut Assets, it: &RenderItem, generation: u64, compensate_reinhard: bool) -> Option<Inst> {
         let mut graph_mesh=None;
+        let mut rig_mesh = None;
         let graph_material = match &it.body { ItemBody::GraphMesh{graph,..}=>Some(graph.clone()), ItemBody::Sprite(draw)=>draw.graph.clone(), ItemBody::Model(p)=>p.graph.clone(), _=>None };
-        let sprite_sort = match &it.body { ItemBody::Sprite(draw) => Some(draw.sorting_order as f32), _ => None };
+        let sprite_sort = match &it.body {
+            ItemBody::Sprite(draw) => Some(draw.sorting_order as f32),
+            ItemBody::RigMesh(draw) => Some(draw.sorting_order as f32),
+            _ => None,
+        };
         let (base, mat, overlay) = match &it.body {
             ItemBody::GraphMesh{vertices,graph}=>{let mesh=crate::shader_graph::mesh(rs,vertices);let rid=mesh.rid();graph_mesh=Some(mesh);let mat=assets.graphs.material(rs,graph,&engine_host::shader::Texture::white(),false,[1.;4],[0.,0.,1.,1.],[false;2])?;(rid,mat,false)},
             ItemBody::Sprite(draw) => (assets.sprites.spatial_quad(rs), assets.sprites.spatial_material(rs, draw, generation, compensate_reinhard)?, false),
+            ItemBody::RigMesh(draw) => {
+                let mesh = crate::rig::create_spatial_mesh(rs, &draw.verts);
+                let rid = mesh.rid();
+                rig_mesh = Some(mesh);
+                let mat = assets.sprites.rig_spatial_material(rs, draw, generation, compensate_reinhard)?;
+                (rid, mat, draw.selected)
+            }
             ItemBody::Mesh { mesh, color } => (assets.flat(rs, mesh, generation, true), assets.mats.color(*color), false),
             ItemBody::TexQuad { tex, compositing } => (assets.quad(rs), assets.mats.quad(rs, tex, false, *compositing)?, false),
             ItemBody::Model(p) => {
@@ -393,6 +411,9 @@ impl Slot {
         }
         rs.instance_set_transform(inst.rid(), xform(&it.world));
         if let Some(offset) = sprite_sort { rs.instance_set_pivot_data(inst.rid(), offset, false); }
+        if rig_mesh.is_some() {
+            rs.instance_set_custom_aabb(inst.rid(), Aabb::new(Vector3::splat(-1.0e4), Vector3::splat(2.0e4)));
+        }
         let skeleton = it.pose.as_ref().map(|pal| {
             let sk = Owned::new(rs.skeleton_create());
             rs.skeleton_allocate_data(sk.rid(), pal.len() as i32);
@@ -404,7 +425,7 @@ impl Slot {
             rs.instance_set_custom_aabb(inst.rid(), Aabb::new(Vector3::splat(-1.0e4), Vector3::splat(2.0e4)));
             sk
         });
-        Some(Inst { rid: inst, skeleton, _graph_mesh:graph_mesh, _graph_material:graph_material })
+        Some(Inst { rid: inst, skeleton, rig_mesh, _graph_mesh:graph_mesh, _graph_material:graph_material })
     }
 
     /// 丢弃已应用状态(asset.reload):下一份清单全量重建(env / volumes 随全量帧重配)。

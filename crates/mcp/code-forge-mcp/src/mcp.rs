@@ -1,5 +1,5 @@
 //! MCP stdio 服务:initialize / tools/list / tools/call。复刻 asset-pipeline-mcp 骨架。
-//! 五工具为子进程包上游 rx CLI/rurixc(H:\rurix),超时+1MB 截断,F4 wave.1。
+//! rx CLI/rurixc 使用共享工具链发现，超时+1MB 截断。
 //! F4 wave.2:+ graph_validate/graph_create/graph_get(校验器在 forge-logic,纯函数)。
 
 use std::io::{BufRead, Write};
@@ -15,8 +15,13 @@ fn tool_list() -> Value {
     json!({
         "tools": [
             {
+                "name": "toolchain_capabilities",
+                "description": "只读核实 rx/rurixc 工具链路径与可读性，返回 available/path/source/attempted/error；不编译、不创建文件。available 只表示二进制可读，不代表实际编译已验证。",
+                "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+            },
+            {
                 "name": "rx_check",
-                "description": ".rx 静态检查:子进程包 rurixc <file> --emit=check --error-format=json(H:\\rurix;rx check 不透传 --error-format,契约决策 D-F4-A);结构化诊断 {code,severity,file,span,message,suggestion?};超时+1MB 截断,F4 wave.1",
+                "description": ".rx 静态检查:子进程包 rurixc <file> --emit=check --error-format=json(rx check 不透传 --error-format);结构化诊断 {code,severity,file,span,message,suggestion?};工具链位置先用 toolchain_capabilities 核实，超时+1MB 截断",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -27,7 +32,7 @@ fn tool_list() -> Value {
             },
             {
                 "name": "rx_build",
-                "description": ".rx 构建:子进程包 rx build <file> [-o out](H:\\rurix);产物存在才填 artifact(缺省 <file>.exe);诊断从 stderr error[RXnnnn] 行提取;超时+截断,F4 wave.1",
+                "description": ".rx 构建:子进程包 rx build <file> [-o out];产物存在才填 artifact(缺省 <file>.exe);诊断从 stderr error[RXnnnn] 行提取;工具链位置先用 toolchain_capabilities 核实，超时+截断",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -179,6 +184,7 @@ fn call_tool(params: &Value, project_root: &Path) -> Result<(Value, bool), Value
     if !args.is_object() { return Err(err(Value::Null, -32602, "invalid params: arguments 须为对象")); }
 
     let r = match name {
+        "toolchain_capabilities" => Ok(rxtool::toolchain_capabilities()),
         "rx_check" => rxtool::check(&args),
         "rx_build" => rxtool::build(&args),
         "rx_run" => rxtool::run_tool(&args),
@@ -238,5 +244,28 @@ pub fn serve_stdio(project_root: &Path) {
             let _ = writeln!(stdout, "{r}");
             let _ = stdout.flush();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toolchain_capabilities_are_available_before_a_project_exists() {
+        let project = std::env::temp_dir().join(format!("forge-toolchain-query-{}-{}", std::process::id(), forge_util::timeutil::unix_millis()));
+        let declarations = tool_list();
+        assert!(declarations["tools"].as_array().unwrap().iter().any(|t| t["name"] == "toolchain_capabilities"));
+        let (report, is_error) = call_tool(&json!({"name":"toolchain_capabilities","arguments":{}}), &project).unwrap();
+        assert!(!is_error, "unavailable binaries are reported as capability facts");
+        for name in ["rx", "rurixc"] {
+            let tool = &report["tools"][name];
+            assert_eq!(tool["available"], !tool["path"].is_null());
+            if tool["available"] == false {
+                assert!(tool["error"].as_str().unwrap().contains("RX_CLI_NOT_FOUND"));
+            }
+        }
+        assert_eq!(report["ready"], report["tools"]["rx"]["available"] == true && report["tools"]["rurixc"]["available"] == true);
+        assert!(!project.exists(), "capability discovery must not initialize a project");
     }
 }

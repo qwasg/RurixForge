@@ -55,6 +55,19 @@ describe('deriveTurnStatus', () => {
     expect(derive([], SLOW_AFTER_MS)?.kind).toBe('slow');
   });
 
+  it('按 reasoning item 生命周期判断，已结束的尾块不再掩蔽真实空档', () => {
+    const active: ChatBlock = { kind: 'reasoning', itemId: 'thinking-1', text: '', status: 'running' };
+    expect(derive([active], 60_000)).toBeNull();
+    // 其他 item/正文先到也不能结束尚在思考的 item。
+    expect(derive([active, { kind: 'reasoning', itemId: 'thinking-2', text: '', status: 'done' }], 60_000)).toBeNull();
+    const finished: ChatBlock = { kind: 'reasoning', text: '', status: 'done', endedTs: '2026-10-18T00:00:20Z' };
+    expect(derive([finished], SLOW_AFTER_MS)?.kind).toBe('slow');
+    // 旧快照没有 status，已有结束时刻同样应按完成态呈现。
+    expect(derive([{ kind: 'reasoning', text: 'done', endedTs: '2026-10-18T00:00:20Z' }], SLOW_AFTER_MS)?.kind).toBe('slow');
+    expect(derive([active], 60_000, { down: true, downForMs: RECONNECT_GRACE_MS })?.kind).toBe('reconnecting');
+    expect(derive([active], 60_000, { networkOffline: true })?.kind).toBe('offline');
+  });
+
   it('未决审批(含嵌套子代理里的)→ 等用户,静止不扫;提问 / 表单单列文案;已决不算', () => {
     const approval = (approvalKind: string, decision?: string): ChatBlock => ({
       kind: 'approval',

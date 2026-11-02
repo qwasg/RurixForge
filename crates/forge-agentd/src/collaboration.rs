@@ -200,6 +200,8 @@ struct Document {
     #[serde(default)]
     histories: HashMap<String, Vec<Value>>,
     #[serde(default)]
+    history_run_ids: HashMap<String, String>,
+    #[serde(default)]
     member_configs: HashMap<String, Value>,
 }
 
@@ -373,6 +375,15 @@ impl CollaborationStore {
             .unwrap_or_default()
     }
 
+    /// A recovery checkpoint belongs to one run. Never substitute an older
+    /// successful conversation for the interrupted run that is being resumed.
+    pub fn history_for_run(&self, agent_id: &str, run_id: &str) -> Option<Vec<Value>> {
+        let d = self.inner.lock().unwrap();
+        (d.history_run_ids.get(agent_id).map(String::as_str) == Some(run_id))
+            .then(|| d.histories.get(agent_id).cloned())
+            .flatten()
+    }
+
     pub fn member_config(&self, agent_id: &str) -> Option<Value> {
         self.inner
             .lock()
@@ -398,6 +409,43 @@ impl CollaborationStore {
         self.change(|d| {
             require_agent(d, agent_id)?;
             d.histories.insert(agent_id.into(), messages);
+            d.history_run_ids.remove(agent_id);
+            Ok(())
+        })
+    }
+
+    /// Persist accepted context and acknowledge its addressed messages in the
+    /// same write. A crash or I/O failure must not acknowledge context that was
+    /// never saved, and a delayed old run must not replace a newer checkpoint.
+    pub fn save_context_checkpoint(
+        &self,
+        agent_id: &str,
+        run_id: &str,
+        messages: Vec<Value>,
+        lease_ids: &[String],
+    ) -> Result<()> {
+        self.change(|d| {
+            let agent = require_agent(d, agent_id)?;
+            if agent.active_run_id.as_deref() != Some(run_id) || agent.status != "running" {
+                return Err(error("AGENT_RUN_CONFLICT", "检查点只能保存当前运行轮次"));
+            }
+            let at = now_rfc3339();
+            for message in &mut d.messages {
+                if message
+                    .lease_id
+                    .as_ref()
+                    .is_some_and(|id| lease_ids.contains(id))
+                    && message.status == "leased"
+                {
+                    if message.to_agent_id != agent_id || message.run_id.as_deref() != Some(run_id) {
+                        return Err(error("AGENT_RUN_CONFLICT", "消息租约不属于当前检查点"));
+                    }
+                    message.status = "injected".into();
+                    message.injected_at = Some(at.clone());
+                }
+            }
+            d.histories.insert(agent_id.into(), messages);
+            d.history_run_ids.insert(agent_id.into(), run_id.into());
             Ok(())
         })
     }
@@ -952,6 +1000,7 @@ impl CollaborationStore {
                 message.error = Some("会话已回退，旧上下文中的待投递消息已取消".into());
             }
             d.histories.remove(&root);
+            d.history_run_ids.remove(&root);
             Ok(())
         })
     }
@@ -1103,6 +1152,24 @@ impl CollaborationStore {
                     .tasks
                     .iter()
                     .position(|t| supplied_id.map_or(t.title == title, |id| t.id == id));
+                // Only the leader authors executable task instructions. A title
+                // is a label, never a fallback delegation prompt. Partial updates
+                // may preserve an existing valid prompt, but cannot erase it.
+                let prompt = match row.get("prompt") {
+                    Some(value) => value.as_str(),
+                    None => existing.and_then(|index| {
+                        let task = &team.tasks[index];
+                        (task.prompt.trim() != task.title.trim()).then_some(task.prompt.as_str())
+                    }),
+                }
+                .filter(|prompt| !prompt.trim().is_empty() && prompt.trim() != title)
+                .ok_or_else(|| {
+                    error(
+                        "INVALID_INPUT",
+                        "任务 prompt 必须由主 agent 提供完整委派词，不可缺失、空白或仅为任务标题",
+                    )
+                })?
+                .to_string();
                 let at = now_rfc3339();
                 let task = match existing {
                     Some(index) => {
@@ -1120,7 +1187,7 @@ impl CollaborationStore {
                                 .unwrap_or_else(|| new_id("ttask")),
                             team_id: team_id.into(),
                             title: title.into(),
-                            prompt: title.into(),
+                            prompt: prompt.clone(),
                             role: None,
                             stage: None,
                             deps: vec![],
@@ -1135,9 +1202,7 @@ impl CollaborationStore {
                     }
                 };
                 task.title = title.into();
-                if let Some(p) = row["prompt"].as_str() {
-                    task.prompt = p.into();
-                }
+                task.prompt = prompt;
                 for (field, dest) in [
                     ("role", &mut task.role),
                     ("stage", &mut task.stage),
@@ -1518,6 +1583,127 @@ impl CollaborationStore {
             _ => Err(error("INVALID_INPUT", format!("未知协作工具 {name}"))),
         }
     }
+
+    /// Materializes an N-building construction DAG + 1 terminal global-coherence coordinator task
+    /// for world_build mode upon preview approval.
+    pub fn materialize_world_build_dag(
+        &self,
+        sid: &str,
+        leader_id: &str,
+        slug: &str,
+        buildings: &[Value],
+        style: &str,
+    ) -> Result<TeamState> {
+        let leader_participant = self.participant(leader_id);
+        if leader_participant.is_none() {
+            let _ = self.register(AgentRegistration {
+                id: leader_id.to_string(),
+                session_id: sid.to_string(),
+                parent_agent_id: None,
+                team_id: None,
+                name: "主 agent".into(),
+                role: "root".into(),
+                engine: "native".into(),
+            });
+        }
+        let team_name = format!("world_build_{slug}");
+        let team_req = CreateTeamRequest {
+            name: team_name,
+            max_parallel: 4,
+            max_fix_rounds: 3,
+        };
+        let team = self.create_team(sid, leader_id, &team_req)?;
+        let task_values = build_world_build_dag_tasks(buildings, style)?;
+        let updated_team = self.update_plan(
+            &team.id,
+            leader_id,
+            Some(team.revision),
+            &Value::Array(task_values),
+        )?;
+        Ok(updated_team)
+    }
+}
+
+/// Helper to construct the N-building construction DAG tasks + 1 terminal coordinator task.
+pub fn build_world_build_dag_tasks(
+    buildings: &[Value],
+    style: &str,
+) -> Result<Vec<Value>> {
+    if buildings.is_empty() {
+        return Err(error(
+            "INVALID_INPUT",
+            "DAG materialization requires at least 1 building",
+        ));
+    }
+
+    let mut tasks = Vec::with_capacity(buildings.len() + 1);
+    let mut artisan_task_ids = Vec::with_capacity(buildings.len());
+
+    for bldg in buildings {
+        let bldg_id = bldg["id"]
+            .as_str()
+            .filter(|s| !s.trim().is_empty())
+            .ok_or_else(|| error("INVALID_INPUT", "Building in manifest missing 'id'"))?;
+        let task_id = format!("artisan_{bldg_id}");
+        artisan_task_ids.push(task_id.clone());
+
+        let name = bldg["name"].as_str().unwrap_or(bldg_id);
+        let bldg_type = bldg["type"].as_str().unwrap_or("general");
+        let transform = &bldg["transform"];
+        let bounds = &bldg["bounds"];
+        let materials = &bldg["materials"];
+        let tunings = &bldg["tunings"];
+
+        let prompt = format!(
+            "Execute 3D exterior refinement and interior decoration for building '{bldg_id}' (Name: {name}, Type: {bldg_type}, Style: {style}).\n\
+             Transform: {transform}\n\
+             Bounding Box: {bounds}\n\
+             Target Materials: {materials}\n\
+             Tunings: {tunings}\n\
+             Instructions:\n\
+             1. Refine building geometry and structure, using Meshy API (gen_mesh/gen_mesh_refine/gen_accept) or local asset library (inspect_3d_asset) with 4-panel three-view inspection.\n\
+             2. Keep all geometry strictly inside the allocated bounding box to prevent inter-building collisions.\n\
+             3. Place interior decoration props and ensure every prop attaches as a child node via parentEntityId to the building root entity.\n\
+             4. Apply PBR materials conforming to {style} style.\n\
+             5. Verify via viewport_frame and persist via scene_save(path)."
+        );
+
+        tasks.push(json!({
+            "id": task_id,
+            "title": format!("Construct and refine building {bldg_id}"),
+            "role": "building-artisan",
+            "stage": "building_construction",
+            "buildingId": bldg_id,
+            "prompt": prompt,
+            "deps": [],
+            "status": "queued",
+        }));
+    }
+
+    let coord_prompt = format!(
+        "Oversee and perform deterministic server-side coherence verification across all {count} constructed buildings in scene (Style: {style}).\n\
+         Dependencies: {deps_str}\n\
+         Instructions:\n\
+         1. Verify all {count} buildings exist in .rxscene with valid transforms.\n\
+         2. Perform AABB collision/intersection check on X-Z plane with epsilon 1e-4 across all building footprints (flag COHERENCE_COLLISION_DETECTED if overlapping).\n\
+         3. Verify all interior props possess valid parentEntityId pointing to existing building entities (flag COHERENCE_PROP_ORPHANED if missing).\n\
+         4. Capture multi-camera engine views via viewport_set_camera and viewport_frame and compare with template preview renders.\n\
+         5. Generate and persist audit report to verify/report.json.",
+        count = buildings.len(),
+        deps_str = artisan_task_ids.join(", ")
+    );
+
+    tasks.push(json!({
+        "id": "coherence_coordinator",
+        "title": "Global coherence coordination and multi-camera verification",
+        "role": "coordinator",
+        "stage": "coherence_verification",
+        "prompt": coord_prompt,
+        "deps": artisan_task_ids,
+        "status": "queued",
+    }));
+
+    Ok(tasks)
 }
 
 fn require_agent<'a>(d: &'a Document, id: &str) -> Result<&'a AgentParticipant> {
@@ -1725,7 +1911,7 @@ pub fn tool_specs() -> Vec<Value> {
         spec("team_create","主 agent 创建自由协作团队和共享任务板；没有强制评审或阶段。",json!({"name":{"type":"string"},"maxParallel":{"type":"integer","minimum":1,"maximum":16},"maxFixRounds":{"type":"integer","minimum":0,"maximum":20}}),json!(["name"])),
         spec("team_get","读取团队成员、任务、依赖与运行状态。",json!({"teamId":{"type":"string"}}),json!([])),
         spec("team_member_spawn","主 agent 添加具名持久团队成员；后续消息和任务沿用其身份与历史。",json!({"teamId":{"type":"string"},"name":{"type":"string"},"subagent_type":{"type":"string"},"prompt":{"type":"string"}}),json!(["name","prompt"])),
-        spec("team_task_create","主 agent 添加可领取的团队任务，可指定成员、依赖与阶段。",json!({"teamId":{"type":"string"},"title":{"type":"string"},"prompt":{"type":"string"},"role":{"type":"string"},"stage":{"type":"string"},"deps":{"type":"array","items":{"type":"string"}},"ownerAgentId":{"type":"string"},"expectedRevision":{"type":"integer"}}),json!(["title"])),
+        spec("team_task_create","主 agent 添加可领取的团队任务，prompt 必填且包含完整委派词，可指定成员、依赖与阶段。",json!({"teamId":{"type":"string"},"title":{"type":"string"},"prompt":{"type":"string"},"role":{"type":"string"},"stage":{"type":"string"},"deps":{"type":"array","items":{"type":"string"}},"ownerAgentId":{"type":"string"},"expectedRevision":{"type":"integer"}}),json!(["title","prompt"])),
         spec("team_task_update","主 agent 修改未运行任务；status=queued 显式重试并消耗修复预算。",json!({"teamId":{"type":"string"},"taskId":{"type":"string"},"title":{"type":"string"},"prompt":{"type":"string"},"role":{"type":"string"},"stage":{"type":"string"},"deps":{"type":"array","items":{"type":"string"}},"ownerAgentId":{"type":"string"},"status":{"type":"string","enum":["queued"]},"expectedRevision":{"type":"integer"}}),json!(["taskId"])),
         spec("team_task_list","列出共享任务板及版本；成员仅领取依赖已完成的可用任务。",json!({"teamId":{"type":"string"}}),json!([])),
         spec("team_task_claim","原子领取指定或第一个可执行任务；不绕过依赖、成员分配和并发限制。",json!({"teamId":{"type":"string"},"taskId":{"type":"string"}}),json!([])),
@@ -2019,6 +2205,109 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
+    fn new_tasks_require_leader_authored_prompts_and_fail_atomically() {
+        let (store, dir, root) = setup();
+        let team = team(&store, &root);
+        for invalid in [
+            json!({"id":"missing","title":"Missing prompt"}),
+            json!({"id":"empty","title":"Empty prompt","prompt":""}),
+            json!({"id":"blank","title":"Blank prompt","prompt":" \n\t "}),
+            json!({"id":"null","title":"Null prompt","prompt":null}),
+            json!({"id":"title","title":"Only a title","prompt":" Only a title "}),
+        ] {
+            let error = store
+                .update_plan(
+                    &team.id,
+                    &root,
+                    None,
+                    &json!([
+                        {"id":"valid","title":"Inspect sources","prompt":"Read src and report the relevant interfaces with file references."},
+                        invalid,
+                    ]),
+                )
+                .unwrap_err();
+            assert_eq!(error.code, "INVALID_INPUT");
+            let unchanged = store.team(&team.id).unwrap();
+            assert!(unchanged.tasks.is_empty());
+            assert_eq!(unchanged.revision, team.revision);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn task_updates_preserve_valid_prompts_but_cannot_clear_them() {
+        let (store, dir, root) = setup();
+        let team = team(&store, &root);
+        let prompt = "Read src without changing files; report verified interfaces with file references.";
+        store
+            .update_plan(
+                &team.id,
+                &root,
+                None,
+                &json!([{"id":"inspect","title":"Inspect sources","prompt":prompt}]),
+            )
+            .unwrap();
+        let updated = store
+            .update_plan(
+                &team.id,
+                &root,
+                None,
+                &json!([{"id":"inspect","title":"Inspect interfaces","stage":"research"}]),
+            )
+            .unwrap();
+        assert_eq!(updated.tasks[0].prompt, prompt);
+        for invalid in [json!(""), json!(" \n\t "), Value::Null] {
+            assert_eq!(
+                store
+                    .update_plan(
+                        &team.id,
+                        &root,
+                        None,
+                        &json!([{"id":"inspect","title":"Inspect interfaces","prompt":invalid}]),
+                    )
+                    .unwrap_err()
+                    .code,
+                "INVALID_INPUT"
+            );
+            let unchanged = store.team(&team.id).unwrap();
+            assert_eq!(unchanged.tasks[0].prompt, prompt);
+            assert_eq!(unchanged.revision, updated.revision);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn recovered_title_fallback_requires_a_fresh_leader_prompt() {
+        let (store, dir, root) = setup();
+        let team = team(&store, &root);
+        store
+            .update_plan(&team.id, &root, None, &json!([
+                {"id":"legacy","title":"Inspect interfaces","prompt":"Read src and report the public interfaces with file references."}
+            ]))
+            .unwrap();
+        // Model the old on-disk title fallback, then reload through recovery.
+        store.change(|document| {
+            team_mut(document, &team.id)?.tasks[0].prompt = "Inspect interfaces".into();
+            Ok(())
+        }).unwrap();
+        drop(store);
+        let store = CollaborationStore::load(dir.join("state.json"));
+        for title in ["Inspect interfaces", "Renamed inspection"] {
+            assert_eq!(
+                store.update_plan(&team.id, &root, None, &json!([
+                    {"id":"legacy","title":title}
+                ])).unwrap_err().code,
+                "INVALID_INPUT"
+            );
+        }
+        let updated = store.update_plan(&team.id, &root, None, &json!([
+            {"id":"legacy","title":"Inspect interfaces","prompt":"Read src without writes, verify the public interfaces, and report file references."}
+        ])).unwrap();
+        assert_ne!(updated.tasks[0].prompt, updated.tasks[0].title);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn claim_is_exclusive_and_dependency_failure_propagates() {
         let (s, dir, r) = setup();
         let t = team(&s, &r);
@@ -2028,7 +2317,7 @@ mod tests {
             &t.id,
             &r,
             None,
-            &json!([{"id":"one","title":"one"},{"id":"two","title":"two","deps":["one"]}]),
+            &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."},{"id":"two","title":"two","prompt":"Use the result of task one and report the result for task two.","deps":["one"]}]),
         )
         .unwrap();
         let claimed = s.claim_task(&t.id, "a", Some("one")).unwrap();
@@ -2050,7 +2339,7 @@ mod tests {
                 &t.id,
                 &r,
                 None,
-                &json!([{"id":"a","title":"A","deps":["B"]},{"id":"b","title":"B","deps":["A"]}])
+                &json!([{"id":"a","title":"A","prompt":"Inspect module A and report its verified result.","deps":["B"]},{"id":"b","title":"B","prompt":"Inspect module B and report its verified result.","deps":["A"]}])
             )
             .is_err());
         assert!(s.team(&t.id).unwrap().tasks.is_empty());
@@ -2059,7 +2348,7 @@ mod tests {
                 &t.id,
                 &r,
                 Some(t.revision),
-                &json!([{"id":"a","title":"A"},{"id":"b","title":"B","deps":["A"]}]),
+                &json!([{"id":"a","title":"A","prompt":"Inspect module A and report its verified result."},{"id":"b","title":"B","prompt":"Inspect module B and report its verified result.","deps":["A"]}]),
             )
             .unwrap();
         assert_eq!(t.tasks[1].deps, vec!["a"]);
@@ -2111,13 +2400,89 @@ mod tests {
             .is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn context_checkpoint_restores_tool_progress_and_mail_ack_for_its_run() {
+        let (store, dir, root) = setup();
+        store.begin_run(&root, "interrupted-run").unwrap();
+        store.enqueue("s", None, &root, &SendMessageRequest {
+            text: "Keep the file already written and finish verification.".into(),
+            ..Default::default()
+        }).unwrap();
+        let lease = store.lease_messages(&root, "interrupted-run", 1000).unwrap();
+        let history = vec![
+            json!({"role":"user","content":injection_text(&lease)}),
+            json!({"role":"assistant","tool_calls":[{"id":"write-1","type":"function","function":{"name":"write_file","arguments":"{}"}}]}),
+            json!({"role":"tool","tool_call_id":"write-1","content":"Saved src/progress.rs; sha256=confirmed"}),
+        ];
+        store.save_context_checkpoint(&root, "interrupted-run", history.clone(), &[lease.id]).unwrap();
+        assert_eq!(store.messages(&root)[0].status, "injected");
+        assert_eq!(store.history_for_run(&root, "interrupted-run"), Some(history.clone()));
+        assert!(store.history_for_run(&root, "older-run").is_none());
+        drop(store);
+
+        let restored = CollaborationStore::load(dir.join("state.json"));
+        assert_eq!(restored.history_for_run(&root, "interrupted-run"), Some(history));
+        assert_eq!(restored.messages(&root)[0].status, "injected");
+        assert_eq!(restored.participant(&root).unwrap().status, "recoveryRequired");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn context_checkpoint_io_failure_preserves_prior_history_and_unacknowledged_mail() {
+        let (store, dir, root) = setup();
+        store.begin_run(&root, "run").unwrap();
+        let prior = vec![json!({"role":"user","content":"original request"})];
+        store.save_context_checkpoint(&root, "run", prior.clone(), &[]).unwrap();
+        store.enqueue("s", None, &root, &SendMessageRequest {
+            text: "new guidance".into(), ..Default::default()
+        }).unwrap();
+        let lease = store.lease_messages(&root, "run", 100).unwrap();
+        let before = std::fs::read(dir.join("state.json")).unwrap();
+        // A directory at the staging-file path makes the write fail on every
+        // supported platform without depending on permissions or disk fullness.
+        std::fs::create_dir(dir.join("state.json.tmp")).unwrap();
+        let error = store.save_context_checkpoint(&root, "run", vec![
+            json!({"role":"user","content":"new guidance"})
+        ], &[lease.id]).unwrap_err();
+        assert_eq!(error.code, "COLLABORATION_IO");
+        assert_eq!(store.history_for_run(&root, "run"), Some(prior));
+        assert_eq!(store.messages(&root)[0].status, "leased");
+        assert_eq!(std::fs::read(dir.join("state.json")).unwrap(), before);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn context_checkpoint_rejects_stale_run_and_foreign_lease_without_changes() {
+        let (store, dir, root) = setup();
+        store.begin_run(&root, "old-run").unwrap();
+        let prior = vec![json!({"role":"assistant","content":"saved progress"})];
+        store.save_context_checkpoint(&root, "old-run", prior.clone(), &[]).unwrap();
+        store.end_run(&root, "old-run").unwrap();
+        store.begin_run(&root, "new-run").unwrap();
+        assert_eq!(store.save_context_checkpoint(&root, "old-run", vec![], &[]).unwrap_err().code,
+            "AGENT_RUN_CONFLICT");
+        member(&store, &root, "other", None);
+        store.begin_run("other", "other-run").unwrap();
+        store.enqueue("s", None, "other", &SendMessageRequest {
+            text: "other actor's guidance".into(), ..Default::default()
+        }).unwrap();
+        let lease = store.lease_messages("other", "other-run", 100).unwrap();
+        assert_eq!(store.save_context_checkpoint(&root, "new-run", vec![], &[lease.id]).unwrap_err().code,
+            "AGENT_RUN_CONFLICT");
+        assert_eq!(store.history_for_run(&root, "old-run"), Some(prior));
+        assert!(store.history_for_run(&root, "new-run").is_none());
+        assert_eq!(store.messages("other")[0].status, "leased");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn concurrent_claim_has_exactly_one_winner() {
         let (s, dir, r) = setup();
         let t = team(&s, &r);
         member(&s, &r, "a", Some(&t.id));
         member(&s, &r, "b", Some(&t.id));
-        s.update_plan(&t.id, &r, None, &json!([{"id":"one","title":"one"}]))
+        s.update_plan(&t.id, &r, None, &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."}]))
             .unwrap();
         let barrier = std::sync::Barrier::new(2);
         let wins = std::thread::scope(|scope| {
@@ -2154,7 +2519,7 @@ mod tests {
             &t.id,
             &r,
             None,
-            &json!([{"id":"one","title":"one"},{"id":"two","title":"two"}]),
+            &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."},{"id":"two","title":"two","prompt":"Use the result of task one and report the result for task two."}]),
         )
         .unwrap();
         s.control_team(&t.id, "pause").unwrap();
@@ -2307,7 +2672,7 @@ mod tests {
         );
         assert_eq!(configured.member_agent_ids, vec!["a"]);
         store
-            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one"}]))
+            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."}]))
             .unwrap();
         store.claim_task(&team.id, "a", Some("one")).unwrap();
         let before = store.team(&team.id).unwrap();
@@ -2370,12 +2735,14 @@ mod tests {
             )
             .unwrap();
         store.begin_run(&root, "active").unwrap();
+        store.save_context_checkpoint(&root, "active", store.history(&root), &[]).unwrap();
         assert_eq!(
             store.reset_after_revert("s").unwrap_err().code,
             "SESSION_BUSY"
         );
         assert_eq!(store.messages(&root)[0].status, "queued");
         assert!(!store.history(&root).is_empty());
+        assert!(store.history_for_run(&root, "active").is_some());
         store.end_run(&root, "active").unwrap();
         store.reset_after_revert("s").unwrap();
         assert_eq!(store.messages(&root)[0].status, "failed");
@@ -2385,6 +2752,7 @@ mod tests {
             .unwrap()
             .contains("回退"));
         assert!(store.history(&root).is_empty());
+        assert!(store.history_for_run(&root, "active").is_none());
         assert_eq!(store.history("closed-member").len(), 1);
         assert_eq!(
             store.participant("closed-member").unwrap().status,
@@ -2488,7 +2856,7 @@ mod tests {
         let team = team(&store, &root);
         member(&store, &root, "a", Some(&team.id));
         store
-            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one"}]))
+            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."}]))
             .unwrap();
         store.begin_run(&root, "root-run").unwrap();
         store.begin_run("a", "member-run").unwrap();
@@ -2535,7 +2903,7 @@ mod tests {
         let (store, dir, root) = setup();
         let team = team(&store, &root);
         member(&store, &root, "a", Some(&team.id));
-        store.update_plan(&team.id,&root,None,&json!([{"id":"a","title":"A","stage":"first"},{"id":"b","title":"B","stage":"second"},{"id":"free","title":"free"}])).unwrap();
+        store.update_plan(&team.id,&root,None,&json!([{"id":"a","title":"A","prompt":"Inspect module A and report its verified result.","stage":"first"},{"id":"b","title":"B","prompt":"Inspect module B and report its verified result.","stage":"second"},{"id":"free","title":"free","prompt":"Inspect the independent module and report its verified result."}])).unwrap();
         assert_eq!(
             ready_task_ids(&store.team(&team.id).unwrap()),
             vec!["a", "free"]
@@ -2554,7 +2922,7 @@ mod tests {
         let team = team(&store, &root);
         member(&store, &root, "a", Some(&team.id));
         store
-            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one"}]))
+            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."}]))
             .unwrap();
         store
             .enqueue(
@@ -2602,7 +2970,7 @@ mod tests {
         let team = team(&store, &root);
         member(&store, &root, "a", Some(&team.id));
         store
-            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one"}]))
+            .update_plan(&team.id, &root, None, &json!([{"id":"one","title":"one","prompt":"Inspect the assigned input and report the result for task one."}]))
             .unwrap();
         store.begin_run("a", "lost-run").unwrap();
         store.claim_task(&team.id, "a", Some("one")).unwrap();
@@ -2770,6 +3138,48 @@ mod tests {
             StatusCode::CONFLICT
         );
         assert_eq!(state.collaboration.messages(&root).len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn test_world_build_dag_materialization() {
+        let (store, dir, root) = setup();
+        let bldgs = vec![
+            json!({
+                "id": "dock",
+                "name": "Dock Warehouse",
+                "type": "industrial",
+                "bounds": {"min": [-5, 0, -5], "max": [5, 10, 5]},
+                "transform": {"position": [0, 0, 0]},
+                "materials": ["mat_metal"],
+                "tunings": {}
+            }),
+            json!({
+                "id": "crane",
+                "name": "Harbor Crane",
+                "type": "utility",
+                "bounds": {"min": [-3, 0, -3], "max": [3, 15, 3]},
+                "transform": {"position": [20, 0, 0]},
+                "materials": ["mat_yellow_paint"],
+                "tunings": {}
+            }),
+        ];
+        let team = store
+            .materialize_world_build_dag("s", &root, "cyber-harbor", &bldgs, "cyberpunk")
+            .unwrap();
+        assert_eq!(team.max_parallel, 4);
+        assert_eq!(team.max_fix_rounds, 3);
+        assert_eq!(team.tasks.len(), 3); // 2 artisans + 1 coordinator
+        let coord = team.tasks.iter().find(|t| t.id == "coherence_coordinator").unwrap();
+        assert_eq!(coord.deps, vec!["artisan_dock", "artisan_crane"]);
+        assert_eq!(coord.role.as_deref(), Some("coordinator"));
+        assert_eq!(coord.stage.as_deref(), Some("coherence_verification"));
+
+        let ready = ready_task_ids(&team);
+        assert_eq!(ready.len(), 2);
+        assert!(ready.contains(&"artisan_dock".to_string()));
+        assert!(ready.contains(&"artisan_crane".to_string()));
+        assert!(!ready.contains(&"coherence_coordinator".to_string()));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

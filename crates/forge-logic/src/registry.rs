@@ -138,6 +138,13 @@ pub const REGISTRY: &[NodeSpec] = &[
     NodeSpec { ntype: "sprite.set_frame", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("index", PinType::I32)], outputs: &[] },
     NodeSpec { ntype: "animator.set_bool", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("param", PinType::String), inp("value", PinType::Bool)], outputs: &[] },
     NodeSpec { ntype: "animator.set_trigger", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("param", PinType::String)], outputs: &[] },
+    // ---- rig.*(F-GAME-5 / D-050 2D 绑骨,加性扩展 48→51;10 E-10-002)----
+    // 与 sprite.* 同纪律:只发 AnimCommand,Rig2D.params/clip/time 唯一写者是宿主 RigSystem。
+    // blend 可选:缺省 = 立即绝对覆盖;(0,1) = 每固定步按比例趋近目标值。
+    NodeSpec { ntype: "rig.set_param", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("param", PinType::String), inp("value", PinType::F32), opt("blend", PinType::F32)], outputs: &[] },
+    // restart 可选缺省 false = 幂等(同 sprite.play)。
+    NodeSpec { ntype: "rig.play", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity), inp("clip", PinType::String), opt("restart", PinType::Bool)], outputs: &[] },
+    NodeSpec { ntype: "rig.stop", kind: NodeKind::Action, exec_in: true, exec_out: EXEC, inputs: &[inp("entity", PinType::Entity)], outputs: &[] },
 ];
 
 /// 按类型名查注册项。
@@ -151,8 +158,9 @@ mod tests {
 
     #[test]
     fn registry_covers_nine_families_frozen_subset() {
-        // 10 §4.2 首发冻结子集 40 + F-GAME-4 加性扩展(sprite 3 + animator 2)= 45。
-        assert_eq!(REGISTRY.len(), 48);
+        // 10 §4.2 首发冻结子集 40 + F-GAME-4 加性扩展(sprite 3 + animator 2)= 45;
+        // + call.native_frame / math.vec3 / transform.compose = 48;+ F-GAME-5 rig 3 = 51。
+        assert_eq!(REGISTRY.len(), 51);
         for t in [
             "event.on_start", "event.on_update", "event.on_contact_begin", "event.on_contact_persist",
             "event.on_contact_end", "event.on_trigger_enter", "event.on_trigger_exit", "event.on_input",
@@ -190,6 +198,24 @@ mod tests {
         assert_eq!(sb.inputs[2].ty, PinType::Bool);
         let sf = find_spec("sprite.set_frame").unwrap();
         assert_eq!(sf.inputs[1].ty, PinType::I32);
+    }
+
+    #[test]
+    fn rig_nodes_pins() {
+        // F-GAME-5(E-10-002):rig.set_param(entity,param,value:F32,blend?:F32) / rig.play(entity,clip,restart?) / rig.stop(entity)。
+        let sp = find_spec("rig.set_param").unwrap();
+        assert_eq!(sp.kind, NodeKind::Action);
+        let names: Vec<&str> = sp.inputs.iter().map(|p| p.name).collect();
+        assert_eq!(names, ["entity", "param", "value", "blend"]);
+        assert_eq!(sp.inputs[2].ty, PinType::F32);
+        assert_eq!(sp.inputs[3].ty, PinType::F32);
+        assert!(sp.inputs[..3].iter().all(|p| p.required) && !sp.inputs[3].required);
+        let pl = find_spec("rig.play").unwrap();
+        assert_eq!(pl.inputs.len(), 3);
+        assert!(!pl.inputs[2].required && pl.inputs[2].ty == PinType::Bool);
+        let st = find_spec("rig.stop").unwrap();
+        assert_eq!(st.inputs.len(), 1);
+        assert_eq!(st.exec_out, &["exec"]);
     }
 
     #[test]

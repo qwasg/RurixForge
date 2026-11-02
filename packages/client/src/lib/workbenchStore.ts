@@ -12,14 +12,23 @@ import { create } from 'zustand';
  * 沿用既有 workbench tab 承载,入口在 Sidebar 导航按钮。
  * F-GAME-4:sprite-editor=精灵编辑器(.rxsprite;入口在资产面板右键/双击,
  * 「当前编辑哪个 sprite」在 spriteStore,tab 本身仍是无 payload 单例)。
+ * F-GAME-5(D-050):rig-editor=绑骨编辑器(.rxrig;同样无 payload 单例,当前资产在 rigStore)。
  * D-035:plan 退出单例集——计划是工作区文件(.forge/plans/<名>.plan.md),按 path 多开,
  * 与 file tab 同形态(dirty 拦截/草稿暂存全套复用)。
  * D-044:demo=UltraPlan 流程的网页 Demo 试玩页,按流程 id 多开(同一流程单例)。页签是全局的、
  * 不随会话切换关闭,所以带上所属会话 id——切到别的会话后仍可看,但动作一律禁用。
  */
-export type BuiltinTabKind = 'editor' | 'goal' | 'todo' | 'proposals' | 'store' | 'skills' | 'sprite-editor';
-/** 工作区 tab:内建页 + 按路径多开的文件编辑器与计划页(Cursor 式)+ 按流程多开的 Demo 页。 */
-export type TabKind = BuiltinTabKind | 'file' | 'plan' | 'demo';
+export type BuiltinTabKind =
+  | 'editor'
+  | 'goal'
+  | 'todo'
+  | 'proposals'
+  | 'store'
+  | 'skills'
+  | 'sprite-editor'
+  | 'rig-editor';
+/** 工作区 tab:内建页 + 按路径多开的文件编辑器与计划页(Cursor 式)+ 按流程多开的 Demo 页 + 3D 场景预览页。 */
+export type TabKind = BuiltinTabKind | 'file' | 'plan' | 'demo' | 'build-preview';
 
 export interface WorkbenchTab {
   id: string;
@@ -31,7 +40,9 @@ export interface WorkbenchTab {
   dirty?: boolean;
   /** kind=demo|plan:UltraPlan 流程 id(UltraPlanState.id)。 */
   upId?: string;
-  /** kind=demo|plan:流程所属会话(与当前会话不符时流程动作只读)。 */
+  /** kind=build-preview:WorldBuild 流程 slug。 */
+  slug?: string;
+  /** kind=demo|plan|build-preview:流程所属会话(与当前会话不符时流程动作只读)。 */
   sessionId?: string;
 }
 
@@ -43,6 +54,7 @@ export const BUILTIN_TABS: Record<Exclude<BuiltinTabKind, 'editor'>, { title: st
   store: { title: '资产商店' },
   skills: { title: 'Skill 管理' },
   'sprite-editor': { title: '精灵编辑器' },
+  'rig-editor': { title: '绑骨编辑器' },
 };
 
 /** 文件预览 tab id(同一 path 单例)。 */
@@ -75,6 +87,17 @@ export function demoTabId(upId: string): string {
 export function demoTabTitle(title: string): string {
   const t = title.trim();
   return t === '' ? 'Demo' : `Demo · ${t}`;
+}
+
+/** M3 Feature 6: Build Preview tab id(同一 slug 流程单例)。 */
+export function buildPreviewTabId(slug: string): string {
+  return `build-preview:${slug}`;
+}
+
+/** Build Preview tab 标题:「场景预览 · <流程标题>」,流程还没有标题时只写场景预览。 */
+export function buildPreviewTabTitle(title: string): string {
+  const t = title.trim();
+  return t === '' ? '场景预览' : `场景预览 · ${t}`;
 }
 
 export type PaneKind = 'sessions' | 'chat' | 'inspector';
@@ -229,6 +252,8 @@ interface WorkbenchState {
    * title 是流程标题(页签文案由 demoTabTitle 拼)。
    */
   openDemo: (upId: string, sessionId: string, title: string) => void;
+  /** M3 Feature 6: Build Preview → BuildPreviewTab (已开则激活)。 */
+  openBuildPreview: (slug: string, sessionId: string, title: string) => void;
   /** tab 标题回填(计划页加载出 front matter 真名后改 tabbar 文案)。 */
   setTabTitle: (id: string, title: string) => void;
   /** 关闭 tab(F9:dirty tab 先拦截 → 激活 + 挂 pendingCloseTabId,不直接关)。 */
@@ -371,6 +396,29 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => {
       }
       // 已开:激活;流程标题此前还没拿到(开页签时 state 未回填)的,顺手补上。
       const nextTitle = title.trim() === '' ? existing.title : demoTabTitle(title);
+      set({
+        tabs:
+          nextTitle === existing.title ? tabs : tabs.map((t) => (t.id === id ? { ...t, title: nextTitle } : t)),
+        activeTabId: id,
+        rightTab: 'files',
+        homeDismissed: false,
+      });
+    },
+
+    openBuildPreview: (slug, sessionId, title) => {
+      const id = buildPreviewTabId(slug);
+      const { tabs } = get();
+      const existing = tabs.find((t) => t.id === id);
+      if (!existing) {
+        set({
+          tabs: [...tabs, { id, kind: 'build-preview', title: buildPreviewTabTitle(title), slug, sessionId }],
+          activeTabId: id,
+          rightTab: 'files',
+          homeDismissed: false,
+        });
+        return;
+      }
+      const nextTitle = title.trim() === '' ? existing.title : buildPreviewTabTitle(title);
       set({
         tabs:
           nextTitle === existing.title ? tabs : tabs.map((t) => (t.id === id ? { ...t, title: nextTitle } : t)),

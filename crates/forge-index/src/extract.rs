@@ -216,6 +216,25 @@ fn asset_doc(
                     ));
                 }
             }
+            // F-GAME-5 / D-050:.rxrig 部件 / 参数 / clip 名进检索面(agent 按「眨眼参数」「前发部件」可检)。
+            ("rig", _) => {
+                if let Ok(doc) = assetd::rig::load_rxrig(&abs) {
+                    let join = |v: Vec<&str>| if v.is_empty() { "无".to_string() } else { v.join(",") };
+                    let tex = guid_to_path
+                        .get(&doc.texture)
+                        .map(String::as_str)
+                        .unwrap_or(doc.texture.as_str());
+                    facts.push_str(&format!(
+                        ";部件:{};参数:{};clip:{};骨骼数:{};贴图:{}{}",
+                        join(doc.parts.iter().map(|p| p.id.as_str()).collect()),
+                        join(doc.parameters.iter().map(|p| p.id.as_str()).collect()),
+                        join(doc.clips.keys().map(String::as_str).collect()),
+                        doc.bones.len(),
+                        tex,
+                        if doc.animator.is_some() { ";含animator" } else { "" },
+                    ));
+                }
+            }
             _ => {}
         }
 
@@ -359,6 +378,20 @@ fn component_brief(
             } else {
                 let tex = resolve(get("texture"), refs);
                 format!("(texture={tex},order={order})")
+            }
+        }
+        // F-GAME-5:Rig2D(.rxrig GUID)引用入 refs,clip 名入 facts。
+        "Rig2D" => {
+            let order = props
+                .get("sortingOrder")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let rig = resolve(get("rig"), refs);
+            let clip = get("clip");
+            if clip.is_empty() {
+                format!("(rig={rig},order={order})")
+            } else {
+                format!("(rig={rig},clip={clip},order={order})")
             }
         }
         "Light" => {

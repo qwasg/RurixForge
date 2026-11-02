@@ -216,8 +216,8 @@ pub(crate) fn append(
         (emitter_resource, rex::TargetState::StorageReadWrite),
         (particle_resource, rex::TargetState::StorageReadWrite),
     ]);
-    passes.push(rex::Pass::Raster(rex::RasterPass {
-        blend: rex::BlendMode::Additive,
+    passes.push(rex::Pass::RasterWithBlend(rex::RasterPass {
+        
         name: "forge_gpu_particles_draw",
         vs_spirv: vs,
         fs_spirv: fs,
@@ -244,7 +244,7 @@ pub(crate) fn append(
             ..Default::default()
         },
         conservative: None,
-    }));
+    }, rex::BlendMode::Additive));
     barriers.push(vec![
         (particle_resource, rex::TargetState::StorageReadWrite),
         (camera_resource, rex::TargetState::UniformRead),

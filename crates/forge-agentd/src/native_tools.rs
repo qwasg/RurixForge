@@ -123,18 +123,42 @@ fn handle_todo_write(
                                 .as_ref()
                                 .is_some_and(|id| todo.plan_todo_id.as_ref() == Some(id)))
                 }) {
-                    if existing.status == "failed" || existing.status == "cancelled" {
-                        if let Ok(updated) = todos.patch(
+                    let prompt = match item.get("prompt") {
+                        Some(value) => match value.as_str().filter(|p| !p.trim().is_empty()) {
+                            Some(prompt) => Some(prompt.to_owned()),
+                            None => {
+                                ids.push(format!("- {} :: {} (rejected: prompt 必须为非空的主 agent 委派词，未更新或重排)", existing.id, existing.title));
+                                continue;
+                            }
+                        },
+                        None => None,
+                    };
+                    let requeue = matches!(existing.status.as_str(), "failed" | "cancelled");
+                    // Replaying an identical completed entry remains idempotent;
+                    // a new delegation must go through the store's state guard.
+                    let prompt = prompt.filter(|prompt| {
+                        existing.prompt.as_ref() != Some(prompt)
+                            || matches!(existing.status.as_str(), "queued" | "failed" | "cancelled")
+                    });
+                    if prompt.is_some() || requeue {
+                        match todos.patch(
                             &existing.id,
                             &PatchTodoRequest {
-                                status: Some("queued".into()),
+                                status: requeue.then(|| "queued".into()),
+                                prompt,
                                 ..Default::default()
                             },
                         ) {
-                            events.emit(
-                                EventDraft::new(session_id, "todo.updated", "todo")
-                                    .payload(serde_json::to_value(updated).unwrap()),
-                            );
+                            Ok(updated) => {
+                                events.emit(
+                                    EventDraft::new(session_id, "todo.updated", "todo")
+                                        .payload(serde_json::to_value(updated).unwrap()),
+                                );
+                            }
+                            Err(error) => {
+                                ids.push(format!("- {} :: {} (rejected: {error:?}，未更新或重排)", existing.id, existing.title));
+                                continue;
+                            }
                         }
                     }
                     ids.push(format!("- {} :: {} (reused)", existing.id, existing.title));
@@ -203,6 +227,9 @@ fn handle_todo_update(events: &EventBus, todos: &TodoStore, args: &Value) -> (bo
     let Some(id) = args.get("id").and_then(|v| v.as_str()) else {
         return (false, "id required".into());
     };
+    if args.get("prompt").is_some_and(|value| !value.is_string()) {
+        return (false, "prompt 必须为非空的主 agent 委派词".into());
+    }
     let req = PatchTodoRequest {
         status: args.get("status").and_then(|v| v.as_str()).map(|s| {
             if s == "in_progress" {
@@ -216,6 +243,7 @@ fn handle_todo_update(events: &EventBus, todos: &TodoStore, args: &Value) -> (bo
             .and_then(|v| v.as_str())
             .map(str::to_string),
         description: None,
+        prompt: args.get("prompt").and_then(Value::as_str).map(str::to_owned),
         summary: args
             .get("summary")
             .and_then(|v| v.as_str())
@@ -229,6 +257,7 @@ fn handle_todo_update(events: &EventBus, todos: &TodoStore, args: &Value) -> (bo
                     "title": todo.title,
                     "status": todo.status,
                     "summary": todo.summary,
+                    "prompt": todo.prompt,
                 })),
             );
             (true, format!("updated todo {}", todo.id))
@@ -976,6 +1005,67 @@ mod tests {
             std::fs::remove_dir(&link).unwrap();
             #[cfg(unix)]
             std::fs::remove_file(&link).unwrap();
+        });
+    }
+
+    #[test]
+    fn scoped_todo_update_revises_prompt_and_preserves_scope_and_state_guards() {
+        with_root(|root| {
+            let events = EventBus::new(root.join("events"), 32);
+            let todos = TodoStore::load(root.join("todos.json"));
+            let task = todos.create("s", NewTodo {
+                title: "Repair input".into(),
+                prompt: Some("Inspect the original input behavior and report results.".into()),
+                source: Some("ultraplan:one".into()),
+                ..Default::default()
+            }).unwrap();
+            let update = json!({"id":task.id,"prompt":"Fix the failed left-arrow check, preserve right-arrow behavior, and record both input results."});
+            let call = |args: &Value, source: &str| dispatch_native_scoped(
+                root, &events, &todos, "s", "r", "todo_update", args, source
+            );
+            assert!(!call(&update, "ultraplan:other").0);
+            assert_eq!(todos.list_by_session("s")[0].prompt, task.prompt);
+            assert!(call(&update, "ultraplan:one").0);
+            assert_eq!(todos.list_by_session("s")[0].prompt.as_deref(), update["prompt"].as_str());
+            todos.patch(&task.id, &PatchTodoRequest { status: Some("failed".into()), ..Default::default() }).unwrap();
+            for prompt in [json!(" \n\t "), Value::Null] {
+                assert!(!call(&json!({"id":task.id,"status":"queued","prompt":prompt}), "ultraplan:one").0);
+                let unchanged = &todos.list_by_session("s")[0];
+                assert_eq!(unchanged.status, "failed");
+                assert_eq!(unchanged.prompt.as_deref(), update["prompt"].as_str());
+            }
+            todos.patch(&task.id, &PatchTodoRequest { status: Some("completed".into()), ..Default::default() }).unwrap();
+            assert!(!call(&update, "ultraplan:one").0, "completed tasks cannot be reassigned");
+        });
+    }
+
+    #[test]
+    fn scoped_plan_write_updates_delegation_before_retry_and_rejects_blank_prompt() {
+        with_root(|root| {
+            let events = EventBus::new(root.join("events"), 32);
+            let todos = TodoStore::load(root.join("todos.json"));
+            let call = |args: &Value| dispatch_native_scoped(
+                root, &events, &todos, "s", "r", "plan_write", args, "ultraplan:one"
+            );
+            call(&json!({"todos":[{"id":"input","title":"Repair input","role":"logic-programmer","prompt":"Implement input handling and verify left and right keys."}]}));
+            let id = todos.list_by_session("s")[0].id.clone();
+            todos.patch(&id, &PatchTodoRequest { status: Some("failed".into()), ..Default::default() }).unwrap();
+            let prompt = "Use failure evidence to repair left-arrow handling; preserve right-arrow behavior and verify both keys.";
+            let result = call(&json!({"todos":[{"id":"input","title":"Repair input","prompt":prompt}]}));
+            assert!(!result.1.contains("rejected"), "{}", result.1);
+            let updated = todos.list_by_session("s");
+            assert_eq!(updated.len(), 1);
+            assert_eq!(updated[0].id, id);
+            assert_eq!(updated[0].status, "queued");
+            assert_eq!(updated[0].prompt.as_deref(), Some(prompt));
+            todos.patch(&id, &PatchTodoRequest { status: Some("failed".into()), ..Default::default() }).unwrap();
+            for invalid in [json!(" \n\t "), Value::Null] {
+                let result = call(&json!({"todos":[{"id":"input","title":"Repair input","prompt":invalid}]}));
+                assert!(result.1.contains("rejected"), "{}", result.1);
+                let unchanged = &todos.list_by_session("s")[0];
+                assert_eq!(unchanged.status, "failed");
+                assert_eq!(unchanged.prompt.as_deref(), Some(prompt));
+            }
         });
     }
 

@@ -40,13 +40,14 @@ use crate::events::{new_id, now_rfc3339, EventDraft};
 use crate::AppState;
 
 pub mod evidence;
+pub mod production;
 mod lifecycle;
 pub use lifecycle::initialize_production_project;
 pub use lifecycle::record_review;
 pub mod verify;
 pub use lifecycle::{
-    complete_demo, complete_production, discovery_tasks, prepare_demo, production_context,
-    record_check, validate_answers, validation_summary, verification_tool_spec, VERIFY_TOOL,
+    complete_demo, complete_production, prepare_demo, production_context,
+    record_check, validate_answers, validation_summary, verification_issues, verification_tool_spec, VERIFY_TOOL,
 };
 
 // ---------------- 常量 ----------------
@@ -2224,6 +2225,8 @@ const SECTION_OUTLINE_CAP: usize = 1500;
 /// 本轮的过程记录(父执行闭包与出口工具共享;只活一轮)。
 #[derive(Debug, Default)]
 pub struct TurnTracker {
+    /// Only the current leader turn may authorize the Demo builder's assignment.
+    demo_prompt: Mutex<Option<String>>,
     /// 串行化 explore 报告的编号分配与写盘(同一轮的 explore 是并发跑的)。
     explore_lock: Mutex<()>,
     /// 本轮落盘的 explore 报告数。
@@ -2729,6 +2732,30 @@ pub fn flow_error(error: &str) -> FlowError {
 ///
 /// 只认 `phase == running`:那只可能是本轮在 [`begin_turn`] 里置的(同一会话同一时刻只有一条 run)。
 /// 开场就失败、状态还没动过的轮次到这里是空操作,不发事件。
+pub fn finish_production_preflight_failure(
+    state: &AppState, session_id: &str, run_id: &str, turn: &UltraTurn,
+    workspace: &Path, error: &str,
+) -> Result<(), String> {
+    if !matches!(turn.kind, TurnKind::Production(_)) { return Ok(()); }
+    let Some(expected)=turn.flow.as_ref() else { return Ok(()); };
+    let mut diagnostic=flow_error(error);
+    let report_relative=format!("{}/preflight-failures/{run_id}.json",expected.dir);
+    write_json_atomic(&workspace.join(&report_relative), &json!({"status":"blocked","flowId":expected.id,"planRev":expected.plan_rev,"planHash":expected.plan_hash,"runId":run_id,"reasonCode":diagnostic.code,"message":error,"productionDispatches":0})).map_err(|e|e.to_string())?;
+    diagnostic.message.push_str(&format!("；完整诊断：{report_relative}"));
+    let updated=state.sessions.update_ultraplan(session_id, |slot| {
+        let Some(up)=slot.as_mut().filter(|up|up.id==expected.id && up.plan_rev==expected.plan_rev) else {return false;};
+        up.phase=PHASE_FAILED.into(); up.running=Some(RUNNING_PRODUCTION.into()); up.last_error=Some(diagnostic);
+        true
+    });
+    if let Some((session,true))=updated {
+        if let Some(up)=session.ultraplan.as_ref() {
+            emit(state,session_id,"ultraplan.stage",stage_payload_with(up,Some(run_id),&turn.reported_deep()));
+            emit_session_updated(state,session_id);
+        }
+    }
+    Ok(())
+}
+
 pub fn finish_turn(
     state: &AppState,
     session_id: &str,
@@ -3882,6 +3909,28 @@ mod tests {
         assert_eq!(out.message["content"], "deep");
         assert_eq!(plain3.load(Ordering::SeqCst), 0);
         assert!(!fb3.used());
+    }
+
+    #[test]
+    fn production_preflight_failure_preserves_approval_and_reports_complete_reason() {
+        let (state,dir)=crate::test_app_state("up-preflight-error");
+        let session=state.sessions.create("legacy", "coding", None, true, None);
+        let mut flow=UltraPlanState::new_flow("legacy", None, &dir);
+        flow.stage=STAGE_PRODUCTION.into(); flow.plan_rev=1; flow.plan_hash=Some("approved-hash".into());
+        state.sessions.update_ultraplan(&session.id,|slot|*slot=Some(flow.clone())).unwrap();
+        let turn=UltraTurn{kind:TurnKind::Production(ProductionPhase::Resume),action:Some(Action::ResumeProduction),rev:None,flow:Some(flow.clone()),answers:None,acknowledge_approvals:false,facts:ProjectFacts::none(),deep:DeepPlanning::default(),deep_fallback:None};
+        let reason=format!("UP_CONTRACT_UPGRADE_REQUIRED: {}full-tail-cause", "detail ".repeat(100));
+        finish_production_preflight_failure(&state,&session.id,"preflight-run",&turn,&dir,&reason).unwrap();
+        let updated=state.sessions.get(&session.id).unwrap().ultraplan.unwrap();
+        assert_eq!(updated.plan_hash,flow.plan_hash);
+        assert_eq!(updated.stage,STAGE_PRODUCTION);
+        assert_eq!(updated.phase,PHASE_FAILED);
+        assert_eq!(updated.last_error.as_ref().unwrap().code,"UP_CONTRACT_UPGRADE_REQUIRED");
+        assert!(updated.last_error.unwrap().message.contains("preflight-failures/preflight-run.json"));
+        let report=read_json(&dir.join(flow.dir).join("preflight-failures/preflight-run.json")).unwrap();
+        assert_eq!(report["message"],reason);
+        assert_eq!(report["productionDispatches"],0);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     // ---------- 项目事实 ----------

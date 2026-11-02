@@ -1,21 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Trash2 } from 'lucide-react';
-import { cn } from '@/lib/cn';
 import { CATEGORY_META, type EntityCategory } from '@/lib/entityCategory';
 import { useEditorStore } from '@/lib/editorStore';
-import { useDesignBoardStore, type EntityKindDef, type KindTone } from '@/lib/designBoardStore';
+import { useDesignBoardStore, type EntityKindDef } from '@/lib/designBoardStore';
 import { useToastStore } from '@/lib/toastStore';
-import { TONE_META } from './DesignBoardNode';
 
 /**
  * 自定义实体类型编辑浮层(画板波 v2)。
- * 角色 / 地图之外,用户可自定义由 ECS 组件构成的实体类型:名称 + 配色 +
+ * 角色 / 地图之外,用户可自定义由 ECS 组件构成的实体类型:名称 +
  * 引擎分类(后端 classify 只认 role/map/interaction,必须落其一)+ 默认特性
  * (勾选已注册组件,新建该类型实体时自动铺开)。
+ * 纯色波(2026-10-08)起类型不再分色,配色选择器下线;tone 沿用旧值(新建取 warn)只为存档兼容。
  * 自定义类型存 localStorage 随画板一起持久化;仍有实体在用时拒删(如实给出原因)。
  */
-
-const TONES: KindTone[] = ['info', 'sage', 'warn', 'acc', 'danger'];
 
 const CATEGORIES: EntityCategory[] = ['role', 'map', 'interaction'];
 
@@ -33,7 +30,6 @@ export default function DesignBoardKindForm({ editing, onClose }: DesignBoardKin
   const push = useToastStore((s) => s.push);
 
   const [label, setLabel] = useState(editing?.label ?? '');
-  const [tone, setTone] = useState<KindTone>(editing?.tone ?? 'warn');
   const [category, setCategory] = useState<EntityCategory>(editing?.category ?? 'role');
   const [features, setFeatures] = useState<string[]>(editing?.defaultFeatures ?? []);
   const [err, setErr] = useState<string | null>(null);
@@ -51,7 +47,7 @@ export default function DesignBoardKindForm({ editing, onClose }: DesignBoardKin
     setFeatures((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
 
   const submit = () => {
-    const draft = { label, tone, category, defaultFeatures: features };
+    const draft = { label, tone: editing?.tone ?? 'warn', category, defaultFeatures: features };
     if (editing) {
       updateKind(editing.id, draft);
       // updateKind 对空名/撞名静默忽略,这里回读确认是否真的写进去了
@@ -112,25 +108,6 @@ export default function DesignBoardKindForm({ editing, onClose }: DesignBoardKin
         placeholder="如:敌人 / 道具 / 触发器"
         className="mb-2 w-full rounded border border-edge-strong bg-shell-panel px-1.5 py-0.5 text-2xs text-fg outline-none placeholder:text-fg-4 focus:border-fg-4"
       />
-
-      <p className="pb-1 text-[10px] text-fg-4">配色</p>
-      <div className="mb-2 flex items-center gap-1.5">
-        {TONES.map((t) => (
-          <button
-            key={t}
-            type="button"
-            data-testid={`board-kind-tone-${t}`}
-            aria-label={`配色 ${t}`}
-            aria-pressed={tone === t}
-            onClick={() => setTone(t)}
-            className={cn(
-              'h-4 w-4 rounded-full border-2 transition-colors',
-              TONE_META[t].dot,
-              tone === t ? 'border-fg' : 'border-transparent',
-            )}
-          />
-        ))}
-      </div>
 
       <label className="block pb-1 text-[10px] text-fg-4" htmlFor="board-kind-category">
         引擎分类(后端只认 role / map / interaction)

@@ -7,7 +7,7 @@ import ApprovalCard from './ApprovalCard';
 
 const statusLabels: Record<string, string> = {
   active: '执行中', paused: '已暂停', stopped: '已停止', completed: '已完成', recoveryRequired: '需要恢复',
-  queued: '待执行', running: '进行中', failed: '失败', blocked: '受阻', idle: '空闲',
+  queued: '待执行', running: '进行中', verifying: '验证中', failed: '失败', blocked: '受阻', idle: '空闲',
 };
 
 /** Team execution state is server-owned; this view never infers completion from text. */

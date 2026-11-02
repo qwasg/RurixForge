@@ -1,0 +1,52 @@
+[package]
+name = "forge-setup"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+publish = false
+description = "RurixForge 安装程序外壳:WebView2 安装界面 + 内层 electron-builder NSIS 安装包"
+
+# 独立工作区:不进根工作区(依赖与锁文件各管各的),由 scripts/package-windows.ps1 单独构建。
+[workspace]
+
+[[bin]]
+name = "forge-setup"
+path = "src/main.rs"
+
+# 出包工具:把 forge-setup.exe、内层 NSIS 安装包和元数据拼成最终的 RurixForge-Setup-<版本>.exe。
+[[bin]]
+name = "forge-setup-pack"
+path = "src/bin/pack.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+tao = "0.35"
+wry = "0.55"
+rfd = { version = "0.16", default-features = false }
+raw-window-handle = "0.6"
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Environment",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+embed-resource = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

@@ -115,7 +115,7 @@ function HierarchyRow({ entity, depth = 0, expanded = true, hasChildren = false,
         onClick={(e) => { e.stopPropagation(); onToggle?.(); }} className="shrink-0 text-fg-4">
         {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
       </button>}
-      <CatIcon size={11} className={cn('shrink-0', CATEGORY_META[cat].headerClass)} strokeWidth={1.8} />
+      <CatIcon size={11} className="shrink-0 text-fg-3" strokeWidth={1.8} />
       {editing ? (
         <input
           autoFocus
@@ -171,15 +171,15 @@ function CategoryGroup({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs font-medium hover:bg-shell-hover"
+        className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs font-medium text-fg hover:bg-shell-hover"
       >
         {collapsed ? (
           <ChevronRight size={12} className="shrink-0 text-fg-4" />
         ) : (
           <ChevronDown size={12} className="shrink-0 text-fg-4" />
         )}
-        <Icon size={12} className={cn('shrink-0', meta.headerClass)} strokeWidth={1.8} />
-        <span className={cn('min-w-0 flex-1 truncate', meta.headerClass)}>{meta.label}</span>
+        <Icon size={12} className="shrink-0" strokeWidth={1.8} />
+        <span className="min-w-0 flex-1 truncate">{meta.label}</span>
         <span className="shrink-0 rounded-full bg-shell-sunk px-1.5 py-px text-2xs text-fg-4">{entities.length}</span>
       </button>
       {!collapsed && (

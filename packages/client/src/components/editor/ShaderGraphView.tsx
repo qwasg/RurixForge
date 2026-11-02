@@ -11,7 +11,7 @@ import CanvasHud from './CanvasHud';
 import AnnotationHandle from './AnnotationHandle';
 import { shaderGeneratedSource, shaderNodeAtLine } from '@/lib/shaderSource';
 
-const button = 'rounded border border-edge px-2 py-1 text-xs hover:bg-shell-hover disabled:opacity-40';
+const button = 'glass-btn py-1 text-xs';
 const field = 'min-w-0 rounded border border-edge bg-shell-input px-2 py-1 text-xs text-fg outline-none focus:border-acc';
 const NODE_W = 206;
 const sourceLabel = (source?: ShaderValueSource): string => source ? 'node' in source ? `${source.node.slice(0,8)}.${source.pin}` : 'param' in source ? `参数 ${source.param}` : JSON.stringify(source.const) : '默认';

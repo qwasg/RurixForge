@@ -134,6 +134,10 @@ export const useSystemStore = create<SystemState>((set) => ({
       }
       useSessionStore.getState().hydrateAgentDefaults(s.agents?.defaultEngine);
       mergeSessionRuntime(s.sessions);
+      // 项目重启时 Shell 的首轮会话请求可能早于 agentd 就绪。健康轮询已恢复
+      // 后重新加载列表和上次选择，否则侧栏会一直停在空列表/离线态。
+      const sessions = useSessionStore.getState();
+      if (sessions.offline && !sessions.loading) await sessions.loadAll();
     } else {
       patch.snapshotOk = false;
       patch.todos = null;

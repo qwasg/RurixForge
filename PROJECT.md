@@ -1,65 +1,133 @@
-# Project: Antigravity Subscription Reverse Proxy in RurixForge
+# Project: RurixForge Build Composer Mode (`world_build`)
 
 ## Architecture
-- **Backend Module (`crates/forge-agentd` & `crates/gend`)**:
-  - `src/antigravity.rs`: Central module for Antigravity channel persistence (`data/llm-antigravity.json`), DPAPI keystore integration (`gend::keystore::set_key("antigravity", ...)`), quota probe client (`/v1/models` & rate limits extraction), Axum REST handlers, and `antigravity_step` for SSE streaming completions.
-  - `src/modelspec.rs`: Model card registrations for `gemini-3.8-flash` and `gemini-3.8-pro` with thinking capability, reasoning effort tiers, and 1M context options.
-  - `src/snapshot.rs`: Availability injection into `GET /api/forge/design-snapshot` (`available` / `needs-config` / `disconnected`).
-  - `src/llm.rs`: `Provider::Antigravity` and `Provider::AntigravityNotConfigured`, non-transient error mapping for immediate fail-fast on turn 1 (`ANTIGRAVITY_NOT_CONFIGURED`), and step dispatch.
-  - `src/agent.rs`: Explicit provider mapping in `provider_for_session`, native MCP tool mounting, driving turns entirely within RurixForge's in-process `run_tool_loop_inner` without external agent delegation.
-  - `src/main.rs`: Axum route registrations under `/api/forge/llm/antigravity/*`.
-- **Frontend Module (`packages/client`)**:
-  - `src/lib/forgeApi.ts`: Type contracts and BFF client functions (`getAntigravityStatus`, `postAntigravityConfig`, `postAntigravityProbe`).
-  - `src/components/settings/ModelsPage.tsx`: `AntigravityCard` in BYO section with status badges, latency badge, quota `RateLimitBar`, configuration drawer, presets, and Test Connection button.
-  - `src/components/chat/ModelPicker.tsx`: Antigravity model group display, `needs-config` status handling, thinking toggle, reasoning effort selector, and 1M context denominator.
+- **Composer Mode & Session State Machine Layer (`crates/forge-agentd/src/world_build.rs`, `sessions.rs`, `agent.rs`)**:
+  - Registers `world_build` mode with UI label `Build` (preserving existing `id: 'build'`, label `Agent`).
+  - `WorldBuildState` on `DebugSession` with atomic file-backed artifacts under `.forge/world_build/<slug>/` (`facts.json`, `manifest.json`, `template.json`, `scene.json`, `audit.json`).
+  - Strict 5-stage lifecycle state machine: `survey` -> `preview_review` -> `construction` -> `coherence_verify` -> `done`.
+  - Survey facts engine inspecting `forge.toml` (`3d`, `rurix`/`godot`), active `.rxscene` entities, active lighting (`Light` components), environment, cameras (`Camera`), materials (`.rxmat`), and art style.
+- **Local Asset 4-Panel 3-View Showcase Sheet Pipeline (`crates/assetd`, `crates/mcp/asset-pipeline-mcp`)**:
+  - Deterministic pure CPU software rasterizer with z-buffer for 3D meshes/models (`.glb`, `.rxmodel`, `.rxmesh`).
+  - Generates a 4-panel composite inspection sheet: 1 perspective showcase view + front, side, and top orthographic views.
+  - Cached under `.forge/cache/thumbs/<hash>.png`, returning `dataUrl: data:image/png;base64,...` (multimodal vision for LLM agents) and exact bounding-box / material metadata.
+- **Loopback WebUI 3D Preview & Interactive Review (`crates/forge-agentd/src/demo_host.rs`, `web_probe.rs`, `packages/client`)**:
+  - `demo_host.rs` loopback hosting with `.glb`, `.gltf`, `.bin` allowed.
+  - Interactive Three.js/WebGL preview implementing `window.__buildPreview` (`getSceneState()`, `selectBuilding(id)`, `getSelectedBuilding()`, `applyStylePreset()`, `getCameraViews()`).
+  - Automated verification via `web_probe.rs` and Playwright.
+  - Synchronized frontend UI: `BuildPreviewCard` in chat timeline, `BuildPreviewTab` in Workbench, and `WorldBuildBar` in Composer.
+  - Targeted review actions: `rebuild_building`, `tune_building`, `adjust_style`, and `approve_preview`, updating targeted buildings while incrementing `previewRev` and preserving other buildings.
+- **Multi-Agent Engine Construction Team (`crates/forge-agentd/src/collaboration.rs`, `collaboration_runtime.rs`, `agents/building-artisan.md`)**:
+  - Approved preview materializes an execution DAG on `collaboration_runtime.rs`: $N$ parallel building artisan tasks + 1 dependent global coherence coordination task.
+  - Dedicated `building-artisan` profile (registered in `subagents.rs:BUILTIN_NAMES`) equipped with Meshy MCP tools (`gen_mesh`, `gen_mesh_refine`, `gen_accept`), local asset 3-view inspection, and engine scene tools.
+- **Deterministic Server-Side Coherence Verification (`crates/forge-scene`, `crates/mcp/engine-scene-mcp`, `crates/forge-agentd/src/world_build/verify.rs`)**:
+  - Verifies entity tree integrity and component validity in `.rxscene`.
+  - AABB ground footprint intersection / collision detection on X-Z plane.
+  - Verification of interior decoration props attached via `Parent` component to building entities.
+  - Multi-camera engine screenshot captures via `viewport_set_camera` and `viewport_frame{exact: true}` with template view comparisons.
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | Antigravity Config & Keystore Persistence | Persist `baseUrl`, `model`, `enabled` to `data/llm-antigravity.json`; store token in keystore securely under "antigravity"; no key leakage | M1 | R1.1 |
-| 2 | Antigravity REST BFF Endpoints | `GET /status`, `POST /config`, `POST /probe` with input validation and key sanitization | M1 | R1.2 |
-| 3 | Quota Probe & Snapshot Availability | Probe endpoint latency & rate limits (primary/secondary windows, resetsAt), inject availability into `design-snapshot` | M1 | R1.3 |
-| 4 | Provider Enum & Turn-1 Fail-Fast | Add `Provider::Antigravity` & `AntigravityNotConfigured`; fail turn 1 with `ANTIGRAVITY_NOT_CONFIGURED` without retry | M1 | R2.1 |
-| 5 | Native In-Process Agent Loop Integration | `antigravity_step` invokes reverse proxy streaming completions; RurixForge in-process `run_tool_loop_inner` drives MCP tools; zero external agent delegation | M1 | R2.2 |
-| 6 | Modelspec Registry & Thinking Options | Register `gemini-3.8-flash` & `gemini-3.8-pro` with Thinking, Reasoning Effort, and 1M context options in `modelspec.rs` | M1 | R2.3 |
-| 7 | Frontend ModelsPage Antigravity Card | Dedicated channel card with status badges (`available`, `needs-config`, `offline`), latency probe, and RateLimitBar | M2 | R3.1-2 |
-| 8 | Frontend Configuration Drawer & Probe UI | Edit drawer for baseUrl, model presets, API Key, and interactive "Test Connection" button with live feedback | M2 | R3.3 |
-| 9 | Chat Composer & Model Switcher | Antigravity group in ModelPicker, unconfigured state disabling, thinking toggle, effort tiers, and context window slider | M2 | R3.4 |
-| 10 | Comprehensive Test Suite & Regression Verification | Rust unit tests in `forge-agentd` (config, keystore, provider, failure codes, snapshot) & Frontend typecheck/tests | M3 | AC |
+| 1 | Composer Mode Registration & Session Protocol | Register `{ id: 'world_build', label: 'Build' }` in `composerModes.ts` & `agent.rs` without altering `{ id: 'build', label: 'Agent' }` | M1 | R1 |
+| 2 | Session Persistence & State Machine Lifecycle | `WorldBuildState` on `DebugSession` with atomic storage in `.forge/world_build/<slug>/` and 5 stages (`survey` -> `preview_review` -> `construction` -> `coherence_verify` -> `done`) | M1 | R1 |
+| 3 | Automatic Project & Map Investigation Engine | Inspect `forge.toml`, `.rxscene`, lighting, camera, environment, materials, models, and art style; persist `facts.json` | M1 | R1 |
+| 4 | Local Asset 4-Panel 3-View Showcase Sheet Pipeline | Pure CPU rasterizer in `assetd`/`asset-pipeline-mcp` generating composite sheet (perspective + front/side/top) with multimodal base64 return & bounding-box metadata | M2 | R3 |
+| 5 | Engine-Aligned WebUI 3D Preview Hosting & Web Probe | Add 3D extensions to `demo_host.rs`, implement `window.__buildPreview` contract, and automate verification via `web_probe.rs` | M3 | R2 |
+| 6 | Frontend Interactive Preview & Per-Building Controls | `BuildPreviewCard` & `BuildPreviewTab`, click-selection, targeted `rebuild_building`, `tune_building`, `adjust_style`, `approve_preview` | M3 | R2 |
+| 7 | Multi-Agent Construction Team & Building Artisan | Materialize $N$-building DAG in `collaboration.rs`; add `building-artisan.md` and update `BUILTIN_NAMES` in `subagents.rs` | M4 | R4 |
+| 8 | Global Coherence Coordinator & Multi-Camera Verification | Server-side entity check, AABB collision detection, `Parent` interior prop check, and `viewport_frame` multi-camera comparison | M4 | R5 |
+| 9 | End-to-End Test Suite & Adversarial Hardening | Comprehensive 4-tier requirement-driven E2E test suite + Tier 5 adversarial coverage hardening | M5 | AC |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Backend Core (`forge-agentd`) | Antigravity config, keystore, BFF routes, quota probe, snapshot, native provider, modelspec, fail-fast turn 1, and cargo tests | none | DONE |
-| M2 | Frontend Client (`packages/client`) | AntigravityCard, RateLimitBar, settings drawer, probe feedback, ModelPicker Antigravity group, thinking/effort/context tiers, and client tests | M1 | DONE |
-| M3 | Comprehensive Verification & Hardening | Full backend & frontend test suites, production build validation, and forensic integrity audit | M1, M2 | DONE |
+| M1 | Core Protocol, Session State Machine & Project Survey | `COMPOSER_MODES` update, `agent.rs` routing, `world_build.rs` module, `DebugSession` persistence, survey facts extraction, unit tests | none | DONE |
+| M2 | Local Asset 4-Panel 3-View Showcase & Inspection MCP | Pure CPU 4-panel software rasterizer in `assetd`/`asset-pipeline-mcp`, thumbnail caching, multimodal base64 output, bounding metadata | none | DONE |
+| M3 | Engine-Aligned WebUI 3D Preview, Web Probe & Review UI | `demo_host.rs` 3D types, `window.__buildPreview` contract, `web_probe.rs`, `BuildPreviewCard`/`Tab`, review actions (`rebuild`, `tune`, `style`, `approve`) | M1 | DONE |
+| M4 | Multi-Agent Team Execution, Building Artisan & Coherence Gate | `building-artisan.md` profile, `BUILTIN_NAMES` update, DAG materialization, AABB collision check, `viewport_frame` engine verification | M1, M2, M3 | DONE |
+| M5 | Final Milestone: 100% E2E Test Pass & Adversarial Hardening | Pass 100% E2E test suite (Tiers 1-4), Tier 5 adversarial coverage hardening, full regression pass | M1, M2, M3, M4, TEST_READY | DONE |
 
 ## Interface Contracts
-### BFF ↔ Client (`/api/forge/llm/antigravity/*`)
-- `GET /api/forge/llm/antigravity/status`:
-  - Response: `{ configured: bool, baseUrl: string, model: string, keyConfigured: bool, quota?: AntigravityQuota, rateLimits?: AntigravityQuota, latencyMs?: number, models?: string[] }`
-  - Redline R-5: Secret key is NEVER returned in response.
-- `POST /api/forge/llm/antigravity/config`:
-  - Request: `{ baseUrl: string, model: string, key?: string }`
-  - Response: `{ configured: bool, baseUrl: string, model: string, keyConfigured: bool }` (400 if baseUrl or model is empty).
-- `POST /api/forge/llm/antigravity/probe`:
-  - Response: `{ ok: bool, latencyMs?: number, error?: string, quota?: AntigravityQuota, rateLimits?: AntigravityQuota, models?: string[] }`
-  - `AntigravityQuota`: `{ primary?: { usedPercent: number, remainingPercent?: number, resetsAt?: string }, secondary?: { usedPercent: number, remainingPercent?: number, resetsAt?: string } }`
 
-### Modelspec ↔ Session (`modelspec.rs` ↔ `agent.rs` ↔ Client)
-- Model IDs: `"antigravity/gemini-3.8-flash"`, `"antigravity/gemini-3.8-pro"`, also aliased to `"gemini-3.8-flash"`, `"gemini-3.8-pro"`.
-- Group: `"Antigravity"`.
-- Context Options: includes `"1m"` (1,048,576 tokens).
-- Thinking: `supports_thinking: true`, `effort_options: EFFORTS_FULL`.
+### Composer Mode & Action Protocol
+- Mode ID: `"world_build"`, UI Label: `"Build"`, Icon: `Hammer`
+- Request Payload on `ask:execute`:
+  ```json
+  {
+    "userInput": "Build a cyber harbor scene...",
+    "mode": "world_build",
+    "worldBuild": {
+      "id": "slug",
+      "rev": 1,
+      "action": "survey" | "rebuild_building" | "tune_building" | "adjust_style" | "approve_preview",
+      "buildingId": "bldg_dock_01",
+      "instruction": "Add neon signs and weathered metal roof",
+      "stylePreset": "cyberpunk_harbor"
+    }
+  }
+  ```
+- Error Responses:
+  - HTTP 409 `WORLD_BUILD_STAGE_MISMATCH`
+  - HTTP 404 `WORLD_BUILD_BUILDING_NOT_FOUND`
+  - HTTP 400 `WORLD_BUILD_INVALID_ACTION`
+
+### WebUI Preview Contract (`window.__buildPreview`)
+```typescript
+interface BuildPreviewApi {
+  getSceneState(): {
+    slug: string;
+    rev: number;
+    style: string;
+    buildings: Array<{
+      id: string;
+      name: string;
+      type: string;
+      transform: { position: [number, number, number]; rotation: [number, number, number]; scale: [number, number, number] };
+      bounds: { min: [number, number, number]; max: [number, number, number] };
+      materials: string[];
+      interiorPropsCount: number;
+    }>;
+    environment: { skybox: string; fog: boolean; ambientIntensity: number };
+  };
+  selectBuilding(id: string | null): boolean;
+  getSelectedBuilding(): string | null;
+  applyStylePreset(preset: string): boolean;
+  getCameraViews(): Array<{ name: string; position: [number, number, number]; target: [number, number, number] }>;
+}
+```
+
+### Local Asset Visual Inspection Tool Contract
+- Tool Name: `mcp__asset-pipeline__inspect_3d_asset` (or extension to existing inspection tool)
+- Input: `{ "path": "Content/Models/...", "generateThreeView": true }`
+- Output:
+  ```json
+  {
+    "path": "Content/Models/...",
+    "polycount": 4250,
+    "dimensions": { "x": 12.5, "y": 8.2, "z": 15.0 },
+    "boundingBox": { "min": [-6.25, 0.0, -7.5], "max": [6.25, 8.2, 7.5] },
+    "materials": ["mat_concrete", "mat_glass"],
+    "threeViewSheetUri": ".forge/cache/thumbs/<hash>.png",
+    "dataUrl": "data:image/png;base64,..."
+  }
+  ```
+
+### Multi-Agent DAG Contract
+- Stage 1 (`building_construction`): $N$ tasks with role `"building-artisan"`, each assigned `buildingId` and scope parameters.
+- Stage 2 (`coherence_verification`): 1 task with role `"coordinator"`, depending on all $N$ building tasks, executing deterministic AABB collision check, hierarchy check, and `viewport_frame` multi-camera comparison.
 
 ## Code Layout
-- `crates/forge-agentd/src/antigravity.rs`: Configuration, keystore access, probe, routes, step implementation, and unit tests.
-- `crates/forge-agentd/src/main.rs`: Route mounting for `/api/forge/llm/antigravity/*`.
-- `crates/forge-agentd/src/snapshot.rs`: Snapshot model list and availability injection.
-- `crates/forge-agentd/src/modelspec.rs`: Model cards registration.
-- `crates/forge-agentd/src/llm.rs`: `Provider` enum variants, `is_transient_llm_error`, `failure_code_from_error`, `step_for_provider`.
-- `crates/forge-agentd/src/agent.rs`: `provider_for_session`, MCP tool registration, unit test for fail-fast.
-- `packages/client/src/lib/forgeApi.ts`: Antigravity API types and methods.
-- `packages/client/src/components/settings/ModelsPage.tsx`: Antigravity channel card, quota progress bar, and config drawer.
-- `packages/client/src/components/chat/ModelPicker.tsx`: Model selection, unconfigured state disabling.
-- `packages/client/test/antigravitySettings.test.tsx`: Frontend unit tests for Antigravity card & quota.
+- `crates/forge-agentd/src/world_build.rs`: State machine, persistence, facts engine, review actions, coherence verifier.
+- `crates/forge-agentd/src/world_build/`: Submodules for survey, facts, actions, and verification.
+- `crates/forge-agentd/src/sessions.rs`: `world_build: Option<WorldBuildState>` on `DebugSession`.
+- `crates/forge-agentd/src/agent.rs`: Mode resolution and routing.
+- `crates/forge-agentd/src/demo_host.rs`: 3D file extensions for preview serving.
+- `crates/assetd/src/rasterizer/`: Pure CPU 4-panel software rasterizer for 3D meshes.
+- `crates/mcp/asset-pipeline-mcp/src/mcp.rs`: 3D model 3-view inspection tool endpoint.
+- `agents/building-artisan.md`: Building artisan agent profile.
+- `crates/forge-agentd/src/subagents.rs`: Subagent catalog whitelist updating `BUILTIN_NAMES`.
+- `packages/client/src/components/chat/composerModes.ts`: Registering `world_build`.
+- `packages/client/src/components/chat/world_build/`: `BuildPreviewCard.tsx`, `WorldBuildBar.tsx`.
+- `packages/client/src/components/workbench/BuildPreviewTab.tsx`: 3D preview Workbench tab.
+- `packages/client/src/lib/worldBuildStore.ts`: Client-side state store.
+- `tools/e2e/world_build_pipeline.py`: Comprehensive E2E test runner.

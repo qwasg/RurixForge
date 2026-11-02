@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>RurixForge</title>
+<!--
+  启动小窗:本地服务就绪前显示。main.cjs 经 query 传入 theme(light / dark)、material(acrylic / solid)、version,
+  并调用 window.splash.stage(prepare | agentd | host | window | done) 推进进度。
+  Windows 11 上窗口本身是系统亚克力(透出桌面的毛玻璃),页面只叠一层白(深色模式为黑)的半透明;其他系统画不透明底。
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --tint: rgba(255, 255, 255, 0.68);
+    --solid: linear-gradient(165deg, #fbfbfa 0%, #f2f2f0 60%, #ebeae7 100%);
+    --ink-1: #141414;
+    --ink-2: #3d3d3d;
+    --track: rgba(0, 0, 0, 0.08);
+    --accent: #d97757;
+    --edge: rgba(255, 255, 255, 0.85);
+    --dust: 110, 110, 110;
+    --face-hi: #5a5a5a;
+    --face-lo: #121212;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --tint: rgba(28, 28, 28, 0.55);
+    --solid: linear-gradient(165deg, #232323 0%, #1b1b1b 60%, #151515 100%);
+    --ink-1: #f5f5f5;
+    --ink-2: #c8c8c8;
+    --track: rgba(255, 255, 255, 0.12);
+    --accent: #e08a6a;
+    --edge: rgba(255, 255, 255, 0.08);
+    --dust: 200, 200, 200;
+    --face-hi: #f2f2f2;
+    --face-lo: #9a9a9a;
+  }
+
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+
+  body {
+    position: relative;
+    font: 400 14px/1.5 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    color: var(--ink-1);
+    background: var(--tint);
+    -webkit-app-region: drag;
+    user-select: none;
+    cursor: default;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :root[data-material="solid"] body { background: var(--solid); }
+
+  /* 窗口内沿一圈细高光,像玻璃的边 */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 1px 0 var(--edge), inset 0 0 0 1px rgba(127, 127, 127, 0.08);
+  }
+
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+
+  main {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 6px;
+  }
+
+  .mark { width: 64px; height: 64px; overflow: visible; filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.16)); }
+  .mark .face { opacity: 0; animation: face-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; animation-delay: calc(var(--d) * 70ms + 420ms); transform-box: fill-box; transform-origin: center; }
+  .mark .outline { fill: none; stroke: var(--ink-1); stroke-width: 18; stroke-linejoin: round; stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: draw 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards, fade-out 0.6s ease 1.15s forwards; }
+  .mark-wrap { animation: breathe 3.2s ease-in-out 1.6s infinite; }
+
+  h1 {
+    margin: 18px 0 0;
+    font: 700 24px/1.2 "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    letter-spacing: -0.02em;
+    opacity: 0;
+    animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
+  }
+
+  .status {
+    position: relative;
+    height: 21px;
+    margin-top: 8px;
+    width: 280px;
+    text-align: center;
+    color: var(--ink-2);
+    opacity: 0;
+    animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.62s forwards;
+  }
+
+  .status span { position: absolute; inset: 0; transition: opacity 0.3s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+  .status span.out { opacity: 0; transform: translateY(-6px); transition-duration: 0.16s; }
+  .status span.in { opacity: 0; transform: translateY(8px); }
+
+  .bar {
+    position: relative;
+    width: 220px;
+    height: 4px;
+    margin-top: 18px;
+    overflow: hidden;
+    border-radius: 99px;
+    background: var(--track);
+    opacity: 0;
+    animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.74s forwards;
+  }
+
+  .fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--accent);
+    transform-origin: left;
+    transform: scaleX(0.02);
+  }
+
+  /* 一道明显的流光,表示仍在进行 */
+  .bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  .version {
+    position: fixed;
+    right: 16px;
+    bottom: 12px;
+    font-size: 12px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes fade-out { to { opacity: 0; } }
+  @keyframes face-in { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: none; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    .bar::after { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="dust" aria-hidden="true"></canvas>
+<main role="status" aria-live="polite">
+  <div class="mark-wrap">
+    <svg class="mark" viewBox="86 88 1080 1080" aria-hidden="true">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: var(--face-hi)"/><stop offset="1" style="stop-color: var(--face-lo)"/></linearGradient>
+        <linearGradient id="g2" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: var(--face-hi)"/><stop offset="1" style="stop-color: var(--face-lo)"/></linearGradient>
+      </defs>
+      <polygon class="face" style="--d:0" fill="url(#g2)" points="880,232 1117,232 1120,250 860,575 721,392"/>
+      <polygon class="face" style="--d:1" fill="url(#g1)" points="157,780 302,554 663,1062 355,1060"/>
+      <polygon class="face" style="--d:2" fill="url(#g1)" points="302,554 573,553 704,705 420,705"/>
+      <polygon class="face" style="--d:3" fill="url(#g2)" points="557,908 717,722 829,869 663,1062"/>
+      <polygon class="face" style="--d:4" fill="url(#g1)" points="124,388 304,193 568,195 457,394 132,394"/>
+      <polygon class="face" style="--d:5" fill="url(#g1)" points="568,195 1120,936 1127,960 903,963 457,394"/>
+      <path class="outline" pathLength="1" d="M304 193 568 195 721 392 880 232 1117 232 1120 250 860 575 1120 936 1127 960 903 963 829 869 663 1062 355 1060 157 780 302 554 560 553 576 542 457 394 132 394 124 388 124 377Z M420 705 420 714 557 908 717 722 704 705Z"/>
+    </svg>
+  </div>
+  <h1>RurixForge</h1>
+  <div class="status" id="status"><span>正在启动…</span></div>
+  <div class="bar" aria-hidden="true"><div class="fill" id="fill"></div></div>
+</main>
+<div class="version" id="version"></div>
+<script>
+'use strict';
+(function () {
+  const query = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = query.get('theme') === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.material = query.get('material') === 'acrylic' ? 'acrylic' : 'solid';
+  const version = query.get('version');
+  if (version) document.getElementById('version').textContent = `v${version}`;
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // [进度起点, 本阶段最多走到, 文案]
+  const STAGES = {
+    prepare: [4, 22, '正在准备工作区'],
+    agentd: [22, 60, '正在启动 AI 后端'],
+    host: [60, 86, '正在启动界面服务'],
+    window: [86, 97, '正在打开工作台'],
+    done: [100, 100, '已就绪'],
+  };
+  let from = 2;
+  let to = 18;
+  let since = performance.now();
+  let shown = 2;
+  let current = '';
+
+  const status = document.getElementById('status');
+  let pendingText = 0;
+  function setText(text) {
+    clearTimeout(pendingText);
+    const old = status.querySelector('span:not(.out)');
+    if (old && old.textContent === text) return;
+    // 旧文案先淡出,新文案稍后再升起,两行不叠在一起。
+    if (old) {
+      old.classList.add('out');
+      setTimeout(() => old.remove(), 200);
+    }
+    pendingText = setTimeout(() => {
+      const next = document.createElement('span');
+      next.textContent = text;
+      next.className = 'in';
+      status.append(next);
+      requestAnimationFrame(() => requestAnimationFrame(() => next.classList.remove('in')));
+    }, old ? 140 : 0);
+  }
+
+  window.splash = {
+    stage(name) {
+      const s = STAGES[name];
+      if (!s || name === current) return;
+      current = name;
+      from = Math.max(shown, s[0]);
+      to = s[1];
+      since = performance.now();
+      setText(s[2]);
+    },
+  };
+
+  // 阶段内进度按指数趋近上限:一直在动,但不会提前走满。
+  const fill = document.getElementById('fill');
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    const target = from + (to - from) * (1 - Math.exp(-(now - since) / 2600));
+    shown += (target - shown) * (reduced ? 1 : Math.min(1, dt * 6));
+    fill.style.transform = `scaleX(${Math.max(0.02, shown / 100)})`;
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // 几粒缓慢上浮的灰色浮尘
+  const canvas = document.getElementById('dust');
+  const ctx = canvas.getContext('2d');
+  const tone = getComputedStyle(document.documentElement).getPropertyValue('--dust').trim();
+  const motes = [];
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.round(innerWidth * dpr);
+    canvas.height = Math.round(innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function spawn(anywhere) {
+    return {
+      x: Math.random() * innerWidth,
+      y: anywhere ? Math.random() * innerHeight : innerHeight + 6,
+      r: 0.6 + Math.random() * 1.3,
+      vy: 6 + Math.random() * 12,
+      sway: 4 + Math.random() * 8,
+      phase: Math.random() * Math.PI * 2,
+      a: 0.15 + Math.random() * 0.3,
+    };
+  }
+  resize();
+  addEventListener('resize', resize);
+  for (let i = 0; i < 16; i++) motes.push(spawn(true));
+  let lastDust = performance.now();
+  function dust(now) {
+    const dt = Math.min(0.1, (now - lastDust) / 1000);
+    lastDust = now;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (let i = 0; i < motes.length; i++) {
+      const m = motes[i];
+      m.y -= m.vy * dt;
+      if (m.y < -6) motes[i] = spawn(false);
+      const x = m.x + Math.sin(now / 1000 + m.phase) * m.sway;
+      ctx.fillStyle = `rgba(${tone}, ${m.a * Math.min(1, m.y / (innerHeight * 0.6))})`;
+      ctx.beginPath();
+      ctx.arc(x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    requestAnimationFrame(dust);
+  }
+  if (!reduced) requestAnimationFrame(dust);
+})();
+</script>
+</body>
+</html>

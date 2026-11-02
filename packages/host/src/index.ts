@@ -1,4 +1,6 @@
 import { buildServer } from './server.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { HostConfig } from './plugins/config.js';
 import type { Logger } from './plugins/logger.js';
 
@@ -15,7 +17,14 @@ const portPatch = Number.isInteger(envPort) && envPort > 0 && envPort < 65536
   ? { port: envPort }
   : {};
 const dataPatch = process.env.FORGE_DATA_DIR ? { dataDir: process.env.FORGE_DATA_DIR } : {};
-const server = buildServer({ ...portPatch, ...dataPatch });
+// A local development profile can serve a separately built client without
+// replacing an installed application's current static bundle.
+const clientDist = process.env.FORGE_CLIENT_DIST;
+if (clientDist && (!path.isAbsolute(clientDist) || !fs.statSync(clientDist, { throwIfNoEntry: false })?.isDirectory()
+  || !fs.statSync(path.join(clientDist, 'index.html'), { throwIfNoEntry: false })?.isFile())) {
+  throw new Error('FORGE_CLIENT_DIST must identify an existing absolute client build directory');
+}
+const server = buildServer({ ...portPatch, ...dataPatch, ...(clientDist ? { staticDir: clientDist } : {}) });
 const config = server.ctx.get<HostConfig>('config');
 const logger = server.ctx.get<Logger>('logger');
 

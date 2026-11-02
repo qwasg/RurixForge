@@ -172,6 +172,7 @@ describe('Todo tab', () => {
       todos: [
         { id: 'queued-task', title: '待办项', status: 'queued' },
         { id: 'running-task', title: '制作项', status: 'in_progress' },
+        { id: 'verifying-task', title: '交接项', status: 'verifying' },
         { id: 'failed-task', title: '重试项', status: 'blocked' },
         { id: 'done-task', title: '完成项', status: 'done' },
       ],
@@ -180,7 +181,8 @@ describe('Todo tab', () => {
     const states = [
       ['Backlog', 'queued-task', '待办', 'pending'],
       ['Running', 'running-task', '制作中', 'running'],
-      ['Review', 'failed-task', '失败', 'failed'],
+      ['Running', 'verifying-task', '验证中', 'verifying'],
+      ['Review', 'failed-task', '受阻', 'blocked'],
       ['Done', 'done-task', '完成', 'completed'],
     ];
     for (const [column, id, label, status] of states) {

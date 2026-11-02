@@ -77,6 +77,12 @@ XY 平面、正交相机、Sprite 精灵、sortingOrder 叠放、场景级重力
     `sprite.play { entity, clip }`(缺省幂等,可安全每帧调用)/`sprite.stop` 切换。
 - PIE 试玩确认帧在动、脚底贴地不漂移;`events_drain` 里出现 anim.warn 必须逐条处置。
 
+## 骨骼动画(可选,F-GAME-5 / D-050)
+- 选型判据:**帧动画**适合像素风、大幅度变形、动作种类多但每个动作短的角色;**骨骼绑定(.rxrig)**适合
+  立绘 / 半身角色、需要连续参数驱动(视线跟随、表情混合、说话嘴型)、头发衣物物理、包体要小的场景。
+- 走骨骼路线时:搭绑定执行 [`rig2d-build`](../rig2d-build/SKILL.md),写动作与挂场景执行
+  [`rig2d-animate`](../rig2d-animate/SKILL.md);实体用 `Rig2D` 组件(`rig_spawn`),不要同时挂 Sprite。
+
 ## 输出约束
 - 报告:模式确认结论、相机参数(orthoSize)、精灵清单(实体名/贴图或 .rxsprite GUID/
   sortingOrder)、动画清单(clip 名/帧数/fps)、自检截图结论。

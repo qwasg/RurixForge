@@ -809,3 +809,68 @@ describe('<Composer /> 单行胶囊', () => {
     expect(screen.getByTestId('composer-mode-chip')).toHaveTextContent('Debug');
   });
 });
+
+describe('<Composer /> WorldBuild (Build) 模式', () => {
+  const sessionOf = (agentKind: string, agentEngine: 'local' | 'codex' = 'local') => ({
+    id: 'sess_1',
+    title: 'x',
+    status: 'idle',
+    agentKind,
+    agentEngine,
+    selectedModelId: 'mock',
+    thinkingEnabled: false,
+    reasoningEffort: null,
+    contextOptionId: null,
+    webSearchEnabled: false,
+    activeRunId: null,
+    createdAt: '',
+    updatedAt: '',
+    pinned: false,
+    titleManuallySet: false,
+  });
+
+  it('Build(world_build): coding 代理在本地与 codex 引擎下列在模式菜单里，UI 标签为 Build，图标为 Hammer', () => {
+    useSessionStore.setState({ sessions: [sessionOf('coding', 'local')] });
+    render(<Composer />);
+    fireEvent.click(screen.getByTestId('composer-add'));
+    expect(screen.getByTestId('mode-item-world_build')).toBeInTheDocument();
+    expect(screen.getByTestId('mode-item-world_build')).toHaveTextContent('Build');
+    // build 模式仍然保留且标签为 Agent
+    expect(screen.getByTestId('mode-item-build')).toHaveTextContent('Agent');
+  });
+
+  it('Build(world_build): 选中后胶囊展开为 [+ Hammer Build ×]，发送按 mode=world_build 发送', () => {
+    useSessionStore.setState({ sessions: [sessionOf('coding', 'local')] });
+    const sendMessage = vi.fn();
+    useChatStore.setState({ sendMessage });
+    render(<Composer />);
+    fireEvent.click(screen.getByTestId('composer-add'));
+    fireEvent.click(screen.getByTestId('mode-item-world_build'));
+    expect(screen.getByTestId('composer-mode-pill')).toHaveAttribute('data-mode', 'world_build');
+    expect(screen.getByTestId('composer-mode-chip')).toHaveTextContent('Build');
+    type('构建赛博朋克码头');
+    fireEvent.click(screen.getByTestId('composer-send'));
+    expect(sendMessage).toHaveBeenCalledWith('构建赛博朋克码头', 'world_build');
+  });
+
+  it('Build(world_build): 点击 × 复位按钮退回 build (Agent)', () => {
+    useSessionStore.setState({ sessions: [sessionOf('coding', 'local')] });
+    render(<Composer />);
+    fireEvent.click(screen.getByTestId('composer-add'));
+    fireEvent.click(screen.getByTestId('mode-item-world_build'));
+    expect(screen.getByTestId('composer-mode-chip')).toHaveTextContent('Build');
+    fireEvent.click(screen.getByTestId('composer-mode-reset'));
+    expect(screen.getByTestId('composer-mode-pill')).toHaveAttribute('data-mode', 'build');
+    expect(screen.queryByTestId('composer-mode-chip')).not.toBeInTheDocument();
+  });
+
+  it.each(['general', 'document', 'studio'])('Build(world_build): %s 代理下不列出 world_build', (kind) => {
+    useSessionStore.setState({ sessions: [sessionOf(kind, 'local')] });
+    render(<Composer />);
+    fireEvent.click(screen.getByTestId('composer-add'));
+    expect(screen.queryByTestId('mode-item-world_build')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mode-item-build')).toBeInTheDocument();
+    expect(screen.getByTestId('mode-item-ask')).toBeInTheDocument();
+  });
+});
+

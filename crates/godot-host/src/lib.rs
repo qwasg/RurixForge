@@ -31,6 +31,7 @@ mod mesh;
 mod particles;
 mod props;
 mod rid;
+mod rig;
 mod scene;
 mod sprite;
 mod shader_graph;

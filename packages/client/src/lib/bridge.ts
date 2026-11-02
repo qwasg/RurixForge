@@ -29,6 +29,7 @@ export interface ForgeAPI {
       dpr: number;
       streamW?: number;
       streamH?: number;
+      nativeOnly?: boolean;
       workspaceId?: string | null;
       visible: boolean;
     }) => void;

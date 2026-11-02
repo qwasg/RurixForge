@@ -46,13 +46,15 @@ export type AssetTypeFilter =
   | 'texture'
   | 'material'
   | 'sprite'
+  | 'rig'
   | 'prefab'
   | 'scene'
   | 'script'
   | 'audio';
 
 /** 右键菜单动作(六菜单,07 §4;F5 wave.3:gen-chat seam → gen-dialog 真实对话框;
- * F-GAME-4:sprite-edit = texture 建 .rxsprite 开编辑器 / sprite 直开编辑器)。 */
+ * F-GAME-4:sprite-edit = texture 建 .rxsprite 开编辑器 / sprite 直开编辑器;
+ * F-GAME-5:rig-edit = .rxrig 开绑骨编辑器)。 */
 export type AssetMenuAction =
   | 'import-here'
   | 'reimport'
@@ -60,7 +62,8 @@ export type AssetMenuAction =
   | 'find-refs'
   | 'delete-proposal'
   | 'gen-dialog'
-  | 'sprite-edit';
+  | 'sprite-edit'
+  | 'rig-edit';
 
 /** 引用查询结果(GUID 已尽量解析为路径;未知 GUID 原样显示)。 */
 export interface RefsResult {

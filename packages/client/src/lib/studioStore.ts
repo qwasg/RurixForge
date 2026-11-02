@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import type { KindTone } from './designBoardStore';
 import {
   apiGenAudio,
   apiGenMesh,
@@ -53,7 +52,6 @@ export interface StudioPresetDef {
   id: StudioPresetId;
   kind: StudioKind;
   label: string;
-  tone: KindTone;
   /** prompt 输入框占位文案 */
   hint: string;
   /** 图像/模型入库目标目录(相对 Content/) */
@@ -61,19 +59,18 @@ export interface StudioPresetDef {
 }
 
 export const STUDIO_PRESETS: StudioPresetDef[] = [
-  { id: 'outline', kind: 'text', label: '大纲', tone: 'info', hint: '描述游戏的核心玩法 / 世界观 / 进程结构…' },
-  { id: 'mapdraft', kind: 'text', label: '地图草稿', tone: 'sage', hint: '描述地图的区域划分 / 路径 / 兴趣点…' },
-  { id: 'concept', kind: 'image', label: '原画', tone: 'acc', hint: '描述角色 / 场景 / 道具的画面…', destFolder: 'Concepts' },
-  { id: 'texture', kind: 'image', label: '贴图', tone: 'warn', hint: '描述材质表面(如 岩石 / 木纹 / 金属)…', destFolder: 'Textures' },
-  { id: 'ui', kind: 'image', label: 'UI', tone: 'info', hint: '描述界面元素(如 主菜单 / 血条 / 图标)…', destFolder: 'UI' },
-  { id: 'mesh', kind: 'model', label: '3D模型', tone: 'sage', hint: '描述要生成的三维模型…', destFolder: 'Meshes' },
-  { id: 'video', kind: 'video', label: '视频', tone: 'danger', hint: '描述要生成的视频片段(过场 / 演出参考)…' },
-  { id: 'audio', kind: 'audio', label: '音频', tone: 'acc', hint: '输入要朗读的文字,或切到音乐生成描述曲风…' },
+  { id: 'outline', kind: 'text', label: '大纲', hint: '描述游戏的核心玩法 / 世界观 / 进程结构…' },
+  { id: 'mapdraft', kind: 'text', label: '地图草稿', hint: '描述地图的区域划分 / 路径 / 兴趣点…' },
+  { id: 'concept', kind: 'image', label: '原画', hint: '描述角色 / 场景 / 道具的画面…', destFolder: 'Concepts' },
+  { id: 'texture', kind: 'image', label: '贴图', hint: '描述材质表面(如 岩石 / 木纹 / 金属)…', destFolder: 'Textures' },
+  { id: 'ui', kind: 'image', label: 'UI', hint: '描述界面元素(如 主菜单 / 血条 / 图标)…', destFolder: 'UI' },
+  { id: 'mesh', kind: 'model', label: '3D模型', hint: '描述要生成的三维模型…', destFolder: 'Meshes' },
+  { id: 'video', kind: 'video', label: '视频', hint: '描述要生成的视频片段(过场 / 演出参考)…' },
+  { id: 'audio', kind: 'audio', label: '音频', hint: '输入要朗读的文字,或切到音乐生成描述曲风…' },
   {
     id: 'charanim',
     kind: 'sprite',
     label: '角色动画',
-    tone: 'warn',
     hint: '描述角色动作(如 向右行走循环 / 待机呼吸 / 挥剑攻击)…',
     // 落盘的是图集贴图;.rxsprite 由 sprite_create 另落 Sprites/。
     destFolder: 'Textures',

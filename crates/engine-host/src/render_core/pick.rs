@@ -64,11 +64,18 @@ pub fn pick_entity(
     let (origin, dir) = cam.ray(nx, ny, aspect);
     let mut best: Option<(u64, f32)> = if scene.entities.iter().any(|e|e.component("ModelRenderer").is_some_and(|c|c.enabled)) {super::model::pick(scene,origin,dir)}else{None};
     for e in &scene.entities {
-        if !is_renderable(e) {
+        // F-GAME-5:Rig2D 实体按形变后包围盒参与点选(与渲染同一次求值口径)。
+        let tr = if super::rig::is_rig(e) {
+            match super::rig::rig_pick_transform(e) {
+                Some(t) => t,
+                None => continue,
+            }
+        } else if !is_renderable(e) {
             continue;
-        }
-        // F-GAME-3/4:Sprite 实体按渲染态变换(帧尺寸 + pivot 锚定)参与点选,与画面一致。
-        let tr = sprite_render_transform(e).unwrap_or(e.transform);
+        } else {
+            // F-GAME-3/4:Sprite 实体按渲染态变换(帧尺寸 + pivot 锚定)参与点选,与画面一致。
+            sprite_render_transform(e).unwrap_or(e.transform)
+        };
         if let Some(t) = ray_unit_cube(origin, dir, &tr) {
             if best.is_none_or(|(_, bt)| t < bt) {
                 best = Some((e.id, t));

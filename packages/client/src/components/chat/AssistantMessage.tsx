@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Copy } from 'lucide-react';
 import { type ChatMsg } from '@/lib/chatStore';
 import { copyText } from '@/lib/clipboard';
-import { buildTimeline, todoMilestoneLabel, type ChatBlock } from '@/lib/timeline';
+import { buildTimeline, reasoningIsRunning, todoMilestoneLabel, type ChatBlock } from '@/lib/timeline';
 import MarkdownFlat from './MarkdownFlat';
 import ActivitySegment, { ReasoningLine, SummaryLine } from './ActivitySegment';
 import SubagentRow from './SubagentRow';
@@ -12,6 +12,7 @@ import ApprovalCard from './ApprovalCard';
 import PlanBlock from './PlanBlock';
 import UltraPlanBlock from './ultraplan/UltraPlanBlock';
 import DesignBlock from './design/DesignBlock';
+import WorldBuildBlock from './worldBuild/WorldBuildBlock';
 import GeneratedImage from './GeneratedImage';
 import CloudErrorGuidance, { cloudGuidance } from './CloudErrorGuidance';
 import { StatusDot } from '../shell/primitives';
@@ -125,7 +126,7 @@ function renderBlock(block: ChatBlock, live: boolean): ReactNode {
     case 'image':
       return <GeneratedImage block={block} />;
     case 'reasoning':
-      return <ReasoningLine block={block} live={live} />;
+      return <ReasoningLine block={block} live={live && reasoningIsRunning(block, true)} />;
     case 'subagent':
       return <SubagentRow block={block} />;
     case 'tool':
@@ -139,6 +140,8 @@ function renderBlock(block: ChatBlock, live: boolean): ReactNode {
       return <UltraPlanBlock block={block} />;
     case 'design':
       return <DesignBlock block={block} />;
+    case 'world_build':
+      return <WorldBuildBlock block={block} />;
     default:
       return null;
   }

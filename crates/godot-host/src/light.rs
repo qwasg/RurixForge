@@ -12,7 +12,7 @@ use godot::classes::rendering_server::{
     EnvironmentAmbientSource, EnvironmentReflectionSource, EnvironmentToneMapper, LightDirectionalShadowMode, LightOmniShadowMode,
     LightParam,
 };
-use godot::classes::RenderingServer;
+use godot::classes::{ProjectSettings, RenderingServer};
 use godot::prelude::*;
 
 use engine_host::{Leg, LightItem, LightKind};
@@ -20,6 +20,46 @@ use engine_host::{Leg, LightItem, LightKind};
 use crate::material::{linear_to_srgb, srgb_color, srgb_to_linear};
 use crate::props::{fields, Fields};
 use crate::rid::Owned;
+
+/// An opt-in comparison profile, separate from the legacy energy calibration.
+/// Godot caches this ProjectSettings value while creating RendererSceneRenderRD;
+/// setting it here would be too late. The launch profile must set it before boot.
+static PHYSICAL_UNITS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+pub fn physical_units_enabled() -> bool { PHYSICAL_UNITS.get().copied().unwrap_or(false) }
+
+pub fn initialize_physical_units() -> Result<(), String> {
+    let requested = matches!(std::env::var("FORGE_GODOT_PHYSICAL_UNITS").as_deref(), Ok("1" | "on"));
+    if requested {
+        let enabled = ProjectSettings::singleton()
+            .get_setting("rendering/lights_and_shadows/use_physical_light_units")
+            .try_to::<bool>().unwrap_or(false);
+        let method = RenderingServer::singleton().get_current_rendering_method().to_string();
+        if !enabled || method != "forward_plus" {
+            return Err("GODOT_PHYSICAL_UNITS_REQUIRED: launch the dedicated Forward+ profile with use_physical_light_units=true before engine initialization".into());
+        }
+        if let Ok(expected) = std::env::var("FORGE_GODOT_EXPECTED_DEVICE") {
+            let actual = RenderingServer::singleton().get_video_adapter_name().to_string();
+            if actual != expected {
+                return Err(format!("GODOT_DEVICE_MISMATCH: requested {expected:?}, actual {actual:?}; re-enumerate Vulkan devices before selecting --gpu-index"));
+            }
+        }
+        eprintln!("FORGE_GODOT_LIGHT_UNITS physical=true input=point_spot_candela,directional_lux mapping=omni_4pi,spot_pi decay=2");
+    }
+    let _ = PHYSICAL_UNITS.set(requested);
+    Ok(())
+}
+
+/// Godot 4.7.2 light_storage.cpp converts omni lumens by 1/(4*pi), but
+/// spot lumens by 1/pi (explicitly independent of cone angle). Convert the
+/// authored candela so the on-axis intensity is unchanged by that mapping.
+fn physical_intensity(kind: LightKind, authored: f32) -> f32 {
+    authored * match kind {
+        LightKind::Point => 4.0 * std::f32::consts::PI,
+        LightKind::Spot => std::f32::consts::PI,
+        LightKind::Directional => 1.0,
+    }
+}
 
 /// 一条腿的缺省灯。`toward_light` = 从表面指向光源的方向(rurix 的 l;Godot 方向光沿自身 −Z 照射,−Z = −toward_light)。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -157,7 +197,13 @@ pub fn build(rs: &mut Gd<RenderingServer>, scenario: Rid, leg: Leg, lights: &[Li
         node_defaults(rs, l.rid(), li.kind);
         // Light.color 是线性值;RS 的灯光颜色按 sRGB 解释(与 Light3D.light_color 同),所以先编码。
         rs.light_set_color(l.rid(), srgb_color(li.color, 1.0));
-        rs.light_set_param(l.rid(), LightParam::ENERGY, r.energy * li.intensity);
+        let physical = physical_units_enabled();
+        if physical {
+            rs.light_set_param(l.rid(), LightParam::ENERGY, 1.0);
+            rs.light_set_param(l.rid(), LightParam::INTENSITY, physical_intensity(li.kind, li.intensity));
+        } else {
+            rs.light_set_param(l.rid(), LightParam::ENERGY, r.energy * li.intensity);
+        }
         rs.light_set_shadow(l.rid(), li.cast_shadow && !compatibility);
         if li.kind == LightKind::Directional {
             rs.light_directional_set_shadow_mode(l.rid(), LightDirectionalShadowMode::PARALLEL_4_SPLITS);
@@ -165,9 +211,30 @@ pub fn build(rs: &mut Gd<RenderingServer>, scenario: Rid, leg: Leg, lights: &[Li
         if let Some(p) = &li.params {
             light_params(rs, l.rid(), li.kind, &fields!(p));
         }
+        if physical && li.kind != LightKind::Directional {
+            // The authored profile uses inverse-square light transport. Legacy
+            // LightParams defaults remain unchanged outside this explicit mode.
+            rs.light_set_param(l.rid(), LightParam::ATTENUATION, 2.0);
+        }
         out.push(place(rs, scenario, l, xform(&li.world)));
     }
     out
+}
+
+#[cfg(test)]
+mod physical_unit_tests {
+    use super::*;
+
+    #[test]
+    fn candela_survives_godot_positional_flux_conversion() {
+        for cd in [0.0, 1.0, 25.0, 1400.0] {
+            let omni = physical_intensity(LightKind::Point, cd) / (4.0 * std::f32::consts::PI);
+            let spot = physical_intensity(LightKind::Spot, cd) / std::f32::consts::PI;
+            assert!((omni - cd).abs() <= cd.max(1.0) * 1e-6);
+            assert!((spot - cd).abs() <= cd.max(1.0) * 1e-6);
+            assert_eq!(physical_intensity(LightKind::Directional, cd), cd);
+        }
+    }
 }
 
 /// Stage 5 LightParams(挂在 Light 实体上;缺省 = Stage 4 的灯参数,见 02 §9.5 Stage 5 的 schema 表)。

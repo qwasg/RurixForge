@@ -40,7 +40,6 @@ import BoardNodeCard, {
   FEATURE_INDENT,
   FEATURE_W,
   NODE_W,
-  TONE_META,
   ENTITY_CARD_H,
   collapsedPortY,
   featureOffset,
@@ -55,7 +54,7 @@ import DesignBoardKindForm from './DesignBoardKindForm';
 
 /**
  * 画板设计页签(画板波 v3;与 Viewport / NodeGraph 同位第三页签)。
- * 实体节点按类型着色(内置 角色/地图 + 用户自定义类型),每个实体挂若干特性
+ * 实体节点按类型区分(内置 角色/地图 + 用户自定义类型;纯色波起不再按类型着色),每个实体挂若干特性
  * (= ECS 组件)子节点与素材(资产引用);连线 = 交互,描述写在线上,端点可落在
  * 实体或某个特性上。双击实体 / 点「打开」= 下钻进该实体的详情画布(openNodeId,
  * 同为无限画布,集中管理素材并直观查看交互)。
@@ -68,9 +67,6 @@ import DesignBoardKindForm from './DesignBoardKindForm';
  * 端口 = 该特性(改说明 / 给宿主加特性 / 删特性);菜单项右侧标的快捷键与 onCanvasKeyDown
  * 走同一批动作,作用对象 = 选中实体(selectedNodeId,卡框着重色标出)。
  */
-
-const toolBtn =
-  'flex items-center gap-1 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 text-2xs text-fg-2 transition-colors hover:bg-shell-hover disabled:opacity-40 disabled:hover:bg-shell-panel';
 
 /** 贝塞尔边(与 NodeGraphView 数据边同参:横向控制柄 ≥48px) */
 function bezierD(x1: number, y1: number, x2: number, y2: number): string {
@@ -491,7 +487,6 @@ export default function DesignBoardView() {
       label: `在此新建${k.label}`,
       keys: i < 9 ? `${i + 1}` : undefined,
       icon: kindIcon(k),
-      iconClass: TONE_META[k.tone].text,
       hint: `实体落在右键处(引擎分类 ${k.category}${
         k.defaultFeatures.length > 0 ? `;默认特性 ${k.defaultFeatures.join(' / ')}` : ''
       });按数字键则按网格落位`,
@@ -658,7 +653,6 @@ export default function DesignBoardView() {
           title={n.name}
           scope={kind.label}
           icon={kindIcon(kind)}
-          accentClass={TONE_META[kind.tone].text}
           items={nodeMenuItems(n, kind)}
           onClose={closeMenu}
           testid="board-menu-node"
@@ -674,7 +668,6 @@ export default function DesignBoardView() {
         title={feature.type}
         scope={feature.custom ? '自定义特性' : '特性'}
         icon={Puzzle}
-        accentClass="text-warn"
         items={featureMenuItems(n, feature.id)}
         onClose={closeMenu}
         testid="board-menu-feature"
@@ -704,9 +697,9 @@ export default function DesignBoardView() {
                   k.defaultFeatures.length > 0 ? `;默认特性 ${k.defaultFeatures.join(' / ')}` : ''
                 })`}
                 onClick={() => onAddNode(k.id)}
-                className={toolBtn}
+                className="glass-btn"
               >
-                <Icon size={11} strokeWidth={1.8} className={TONE_META[k.tone].text} />+ {k.label}
+                <Icon size={11} strokeWidth={1.8} />+ {k.label}
               </button>
               {!k.builtin && (
                 <button
@@ -727,7 +720,7 @@ export default function DesignBoardView() {
           data-testid="board-kind-new"
           title="自定义一个由 ECS 组件构成的实体类型"
           onClick={() => setKindForm({})}
-          className={cn(toolBtn, 'border-dashed')}
+          className="glass-btn border-dashed"
         >
           <Plus size={11} strokeWidth={1.8} />
           新类型
@@ -741,7 +734,7 @@ export default function DesignBoardView() {
           data-testid="board-clear"
           disabled={nodes.length === 0 && edges.length === 0}
           onClick={onClear}
-          className={cn(toolBtn, armClear && 'border-danger/50 text-danger')}
+          className={cn('glass-btn', armClear && 'border-danger/50 text-danger')}
         >
           {armClear ? '确认清空?' : '清空'}
         </button>
@@ -795,7 +788,7 @@ export default function DesignBoardView() {
                 markerHeight="7"
                 orient="auto-start-reverse"
               >
-                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--warn)" />
+                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--accent)" />
               </marker>
             </defs>
             {/* 从属 spine:实体 → 它的特性(细灰线,与交互边区分) */}
@@ -828,7 +821,7 @@ export default function DesignBoardView() {
                 data-board-edge={g.edge.id}
                 d={bezierD(g.x1, g.y1, g.x2, g.y2)}
                 fill="none"
-                stroke="var(--warn)"
+                stroke="var(--accent)"
                 strokeWidth="1.5"
                 markerEnd="url(#db-arrow)"
               />
@@ -844,7 +837,7 @@ export default function DesignBoardView() {
                     : bezierD(link.x2, link.y2, link.x1, link.y1)
                 }
                 fill="none"
-                stroke="var(--warn)"
+                stroke="var(--accent)"
                 strokeWidth="1.5"
                 strokeDasharray="5 4"
                 opacity="0.7"

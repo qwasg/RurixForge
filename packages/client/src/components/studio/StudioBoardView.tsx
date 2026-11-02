@@ -38,7 +38,6 @@ import {
 import { useCanvasViewport, type WorldRect } from '@/lib/useCanvasViewport';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
 import BoardContextMenu, { type BoardMenuItem } from '../editor/BoardContextMenu';
-import { TONE_META } from '../editor/DesignBoardNode';
 import CanvasHud from '../editor/CanvasHud';
 import StudioNodeCard, { STUDIO_ANCHOR_Y, STUDIO_NODE_H, STUDIO_NODE_W } from './StudioNodeCard';
 import StudioEdgeLabel from './StudioEdgeLabel';
@@ -58,9 +57,6 @@ import { KIND_ICON } from './StudioPreview';
  * 菜单项右侧标的快捷键与 onCanvasKeyDown 走同一批动作,作用对象 = 选中节点
  * (selectedNodeId,卡框着重色标出)。
  */
-
-const toolBtn =
-  'flex items-center gap-1 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 text-2xs text-fg-2 transition-colors hover:bg-shell-hover disabled:opacity-40 disabled:hover:bg-shell-panel';
 
 /** 贝塞尔边(与画板同参:横向控制柄 ≥48px) */
 function bezierD(x1: number, y1: number, x2: number, y2: number): string {
@@ -397,7 +393,6 @@ export default function StudioBoardView() {
       label: `在此新建${p.label}`,
       keys: `${i + 1}`,
       icon: KIND_ICON[p.kind],
-      iconClass: TONE_META[p.tone].text,
       hint: `${p.hint}(节点落在右键处;按数字键则按网格落位)`,
       onSelect: () => onAddNode(p.id, world),
     })),
@@ -612,7 +607,6 @@ export default function StudioBoardView() {
         title={n.name}
         scope={preset.label}
         icon={KIND_ICON[preset.kind]}
-        accentClass={TONE_META[preset.tone].text}
         items={nodeMenuItems(n)}
         onClose={closeMenu}
         testid="studio-menu-node"
@@ -649,9 +643,9 @@ export default function StudioBoardView() {
                         : '音频/音乐生成'
               })`}
               onClick={() => onAddNode(p.id)}
-              className={toolBtn}
+              className="glass-btn"
             >
-              <Icon size={11} strokeWidth={1.8} className={TONE_META[p.tone].text} />+ {p.label}
+              <Icon size={11} strokeWidth={1.8} />+ {p.label}
             </button>
           );
         })}
@@ -664,7 +658,7 @@ export default function StudioBoardView() {
           data-testid="studio-clear"
           disabled={nodes.length === 0 && edges.length === 0}
           onClick={onClear}
-          className={cn(toolBtn, armClear && 'border-danger/50 text-danger')}
+          className={cn('glass-btn', armClear && 'border-danger/50 text-danger')}
         >
           {armClear ? '确认清空?' : '清空'}
         </button>

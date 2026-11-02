@@ -47,6 +47,7 @@ pub fn channel_for(event_type: &str) -> &'static str {
         "ultraplan" => "ultraplan",
         // D-045:Design 流程面(候选审阅 / 元素清单 / 验收)。
         "design" => "design",
+        "world_build" => "world_build",
         _ => "logs",
     }
 }
@@ -524,6 +525,7 @@ mod tests {
         assert_eq!(channel_for("ultraplan.stage"), "ultraplan");
         assert_eq!(channel_for("ultraplan.context.injected"), "ultraplan");
         assert_eq!(channel_for("ultraplan.acceptance.ready"), "ultraplan");
+        assert_eq!(channel_for("world_build.stage"), "world_build");
         assert_eq!(channel_for("ultraplanx.stage"), "logs", "前缀须整段相等");
     }
 

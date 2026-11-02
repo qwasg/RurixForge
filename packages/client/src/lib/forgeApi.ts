@@ -435,10 +435,11 @@ export interface RenderCapabilities {
   legs: string[];
   preview: boolean;
   particles: boolean;
-  frameExits: { cpuRgba8: boolean; sharedD3d12: boolean; zeroCopy: boolean };
+  runtimeTransforms?: boolean;
+  frameExits: { cpuRgba8: boolean; sharedD3d12: boolean; zeroCopy: boolean; nativeOnly?: boolean };
   stats: { nonzero: boolean; triangles: boolean; truncated: boolean; meshFallbacks: boolean; meshClasses: boolean };
   maxDraws: { spriteMesh: number | null; model: number | null; sentinelsV6: number | null };
-  maxSize: { rpc: [number, number]; stream: [number, number] };
+  maxSize: { rpc: [number, number]; stream: [number, number]; native?: [number, number]; capture?: [number, number] };
   coverage?: {
     skipped?: string[];
     unsupported?: RenderCapabilityFeature[];
@@ -725,51 +726,85 @@ export async function apiDelete<T = unknown>(path: string): Promise<T> {
   return body as T;
 }
 
-/** F8 wave.2:openai-compat 渠道状态面(GET status / POST config 响应同源;绝无 key,R-5)。 */
-export interface OpenAiCompatStatus {
-  configured: boolean;
+// ---------- D-049:自定义模型目录(设置·模型页「高级:自定义模型」卡片页) ----------
+
+/** 端点请求格式:OpenAI chat.completions / Anthropic Messages。 */
+export type CustomApiFormat = 'openai' | 'anthropic';
+
+/** 目录项状态(清单与保存响应同源;绝无 key,R-5)。 */
+export interface CustomModelInfo {
+  /** "openai-compat"(旧单槽)或 `custom:<hex>`;即会话模型 id。 */
+  id: string;
+  name: string;
+  /** 显示名(name → 模型名)。 */
+  label: string;
+  apiFormat: CustomApiFormat;
   baseUrl: string;
   model: string;
+  /** 实际请求地址(按格式补全的全路径)。 */
+  endpoint: string;
+  /** 生效窗口(tokens;未声明时为缺省 1M)。 */
+  contextWindow: number;
+  contextWindowSet: boolean;
+  /** null = 未声明(OpenAI 不发 max_tokens,Anthropic 发缺省值)。 */
+  maxOutputTokens: number | null;
+  vision: boolean;
   keyConfigured: boolean;
-  /** 该端点后接的模型是否收图片(端点探不出来,由用户声明);为真才把工具产出的图回注给模型 */
-  vision?: boolean;
+  configured: boolean;
+  /** 未选模型的会话默认使用它(目录里第一个配齐的条目)。 */
+  isDefault: boolean;
 }
 
-/** GET /api/forge/llm/openai-compat/status(响应面无 key)。 */
-export async function getOpenAiCompatStatus(): Promise<OpenAiCompatStatus> {
-  return apiGet<OpenAiCompatStatus>('/api/forge/llm/openai-compat/status');
-}
-
-/** POST /api/forge/llm/openai-compat/config {baseUrl, model, key?, vision?}(key/vision 省略 = 保留既有)。 */
-export async function postOpenAiCompatConfig(payload: {
+/** 新增/编辑/测试表单(key 省略 = 保留已存密钥)。 */
+export interface CustomModelDraft {
+  id?: string;
+  name: string;
+  apiFormat: CustomApiFormat;
   baseUrl: string;
   model: string;
   key?: string;
-  vision?: boolean;
-}): Promise<OpenAiCompatStatus & { ok: boolean }> {
-  return apiPost<OpenAiCompatStatus & { ok: boolean }>('/api/forge/llm/openai-compat/config', payload);
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  vision: boolean;
 }
 
-/** F10:embedding 渠道状态面(RAG 向量档;响应与 openai-compat 同形态,绝无 key)。 */
-export interface EmbeddingStatus {
-  configured: boolean;
-  baseUrl: string;
-  model: string;
-  keyConfigured: boolean;
+export interface CustomModelTestResult {
+  ok: boolean;
+  latencyMs: number;
+  endpoint: string;
+  reply?: string;
+  error?: string;
 }
 
-/** GET /api/forge/llm/embedding/status(响应面无 key)。 */
-export async function getEmbeddingStatus(): Promise<EmbeddingStatus> {
-  return apiGet<EmbeddingStatus>('/api/forge/llm/embedding/status');
+const CUSTOM_MODELS = '/api/forge/llm/custom-models';
+
+/** GET 目录。旧版 agentd 没有该路由(404 空体)时如实抛 NOT_SUPPORTED,不当成 JSON 解析错。 */
+export async function getCustomModels(): Promise<{ models: CustomModelInfo[]; defaultId: string | null }> {
+  const res = await fetch(CUSTOM_MODELS);
+  if (res.status === 404) {
+    throw new ForgeApiError('NOT_SUPPORTED', '后台服务版本较旧,尚不支持自定义模型清单;重启 agentd 后重试', 404);
+  }
+  const body = (await res.json()) as unknown;
+  if (!res.ok) {
+    const err = (body as { error?: { code?: string; message?: string } })?.error;
+    throw new ForgeApiError(err?.code ?? `HTTP_${res.status}`, err?.message ?? `HTTP ${res.status}`, res.status);
+  }
+  const v = body as { models?: CustomModelInfo[]; defaultId?: string | null };
+  return { models: Array.isArray(v.models) ? v.models : [], defaultId: v.defaultId ?? null };
 }
 
-/** POST /api/forge/llm/embedding/config {baseUrl, model, key?}(key 省略 = 只改 baseUrl/model)。 */
-export async function postEmbeddingConfig(payload: {
-  baseUrl: string;
-  model: string;
-  key?: string;
-}): Promise<EmbeddingStatus & { ok: boolean }> {
-  return apiPost<EmbeddingStatus & { ok: boolean }>('/api/forge/llm/embedding/config', payload);
+/** POST 新增(无 id)/ 整条更新(带 id)。 */
+export async function saveCustomModel(draft: CustomModelDraft): Promise<{ ok: boolean; model: CustomModelInfo }> {
+  return apiPost<{ ok: boolean; model: CustomModelInfo }>(CUSTOM_MODELS, draft);
+}
+
+export async function deleteCustomModel(id: string): Promise<{ ok: boolean }> {
+  return apiDelete<{ ok: boolean }>(`${CUSTOM_MODELS}/${encodeURIComponent(id)}`);
+}
+
+/** 用表单当前值发一次最小请求(key 留空 + 带 id → 用已存密钥)。 */
+export async function testCustomModel(draft: CustomModelDraft): Promise<CustomModelTestResult> {
+  return apiPost<CustomModelTestResult>(`${CUSTOM_MODELS}/test`, draft);
 }
 
 // ---------- Antigravity 订阅反代渠道状态与配置面 (R1 & R3) ----------

@@ -183,8 +183,8 @@ fn build(width: u32, height: u32, draws: &[Draw], sig: u64) -> Result<Renderer, 
     let mut passes = Vec::new();
     let mut plans = Vec::new();
     let mut draw_passes = Vec::new();
-    passes.push(rex::Pass::Raster(rex::RasterPass {
-        blend: rex::BlendMode::Opaque,
+    passes.push(rex::Pass::RasterWithBlend(rex::RasterPass {
+        
         name: "model_clear",
         vs_spirv: clear_vs,
         fs_spirv: clear_fs,
@@ -206,7 +206,7 @@ fn build(width: u32, height: u32, draws: &[Draw], sig: u64) -> Result<Renderer, 
         viewport: None,
         bindings: rex::Bindings::default(),
         conservative: None,
-    }));
+    }, rex::BlendMode::Opaque));
     plans.push(vec![
         (1, rex::TargetState::ColorAttachmentWrite),
         (2, rex::TargetState::DepthAttachmentWrite),
@@ -215,8 +215,8 @@ fn build(width: u32, height: u32, draws: &[Draw], sig: u64) -> Result<Renderer, 
         let vb = vertex_resources[i];
         let tex = texture_resources[i];
         draw_passes.push(passes.len() as u32);
-        passes.push(rex::Pass::Raster(rex::RasterPass {
-        blend: rex::BlendMode::Opaque,
+        passes.push(rex::Pass::RasterWithBlend(rex::RasterPass {
+        
             name: "forge_model_pbr",
             vs_spirv: vs,
             fs_spirv: if let Some(g)=&d.graph { unsafe { std::slice::from_raw_parts(g.program.model_spirv.as_ptr(),g.program.model_spirv.len()) } } else {fs},
@@ -252,7 +252,7 @@ fn build(width: u32, height: u32, draws: &[Draw], sig: u64) -> Result<Renderer, 
                 ..Default::default()
             },
             conservative: None,
-        }));
+        }, rex::BlendMode::Opaque));
         plans.push(vec![
             (
                 if d.blend { scratch_res } else { 1 },
@@ -330,6 +330,8 @@ pub fn render(
     want_stats: bool,
     vp: Option<M4>,
 ) -> Result<FramePixels, String> {
+    if super::realtime::enabled(scene) { return super::realtime::render(scene, cam, selected, width, height, want_readback, want_stats, vp); }
+
     let eye = model_eye(scene, cam, vp.is_some());
     let mut draws = collect(scene, eye, selected)?;
     if draws.is_empty() {

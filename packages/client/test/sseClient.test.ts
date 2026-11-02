@@ -160,6 +160,34 @@ describe('sseClient 订阅(fetch mock)', () => {
     expect(errors).toHaveLength(1);
   });
 
+  it('close 后 fetch 才成功时不再调用 onOpen 或投递旧会话事件', async () => {
+    let release!: (response: Response) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { release = resolve; })));
+    const onOpen = vi.fn();
+    const onEvent = vi.fn();
+    const sub = subscribeSessionEvents('sess_old', 0, { onOpen, onEvent });
+    sub.close();
+    release(sseResponse(['id: 1\nevent: agent.started\ndata: {"seq":1}\n\n']));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it('gap 回调关闭旧订阅后不再投递同一块中的后续事件', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sseResponse([
+      'event: stream.gap\ndata: {"payload":{"reason":"replay-window-exceeded"}}\n\n' +
+      'id: 99\nevent: agent.started\ndata: {"seq":99}\n\n',
+    ])));
+    const onEvent = vi.fn();
+    const sub = subscribeSessionEvents('sess_1', 3, {
+      onEvent,
+      onGap: () => sub.close(),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(sub.lastSeq()).toBe(3);
+  });
+
   it('HTTP 非 2xx 视为错误并重连', async () => {
     const fetchMock = vi
       .fn()

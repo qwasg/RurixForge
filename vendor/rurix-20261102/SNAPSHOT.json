@@ -1,0 +1,2937 @@
+{
+  "schema": "rurixforge.vendor-snapshot.v1",
+  "snapshot_date": "2026-11-02",
+  "upstream_repository": "https://github.com/qwasg/Rurix",
+  "base_commit": "86dff3706006bfdba5995b840d6834533b69905c",
+  "includes_uncommitted_library_changes": true,
+  "crates": [
+    "image-io",
+    "rurix-asset",
+    "rurix-basis-sys",
+    "rurix-d3d12",
+    "rurix-geom-build",
+    "rurix-geom-pages",
+    "rurix-pkg",
+    "rurix-render",
+    "rurix-rt",
+    "rurixc",
+    "soft-raster"
+  ],
+  "adaptations": [
+    "Expand workspace package metadata.",
+    "Disable standalone binary, example, test and benchmark targets.",
+    "Omit dev dependencies and standalone renderer kernel experiments.",
+    "Retain upstream workspace lint policy in a minimal nested workspace."
+  ],
+  "files": [
+    {
+      "source": "src/image-io/rurix.toml",
+      "path": "src/image-io/rurix.toml",
+      "sha256": "891f5c878eee2ff4b34a5ad8ca18ca0f25d75a83fb1b067bbe789a1bd08c1ba5"
+    },
+    {
+      "source": "src/image-io/src/exr.rs",
+      "path": "src/image-io/src/exr.rs",
+      "sha256": "045f345509c999e20e3216393c5b4340a09454c1af93b598303461d25a887b07"
+    },
+    {
+      "source": "src/image-io/src/lib.rs",
+      "path": "src/image-io/src/lib.rs",
+      "sha256": "19ad05b04d79122d65cbe672b45a985b811e1aea1c5963590a3a8c28385497d0"
+    },
+    {
+      "source": "src/image-io/Cargo.toml",
+      "path": "src/image-io/Cargo.toml",
+      "source_sha256": "92e6e1432fb3e13de5f92129b7befc29f9fd576a36c94daca7d50b95cd5963a3",
+      "sha256": "6a2694c7d2bb477c176fc4adcaa3414c0ca0c363c329c9581bcd718800b1861b",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-asset/kernels/g31_cluster_cull.rx",
+      "path": "src/rurix-asset/kernels/g31_cluster_cull.rx",
+      "sha256": "67d1fb475145772fb513ebd3f002ce75463d44aa6e3b4d63622ed4ee00a1fea7"
+    },
+    {
+      "source": "src/rurix-asset/kernels/g31_cluster_stream.rx",
+      "path": "src/rurix-asset/kernels/g31_cluster_stream.rx",
+      "sha256": "f8062fd339bccffed0cfb3b255abd9be650001213fd2dbac17ef787197dd2be3"
+    },
+    {
+      "source": "src/rurix-asset/src/bcdec.rs",
+      "path": "src/rurix-asset/src/bcdec.rs",
+      "sha256": "115ca323ed914441f3eb45e1ff03849e9105332c00b9fba2cb0128093b5b5e1d"
+    },
+    {
+      "source": "src/rurix-asset/src/canon.rs",
+      "path": "src/rurix-asset/src/canon.rs",
+      "sha256": "8a13988f9ea6fb4448cac7bfe855a7b9a18652d4dd9ded103da5609f6f058ce6"
+    },
+    {
+      "source": "src/rurix-asset/src/cook.rs",
+      "path": "src/rurix-asset/src/cook.rs",
+      "sha256": "9820bbc8597f43a870d7d39395f2bd3f90cfb7c97990897e5a034a920c3a1c06"
+    },
+    {
+      "source": "src/rurix-asset/src/ddc.rs",
+      "path": "src/rurix-asset/src/ddc.rs",
+      "sha256": "ae7a3d8899342de0c2b8e63173262aaf81cc5dd879c4df67aa5e8cb9e05c71cd"
+    },
+    {
+      "source": "src/rurix-asset/src/error.rs",
+      "path": "src/rurix-asset/src/error.rs",
+      "sha256": "4c7b15f204b3b85193bef94690356265cd71f24d3f55fb99d3ed1f194e7d82b4"
+    },
+    {
+      "source": "src/rurix-asset/src/geom_build.rs",
+      "path": "src/rurix-asset/src/geom_build.rs",
+      "sha256": "847ed66f32f34254b2e65c4db7abad706883e656b73a7c656c101ffa27164637"
+    },
+    {
+      "source": "src/rurix-asset/src/geom_build_v2.rs",
+      "path": "src/rurix-asset/src/geom_build_v2.rs",
+      "sha256": "f99b6166ec94a92a57e6f557a5e92c617bd64d48974da53d0bfdfe4f68688794"
+    },
+    {
+      "source": "src/rurix-asset/src/graph.rs",
+      "path": "src/rurix-asset/src/graph.rs",
+      "sha256": "756b9670b6ed78e19605e97668656d3580cbc4e4b41505bff612d4708c4dfcda"
+    },
+    {
+      "source": "src/rurix-asset/src/hlod.rs",
+      "path": "src/rurix-asset/src/hlod.rs",
+      "sha256": "24aeab215d171b2f1c03667a3929e46cfd543920a9856383818f1d9be01b13c0"
+    },
+    {
+      "source": "src/rurix-asset/src/ktx2.rs",
+      "path": "src/rurix-asset/src/ktx2.rs",
+      "sha256": "55b46d6016a7cbab7d454a38b9cca7be49252054d9ad9974013abd8bf06fdd8e"
+    },
+    {
+      "source": "src/rurix-asset/src/lib.rs",
+      "path": "src/rurix-asset/src/lib.rs",
+      "sha256": "a89261fb00a45d56c35025f50eb438239a6448995938934296534423f7218bf4"
+    },
+    {
+      "source": "src/rurix-asset/src/schema.rs",
+      "path": "src/rurix-asset/src/schema.rs",
+      "sha256": "04be551292a97da0330cf45f951cc55fcd01b8ef914f4384e3a4c5b1c49e4202"
+    },
+    {
+      "source": "src/rurix-asset/src/texture.rs",
+      "path": "src/rurix-asset/src/texture.rs",
+      "sha256": "794ce1341824e3e8f8a05ffd061ce0242951580a53f5bbc1c9adff23b6d47c04"
+    },
+    {
+      "source": "src/rurix-asset/src/verify.rs",
+      "path": "src/rurix-asset/src/verify.rs",
+      "sha256": "c4bff3d413080a750977544a56f17d6b2ec61495fe7540af450790ec6c5eaaa1"
+    },
+    {
+      "source": "src/rurix-asset/src/gltf/canonical.rs",
+      "path": "src/rurix-asset/src/gltf/canonical.rs",
+      "sha256": "3ac970298c3c6c9b84189768459b556e85e9cd15a0d5ff1d764d3d977692060c"
+    },
+    {
+      "source": "src/rurix-asset/src/gltf/glb.rs",
+      "path": "src/rurix-asset/src/gltf/glb.rs",
+      "sha256": "d3e549fae9482ddd86b5eee47acca768d4b6fe6069cfb60b258a061a3f05283b"
+    },
+    {
+      "source": "src/rurix-asset/src/gltf/json.rs",
+      "path": "src/rurix-asset/src/gltf/json.rs",
+      "sha256": "66b3e54e520bf879739e83c998643da7e13c77a99c8e8b9dc2f49c8e307d403d"
+    },
+    {
+      "source": "src/rurix-asset/src/gltf/mod.rs",
+      "path": "src/rurix-asset/src/gltf/mod.rs",
+      "sha256": "3310acd546a79c03782a5ee22a8991a197e1ce052da2986f08c309ddeb8178f7"
+    },
+    {
+      "source": "src/rurix-asset/src/gltf/validate.rs",
+      "path": "src/rurix-asset/src/gltf/validate.rs",
+      "sha256": "df257803849ba5e711fb04e62984972f8345a944b5ee403b2ede44b609d5244c"
+    },
+    {
+      "source": "src/rurix-asset/Cargo.toml",
+      "path": "src/rurix-asset/Cargo.toml",
+      "source_sha256": "99b82064bf22919fb17d982477f282b061bf4230e4b4e350b412dd572fe34e9b",
+      "sha256": "83bb1d00a63212847a1199b4f810862915813fcd3a5e24d58fbabdd23e575558",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-basis-sys/build.rs",
+      "path": "src/rurix-basis-sys/build.rs",
+      "sha256": "0652e81d3a5687eff4aff65be2dc5791aa6c9aab4cc61c9bc6746b4852bbaf2f"
+    },
+    {
+      "source": "src/rurix-basis-sys/NOTICE",
+      "path": "src/rurix-basis-sys/NOTICE",
+      "sha256": "90c04ff1a46f14a310387bbf6dbd0f0b5e542029ca954cb5468a9c8617e7c6c7"
+    },
+    {
+      "source": "src/rurix-basis-sys/SBOM.md",
+      "path": "src/rurix-basis-sys/SBOM.md",
+      "sha256": "ba8af527909a96daf459b1268ac2c6b6cd45029f1b3af458e787e93f1d8a2252"
+    },
+    {
+      "source": "src/rurix-basis-sys/VENDOR.md",
+      "path": "src/rurix-basis-sys/VENDOR.md",
+      "sha256": "7cf5e854ffa859764b5fa17e46b9b39048b54062f0b995379aea17484233239d"
+    },
+    {
+      "source": "src/rurix-basis-sys/ffi/rurix_basis_wrap.cpp",
+      "path": "src/rurix-basis-sys/ffi/rurix_basis_wrap.cpp",
+      "sha256": "0c7a6ca81267a0126489411613d9cf7f8e05b9ba39f1293862db8410e31f2f48"
+    },
+    {
+      "source": "src/rurix-basis-sys/ffi/rurix_basis_wrap.h",
+      "path": "src/rurix-basis-sys/ffi/rurix_basis_wrap.h",
+      "sha256": "17f94f319e83b8ed02193613382c6fb48d5a12f43c60ac091c38cab023abbe56"
+    },
+    {
+      "source": "src/rurix-basis-sys/src/ffi.rs",
+      "path": "src/rurix-basis-sys/src/ffi.rs",
+      "sha256": "27fe9a2a1e781ebc5882270df1023ab793dff0243c8994e9650c4d9230d70cef"
+    },
+    {
+      "source": "src/rurix-basis-sys/src/lib.rs",
+      "path": "src/rurix-basis-sys/src/lib.rs",
+      "sha256": "e8b2ec0296a70a8b8928cc94f2c1ac6306b3133db7b08539f68b8e1a640a3bf5"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/LICENSE",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/vendor_manifest.json",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/vendor_manifest.json",
+      "sha256": "b329beb468064af2ed5092f4c16f422d601cbf80eee982112d5b31c369248f8f"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/patches/rfc0051-png-ownership.patch",
+      "path": "src/rurix-basis-sys/vendor/patches/rfc0051-png-ownership.patch",
+      "sha256": "a0c7be81e7241bd3433255ba353d38c7689498249202139024728ceabe8d79c3"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/rurix_basis_shim/rurix_basis_shim.cpp",
+      "path": "src/rurix-basis-sys/vendor/rurix_basis_shim/rurix_basis_shim.cpp",
+      "sha256": "65d0dc835908ebe1589fde35467cff63dec7e60cbdda6474fa003f7d135ad566"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/rurix_basis_shim/rurix_basis_shim.h",
+      "path": "src/rurix-basis-sys/vendor/rurix_basis_shim/rurix_basis_shim.h",
+      "sha256": "def540643f49128705b321f545e0ec93af850b823e498684be7f30d3fa11e2fc"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_backend.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_backend.cpp",
+      "sha256": "247e280656d9bf133ba1b5a36b8f612488a59eff455ed0fcf586a63a42b3ad87"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_backend.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_backend.h",
+      "sha256": "dd232d2b3e432a2d4a026ebc1ce63712183b50e8b95c2d2be6926744a24d4ddf"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_basis_file.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_basis_file.cpp",
+      "sha256": "3e40f79815d8496b26ce27e62907ec3900fa9b36dc5d02627062083c90ea7314"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_basis_file.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_basis_file.h",
+      "sha256": "d48ceabba72a09c6f0a9f4a1481ddefa53e955a78a8dcee461697cdbfc193b1d"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_bc7enc.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_bc7enc.cpp",
+      "sha256": "0537103d82b7e56152f7e1d516d001c09c72e67b1331c89d0323f0dad7f4401a"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_bc7enc.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_bc7enc.h",
+      "sha256": "76834daa95128d76edc486e9dfa8193a4629129ee27b4c8f0fc5f97ad675acca"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_comp.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_comp.cpp",
+      "sha256": "de25bf948e32617ffee894197157be4d1d1be09c09e06e2f9a885ba0bf217ed6"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_comp.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_comp.h",
+      "sha256": "be3a2ffd86dbb516822e5855925bafe2a0f93162227961981a8f45c1f9c0ce4c"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_enc.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_enc.cpp",
+      "sha256": "b793e877cfb1178467b20dbe1bb0c02bf6e4626e45e1fbf35dcbbecf55a79039"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_enc.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_enc.h",
+      "sha256": "a558fd9747c50021469e874aa648114f4d62e28ebb996cbbc18d3221b2ddad1f"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_etc.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_etc.cpp",
+      "sha256": "104c76fb8de918bc44db739e0a3614d19e6b5feb4677665a5e275e78c70c88cf"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_etc.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_etc.h",
+      "sha256": "d259737c2fae841ba2d558a27d1ed820b7e414d79965a7ad167adbb1ca229a53"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_frontend.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_frontend.cpp",
+      "sha256": "da33bb97f6899d6f2cb9dfaa8e959294bc33bb84cb2ad3b0171141f63ee08795"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_frontend.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_frontend.h",
+      "sha256": "2f016cd580232f0fe4caa53e796ae1c2ab301e75b05b77e1b2111a2281795671"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_gpu_texture.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_gpu_texture.cpp",
+      "sha256": "9ee10452c874dbf49d81f870196462e595e402fe2c5b23820c198fc317dc43df"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_gpu_texture.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_gpu_texture.h",
+      "sha256": "d8ed1d583b61c4220230f4fe040f00f165ca1daa42644f07b1cb071c327e4439"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_kernels_declares.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_kernels_declares.h",
+      "sha256": "2773c50b542e6b9d24f165a1c87bfd95666b5b46270f158cc7baf5ba184978ad"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_kernels_imp.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_kernels_imp.h",
+      "sha256": "d157d11eb0bc37246f26126a2eeb0382f85d1444ad18a72b20c8fde74ccff144"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_kernels_sse.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_kernels_sse.cpp",
+      "sha256": "37168d774e698265b22b6543ea857f088c380f8bfc7d49ef952e98218ba32892"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_miniz.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_miniz.h",
+      "sha256": "a1c84286892621311cab4b2d15329f480461586a1f7ce43ac39b0fcec7937493"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_ocl_kernels.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_ocl_kernels.h",
+      "sha256": "29775e061e9ddcd71872c69840ee7d701f9ca709e8f505dce5c7f5a4a1b73f34"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_opencl.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_opencl.cpp",
+      "sha256": "fb212fca6afe3af0feb77b9054cd1c1fa58c71e209cca207ad6de29d613dc671"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_opencl.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_opencl.h",
+      "sha256": "a88eaf526358637f3775581ad290f2df9659624184bfad2118d2e3c9a6da3bb3"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_pvrtc1_4.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_pvrtc1_4.cpp",
+      "sha256": "6f950d2ea4c7a94843160e365d6481f94ae910ce19f3d638e42725ba99092eaf"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_pvrtc1_4.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_pvrtc1_4.h",
+      "sha256": "695a6a4b302a0b687daaec6449ee8402aeb1502205d678af29705e851e1b304d"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resampler.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resampler.cpp",
+      "sha256": "f0982aa7d381749abf7f95129ab652c716b0df555b2f20c6f9552782c92d304e"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resampler.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resampler.h",
+      "sha256": "0081eace5cd59724316e1dc036829305a50fa48b7a1d5500fd8287ee3b04ce65"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resampler_filters.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resampler_filters.h",
+      "sha256": "32d63425be6753d43e4cf82798eca7b82f7ab5ab58dbf0d762690ecc263537e6"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resample_filters.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_resample_filters.cpp",
+      "sha256": "ff945c04028aa9b292caad09e989f2855422fd2d0b13f2005ce6429837b60c5b"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_ssim.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_ssim.cpp",
+      "sha256": "65d356f7baaf0b5159a8340e37d25b4375cad9c0135feb3117c730a61da05eda"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_ssim.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_ssim.h",
+      "sha256": "8c5579cbe307abd83727c9f3b45e2d41ff1af4f7204729b81401240704eeafbf"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_uastc_enc.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_uastc_enc.cpp",
+      "sha256": "bf4d8137bdb39237b620613a62576dfab20293235f7e3123468ce3f96a46bbf3"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_uastc_enc.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/basisu_uastc_enc.h",
+      "sha256": "551594167b908e5e323c52bf4e02c958fa07ed81c765010877138a5b9136e94c"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_flow.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_flow.h",
+      "sha256": "33fa3a7b7d782ac0763dffce1cb3e7bb8084d246841826f144b25f94d266e512"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_math.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_math.h",
+      "sha256": "37696459490027b916b6593f8adc6ff1c55732c1f410aa4809cd2039e2f5dcda"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_math_declares.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_math_declares.h",
+      "sha256": "102e7d76f3cf1641221aba161669c115798c6f5302b523964f91683612aa33c7"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_sse.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_sse.h",
+      "sha256": "f7e28c9e4d5069ba6408313e9e56f583821cea4bf5bb6ce0736130b0a73f0dec"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_type_aliases.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/cppspmd_type_aliases.h",
+      "sha256": "d114acc951f5795194972abbfedb38bb6b59adb4261f30a0a15244fb9f022e53"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/jpgd.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/jpgd.cpp",
+      "sha256": "4aebe59944b78684d1a7fa9ce80ab2464e811e2618547883bc88cbe2ea25104c"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/jpgd.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/jpgd.h",
+      "sha256": "d4f46e1eb77b38f3d9a4bab88be8ed6dd2ee1a72b8efe23020d2711d51d9d407"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.cpp",
+      "sha256": "32bcc142b0f5dba28adcab027925a9af7be59462788e152b4e5322ee32a1a483"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/encoder/pvpngreader.h",
+      "sha256": "2f3f5cb1dde74dabfc5c2b7d569f621548c8eb820261181f39f37292522fb23e"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/LICENSES/Apache-2.0.txt",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/LICENSES/Apache-2.0.txt",
+      "sha256": "44b0a56e80b41a1b0a6bd1292515e806539fd97b30be54c2719e6c763190ab57"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/LICENSES/BSD.txt",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/LICENSES/BSD.txt",
+      "sha256": "d9b84105b8b5dd11fd0a63795ec2143be969af03aca3ac461066609d99e0f29b"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/LICENSES/Zlib.txt",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/LICENSES/Zlib.txt",
+      "sha256": "2259b985e96b3fec86eae5afc92e05691d9540073b3fb91cc06c120c507be9a0"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu.h",
+      "sha256": "178a78804cd28173330b4ecadaac9dc743f9286ec3a370a690093c3e467a0291"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_containers.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_containers.h",
+      "sha256": "f6c254588bb2531730a505242a7761377ff32fa829433edad16177080a638ba1"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_containers_impl.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_containers_impl.h",
+      "sha256": "e8922c00d171f4d50df2e33c97a8aeb17ef4860cb9d83a3c4d57e6b26a9db22d"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_file_headers.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_file_headers.h",
+      "sha256": "f0706e3c261bbcbaab4fde4286306ae7a6f1bfe18c1238a387f28615abfcf885"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder.cpp",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder.cpp",
+      "sha256": "e09c51bdb810c239518c171d2156156164a32d355a7921ab51df527f37d65a2d"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder.h",
+      "sha256": "99e76405952928a78604e8aaf4057f0d9765f58eda41ff295cc135f1d9a35ef5"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_internal.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_internal.h",
+      "sha256": "289055e8982994bfdc642c681816e32b021372981c1420952d35e7987c2db790"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_astc.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_astc.inc",
+      "sha256": "7dd41c648d3ed8e7d511eb4af865669c4dd50b8ecead62a68fca471138c46e1a"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_astc_0_255.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_astc_0_255.inc",
+      "sha256": "f41acb498be64349c48600e965664f4bec1161781169e3ec3411827c490ef4f8"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_atc_55.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_atc_55.inc",
+      "sha256": "4a510a20bffc3738d85d41e44633d44145931aa5734affb390c7836ec8b5dabb"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_atc_56.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_atc_56.inc",
+      "sha256": "94714b54f0c13c2f3ba5481fbfb40b974892048d59ab68419b369222f0a68075"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_bc7_m5_alpha.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_bc7_m5_alpha.inc",
+      "sha256": "4d713b839594f429d95f329d60f8ad495e932619111b5dfddffb688e3634b495"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_bc7_m5_color.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_bc7_m5_color.inc",
+      "sha256": "e6f63d3ebce0ac84d801ec54614b6a4eeda3be3e994f3abbfc732377cfe5a531"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_dxt1_5.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_dxt1_5.inc",
+      "sha256": "301dead99bbffa60c906dc4f89b8fb2b4976c30dbe7aa1b261d550b2107f89de"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_dxt1_6.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_dxt1_6.inc",
+      "sha256": "ab1974899976f555e4bfb47b37195ad4466e2c72b7bccb3439ff9032fed0de19"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_pvrtc2_45.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_pvrtc2_45.inc",
+      "sha256": "780711642098a91239ee37b3f9110469ee1c7da8dd9e440a43c7ba70f992ff9d"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_pvrtc2_alpha_33.inc",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_tables_pvrtc2_alpha_33.inc",
+      "sha256": "250d389235c0213757266441f72aee37cbe138a3c2a3f58b590ed53d6fb746fa"
+    },
+    {
+      "source": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_uastc.h",
+      "path": "src/rurix-basis-sys/vendor/basis_universal/transcoder/basisu_transcoder_uastc.h",
+      "sha256": "bb8764bad84399d7dfe0c6d544b0e1b0a16750a09119edaed8e58b9218eea62b"
+    },
+    {
+      "source": "src/rurix-basis-sys/Cargo.toml",
+      "path": "src/rurix-basis-sys/Cargo.toml",
+      "source_sha256": "9cc8ad4906a971f16e7a2e382408d53975fb9cddb2044c3c8c883e20a2ed5a5b",
+      "sha256": "bc21831ff4d04dc9de0f918e614ec406cb4b27cb3c1d8c62c16fb60a7cfe2b20",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-d3d12/build.rs",
+      "path": "src/rurix-d3d12/build.rs",
+      "sha256": "30224a4127759b632b5987244858f3f5d306b553b620b50fcdb3fce0ba8ae6e2"
+    },
+    {
+      "source": "src/rurix-d3d12/shim/present.hlsl",
+      "path": "src/rurix-d3d12/shim/present.hlsl",
+      "sha256": "d1dd0aa4445b71a12f8b4bc53318ece845f4a5a21bd670a382a9c5a211c88cef"
+    },
+    {
+      "source": "src/rurix-d3d12/shim/rx_d3d12_shim.cpp",
+      "path": "src/rurix-d3d12/shim/rx_d3d12_shim.cpp",
+      "sha256": "daf7d2145588df203142aea95f33f7e69bf7a1815273493d87901dd785df9f13"
+    },
+    {
+      "source": "src/rurix-d3d12/src/lib.rs",
+      "path": "src/rurix-d3d12/src/lib.rs",
+      "sha256": "3d88f4bcc27dfe3c9579847a221df853472f8ca4f6bbfb2517c52564581f35f8"
+    },
+    {
+      "source": "src/rurix-d3d12/Cargo.toml",
+      "path": "src/rurix-d3d12/Cargo.toml",
+      "source_sha256": "7a02423970c55b241dd6b03bb162ad9de884088d152e17bfddf0f8609bd25098",
+      "sha256": "21eef4efda2dafa2b2d6c281c60f34ff6b59f3b10eed034d14a903d4e841cb91",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-geom-build/src/cluster.rs",
+      "path": "src/rurix-geom-build/src/cluster.rs",
+      "sha256": "45775f93bd1c33d8371b0160975550e272a9afeb2831da94fea7b9eb6aa0841f"
+    },
+    {
+      "source": "src/rurix-geom-build/src/cull_ref.rs",
+      "path": "src/rurix-geom-build/src/cull_ref.rs",
+      "sha256": "b2f14e74bf691766e870c029485602f7e634798a7a3ef14dbd0d904baa67a44c"
+    },
+    {
+      "source": "src/rurix-geom-build/src/dag.rs",
+      "path": "src/rurix-geom-build/src/dag.rs",
+      "sha256": "3a963e7a6e25498156ae0fbaafbf0bf0fc48b16d3e03accaf893ebcfdb078e4d"
+    },
+    {
+      "source": "src/rurix-geom-build/src/lib.rs",
+      "path": "src/rurix-geom-build/src/lib.rs",
+      "sha256": "2bbaf2372b59362564bb8677e13e4bddcabc03c04e1b26a5d075dc1193514b85"
+    },
+    {
+      "source": "src/rurix-geom-build/src/lod_bounds.rs",
+      "path": "src/rurix-geom-build/src/lod_bounds.rs",
+      "sha256": "d131095120e4e308c2696c547ae3cd99a13845cf304867516555b517ac8b90b1"
+    },
+    {
+      "source": "src/rurix-geom-build/src/mesh.rs",
+      "path": "src/rurix-geom-build/src/mesh.rs",
+      "sha256": "5ad4b5762e86d89f5f4fa622ad6b8e3463637d52a827f179a69cfe68b44ac13c"
+    },
+    {
+      "source": "src/rurix-geom-build/src/qem.rs",
+      "path": "src/rurix-geom-build/src/qem.rs",
+      "sha256": "7a4801fde37e3a1dcd962e80741dcb9c5550e1ed66041f5a67d8c13e9e1e9615"
+    },
+    {
+      "source": "src/rurix-geom-build/src/serialize.rs",
+      "path": "src/rurix-geom-build/src/serialize.rs",
+      "sha256": "79d7b31d3ad1cb9c24891843ff4687872505750076bd7d00245a513a6c1e1bba"
+    },
+    {
+      "source": "src/rurix-geom-build/src/vecmath.rs",
+      "path": "src/rurix-geom-build/src/vecmath.rs",
+      "sha256": "f5203c63c2958822769c6e5dd25b5b51f7dacf343e4cef54183756e0e729e0a7"
+    },
+    {
+      "source": "src/rurix-geom-build/Cargo.toml",
+      "path": "src/rurix-geom-build/Cargo.toml",
+      "source_sha256": "2e54bd266d628baebd5a909e13de3ae72bc6022e56c2d15f0ba28ad768b53975",
+      "sha256": "8dc83345e1be2bd3db2b28a63a6ab167ed76ad25c5b06a2ed5dcd782ac6c39c6",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-geom-pages/src/codec.rs",
+      "path": "src/rurix-geom-pages/src/codec.rs",
+      "sha256": "70f93087e93e00bf0c83c9e0340a16ff526a100c5e29999e13432a1cd4828036"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/disk.rs",
+      "path": "src/rurix-geom-pages/src/disk.rs",
+      "sha256": "2fafc628ccbc7cb2ab0b20c74be5d0f1c6295f5ce9f473975411ee46031ac3a5"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/disk_v2.rs",
+      "path": "src/rurix-geom-pages/src/disk_v2.rs",
+      "sha256": "bb8bb1eebdcf3ae6b337516ca6b444df6400fe78e31e826e4bfa979d41a2ffc7"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/expand.rs",
+      "path": "src/rurix-geom-pages/src/expand.rs",
+      "sha256": "7b5a7eafcf53704237566244ba61f102dabd3c8083bb7661b97ae70d62a70f4e"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/expand_v2.rs",
+      "path": "src/rurix-geom-pages/src/expand_v2.rs",
+      "sha256": "aaaf5494508fee25b278abe70371ade7b7acef10d0ce25f4307b0b560a4fb399"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/lib.rs",
+      "path": "src/rurix-geom-pages/src/lib.rs",
+      "sha256": "62ae76db775e5ede9b4d4e1d36996c78e49080078e11ef38b3a5fe0ece05e242"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/logical.rs",
+      "path": "src/rurix-geom-pages/src/logical.rs",
+      "sha256": "d865f68cdaa05e76c8d606e0df218ccb27faeeeafe4f9044358bbc1d37efb3d1"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/logical_v2.rs",
+      "path": "src/rurix-geom-pages/src/logical_v2.rs",
+      "sha256": "26d1c376e4f764fc2e3e2e191f62d4a6654cbb6af52e9fc6536d6b8449139334"
+    },
+    {
+      "source": "src/rurix-geom-pages/src/memory.rs",
+      "path": "src/rurix-geom-pages/src/memory.rs",
+      "sha256": "37fd569d9881c459ad66fad88020947ad47c4925483ad0c2dfabd5db1d91885f"
+    },
+    {
+      "source": "src/rurix-geom-pages/Cargo.toml",
+      "path": "src/rurix-geom-pages/Cargo.toml",
+      "source_sha256": "9cf2e9800ee5a7bc123f14cf935db91a60114fbae5f94c67210f6db513a0f8fd",
+      "sha256": "6e86cafda0c72042d6bd37d7e00bcb702c86ab4fa58731db4447cd93945f29f9",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-pkg/src/content_tree.rs",
+      "path": "src/rurix-pkg/src/content_tree.rs",
+      "sha256": "37dcc489954a70a17fbbdea2baa84f0242454c635536b37019e24ea8f90639fc"
+    },
+    {
+      "source": "src/rurix-pkg/src/error.rs",
+      "path": "src/rurix-pkg/src/error.rs",
+      "sha256": "df947c1c442b4c9e2beba907aa2f1aab00b71c1b056c78a41aacef0ed7a3e740"
+    },
+    {
+      "source": "src/rurix-pkg/src/lib.rs",
+      "path": "src/rurix-pkg/src/lib.rs",
+      "sha256": "b832846b44b15e1d013286adf0e8eeeb472bd7762cdbc2354cedc04c7978a699"
+    },
+    {
+      "source": "src/rurix-pkg/src/lock.rs",
+      "path": "src/rurix-pkg/src/lock.rs",
+      "sha256": "d208804a2b86eae35b39aaf6cd345f65ef241c079ea09a9f691fc77c63b564cb"
+    },
+    {
+      "source": "src/rurix-pkg/src/manifest.rs",
+      "path": "src/rurix-pkg/src/manifest.rs",
+      "sha256": "73f155bd1a19ec543c6f27defaff5c7e4c89a5e5cbc227c2e69c03b61303a966"
+    },
+    {
+      "source": "src/rurix-pkg/src/resolve.rs",
+      "path": "src/rurix-pkg/src/resolve.rs",
+      "sha256": "36c6226931e115eef9d71bcc8299c5d5b0ec832a81cfb8e73f9159c415be07eb"
+    },
+    {
+      "source": "src/rurix-pkg/src/sha256.rs",
+      "path": "src/rurix-pkg/src/sha256.rs",
+      "sha256": "9cdca9df65d25f6b5863adcf3316fa73c20d51011479adaa42b3ff2d1ca02c36"
+    },
+    {
+      "source": "src/rurix-pkg/src/toml.rs",
+      "path": "src/rurix-pkg/src/toml.rs",
+      "sha256": "3d982b4f686551f4a70fdc64a253f6c4ec4167926de479108a76c8b587715793"
+    },
+    {
+      "source": "src/rurix-pkg/src/vendor.rs",
+      "path": "src/rurix-pkg/src/vendor.rs",
+      "sha256": "10091dd1f6b2be7935ae7234e831c3b79bf9019281c96b8b70e2f7abaa57588d"
+    },
+    {
+      "source": "src/rurix-pkg/Cargo.toml",
+      "path": "src/rurix-pkg/Cargo.toml",
+      "source_sha256": "fa1eb558f3d0254c3ae8df33a7e365383888dbdd31ecae042df1cd12347045cb",
+      "sha256": "406a1d44a718baa47b6f59ad1fea1c6f01bf8bcc70d4b7fbd4437cb32f9b51cd",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-render/src/capability_matrix.rs",
+      "path": "src/rurix-render/src/capability_matrix.rs",
+      "sha256": "9aee22412f5a9c3a93ca76dd6fc0966c7e0cc6a59f5dc04dfeb25a0bf951e046"
+    },
+    {
+      "source": "src/rurix-render/src/lib.rs",
+      "path": "src/rurix-render/src/lib.rs",
+      "sha256": "379b79aac49792c3454d8d4abdde6c73c435edeab42ea8733e247620d0e0b060"
+    },
+    {
+      "source": "src/rurix-render/src/texture_sampling.rs",
+      "path": "src/rurix-render/src/texture_sampling.rs",
+      "sha256": "8bb4c0c61c0b0254364e19605b154e23bbba510f22f8b2c8f53865738834c4d1"
+    },
+    {
+      "source": "src/rurix-render/src/display/aces13.rs",
+      "path": "src/rurix-render/src/display/aces13.rs",
+      "sha256": "905492820c00123c153cbfc8416b51f353b3485b48efddbd616f8ddc62b500ad"
+    },
+    {
+      "source": "src/rurix-render/src/display/aces20.rs",
+      "path": "src/rurix-render/src/display/aces20.rs",
+      "sha256": "1bdf66cee3f799542f672f3adff3ecb9bdbac9e4b81d1a94e1d35b880c3fb1ec"
+    },
+    {
+      "source": "src/rurix-render/src/display/agx.rs",
+      "path": "src/rurix-render/src/display/agx.rs",
+      "sha256": "d4b67699a60fbdb120f08e55d8d6f30cf967622c2572cf3c1683d18ac3a5ba74"
+    },
+    {
+      "source": "src/rurix-render/src/display/color.rs",
+      "path": "src/rurix-render/src/display/color.rs",
+      "sha256": "8e68089c1dd7f24de88194ef6627f1296e763ee05bd9f093eb2d726515f9fbbd"
+    },
+    {
+      "source": "src/rurix-render/src/display/hair.rs",
+      "path": "src/rurix-render/src/display/hair.rs",
+      "sha256": "d3473ac8f7ebc525daad1eb17e2858e98efe63cc8ca001a8337f5c22afd2a77a"
+    },
+    {
+      "source": "src/rurix-render/src/display/mod.rs",
+      "path": "src/rurix-render/src/display/mod.rs",
+      "sha256": "d0a750eff1d0e9a9d55cea4b8fa1ed537823129ddc5808bf75c6a5a89b75bb13"
+    },
+    {
+      "source": "src/rurix-render/src/display/neutral.rs",
+      "path": "src/rurix-render/src/display/neutral.rs",
+      "sha256": "38ce1fdfcb3795acabe5e4f88773632a28ecd0172ec5baf5e52b36e576a9ad5a"
+    },
+    {
+      "source": "src/rurix-render/src/display/post_chain.rs",
+      "path": "src/rurix-render/src/display/post_chain.rs",
+      "sha256": "9187008a735209c2986a9fc39ef95ae40376fe7fa5b9daf32ce67aed14733ebc"
+    },
+    {
+      "source": "src/rurix-render/src/display/skin.rs",
+      "path": "src/rurix-render/src/display/skin.rs",
+      "sha256": "743f3a36317d707595361284cfc225884a1811e77d95b6c29ff80ced8f443cd4"
+    },
+    {
+      "source": "src/rurix-render/src/display/swapchain.rs",
+      "path": "src/rurix-render/src/display/swapchain.rs",
+      "sha256": "3ec551fe41ce33a00134f66ea105241ba5eb7e174b98f45973c13e4d91e4e8f3"
+    },
+    {
+      "source": "src/rurix-render/src/display/view_transform.rs",
+      "path": "src/rurix-render/src/display/view_transform.rs",
+      "sha256": "f9bfd7ecd491ebbf2e9cf3c7e98d9a5db21a798b234b462a70d2489ad674de57"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/cull.rs",
+      "path": "src/rurix-render/src/geometry/cull.rs",
+      "sha256": "7f122b02bf543c0919337126d229ae00746e7618cb6244d76d7f292d5d81c08b"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/gpu_layout.rs",
+      "path": "src/rurix-render/src/geometry/gpu_layout.rs",
+      "sha256": "5a91dead0c34f0c59df0e3aa00ccfa94f374fe0ec066cf7e2053e6681a149ca1"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/gpu_scene.rs",
+      "path": "src/rurix-render/src/geometry/gpu_scene.rs",
+      "sha256": "78deb0267f0d0d22faa9b084b0e13cb03019d5dda2801760ef9b8c3a72fda1f0"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/hzb.rs",
+      "path": "src/rurix-render/src/geometry/hzb.rs",
+      "sha256": "9d196000ba7439ac229139ddc39a2c1cb415b3a50f5c1645dcb540b657c17286"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/material_pass.rs",
+      "path": "src/rurix-render/src/geometry/material_pass.rs",
+      "sha256": "d3af6f26af7a0ce1219118733961bd739ff7adb5ff3969a543f8f45169d9a092"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/mod.rs",
+      "path": "src/rurix-render/src/geometry/mod.rs",
+      "sha256": "2deecf9403c5ca434b7620cbe26e2aa029099234be44354b1e58c83c59e8972b"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/skinning.rs",
+      "path": "src/rurix-render/src/geometry/skinning.rs",
+      "sha256": "c987088ad9996ca3d090a4d12d62ddf7b1c3ee07ea5e475f325ca9b01b464bd2"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/skin_kernel.rs",
+      "path": "src/rurix-render/src/geometry/skin_kernel.rs",
+      "sha256": "0e622a50ead4e517a3eed31ebedc6a20e44f7f62c4776775ddfdb681a03f46ec"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/visbuffer.rs",
+      "path": "src/rurix-render/src/geometry/visbuffer.rs",
+      "sha256": "b515c1e1b2d839913c18e6fc1aa910715e03e10d3069dc49bc20eb42bef1dda9"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/visbuffer_swhw_spv.rs",
+      "path": "src/rurix-render/src/geometry/visbuffer_swhw_spv.rs",
+      "sha256": "b6ed288ef89bafe0bffc40c13109d1063cac5b60fecd400396ac4b492b8fa918"
+    },
+    {
+      "source": "src/rurix-render/src/geometry/visible_cluster_set.rs",
+      "path": "src/rurix-render/src/geometry/visible_cluster_set.rs",
+      "sha256": "4c7dd85eb9a8f99506153b75019e3316c7cd92c42f0af98b37645ad2436c2761"
+    },
+    {
+      "source": "src/rurix-render/src/gi/fallback_chain.rs",
+      "path": "src/rurix-render/src/gi/fallback_chain.rs",
+      "sha256": "f1cc17b7bc9782dce763da9dbba8aee1b3018e3745867fb73fa88c3ec02e236b"
+    },
+    {
+      "source": "src/rurix-render/src/gi/filter.rs",
+      "path": "src/rurix-render/src/gi/filter.rs",
+      "sha256": "bf145bbf460a6f0160cbcb2dbd798a88a8a01c431c75e8e9d1bce6a81c1b383d"
+    },
+    {
+      "source": "src/rurix-render/src/gi/if_tier.rs",
+      "path": "src/rurix-render/src/gi/if_tier.rs",
+      "sha256": "446ee7031a6860fea31f51aeddb410142ce730047e910408ed6468891ff826d3"
+    },
+    {
+      "source": "src/rurix-render/src/gi/interpolate.rs",
+      "path": "src/rurix-render/src/gi/interpolate.rs",
+      "sha256": "6a25bae427af1929f56cfa52dc2c0da274b0626e7f342503bf83fcc1fadfc96b"
+    },
+    {
+      "source": "src/rurix-render/src/gi/mod.rs",
+      "path": "src/rurix-render/src/gi/mod.rs",
+      "sha256": "ac571541b17a6cb3efd480347cfeb7b01212359f87e2a5764b1f33f0d68c0fd1"
+    },
+    {
+      "source": "src/rurix-render/src/gi/multi_light.rs",
+      "path": "src/rurix-render/src/gi/multi_light.rs",
+      "sha256": "08b45ea2df1036e4ed0f7b93a6846b990211207d5e9fefd343dba81c62108516"
+    },
+    {
+      "source": "src/rurix-render/src/gi/path_trace.rs",
+      "path": "src/rurix-render/src/gi/path_trace.rs",
+      "sha256": "278738c84eb95e4d17ede04d18448865f2f42d4b265dc1621fcd5b02d58eccec"
+    },
+    {
+      "source": "src/rurix-render/src/gi/pipeline.rs",
+      "path": "src/rurix-render/src/gi/pipeline.rs",
+      "sha256": "ecdbc9e4daa5854ff5bf8dca6589d8476235f7699db43c883bf9c8a274d43e29"
+    },
+    {
+      "source": "src/rurix-render/src/gi/probe.rs",
+      "path": "src/rurix-render/src/gi/probe.rs",
+      "sha256": "8bf851692ae6c5bc55c8cf00b0b9f0aa311dda6acb14db3d596f8d4c5a89021a"
+    },
+    {
+      "source": "src/rurix-render/src/gi/restir_reservoir.rs",
+      "path": "src/rurix-render/src/gi/restir_reservoir.rs",
+      "sha256": "779648ae5b9f0d3699653e9a9380470bfcd101e39881ce53e432f44728920463"
+    },
+    {
+      "source": "src/rurix-render/src/gi/sh.rs",
+      "path": "src/rurix-render/src/gi/sh.rs",
+      "sha256": "1c5374dc93e8d7fac71db82130b74309cea63f41af4ae61792bf7d2a7ada28bd"
+    },
+    {
+      "source": "src/rurix-render/src/gi/spg_rc.rs",
+      "path": "src/rurix-render/src/gi/spg_rc.rs",
+      "sha256": "c8888834dc02778e319b0694f012f7d2127705c0361e1799d568c535009d1d7c"
+    },
+    {
+      "source": "src/rurix-render/src/gi/surface_cache.rs",
+      "path": "src/rurix-render/src/gi/surface_cache.rs",
+      "sha256": "640c0f6d776321f20a079976ea17dbcf8f7c71648fe7f5b67cf8360bbd972082"
+    },
+    {
+      "source": "src/rurix-render/src/gi/temporal.rs",
+      "path": "src/rurix-render/src/gi/temporal.rs",
+      "sha256": "7e522f7ac770c5fac594e32d940bde340524d648a21cf3a8c6e32a5db35474d1"
+    },
+    {
+      "source": "src/rurix-render/src/gi/tracer.rs",
+      "path": "src/rurix-render/src/gi/tracer.rs",
+      "sha256": "ae0226753413dec2ed4f05e8568472781dca941da8ffb2a99b5119b48ff65b5c"
+    },
+    {
+      "source": "src/rurix-render/src/graph/compile.rs",
+      "path": "src/rurix-render/src/graph/compile.rs",
+      "sha256": "a83d48dcabe97fcbf546ca49613a13e15a10c2831e54a372b74cfccbeb23377b"
+    },
+    {
+      "source": "src/rurix-render/src/graph/dump.rs",
+      "path": "src/rurix-render/src/graph/dump.rs",
+      "sha256": "2a1a3cebf66b002e84d2153995cc9f413786b6b4651b1c969a963eab28051555"
+    },
+    {
+      "source": "src/rurix-render/src/graph/graph.rs",
+      "path": "src/rurix-render/src/graph/graph.rs",
+      "sha256": "c7c17ca47e22b47734e6232d54df415c3a0c771b3a1fdbd99bdccfcdf9e8dfe1"
+    },
+    {
+      "source": "src/rurix-render/src/graph/mod.rs",
+      "path": "src/rurix-render/src/graph/mod.rs",
+      "sha256": "14c7c1bd53aa580bb39c105a79b66e716c977e69d40a753fede5909d0aeb412d"
+    },
+    {
+      "source": "src/rurix-render/src/graph/resources.rs",
+      "path": "src/rurix-render/src/graph/resources.rs",
+      "sha256": "cd7a25b1c875ad0fd67cb5700b950c6bb09547c155995feff935fdc70c185abf"
+    },
+    {
+      "source": "src/rurix-render/src/graph/sync.rs",
+      "path": "src/rurix-render/src/graph/sync.rs",
+      "sha256": "2d582a545b4cafe70fff0c0e1ccaff0d47e8ce1444b31c96a807c30f3b5be317"
+    },
+    {
+      "source": "src/rurix-render/src/graph/transient.rs",
+      "path": "src/rurix-render/src/graph/transient.rs",
+      "sha256": "69325f0428578bda7d8414573658bcd4dba127cdc10af69b940650d4dbb46404"
+    },
+    {
+      "source": "src/rurix-render/src/graph/types.rs",
+      "path": "src/rurix-render/src/graph/types.rs",
+      "sha256": "9524082eae50f5e045f127da16e5522d6a218f205e93cedc8568e205db83fd79"
+    },
+    {
+      "source": "src/rurix-render/src/material/closure.rs",
+      "path": "src/rurix-render/src/material/closure.rs",
+      "sha256": "82242e19a74d12d122ae6ddbd708c262b624ec83c4b98d37606c6f8c8467affb"
+    },
+    {
+      "source": "src/rurix-render/src/material/mod.rs",
+      "path": "src/rurix-render/src/material/mod.rs",
+      "sha256": "1c7404069029b0e778612a8d7d1d86c601c19e8635199224527065ae16aa7757"
+    },
+    {
+      "source": "src/rurix-render/src/material/pso_cache.rs",
+      "path": "src/rurix-render/src/material/pso_cache.rs",
+      "sha256": "46e5d23b78cee943bcae6874895b1c9037f3437153caa25643ff7c45cb89ea7b"
+    },
+    {
+      "source": "src/rurix-render/src/material/side_table.rs",
+      "path": "src/rurix-render/src/material/side_table.rs",
+      "sha256": "eccdd74bb96b61a776ba631ac333d98e865b53358bbd8b484b68c3718b8af186"
+    },
+    {
+      "source": "src/rurix-render/src/material/slab.rs",
+      "path": "src/rurix-render/src/material/slab.rs",
+      "sha256": "feadbe9c4efa2940b7df018137e14d5d93863765c206ffbafa61d7f2a603ef73"
+    },
+    {
+      "source": "src/rurix-render/src/material/table.rs",
+      "path": "src/rurix-render/src/material/table.rs",
+      "sha256": "cd36adc611805c2b8541ef2b9ba4b390d241569e216c0aa183f0965383f3278c"
+    },
+    {
+      "source": "src/rurix-render/src/oit/algorithms.rs",
+      "path": "src/rurix-render/src/oit/algorithms.rs",
+      "sha256": "85c62fa000e64b93f61597b60e0ef980bb69c27b9ae296713bbfc38b2f9d239d"
+    },
+    {
+      "source": "src/rurix-render/src/oit/measure.rs",
+      "path": "src/rurix-render/src/oit/measure.rs",
+      "sha256": "8156cfe415b859bb66b6fd53d9d63de24ab53e93ecd2257d0fa2f762cec5b9e0"
+    },
+    {
+      "source": "src/rurix-render/src/oit/mod.rs",
+      "path": "src/rurix-render/src/oit/mod.rs",
+      "sha256": "39c05e25a9eb52793a2b450a4b2a6776c8563ad04f897b71a6b901a335ae8edc"
+    },
+    {
+      "source": "src/rurix-render/src/oit/scene.rs",
+      "path": "src/rurix-render/src/oit/scene.rs",
+      "sha256": "9df703c8b540bef9e7c86d08e4135aa40ea8e6a6347d591cdf51bd4baf6cc61c"
+    },
+    {
+      "source": "src/rurix-render/src/oit/selection.rs",
+      "path": "src/rurix-render/src/oit/selection.rs",
+      "sha256": "214558f6a46844748da83e00d6f79786586b368d08fb04aaf91d8ec8fa9db89b"
+    },
+    {
+      "source": "src/rurix-render/src/particles/collision.rs",
+      "path": "src/rurix-render/src/particles/collision.rs",
+      "sha256": "fef29bb190d25b501732337248c711943e041e7234e1914938ec0d5d9e0dcabe"
+    },
+    {
+      "source": "src/rurix-render/src/particles/core.rs",
+      "path": "src/rurix-render/src/particles/core.rs",
+      "sha256": "e226c0c1d7bb87e13572431ce5cb41f07b55768ff7340c6d5053ce816da21860"
+    },
+    {
+      "source": "src/rurix-render/src/particles/emitter_asset.rs",
+      "path": "src/rurix-render/src/particles/emitter_asset.rs",
+      "sha256": "28988f95dd7f8f026ca7af7317ffc8c87de97f2de1968fc341c4dc07dc99c77e"
+    },
+    {
+      "source": "src/rurix-render/src/particles/events.rs",
+      "path": "src/rurix-render/src/particles/events.rs",
+      "sha256": "3b233521611d572ab3a0447633ce94fa4a2446fc8c3c79adf9535861253dea89"
+    },
+    {
+      "source": "src/rurix-render/src/particles/fluid.rs",
+      "path": "src/rurix-render/src/particles/fluid.rs",
+      "sha256": "ada259d0c170275d0857dfbbf34e17d4dadd130c3cdca3f6beed8200b8a38b4a"
+    },
+    {
+      "source": "src/rurix-render/src/particles/mod.rs",
+      "path": "src/rurix-render/src/particles/mod.rs",
+      "sha256": "cbf586849b9420bb60692b2713aaf7cdd390e9b053993b3832bae48f5a2c77bf"
+    },
+    {
+      "source": "src/rurix-render/src/particles/oit_arms.rs",
+      "path": "src/rurix-render/src/particles/oit_arms.rs",
+      "sha256": "5bee4f1da1ae5b53b108de3c31345b3ae2c3620121329e41c19a8db2766693f3"
+    },
+    {
+      "source": "src/rurix-render/src/particles/primitives.rs",
+      "path": "src/rurix-render/src/particles/primitives.rs",
+      "sha256": "b84f5ecfa0413d9bf834e1db0e9a599ec206f9976c3e8e25347499ac9969844e"
+    },
+    {
+      "source": "src/rurix-render/src/particles/replay.rs",
+      "path": "src/rurix-render/src/particles/replay.rs",
+      "sha256": "fd81f14a47b86299b404d4f29aa010547ba1b595437dc8c1f0fe03c556c891ea"
+    },
+    {
+      "source": "src/rurix-render/src/particles/scan.rs",
+      "path": "src/rurix-render/src/particles/scan.rs",
+      "sha256": "8a9c790dd00146361fce12599dcb0fa05e4d1166c7e61c7440b68825cc5bc71b"
+    },
+    {
+      "source": "src/rurix-render/src/quality/depth.rs",
+      "path": "src/rurix-render/src/quality/depth.rs",
+      "sha256": "b73e3ed0e79be5712f35bcee6442e48498d9f20c4d12e9964301160f5f0fcf38"
+    },
+    {
+      "source": "src/rurix-render/src/quality/effects.rs",
+      "path": "src/rurix-render/src/quality/effects.rs",
+      "sha256": "923d46dbd444f5bc0752094521e9592f173339131f832111d1b0420cd0c1440b"
+    },
+    {
+      "source": "src/rurix-render/src/quality/history.rs",
+      "path": "src/rurix-render/src/quality/history.rs",
+      "sha256": "bebe13cfccd7a3a8275b4eeece3d93634bfc1410a0e5fd2c4d19d5b21b699ba3"
+    },
+    {
+      "source": "src/rurix-render/src/quality/hit_policy.rs",
+      "path": "src/rurix-render/src/quality/hit_policy.rs",
+      "sha256": "a444115c62aab8bab1e35649ff86a0e80dec7419914f1ad73dac0d9905f9965a"
+    },
+    {
+      "source": "src/rurix-render/src/quality/material.rs",
+      "path": "src/rurix-render/src/quality/material.rs",
+      "sha256": "a39f8a52f7ef7af907c0a206fe4c3417417737447a8d63212557763f5bc76b91"
+    },
+    {
+      "source": "src/rurix-render/src/quality/material_tests.rs",
+      "path": "src/rurix-render/src/quality/material_tests.rs",
+      "sha256": "8171843e3b4513debc7e352fcc530c16b1cc934e109e5a34b8bc190ebedd899f"
+    },
+    {
+      "source": "src/rurix-render/src/quality/mod.rs",
+      "path": "src/rurix-render/src/quality/mod.rs",
+      "sha256": "b3bdc00851bd74ab49463baf5abafd604ca1459faf4859e023eb1dfedd037f2f"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/mod.rs",
+      "path": "src/rurix-render/src/realtime/mod.rs",
+      "sha256": "8e9ced0b1d0daf50202d0bff5d8e84709d361a090c866aa2cfa0cea85d4b1e58"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/README.md",
+      "path": "src/rurix-render/src/realtime/README.md",
+      "sha256": "69fcc26f7a4b9f61ca8108a13725417a93aff7aed4e2b334ad70d45131b8ab45"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/scene.rs",
+      "path": "src/rurix-render/src/realtime/scene.rs",
+      "sha256": "2d40ad943ffae637abb79a6e1f81a3911468681ac53cdcbb3249317a5366db30"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/session.rs",
+      "path": "src/rurix-render/src/realtime/session.rs",
+      "sha256": "980ad26d234c5dff6ac6d6ba9139ffa99ef06e2cb7441f88656a9ac1f5e2cb22"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders.rs",
+      "path": "src/rurix-render/src/realtime/shaders.rs",
+      "sha256": "5e085b4c6f3f8c632c37b1977296acb67267761db74700235f339f5d14540eb5"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/tests.rs",
+      "path": "src/rurix-render/src/realtime/tests.rs",
+      "sha256": "9acc66e19c859dbcd241aeaa0696e7005cbe760c97b5e1a63141d8af7d1a85d9"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/types.rs",
+      "path": "src/rurix-render/src/realtime/types.rs",
+      "sha256": "10af25657334a536a40d846bb59c1767f49d53cf58b65382d477dd01e6385c55"
+    },
+    {
+      "source": "src/rurix-render/src/rt/as_manager.rs",
+      "path": "src/rurix-render/src/rt/as_manager.rs",
+      "sha256": "41798ebffcb90c7cb7dffb36a72031e208ed692f82da763b6d8f91027780c6ec"
+    },
+    {
+      "source": "src/rurix-render/src/rt/bvh.rs",
+      "path": "src/rurix-render/src/rt/bvh.rs",
+      "sha256": "807cfebeae82d939c4322534cd11f62b9f973a1640dd278fb6752104f857c99e"
+    },
+    {
+      "source": "src/rurix-render/src/rt/denoise.rs",
+      "path": "src/rurix-render/src/rt/denoise.rs",
+      "sha256": "188c859a3f3e90ffb720f703a1ecb1fea59bee44e3040cbd76dac2c398b6eb78"
+    },
+    {
+      "source": "src/rurix-render/src/rt/effects.rs",
+      "path": "src/rurix-render/src/rt/effects.rs",
+      "sha256": "42b21a60e6a7287ff6e8367dd36f30fa241e6683ceea9250d517c0ae9b3942f9"
+    },
+    {
+      "source": "src/rurix-render/src/rt/mod.rs",
+      "path": "src/rurix-render/src/rt/mod.rs",
+      "sha256": "faaac09715dc99df6e43c3105d3d65f2c9936ac8e04247570ef7d6f00ce872b0"
+    },
+    {
+      "source": "src/rurix-render/src/rt/ref_tracer.rs",
+      "path": "src/rurix-render/src/rt/ref_tracer.rs",
+      "sha256": "ba4d41364a9fe5cb4e0a3f2e0fb74d58c2deac3090715cf8f9bf19005d15c13e"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/clipmap.rs",
+      "path": "src/rurix-render/src/shadow/clipmap.rs",
+      "sha256": "ace66e861636c0e2bf114fc35e1c264b2c7defcbde654e226360d2546f20d444"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/events.rs",
+      "path": "src/rurix-render/src/shadow/events.rs",
+      "sha256": "c841ff7aa2f23d01cdae7edf67bd84cc2572f6830d8ae85bb43a84edaefe1bc4"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/local.rs",
+      "path": "src/rurix-render/src/shadow/local.rs",
+      "sha256": "978d881fa8c4b76b182c1c438e1e59a8d34b8adc0eb4a2ac2c2c8d2c6e5dd19c"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/mod.rs",
+      "path": "src/rurix-render/src/shadow/mod.rs",
+      "sha256": "d039342cb273385d384e44afec93d48827c9f7cbdac6cc2c6a18013ba024e4f0"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/page_cache.rs",
+      "path": "src/rurix-render/src/shadow/page_cache.rs",
+      "sha256": "1964f661bff9dc318109cbb85693ca06c05d41f6137f13d0ca9ee45519dccb37"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/page_table.rs",
+      "path": "src/rurix-render/src/shadow/page_table.rs",
+      "sha256": "6f6bde48504558a7e1b4bfb261823753ff7398a6cb65fb15e8bd471d4f5f0bc2"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/pool.rs",
+      "path": "src/rurix-render/src/shadow/pool.rs",
+      "sha256": "ff22e5f3fc24ad8866173e13f9d0961af21065ffc91bbe783c1971b6dae30583"
+    },
+    {
+      "source": "src/rurix-render/src/shadow/vsm.rs",
+      "path": "src/rurix-render/src/shadow/vsm.rs",
+      "sha256": "488a0891e918686795fb8daa9f84fe68958532b6f4e9dfaa3f6e54e2b889af0d"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/cluster.rs",
+      "path": "src/rurix-render/src/streaming/cluster.rs",
+      "sha256": "7f06d4f6b093891d39249160a7065f5348508cfc2055cf878936b56cf4a7b179"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/engine.rs",
+      "path": "src/rurix-render/src/streaming/engine.rs",
+      "sha256": "c4f3e1de4f153ec7487cfe3a52483bdb1c8a9a2e42a9cf62148c3cad78f7ba67"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/feedback.rs",
+      "path": "src/rurix-render/src/streaming/feedback.rs",
+      "sha256": "f2878ed0cba9317f99357f12d5ec46b10551e4cceae775d2afa3a79a19ca7518"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/mod.rs",
+      "path": "src/rurix-render/src/streaming/mod.rs",
+      "sha256": "bb3ad0e2c6f40566d79466d092423f621c949e2a9b15746731caa91f36c6b002"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/pool.rs",
+      "path": "src/rurix-render/src/streaming/pool.rs",
+      "sha256": "c644bfdaaec662fee73692e43fed27c64b4f103eeeb2067157946947c47693ac"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/resource.rs",
+      "path": "src/rurix-render/src/streaming/resource.rs",
+      "sha256": "ba2b74455a26d2b4af2d9ee85f1da154df79a65be44cd1896c1407785fabbc85"
+    },
+    {
+      "source": "src/rurix-render/src/streaming/svt.rs",
+      "path": "src/rurix-render/src/streaming/svt.rs",
+      "sha256": "e53f2f7103300b859a9668b6558847b0627587d9c94fff266fef9acd28b024be"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/abi.rs",
+      "path": "src/rurix-render/src/temporal/abi.rs",
+      "sha256": "87ca9671faf1fc432a55e6a06a24a5ca0312ded0df0606ca0d75f5f673ba76de"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/cas.rs",
+      "path": "src/rurix-render/src/temporal/cas.rs",
+      "sha256": "fc5a668b953acea5370810fe5293312aefedd072cdb5884d1c62cb40a5912dc7"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/common.rs",
+      "path": "src/rurix-render/src/temporal/common.rs",
+      "sha256": "8cda178cb1d5a548ac6bc8280801f80edc6998474e2082ea375da0399eb028cd"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/contract.rs",
+      "path": "src/rurix-render/src/temporal/contract.rs",
+      "sha256": "6218896e5b12a0548e2ed60dc57e619a3be2d0eff31b33e1165ee42443ad0053"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/framegen.rs",
+      "path": "src/rurix-render/src/temporal/framegen.rs",
+      "sha256": "0b691852e1167f529aaf64951a7217fbeae1a92714dc99e30ef884c6bc4f82f7"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/image.rs",
+      "path": "src/rurix-render/src/temporal/image.rs",
+      "sha256": "d919b9171591a65621e281716e58c50bc8d1290b2f75427b523524fa501144be"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/mod.rs",
+      "path": "src/rurix-render/src/temporal/mod.rs",
+      "sha256": "9ca4961763534d739c6b7e2824092c74e2a55746bae57a1371fdd6a3c036f0ac"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/ssim.rs",
+      "path": "src/rurix-render/src/temporal/ssim.rs",
+      "sha256": "f10b02bced08f890d55afdd9e24789eb8842a342c6ffe30127748c5a9d157e9a"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/taa.rs",
+      "path": "src/rurix-render/src/temporal/taa.rs",
+      "sha256": "4a77037202c822b1986f9a57760324ec98e76ddddfaafa4c1e229645de3f1b73"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/tsr.rs",
+      "path": "src/rurix-render/src/temporal/tsr.rs",
+      "sha256": "ccc07f6b41bb163e8c1630610a152646e6956fc1ad8bcbd9baa9ad13005a5d7f"
+    },
+    {
+      "source": "src/rurix-render/src/temporal/upscale.rs",
+      "path": "src/rurix-render/src/temporal/upscale.rs",
+      "sha256": "e7eeeedc63c988565fd856e5f7b8a10c22c6e1cf485db5c5beeae133c5f6432e"
+    },
+    {
+      "source": "src/rurix-render/src/world/atmosphere.rs",
+      "path": "src/rurix-render/src/world/atmosphere.rs",
+      "sha256": "9edee408e860c2e5ce9564911aedd57fae746bfc83d50ed8d79cfab52bf3151a"
+    },
+    {
+      "source": "src/rurix-render/src/world/clouds.rs",
+      "path": "src/rurix-render/src/world/clouds.rs",
+      "sha256": "38f1d3e8110e399f4c2a9669645e384dc9f7c6ac21a6eaae2755e5a1d939f7ad"
+    },
+    {
+      "source": "src/rurix-render/src/world/decal.rs",
+      "path": "src/rurix-render/src/world/decal.rs",
+      "sha256": "11f25677e3bece0f518790c023280f6744347f7e4680595772e7b7ba51f953c2"
+    },
+    {
+      "source": "src/rurix-render/src/world/hlod.rs",
+      "path": "src/rurix-render/src/world/hlod.rs",
+      "sha256": "582cede1029a60b8a2e199d566cc35e655a0c4d2100ddec64985dfdb6d7810b0"
+    },
+    {
+      "source": "src/rurix-render/src/world/mod.rs",
+      "path": "src/rurix-render/src/world/mod.rs",
+      "sha256": "b17407b74126de5e804a4675b1d38da04741fafc7b70a01e33dbf0475ac47f4b"
+    },
+    {
+      "source": "src/rurix-render/src/world/partition.rs",
+      "path": "src/rurix-render/src/world/partition.rs",
+      "sha256": "1cec44d1f91e695fc224351e3c0e3834e0cecdd688b2d1cfc9fb1f53c5c00049"
+    },
+    {
+      "source": "src/rurix-render/src/world/sky.rs",
+      "path": "src/rurix-render/src/world/sky.rs",
+      "sha256": "b80ef8d445f2269b2f640ed7305f2c5ce808074bdef6195bcf21aed1f95a3a00"
+    },
+    {
+      "source": "src/rurix-render/src/world/terrain.rs",
+      "path": "src/rurix-render/src/world/terrain.rs",
+      "sha256": "737d25bb8aa5cf9ac85ca7c182994b554fd5d09d4115dffbb2bef8f33461ab69"
+    },
+    {
+      "source": "src/rurix-render/src/world/water.rs",
+      "path": "src/rurix-render/src/world/water.rs",
+      "sha256": "fec7d2d402b2b0ad3cff163384dd6d99aeee6c3d29396f0b8feef63a2c1a4cbc"
+    },
+    {
+      "source": "src/rurix-render/src/world/water_surface.rs",
+      "path": "src/rurix-render/src/world/water_surface.rs",
+      "sha256": "340a7bc7830cb2ca3be358955d3b8657f9e94c11d73b8f89124ba23518e927a1"
+    },
+    {
+      "source": "src/rurix-render/src/world/wet_ground.rs",
+      "path": "src/rurix-render/src/world/wet_ground.rs",
+      "sha256": "7d14735371024a87553a5c8a70697c8c1a5709317416082c7b305f6138fec2a4"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/bloom.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/bloom.wgsl",
+      "sha256": "ad7a5bd073edc0744206229ade3f26798def599820ad0a1eb9c91abc2bdf85c0"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/combine.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/combine.wgsl",
+      "sha256": "c561d26dfa2f5a816531f9346e20081ee1b45f14a22d7787ea95239a87e09bcb"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/decal.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/decal.wgsl",
+      "sha256": "b44a9a646ee57e4a5381b4dcfd0d4841fa623c5f2ee68e776821218b1742a10a"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/depth_fragment.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/depth_fragment.wgsl",
+      "sha256": "07b1ad106073aded92e2bf134d1102aa8b18e7435f03b0f995e3fa7254c9bb91"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/depth_vertex.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/depth_vertex.wgsl",
+      "sha256": "b3f3409612cabfe5c2d5dc10831099f39269368252c00e38ca733e357ce1ea6c"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/direct.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/direct.wgsl",
+      "sha256": "aa097484bc3ee8374042cd77033a490878645d96fe923e8c112c8bc278430b59"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/fog.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/fog.wgsl",
+      "sha256": "51ffd01651980801cf61a8479e4da817f9f191c596ff3673f20782b9c67050f8"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/fog_density.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/fog_density.wgsl",
+      "sha256": "6874b301f5b7bc5f6a0f9b9685dcaef828f34948f9ede1a47c6b161229ea905f"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/gbuffer.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/gbuffer.wgsl",
+      "sha256": "bfad24907e98a97e2300f59bf5ed932080c06ef3b476c193b682ffd92dab833e"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/glass.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/glass.wgsl",
+      "sha256": "c2cc6db4b2143482ef0219a210e4feb04f1590c6f7c70f8fd33012584aa213ab"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/indirect.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/indirect.wgsl",
+      "sha256": "877d29c75b4b9d5eaa2e2c08aa9d643834f2727fdd0258e0a9afac1ef23110bb"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/material.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/material.wgsl",
+      "sha256": "809db303167053f334949ff145f70fa6f8c18e9e72a23b31efbebb8670e8dc67"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/pack.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/pack.wgsl",
+      "sha256": "25934e9f6fa0bda3add004b85f85f3d05775322d017fa5de892fc26d83d4d7b4"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/post.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/post.wgsl",
+      "sha256": "03cdb4bbdb7947463939b52b9a71ce98271a5459f68f4928781ea0695fe6f7e7"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/rays.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/rays.wgsl",
+      "sha256": "204ce58e00b70c008bbffcba1f18bb4d87c71d4492706bb533ee94ec44350c8a"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/signal_spatial.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/signal_spatial.wgsl",
+      "sha256": "ac893623ce3c09cfb7d301013c61664fa6e74988940d997a4119119d677e7d28"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/signal_temporal.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/signal_temporal.wgsl",
+      "sha256": "fda5fa02799b8e86215444581d73134c6107314d74168421c2750808f3755ed3"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/temporal.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/temporal.wgsl",
+      "sha256": "dd740bfb10c8e99b6b12f8175a8d65b8b8371a44c671df337efc089c2d4328c4"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/tile_lights.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/tile_lights.wgsl",
+      "sha256": "f0ecd8ce456de23a8ce4aebd7c486e9dc35b6304a552b454be7a6615b93e41e1"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/types.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/types.wgsl",
+      "sha256": "e66753e71a7e2091a5319fcd956f27557bd05ebfe6128ca4b1535fba86df86b1"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/vertex.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/vertex.wgsl",
+      "sha256": "db42000fddc3bcd083e2324f5288ebe84b68aa1acb564b08bc8052113daa2b43"
+    },
+    {
+      "source": "src/rurix-render/src/realtime/shaders/vndf_probe.wgsl",
+      "path": "src/rurix-render/src/realtime/shaders/vndf_probe.wgsl",
+      "sha256": "520f255d35905bf9f42640cd34dd3dcfe689070b0fb0b269ee682f4d8bffc942"
+    },
+    {
+      "source": "src/rurix-render/src/gi/path_trace/prod.rs",
+      "path": "src/rurix-render/src/gi/path_trace/prod.rs",
+      "sha256": "494c6ce17a3d32658829754d4cad1c146ad42a4a7074b36c761feef833ac65c5"
+    },
+    {
+      "source": "src/rurix-render/src/gi/path_trace/prod_denoise.rs",
+      "path": "src/rurix-render/src/gi/path_trace/prod_denoise.rs",
+      "sha256": "a53ec6b9736251f7e66971a4ed78664788dd0427988a23cf6b3419a281d60f7b"
+    },
+    {
+      "source": "src/rurix-render/Cargo.toml",
+      "path": "src/rurix-render/Cargo.toml",
+      "source_sha256": "608edab36785ca3bba85e950428952b1d73794910f06fde2218e26e1a2101812",
+      "sha256": "08917fca5ccc768c3e432d4dfd80ec165cf2ddc6a18616d9dedf8ad829ff2a73",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurix-rt/build.rs",
+      "path": "src/rurix-rt/build.rs",
+      "sha256": "c3c2e003940d409a74a4efa6a2d6bf99455a0264e5d31dd38f184171fcf3ca02"
+    },
+    {
+      "source": "src/rurix-rt/compile-fail/async_buffer_alloc_incomplete.rs",
+      "path": "src/rurix-rt/compile-fail/async_buffer_alloc_incomplete.rs",
+      "sha256": "54131d010f49fb0192b2503f5b8f7ae0a0b189fb8cdfd01c8e59026ca4628f1a"
+    },
+    {
+      "source": "src/rurix-rt/compile-fail/async_buffer_cross_stream_unsync.rs",
+      "path": "src/rurix-rt/compile-fail/async_buffer_cross_stream_unsync.rs",
+      "sha256": "5802c56aea0ca17f4925e93e86252e74bbc98639a79b1465d41fc9f673a1e52e"
+    },
+    {
+      "source": "src/rurix-rt/compile-fail/async_buffer_use_after_free.rs",
+      "path": "src/rurix-rt/compile-fail/async_buffer_use_after_free.rs",
+      "sha256": "6272024b0715f8ca6cc4c10f883fec3f8c1037026f97017ce82196052a1ca8ea"
+    },
+    {
+      "source": "src/rurix-rt/compile-fail/cross_context.rs",
+      "path": "src/rurix-rt/compile-fail/cross_context.rs",
+      "sha256": "e8e40317416fbe6d92077d66408a642ea96bb65fe6691f1dbb5dbc34a9994a0c"
+    },
+    {
+      "source": "src/rurix-rt/compile-fail/handle_lifetime.rs",
+      "path": "src/rurix-rt/compile-fail/handle_lifetime.rs",
+      "sha256": "9905e08a147a93ce33806d538162df4213e733cc2730887a7a81a0fa1c3199fa"
+    },
+    {
+      "source": "src/rurix-rt/compile-fail/signal_timing.rs",
+      "path": "src/rurix-rt/compile-fail/signal_timing.rs",
+      "sha256": "037819d1a1dbcb29c20218a378fdd9b01ba47aa61afd379b9f21a1a17cec16cb"
+    },
+    {
+      "source": "src/rurix-rt/kernels/dgc_prepass.rx",
+      "path": "src/rurix-rt/kernels/dgc_prepass.rx",
+      "sha256": "33cd12fd4db1d1cd1d3c8d34c8b1f004d8803d0564cc34d3f14a1e69640ab3c1"
+    },
+    {
+      "source": "src/rurix-rt/kernels/gemm_tile.rx",
+      "path": "src/rurix-rt/kernels/gemm_tile.rx",
+      "sha256": "1144d90188daad7485c2f17a0d910234c51f23b935a5226ce952d22640543136"
+    },
+    {
+      "source": "src/rurix-rt/kernels/geom_page_decode.rx",
+      "path": "src/rurix-rt/kernels/geom_page_decode.rx",
+      "sha256": "52f817c054d909ab706185f47bb358b1719c305a01eb884741d917d89177b4fb"
+    },
+    {
+      "source": "src/rurix-rt/kernels/geom_page_decode_v2.rx",
+      "path": "src/rurix-rt/kernels/geom_page_decode_v2.rx",
+      "sha256": "8fdfb163ec2225a6210e664d698f428e6996a87adf40e1fc4e86c9e1a6b6581c"
+    },
+    {
+      "source": "src/rurix-rt/kernels/reduce.rx",
+      "path": "src/rurix-rt/kernels/reduce.rx",
+      "sha256": "8035e48381a9c1e0bac837e1c2f51d01714d6bb56e39749ef1ab0732c7594712"
+    },
+    {
+      "source": "src/rurix-rt/kernels/saxpy.rx",
+      "path": "src/rurix-rt/kernels/saxpy.rx",
+      "sha256": "72226591be8b995cecd91b6e99aa7a9e9aa7f08b87453ffdc35590271a61696c"
+    },
+    {
+      "source": "src/rurix-rt/kernels/scan.rx",
+      "path": "src/rurix-rt/kernels/scan.rx",
+      "sha256": "82fc4ee9a80d9b85cdc55ad60c1b57d7838816bed8f885de6e67ab796ae36f55"
+    },
+    {
+      "source": "src/rurix-rt/kernels/sr_binning.rx",
+      "path": "src/rurix-rt/kernels/sr_binning.rx",
+      "sha256": "98b3b29a5cbe09482f5ee5c0b6b3d0571b173b7ea366e213549da59ca6a60d54"
+    },
+    {
+      "source": "src/rurix-rt/kernels/sr_depth.rx",
+      "path": "src/rurix-rt/kernels/sr_depth.rx",
+      "sha256": "e064ec2b63b86b57da94faad9f93ef4923ba3e9ecbc977f8232a9d008160b667"
+    },
+    {
+      "source": "src/rurix-rt/kernels/sr_raster_tile.rx",
+      "path": "src/rurix-rt/kernels/sr_raster_tile.rx",
+      "sha256": "d39e6c2e9b17589f26e1fd3cbb00b69908833b9154e4cd0dbb1017e5754a666a"
+    },
+    {
+      "source": "src/rurix-rt/kernels/sr_tonemap.rx",
+      "path": "src/rurix-rt/kernels/sr_tonemap.rx",
+      "sha256": "2c666fb97e8e137078586d5af826d78eeefbfa04773f8faa1d4ad0dd2dd2a5b8"
+    },
+    {
+      "source": "src/rurix-rt/kernels/transpose.rx",
+      "path": "src/rurix-rt/kernels/transpose.rx",
+      "sha256": "e68505812d7e9e2eb80a535b55eb06a375fdea4b0c4995c8a6db67e4dfd7b6ad"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_collect.rs",
+      "path": "src/rurix-rt/src/agent_persistent_collect.rs",
+      "sha256": "f5cec5b79a46da4552ab00bfd4f6050499cc8472c0ce37dfb7c6648971f51b8c"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_factory.rs",
+      "path": "src/rurix-rt/src/agent_persistent_factory.rs",
+      "sha256": "90eca00d9a1d9a5966792b774c076777940d84557cba9c67713190dbd1e11a9c"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_graph.rs",
+      "path": "src/rurix-rt/src/agent_persistent_graph.rs",
+      "sha256": "89b8131222261f6e2073806f95e237658080b06a06bba6ab74e7e857d5e68f7f"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_owner.rs",
+      "path": "src/rurix-rt/src/agent_persistent_owner.rs",
+      "sha256": "8708f97831a4395549fe43e446261c2193c4da21d76a1cffcc3b36d1f7c15d00"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_telemetry.rs",
+      "path": "src/rurix-rt/src/agent_persistent_telemetry.rs",
+      "sha256": "1011e691c4b76c0581a3754eb884176c264dac8a77c099efc50707c819249e27"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_tests.rs",
+      "path": "src/rurix-rt/src/agent_persistent_tests.rs",
+      "sha256": "ec94dcf4df608a981dc002cd2981c2a5f53e625b32be01e25b955559618e0c4b"
+    },
+    {
+      "source": "src/rurix-rt/src/agent_persistent_transaction.rs",
+      "path": "src/rurix-rt/src/agent_persistent_transaction.rs",
+      "sha256": "12709065ffc6b0459c1631ca568f37bf6b39de8ad54fa57959c11634e310076f"
+    },
+    {
+      "source": "src/rurix-rt/src/alias_alloc.rs",
+      "path": "src/rurix-rt/src/alias_alloc.rs",
+      "sha256": "a4a13abedd2542907274debbca03908e0613a90a2b5c9472159de3baa99b5d60"
+    },
+    {
+      "source": "src/rurix-rt/src/backend.rs",
+      "path": "src/rurix-rt/src/backend.rs",
+      "sha256": "499e66c8ddd283a522718a369dedc885a5ecffcdb112931a35453104765ca5e9"
+    },
+    {
+      "source": "src/rurix-rt/src/command_build.rs",
+      "path": "src/rurix-rt/src/command_build.rs",
+      "sha256": "3cb2eb4d5fa86d0042516ca1dbb5498ccd231700cb3bcca3a6b1eb08187b77d6"
+    },
+    {
+      "source": "src/rurix-rt/src/descriptor_table.rs",
+      "path": "src/rurix-rt/src/descriptor_table.rs",
+      "sha256": "26b25590a7c7480adff555a88e073a1983bb04b024569b48763b693d37e7f699"
+    },
+    {
+      "source": "src/rurix-rt/src/dgc.rs",
+      "path": "src/rurix-rt/src/dgc.rs",
+      "sha256": "918af5969ea7db6bcc0373d1d0dbef2eab2cb67520e0a649e83f21479be223e8"
+    },
+    {
+      "source": "src/rurix-rt/src/error.rs",
+      "path": "src/rurix-rt/src/error.rs",
+      "sha256": "086cf8f67d0a8d487fdc5d87b868639630ae3bb5b32677f831fc3b27d9663cd6"
+    },
+    {
+      "source": "src/rurix-rt/src/execution_set.rs",
+      "path": "src/rurix-rt/src/execution_set.rs",
+      "sha256": "520dbf27b903d1b31580b9bbff589eb0ddac3b53232787be84cf77e1e04505f4"
+    },
+    {
+      "source": "src/rurix-rt/src/fatbin.rs",
+      "path": "src/rurix-rt/src/fatbin.rs",
+      "sha256": "e9f9786021e79f27472889096ae44d9f408555fe9af87c01f771c73f22902c7c"
+    },
+    {
+      "source": "src/rurix-rt/src/graph.rs",
+      "path": "src/rurix-rt/src/graph.rs",
+      "sha256": "dd3635a4f4b0ceae3004dc784e3f37c5f6321eb11ffaf6d33e9b26c0e7785dca"
+    },
+    {
+      "source": "src/rurix-rt/src/host_readback_allocation.rs",
+      "path": "src/rurix-rt/src/host_readback_allocation.rs",
+      "sha256": "b2aefb916d94296b0c3e18d135a0289d23a801efd327f31a13e057a05b772e76"
+    },
+    {
+      "source": "src/rurix-rt/src/hq_readback_diagnostics.rs",
+      "path": "src/rurix-rt/src/hq_readback_diagnostics.rs",
+      "sha256": "90071102b4f4f1729b67d56499d717f940893a9ea09e018452d87aee84dfd682"
+    },
+    {
+      "source": "src/rurix-rt/src/hq_region_scope.rs",
+      "path": "src/rurix-rt/src/hq_region_scope.rs",
+      "sha256": "783e79249ea14f1fdabfef023df59e28733915e757a0e873c53c033c036aa100"
+    },
+    {
+      "source": "src/rurix-rt/src/hq_setup_failure.rs",
+      "path": "src/rurix-rt/src/hq_setup_failure.rs",
+      "sha256": "734bc651f6b260dc8b489a450db264b877e2ab78e9a191f33035d36b5973af52"
+    },
+    {
+      "source": "src/rurix-rt/src/hq_submission_chunks.rs",
+      "path": "src/rurix-rt/src/hq_submission_chunks.rs",
+      "sha256": "91577f5a9dd1179d899d6e3c1dde35d0e31f6deb9c6a921f1bfb5112806230bb"
+    },
+    {
+      "source": "src/rurix-rt/src/interop.rs",
+      "path": "src/rurix-rt/src/interop.rs",
+      "sha256": "a02f6140fe2e6eda1ba3e44d82243681985264878bd653c9d43a14b3fc034a7d"
+    },
+    {
+      "source": "src/rurix-rt/src/lib.rs",
+      "path": "src/rurix-rt/src/lib.rs",
+      "sha256": "6a60fa875516a455524347a6e39116074aa3f5086f9a3b3946404326aadc6072"
+    },
+    {
+      "source": "src/rurix-rt/src/pipeline.rs",
+      "path": "src/rurix-rt/src/pipeline.rs",
+      "sha256": "75ad11a3d55214326f0dbec9c35edb62f2b9192c7dcf42e086d39eaf905fa9a9"
+    },
+    {
+      "source": "src/rurix-rt/src/pso_cache.rs",
+      "path": "src/rurix-rt/src/pso_cache.rs",
+      "sha256": "66a734ba7189c97f95b301fe87871b9a7d0fc9cacd64b4fa26a0047b28f161b9"
+    },
+    {
+      "source": "src/rurix-rt/src/render_budget_diagnostics.rs",
+      "path": "src/rurix-rt/src/render_budget_diagnostics.rs",
+      "sha256": "ce5d3f31d74e729bdb4fcc44e93b39405e3222e9885460a1585f6127d2b0d13b"
+    },
+    {
+      "source": "src/rurix-rt/src/render_capacity.rs",
+      "path": "src/rurix-rt/src/render_capacity.rs",
+      "sha256": "3ae86275d649c7b20850b8eff1ffbe66ca5310969ea109b3e4d3fb1d677a07a3"
+    },
+    {
+      "source": "src/rurix-rt/src/render_exec.rs",
+      "path": "src/rurix-rt/src/render_exec.rs",
+      "sha256": "834a216ed5c521509c7960feda1429639c8e5b6720addc27b5233d7d776a55d3"
+    },
+    {
+      "source": "src/rurix-rt/src/render_exec_g37_fif_dyn.rs",
+      "path": "src/rurix-rt/src/render_exec_g37_fif_dyn.rs",
+      "sha256": "1e6f9135f32f2e6789c825110ec0edca1bb39704cdce31c9cc9617415f510c4d"
+    },
+    {
+      "source": "src/rurix-rt/src/render_host_texture_memory.rs",
+      "path": "src/rurix-rt/src/render_host_texture_memory.rs",
+      "sha256": "22e6f74aaf0f708abb64a37cdffec0cfe58d7a6923f93b944ba00d77bb2172f8"
+    },
+    {
+      "source": "src/rurix-rt/src/rhi.rs",
+      "path": "src/rurix-rt/src/rhi.rs",
+      "sha256": "851d1566f9f5e03fd4e99597fc97bfcdc0239eabb9fe7ac8499b4f16847cfeac"
+    },
+    {
+      "source": "src/rurix-rt/src/rt_clas.rs",
+      "path": "src/rurix-rt/src/rt_clas.rs",
+      "sha256": "fb191245f164b43130a3c48f91f16a7702c1f0411333394af44745ab0797174c"
+    },
+    {
+      "source": "src/rurix-rt/src/rt_incremental.rs",
+      "path": "src/rurix-rt/src/rt_incremental.rs",
+      "sha256": "4a3009b37a5b2b78c5d5f8d9d41f4380a09b8804fca13ea35c2a7f752d756fbf"
+    },
+    {
+      "source": "src/rurix-rt/src/sampler.rs",
+      "path": "src/rurix-rt/src/sampler.rs",
+      "sha256": "a4e015caae4fd0be7f57796d80db5643bbae9bb39e7b4fe53603093b251da043"
+    },
+    {
+      "source": "src/rurix-rt/src/scheduler.rs",
+      "path": "src/rurix-rt/src/scheduler.rs",
+      "sha256": "7d3ec33b346932663b26b89a2d326f6d2ac1e5b474fe06c603b643b5dcf90e33"
+    },
+    {
+      "source": "src/rurix-rt/src/sys.rs",
+      "path": "src/rurix-rt/src/sys.rs",
+      "sha256": "3e393e602452dc78010acbe42eb01faadaaac1ae93da3241b9f0789c044ebaeb"
+    },
+    {
+      "source": "src/rurix-rt/src/tirt.rs",
+      "path": "src/rurix-rt/src/tirt.rs",
+      "sha256": "14b4088250b844cee3f61851d9f10b379c1dbddb49fd2082b0c47829821f5a86"
+    },
+    {
+      "source": "src/rurix-rt/src/vendor_dlss_rr.rs",
+      "path": "src/rurix-rt/src/vendor_dlss_rr.rs",
+      "sha256": "c29ed7cb7a9121962b58ecfcda6f65e060a4d6da8ce86b184d0e7d71ef976218"
+    },
+    {
+      "source": "src/rurix-rt/src/vendor_rr_present.rs",
+      "path": "src/rurix-rt/src/vendor_rr_present.rs",
+      "sha256": "87160f486eb847729f762f593f885f4aafbc954ccd1859e8f6b195da3a860d69"
+    },
+    {
+      "source": "src/rurix-rt/src/vendor_rr_shutdown.rs",
+      "path": "src/rurix-rt/src/vendor_rr_shutdown.rs",
+      "sha256": "2b8c6e241528b501e4a6fc6042639a4d0e13dcfc5f400a5970e2f1e8e761bef4"
+    },
+    {
+      "source": "src/rurix-rt/src/vendor_upscale.rs",
+      "path": "src/rurix-rt/src/vendor_upscale.rs",
+      "sha256": "c5b51d4c4b8a91293d5a7d5ed0a65b66839279ca365ec5b389e67f010553bc33"
+    },
+    {
+      "source": "src/rurix-rt/src/vk.rs",
+      "path": "src/rurix-rt/src/vk.rs",
+      "sha256": "657699c9c6de013ec5bd6812532bf17cb1e2d09dd89ea9989a9bfa7337ef941e"
+    },
+    {
+      "source": "src/rurix-rt/src/vk_capacity.rs",
+      "path": "src/rurix-rt/src/vk_capacity.rs",
+      "sha256": "927a0df394707766dffad3a35506a46f99a51a146f9b48c40eefb3764f798108"
+    },
+    {
+      "source": "src/rurix-rt/src/vk_g31_mesh_bench.rs",
+      "path": "src/rurix-rt/src/vk_g31_mesh_bench.rs",
+      "sha256": "7c9ae31b28bf08b58af26f04efa3dc2fcc627fd6d5b921ce1add55a4907f5303"
+    },
+    {
+      "source": "src/rurix-rt/src/vk_g31_present.rs",
+      "path": "src/rurix-rt/src/vk_g31_present.rs",
+      "sha256": "331b54678c42afb56e8eeefed3678a61ba52a65c093ca8e234119009fc993fd0"
+    },
+    {
+      "source": "src/rurix-rt/src/vk_g31_ser_body.rs",
+      "path": "src/rurix-rt/src/vk_g31_ser_body.rs",
+      "sha256": "5bbdaffd74baea18698cde4ed8e3b04826f03519d55d6c2e2efbf72aa4c6e6de"
+    },
+    {
+      "source": "src/rurix-rt/src/vk_g37_async_lanes.rs",
+      "path": "src/rurix-rt/src/vk_g37_async_lanes.rs",
+      "sha256": "6a53166c8c664f7fd650ad95ea7cd3e72981ac26b2cefd3ef83c9d41e5a8b176"
+    },
+    {
+      "source": "src/rurix-rt/src/vk_m50_rt_body.rs",
+      "path": "src/rurix-rt/src/vk_m50_rt_body.rs",
+      "sha256": "cdf7bb6819b5ea6c039690823d485468ba45ae87af305721c7eab9047ead0c53"
+    },
+    {
+      "source": "src/rurix-rt/Cargo.toml",
+      "path": "src/rurix-rt/Cargo.toml",
+      "source_sha256": "36f90dce7a0a7ddabc6571a6dc8e0aeef0e658f8773e09d3801a543a06d0c5f1",
+      "sha256": "af60e496f53c1550ef937dd87d6fa9b3d1980b6396283460849b060db01010b2",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/rurixc/src/ast.rs",
+      "path": "src/rurixc/src/ast.rs",
+      "sha256": "74fbbb900be0c9b3adf862c1cff75957ea3830a90056cc67d1e910064330e674"
+    },
+    {
+      "source": "src/rurixc/src/binding_layout.rs",
+      "path": "src/rurixc/src/binding_layout.rs",
+      "sha256": "530bb7dc9ad42b70d7ab10b97e29234f7a122f51bfc8b8198685c23934c1e5ef"
+    },
+    {
+      "source": "src/rurixc/src/borrow_check.rs",
+      "path": "src/rurixc/src/borrow_check.rs",
+      "sha256": "ace9a6519e9375ef58d1a34512e68bd2717d460d7c653e1ade30d53fa41bed18"
+    },
+    {
+      "source": "src/rurixc/src/capability_check.rs",
+      "path": "src/rurixc/src/capability_check.rs",
+      "sha256": "395b073dd318d05f481607bd4e09ff515aef4abf809c38957434ab111300d205"
+    },
+    {
+      "source": "src/rurixc/src/codegen.rs",
+      "path": "src/rurixc/src/codegen.rs",
+      "sha256": "843112f5242b98c3dab0d757139078570aebe3a975afc734296449f1519273bc"
+    },
+    {
+      "source": "src/rurixc/src/coloring.rs",
+      "path": "src/rurixc/src/coloring.rs",
+      "sha256": "43084c051d7dc4f991b4ad1fb4f67438da72289800e7cf47ca0683dfb2911e91"
+    },
+    {
+      "source": "src/rurixc/src/const_eval.rs",
+      "path": "src/rurixc/src/const_eval.rs",
+      "sha256": "1a4d0c0ae9bec4c91b2aa939e7548e70d333e945a605b85e5b9c5e4aa458708b"
+    },
+    {
+      "source": "src/rurixc/src/dataflow.rs",
+      "path": "src/rurixc/src/dataflow.rs",
+      "sha256": "fce7838ed4c144b30827b7faced4691e34eb16b76f606d8ac138ebb926d19275"
+    },
+    {
+      "source": "src/rurixc/src/device_codegen.rs",
+      "path": "src/rurixc/src/device_codegen.rs",
+      "sha256": "143b5af1ee90abbda3e0db51ca0cbc96b07e17e357aac3281a67f5c27c9730bb"
+    },
+    {
+      "source": "src/rurixc/src/diag.rs",
+      "path": "src/rurixc/src/diag.rs",
+      "sha256": "690873b787df963a569cd28c5d0f6cf55962c0f2a2c3dac1ef00706c1d593fbc"
+    },
+    {
+      "source": "src/rurixc/src/driver.rs",
+      "path": "src/rurixc/src/driver.rs",
+      "sha256": "ea50bef26d3fe2df2732d74d2b7267e301fee343ed0d900a52a317b322c9027f"
+    },
+    {
+      "source": "src/rurixc/src/drop_elab.rs",
+      "path": "src/rurixc/src/drop_elab.rs",
+      "sha256": "c88e0346a1295d67d41d6c94b3966168ee1cc3c1968369a8eca1c7d8571c2205"
+    },
+    {
+      "source": "src/rurixc/src/dxil_codegen.rs",
+      "path": "src/rurixc/src/dxil_codegen.rs",
+      "sha256": "9010d5bbf55ccdca125c06a19e1c66d095137aee3bd4df89ab358f58aff93c0a"
+    },
+    {
+      "source": "src/rurixc/src/dxil_sig_gate.rs",
+      "path": "src/rurixc/src/dxil_sig_gate.rs",
+      "sha256": "82965120960a379cc79b0301ff690b633acbc87ac8e4d800ded4dfb1fe523527"
+    },
+    {
+      "source": "src/rurixc/src/dxil_spirv.rs",
+      "path": "src/rurixc/src/dxil_spirv.rs",
+      "sha256": "6a67f262167aa1415224a40fa17d9e464cb12a0de1948c5a114055c8816d88ec"
+    },
+    {
+      "source": "src/rurixc/src/export_c.rs",
+      "path": "src/rurixc/src/export_c.rs",
+      "sha256": "7b957053ef6e736ab0fa5e80f33295e94a1d6d37a4639a180cd2cea37d48d08e"
+    },
+    {
+      "source": "src/rurixc/src/feature_gate.rs",
+      "path": "src/rurixc/src/feature_gate.rs",
+      "sha256": "84aa2b2628765ea2c3581545c97e0ee5848cb22035a2b93f22a22546047763fc"
+    },
+    {
+      "source": "src/rurixc/src/fmt.rs",
+      "path": "src/rurixc/src/fmt.rs",
+      "sha256": "3d7394e0e73c2d7c794c1dfb107ad7a0724c253feb105ec35446da693b4c9356"
+    },
+    {
+      "source": "src/rurixc/src/hir.rs",
+      "path": "src/rurixc/src/hir.rs",
+      "sha256": "e8e0dd7181e175568dddb3c6080b2c66b0ad51c614dc18d8345b325704932e5a"
+    },
+    {
+      "source": "src/rurixc/src/iface_extract.rs",
+      "path": "src/rurixc/src/iface_extract.rs",
+      "sha256": "c78f9be9b36ccb4edb969732f396f8c39f559d68563118e390377487c4bb072e"
+    },
+    {
+      "source": "src/rurixc/src/launch_check.rs",
+      "path": "src/rurixc/src/launch_check.rs",
+      "sha256": "b35dcdb5c807facfc4a2c4842fce4fe370389a650d3640b4de6e8598f74b07cb"
+    },
+    {
+      "source": "src/rurixc/src/lexer.rs",
+      "path": "src/rurixc/src/lexer.rs",
+      "sha256": "3b5a1f397813de8e6c4844aeed8687f3d8aafcb5cd2ad2c0a27716f8f6db89d7"
+    },
+    {
+      "source": "src/rurixc/src/lib.rs",
+      "path": "src/rurixc/src/lib.rs",
+      "sha256": "ec5b156e76989056fa9845677f6371818d83c569d08919e6a3670b539287b5cc"
+    },
+    {
+      "source": "src/rurixc/src/lossless.rs",
+      "path": "src/rurixc/src/lossless.rs",
+      "sha256": "a5b59a79e130ec40b72b69f58d476601e97a3ac1f398f49ac918c73a4f79773b"
+    },
+    {
+      "source": "src/rurixc/src/lower.rs",
+      "path": "src/rurixc/src/lower.rs",
+      "sha256": "688485382c13e77414f112ec60e0faa2ac94c549178c725dd89fe15fb967886f"
+    },
+    {
+      "source": "src/rurixc/src/manifest.rs",
+      "path": "src/rurixc/src/manifest.rs",
+      "sha256": "e6cc4c7141e1977b6df70b5eda413fe8324f747978c36a5df095add32494fdb1"
+    },
+    {
+      "source": "src/rurixc/src/messages.rs",
+      "path": "src/rurixc/src/messages.rs",
+      "sha256": "7202e1f570081b9b422107fb3f70c276b446213397f527df950c9f46bb9ae46a"
+    },
+    {
+      "source": "src/rurixc/src/mir.rs",
+      "path": "src/rurixc/src/mir.rs",
+      "sha256": "e528973a0c3c23ed9e86a26a44bb43c242baae6059636dd117d603ef52a0fd89"
+    },
+    {
+      "source": "src/rurixc/src/mir_build.rs",
+      "path": "src/rurixc/src/mir_build.rs",
+      "sha256": "b2278648ed68a92852e833b96b264ad3b78443c5faaa1eb8339cf46cfa34848b"
+    },
+    {
+      "source": "src/rurixc/src/mod_assembly.rs",
+      "path": "src/rurixc/src/mod_assembly.rs",
+      "sha256": "e2ae3386cba235cdb88dd3f0bd5f69a8a6e6d04f2d91754e65c66d16edcb672b"
+    },
+    {
+      "source": "src/rurixc/src/move_check.rs",
+      "path": "src/rurixc/src/move_check.rs",
+      "sha256": "9a39693571c41ce4460b750c7c81c40398a44c36f2da90288aec57726236627d"
+    },
+    {
+      "source": "src/rurixc/src/parser.rs",
+      "path": "src/rurixc/src/parser.rs",
+      "sha256": "02bcd899d086fda06ac5b94aea6d3748d29d4a3e239381a6932b85b48347c817"
+    },
+    {
+      "source": "src/rurixc/src/permutation.rs",
+      "path": "src/rurixc/src/permutation.rs",
+      "sha256": "09309aa65da6c4b94d66e6a75d4cb808b4eea833d89f85e266f502685643ae72"
+    },
+    {
+      "source": "src/rurixc/src/profile.rs",
+      "path": "src/rurixc/src/profile.rs",
+      "sha256": "67e73f7cdc3f6289f5ebf5a19a4e44fff1a4198d8e487d388e2fe17976d8c45b"
+    },
+    {
+      "source": "src/rurixc/src/ptxas.rs",
+      "path": "src/rurixc/src/ptxas.rs",
+      "sha256": "033de184e52701700c38050badf7d6c179d1338de1029c6bb3578becdaa9d403"
+    },
+    {
+      "source": "src/rurixc/src/query.rs",
+      "path": "src/rurixc/src/query.rs",
+      "sha256": "793b051888fd32bf82e6a83e3126b4788aa50989b995fe1f089c5e4635a66b82"
+    },
+    {
+      "source": "src/rurixc/src/ray_query_check.rs",
+      "path": "src/rurixc/src/ray_query_check.rs",
+      "sha256": "bcb4174c6c4adc6faaac08ac8e0067c9e61b22f914ef91a9571723a25e31192e"
+    },
+    {
+      "source": "src/rurixc/src/reflection.rs",
+      "path": "src/rurixc/src/reflection.rs",
+      "sha256": "28847a4b792eb4c127809837b029d9e5c9c2dc22ee4377b3918409c388318fea"
+    },
+    {
+      "source": "src/rurixc/src/render.rs",
+      "path": "src/rurixc/src/render.rs",
+      "sha256": "06c77abc120a32fac1c1aceba650a5def2e5ebd0abf44dbfe7180a0047987b23"
+    },
+    {
+      "source": "src/rurixc/src/resolve.rs",
+      "path": "src/rurixc/src/resolve.rs",
+      "sha256": "665812fb19b578a89969075ecb1b69cd2a502310ba857d60959ceede395a28aa"
+    },
+    {
+      "source": "src/rurixc/src/rt_pipeline.rs",
+      "path": "src/rurixc/src/rt_pipeline.rs",
+      "sha256": "db84061d4ecb138a2b94c12acaa10f21b9ab6fb8f6dd56915f0ab071a83dd84d"
+    },
+    {
+      "source": "src/rurixc/src/shader_library.rs",
+      "path": "src/rurixc/src/shader_library.rs",
+      "sha256": "63724cffdeba1dfbaa514ac0b950963e73c213fdad72817aac4e809a05916084"
+    },
+    {
+      "source": "src/rurixc/src/shader_stages.rs",
+      "path": "src/rurixc/src/shader_stages.rs",
+      "sha256": "d6aa055e531cddeea2af862de9d5067eb4116cacef17d8b66543589878d0727a"
+    },
+    {
+      "source": "src/rurixc/src/shared_check.rs",
+      "path": "src/rurixc/src/shared_check.rs",
+      "sha256": "8637708e890e6b0798e3c206b4f3c0477ee90a4dcd5c18242a78e0cb8a0e2588"
+    },
+    {
+      "source": "src/rurixc/src/source_map.rs",
+      "path": "src/rurixc/src/source_map.rs",
+      "sha256": "147ea8ef0c201363b7e1cafb39cde2bf33a954c3196889f674b9e203ac6c6f20"
+    },
+    {
+      "source": "src/rurixc/src/span.rs",
+      "path": "src/rurixc/src/span.rs",
+      "sha256": "80fea8e575c675d3ba3575c7f2a1d4880a902a9b2fc3122218eb0a1f3a8be40d"
+    },
+    {
+      "source": "src/rurixc/src/tbir.rs",
+      "path": "src/rurixc/src/tbir.rs",
+      "sha256": "9dc77e9ea5260b107cdf3fe4e632ee3229aac98db0118db4260a125c50038f81"
+    },
+    {
+      "source": "src/rurixc/src/tbir_build.rs",
+      "path": "src/rurixc/src/tbir_build.rs",
+      "sha256": "8726c231eee3d9127e65592eea7dd7e33397b2712dcf7ff53d63a8894ee8f509"
+    },
+    {
+      "source": "src/rurixc/src/test_harness.rs",
+      "path": "src/rurixc/src/test_harness.rs",
+      "sha256": "7b5e9665e859e127c82a9a29e2a358bb8814c32da1bc29ecc0cffaa95d3506fd"
+    },
+    {
+      "source": "src/rurixc/src/toolchain.rs",
+      "path": "src/rurixc/src/toolchain.rs",
+      "sha256": "4bb4d0f13d9b0a810edbc76021565885762d93ca447f11d78783e38d81013e99"
+    },
+    {
+      "source": "src/rurixc/src/ty.rs",
+      "path": "src/rurixc/src/ty.rs",
+      "sha256": "209683d919a6eb2af0d1ed65a773b4f3a3b366df435cef8a063318b36a5bb747"
+    },
+    {
+      "source": "src/rurixc/src/typeck.rs",
+      "path": "src/rurixc/src/typeck.rs",
+      "sha256": "f4be6bb02372badb5e11caf5a7c24faa6f2638a94803adb8cfd2f1363703cc97"
+    },
+    {
+      "source": "src/rurixc/src/views_check.rs",
+      "path": "src/rurixc/src/views_check.rs",
+      "sha256": "c8eeaff0e643c1ac6004218227d5580d9e68e227c8214bf41c051757eb2283ae"
+    },
+    {
+      "source": "src/rurixc/src/vulkan_codegen.rs",
+      "path": "src/rurixc/src/vulkan_codegen.rs",
+      "sha256": "592668bce65916abda18054c0ca7fa0851ccf66c18afcd592174e18b36ae63cb"
+    },
+    {
+      "source": "src/rurixc/src/messages/en.messages",
+      "path": "src/rurixc/src/messages/en.messages",
+      "sha256": "ec8db95bef49bec9693de1d05dfcb30d115f190a176207992908c688d15354dc"
+    },
+    {
+      "source": "src/rurixc/src/messages/zh.messages",
+      "path": "src/rurixc/src/messages/zh.messages",
+      "sha256": "9faa7f65a612119c5e86e4989a4af87a8f4b7c3b5b49ca45fe00ac819d5b3340"
+    },
+    {
+      "source": "src/rurixc/src/tooling/diag_json.rs",
+      "path": "src/rurixc/src/tooling/diag_json.rs",
+      "sha256": "4f104cba6edbe2fe76b80ea95ae8ac9da2a16402f6ef0ab678b9cc59e946e204"
+    },
+    {
+      "source": "src/rurixc/src/tooling/ide_query.rs",
+      "path": "src/rurixc/src/tooling/ide_query.rs",
+      "sha256": "5bd84876b6536eb770a0e979dfbb46af5fa12d52247489de9fa85e70427776f4"
+    },
+    {
+      "source": "src/rurixc/src/tooling/json_util.rs",
+      "path": "src/rurixc/src/tooling/json_util.rs",
+      "sha256": "4140460e51f47e852321498cda516fb36db7b4d082ff22ab66b42dec19d8d73b"
+    },
+    {
+      "source": "src/rurixc/src/tooling/lsp.rs",
+      "path": "src/rurixc/src/tooling/lsp.rs",
+      "sha256": "9a0409e8d61a83a8698139bcc84fe43bb0b2bdcab0943c161d3656363e6d888f"
+    },
+    {
+      "source": "src/rurixc/src/tooling/mod.rs",
+      "path": "src/rurixc/src/tooling/mod.rs",
+      "sha256": "12f05c8b22d0bba618b6c106f55cc6d43765dfb02c9260c1815d243b20b1e61a"
+    },
+    {
+      "source": "src/rurixc/src/tooling/session.rs",
+      "path": "src/rurixc/src/tooling/session.rs",
+      "sha256": "41e68f9d3c04c5cf674e90675c01a53b6de5a78515d5d18e0ea30c291a7a1a33"
+    },
+    {
+      "source": "src/rurixc/Cargo.toml",
+      "path": "src/rurixc/Cargo.toml",
+      "source_sha256": "497f3f8475d25989da3d2bee67ea77c95f3f9361d62a8f8d480610793d58a544",
+      "sha256": "57884df5a1c7bdf1ef85908800c997381f0d0e57b79da9b93e49208d306dc815",
+      "adapted_manifest": true
+    },
+    {
+      "source": "src/soft-raster/src/lib.rs",
+      "path": "src/soft-raster/src/lib.rs",
+      "sha256": "ffd1aea95a23010fe99f3fe5819f9a11ceb73f2d3b1a321050522d00401f64f4"
+    },
+    {
+      "source": "src/soft-raster/Cargo.toml",
+      "path": "src/soft-raster/Cargo.toml",
+      "source_sha256": "2b0e0c8862b068a4c6b5d09d25fe1483fde601b1ce62010cd13f158a8189dc15",
+      "sha256": "738f963b8ae086ba7e0725079c213d80fbdf3dafca8d9ea905a01296e362e57c",
+      "adapted_manifest": true
+    },
+    {
+      "source": "LICENSE-MIT",
+      "path": "LICENSE-MIT",
+      "sha256": "82e7f8d9616f953250aecd4b204c2e7b6ac43daad8e5d644b3bbf21ef854771d"
+    },
+    {
+      "source": "LICENSE-APACHE",
+      "path": "LICENSE-APACHE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/.cargo/config.toml",
+      "path": "../naga-25.0.1/.cargo/config.toml",
+      "sha256": "d7389d2a0c08ec72b79e83a3c76980903e3f9123625c32e69c798721193e2e74"
+    },
+    {
+      "source": "vendor/naga-25.0.1/.cargo-ok",
+      "path": "../naga-25.0.1/.cargo-ok",
+      "sha256": "afbf9d0f3560b0fd7795e81c42a0a79ee6b6fc67e064f77826aee642cad28d91"
+    },
+    {
+      "source": "vendor/naga-25.0.1/.cargo_vcs_info.json",
+      "path": "../naga-25.0.1/.cargo_vcs_info.json",
+      "sha256": "44d965d5bf96bc62062230693fae84ead5ce3f65bfa224f895e30ddb1c015c54"
+    },
+    {
+      "source": "vendor/naga-25.0.1/.gitattributes",
+      "path": "../naga-25.0.1/.gitattributes",
+      "sha256": "ae056c046266cc9d94078ac39fe9d9c72c79aaa800ca4b51c87b9e53fb135dfe"
+    },
+    {
+      "source": "vendor/naga-25.0.1/.gitignore",
+      "path": "../naga-25.0.1/.gitignore",
+      "sha256": "ce69b4c83cbe7fcf6349b412de4e966871ceef919feac9f74991a37ef57bd310"
+    },
+    {
+      "source": "vendor/naga-25.0.1/build.rs",
+      "path": "../naga-25.0.1/build.rs",
+      "sha256": "6334a1ed855479c3b15f7cc8227bb38fe304063150c6f150e811ae7e79ba6d13"
+    },
+    {
+      "source": "vendor/naga-25.0.1/Cargo.lock",
+      "path": "../naga-25.0.1/Cargo.lock",
+      "sha256": "26ec64f1b4cff1385373c02b6e91a7bd913ad91abcdcea9a300f25d55de95647"
+    },
+    {
+      "source": "vendor/naga-25.0.1/Cargo.toml",
+      "path": "../naga-25.0.1/Cargo.toml",
+      "sha256": "d4b4ced71d5954e272a643fd5a29c1e4ad94c04a77ceadcce8ddd5cae1e1c90e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/Cargo.toml.orig",
+      "path": "../naga-25.0.1/Cargo.toml.orig",
+      "sha256": "c28f6a48bc9bb9c3f39e4abab6e8394bdb5770c35ae558cb988e84b02c33730e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/CHANGELOG.md",
+      "path": "../naga-25.0.1/CHANGELOG.md",
+      "sha256": "a3a9f0d381e59daaf59cff0f465aacfa3ebeacdbf3960d1533e231b0747106a3"
+    },
+    {
+      "source": "vendor/naga-25.0.1/LICENSE.APACHE",
+      "path": "../naga-25.0.1/LICENSE.APACHE",
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    {
+      "source": "vendor/naga-25.0.1/LICENSE.MIT",
+      "path": "../naga-25.0.1/LICENSE.MIT",
+      "sha256": "c7fea58d1cfe49634cd92e54fc10a9d871f4b275321a4cd8c09e449122caaeb4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/PATCH.md",
+      "path": "../naga-25.0.1/PATCH.md",
+      "sha256": "388050f3e2804c681fe169e888116aec0ff7c56e99af1d53fe94ab5b084e909f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/README.md",
+      "path": "../naga-25.0.1/README.md",
+      "sha256": "38da31ea3776c8fea1e9461592c9d3fdcb44f4adfddf67510d7cdf6700b00b0d"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/arena/handle.rs",
+      "path": "../naga-25.0.1/src/arena/handle.rs",
+      "sha256": "bbcd3273efdca3be768dbb7e69e7315c501c07cf9780c61faddd86a43075ef40"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/arena/handle_set.rs",
+      "path": "../naga-25.0.1/src/arena/handle_set.rs",
+      "sha256": "f274bff9d9eecc9f0bb56a9a14be486b3f23660181f3b67bc429540add991618"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/arena/handlevec.rs",
+      "path": "../naga-25.0.1/src/arena/handlevec.rs",
+      "sha256": "e4d1aa3fb88a60e9fc3c33328b920365ce6658528b058e848fbddae94d35a7fb"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/arena/mod.rs",
+      "path": "../naga-25.0.1/src/arena/mod.rs",
+      "sha256": "7394069f3531374c6632d6518df0a2eceb9097d53d093ba06aed286a323fbe49"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/arena/range.rs",
+      "path": "../naga-25.0.1/src/arena/range.rs",
+      "sha256": "0ca9d06ac7f32528a0e7ad22948a95b4e020eefaa3c92d39261bd3c74727b22d"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/arena/unique_arena.rs",
+      "path": "../naga-25.0.1/src/arena/unique_arena.rs",
+      "sha256": "e6316af03fa10ed2a9733aa1f83d307b885c05f427ee5d5912580bd578798f1e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/continue_forward.rs",
+      "path": "../naga-25.0.1/src/back/continue_forward.rs",
+      "sha256": "a643b8739a5a7bb46e33741e83ae06ac14f556d9c5fafea7be5efd337f314c0c"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/dot/mod.rs",
+      "path": "../naga-25.0.1/src/back/dot/mod.rs",
+      "sha256": "0a9d06fb3086ae337f022137ca281ba9c7bb6fa807e57b9df8d79a7185e7c085"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/glsl/features.rs",
+      "path": "../naga-25.0.1/src/back/glsl/features.rs",
+      "sha256": "4af8a65178989da6c37f4fd7cbcd3264fdd4ca1946887f73890187ef85213dc2"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/glsl/keywords.rs",
+      "path": "../naga-25.0.1/src/back/glsl/keywords.rs",
+      "sha256": "8dc62a681d4c9ee0dc579c2983c9cfabf7fb746d246559826e271abb2f7139ab"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/glsl/mod.rs",
+      "path": "../naga-25.0.1/src/back/glsl/mod.rs",
+      "sha256": "68ee8402f0dd91e864952cec2844d228d2929abee8010e450b1170729c2eb95e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/conv.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/conv.rs",
+      "sha256": "30005292ccadace67c320d60b163c630eabed0536c03b29a5e43657a056d5822"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/help.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/help.rs",
+      "sha256": "0bc0238476e3ecbd79b3d48b1761c590682e6f93cfaea457ba9bd95d09bcd712"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/keywords.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/keywords.rs",
+      "sha256": "4750431d8da956bf0065382fa2f006c5df10c06c7bb9a2950641e330e18f89a4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/mod.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/mod.rs",
+      "sha256": "d794abbef5be978f39b8420a4ce4fc51449ba6f72beb2d2f867377a363500f29"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/ray.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/ray.rs",
+      "sha256": "316dbc874eb16e51660453cc767e5ccb9c9c3aa07d725a3f3d9bc4cad61bee48"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/storage.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/storage.rs",
+      "sha256": "7afb490a404008ff8ff9e5ae5e45e2f509231dbfedee1059fcda5c8ce7856996"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/hlsl/writer.rs",
+      "path": "../naga-25.0.1/src/back/hlsl/writer.rs",
+      "sha256": "a365fe8c0034172c12d188de0b7b32adb541558217ec839be6a0492f17b81049"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/mod.rs",
+      "path": "../naga-25.0.1/src/back/mod.rs",
+      "sha256": "3fafba3c77a7333231206f46d4ff8a23cabbd1e8638c4d1cd20fdbb0fa5fe5d3"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/msl/keywords.rs",
+      "path": "../naga-25.0.1/src/back/msl/keywords.rs",
+      "sha256": "185ee5e4f655e92a746c34de2bcbf1e75d6b1683284fb0b71be6738670aa6819"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/msl/mod.rs",
+      "path": "../naga-25.0.1/src/back/msl/mod.rs",
+      "sha256": "e25e4b2dce9de27dbae3008291fc50b2333bface743d5398bc91ac22e830086a"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/msl/sampler.rs",
+      "path": "../naga-25.0.1/src/back/msl/sampler.rs",
+      "sha256": "915e2e9e508dfe120531e99cb2deb4ff8aab3d9701fd104fe0896a28671b8f7b"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/msl/writer.rs",
+      "path": "../naga-25.0.1/src/back/msl/writer.rs",
+      "sha256": "2bcec40eb50d3e00d9afbe8e08efec4993994b10d5a008faf6cc27649deaaddd"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/pipeline_constants.rs",
+      "path": "../naga-25.0.1/src/back/pipeline_constants.rs",
+      "sha256": "71f47e7ecf920d394ff4cc3dc6f35e89d2e736ee61f9b0839429cd318e6e3c9e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/block.rs",
+      "path": "../naga-25.0.1/src/back/spv/block.rs",
+      "sha256": "8926ca247c702074c8a0225bee6e4da387fcaa9e1f3cecba96f5f50143a454fa"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/helpers.rs",
+      "path": "../naga-25.0.1/src/back/spv/helpers.rs",
+      "sha256": "a49822d0373ffa48bae506cc98743be2201c2ac6b885c35094639c13592e97eb"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/image.rs",
+      "path": "../naga-25.0.1/src/back/spv/image.rs",
+      "sha256": "a82fce9176d69455873031b35fe6268b724a90d158d94b12e4b0515d216355a3"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/index.rs",
+      "path": "../naga-25.0.1/src/back/spv/index.rs",
+      "sha256": "9568aa8fee038e93144ad55aa05f2f477863859a46f082828af22a6c83e23854"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/instructions.rs",
+      "path": "../naga-25.0.1/src/back/spv/instructions.rs",
+      "sha256": "bbcc71a78b6467e09300b39359cd2052eefb28dabf9fab4b51341269dcd960d5"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/layout.rs",
+      "path": "../naga-25.0.1/src/back/spv/layout.rs",
+      "sha256": "60ed7d922a29063cd24355675fe17b1cfb72d40b39c079ee73b584f5c665faef"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/mod.rs",
+      "path": "../naga-25.0.1/src/back/spv/mod.rs",
+      "sha256": "82cec6fab990b8b89acd845b5c9c564b1a5270aec7306a164de2dce778d37eda"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/ray.rs",
+      "path": "../naga-25.0.1/src/back/spv/ray.rs",
+      "sha256": "9f2e8090bfac613ab42d7baf6f4d8fcd834c2523c5eddcbc8bb41f7cbb9456b0"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/recyclable.rs",
+      "path": "../naga-25.0.1/src/back/spv/recyclable.rs",
+      "sha256": "30555e41098be9af6edb120ce04feff2969e1d0de01a6b3133576d48d24a1acc"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/selection.rs",
+      "path": "../naga-25.0.1/src/back/spv/selection.rs",
+      "sha256": "1cb54a425c43015f6a3d6fa56f77f2b068089c270b3b050061aa23aa71b0dd3f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/subgroup.rs",
+      "path": "../naga-25.0.1/src/back/spv/subgroup.rs",
+      "sha256": "cdf2d77552b63feab7d076d646f090badf38a03d1aace063d937fb33e989fe0b"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/spv/writer.rs",
+      "path": "../naga-25.0.1/src/back/spv/writer.rs",
+      "sha256": "26aee1968a54eaaaea017f7f3db223e83f3b2ff6cc458abba544fe19ec263cc5"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/mod.rs",
+      "path": "../naga-25.0.1/src/back/wgsl/mod.rs",
+      "sha256": "9a5708c0c7c84df39712d25948912390ccd0e85eb927b842cdb85b04be68f699"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_2x2_f16.wgsl",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_2x2_f16.wgsl",
+      "sha256": "b232b6f37e84576f3bec6fa67ccaf0a3fea924ea2e13eadfa68b649dc1d3907c"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_2x2_f32.wgsl",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_2x2_f32.wgsl",
+      "sha256": "50c6bedb78f8db1c54c3d262eb3bb9d0cbda01b256540ea89254c671cafc42d4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_3x3_f16.wgsl",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_3x3_f16.wgsl",
+      "sha256": "2e4b60b5b5e25f938441fade81afe6b92eb9a33ab0dc9d2ade78b849977e299b"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_3x3_f32.wgsl",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_3x3_f32.wgsl",
+      "sha256": "0ede2351cec2558899e971985e550594749a848891a843bde28b2112b30b8968"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_4x4_f16.wgsl",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_4x4_f16.wgsl",
+      "sha256": "373a15f75a2f87ebfb089764f422ecfc830fc1b7fd3eb045d5e3fa396d12185a"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_4x4_f32.wgsl",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/inverse/inverse_4x4_f32.wgsl",
+      "sha256": "43261c8c697b96a17394fda30307e919f942d26baf2904270bb7a2abb9a79a23"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/polyfill/mod.rs",
+      "path": "../naga-25.0.1/src/back/wgsl/polyfill/mod.rs",
+      "sha256": "19e94c32db5f111e1f0e5ab74ac5739f836b57878b4521a551ed3c7ea514acab"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/back/wgsl/writer.rs",
+      "path": "../naga-25.0.1/src/back/wgsl/writer.rs",
+      "sha256": "ffb7fd10b74ffccdb5633d9481ba4f312cfa50dc1ae44d3c955fc7989dc53294"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/diagnostic_debug.rs",
+      "path": "../naga-25.0.1/src/common/diagnostic_debug.rs",
+      "sha256": "420babb276a179808025c113c8695f6a88d055ad54df935aeecac0d4e617d891"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/diagnostic_display.rs",
+      "path": "../naga-25.0.1/src/common/diagnostic_display.rs",
+      "sha256": "705e995ee20b34192778e908930b304f010f8baa61c0f488cf3a4c3167c7f9d1"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/mod.rs",
+      "path": "../naga-25.0.1/src/common/mod.rs",
+      "sha256": "43e6ddb47276e35b88702dcbe1d4609b37f6fa3220437e6ec25b39a614e331a4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/predeclared.rs",
+      "path": "../naga-25.0.1/src/common/predeclared.rs",
+      "sha256": "e62364bafcd72f8edbab3b7bffcd142bd527139fe0aeb1ea1f214bd4be327940"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/wgsl/diagnostics.rs",
+      "path": "../naga-25.0.1/src/common/wgsl/diagnostics.rs",
+      "sha256": "1588d2c86f4df989d5f2c40b0d8139d1c619fe10fd567ee71d152dd9d5a98475"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/wgsl/mod.rs",
+      "path": "../naga-25.0.1/src/common/wgsl/mod.rs",
+      "sha256": "e993999d17429c2863573fe088f89903a04c5d1f1c7c325981063239ac9bc210"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/wgsl/to_wgsl.rs",
+      "path": "../naga-25.0.1/src/common/wgsl/to_wgsl.rs",
+      "sha256": "dfa869af385b4d979425e78b8decce65059bc4d5a595f14e3759d86d69a042f1"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/common/wgsl/types.rs",
+      "path": "../naga-25.0.1/src/common/wgsl/types.rs",
+      "sha256": "c1b7bd385445ce36b6a712297992f4bbb25ab614371d8c85dfc12e41da0918ff"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/compact/expressions.rs",
+      "path": "../naga-25.0.1/src/compact/expressions.rs",
+      "sha256": "6a3d26f601e79645afed2d6f2f1a7afa488053a2482c7230fa40de41d3c67e18"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/compact/functions.rs",
+      "path": "../naga-25.0.1/src/compact/functions.rs",
+      "sha256": "22aed14007912a1898820824d26e8320b203db84362f846c21899614a94db9ab"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/compact/handle_set_map.rs",
+      "path": "../naga-25.0.1/src/compact/handle_set_map.rs",
+      "sha256": "faa5351fc899eae1de582a4d31722555edee72c93f491d2e8cb4e41e27af07f6"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/compact/mod.rs",
+      "path": "../naga-25.0.1/src/compact/mod.rs",
+      "sha256": "ad5d3df4d1866ee44674347f1215dbbf3778342629571fcd4a54a28a3faaf7c7"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/compact/statements.rs",
+      "path": "../naga-25.0.1/src/compact/statements.rs",
+      "sha256": "735943a732354796b6171bffaa9a09fb57ff3b211fbf844324787e53ab5c3e98"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/compact/types.rs",
+      "path": "../naga-25.0.1/src/compact/types.rs",
+      "sha256": "06d92a3d45ffb2d2ca4d04c6fac1b272d1f74afdd93c2cf21d156e3807c8eed2"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/diagnostic_filter.rs",
+      "path": "../naga-25.0.1/src/diagnostic_filter.rs",
+      "sha256": "86d284d4aceea44a7d5134a0665eb05d4793b2d4e1db9a6541b8a084cb3e7680"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/error.rs",
+      "path": "../naga-25.0.1/src/error.rs",
+      "sha256": "80887ac0dec2c1d7d336c0b2ddab9c611a86737331597263479406d9eeae1c7f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/atomic_upgrade.rs",
+      "path": "../naga-25.0.1/src/front/atomic_upgrade.rs",
+      "sha256": "e34aa98fa5bb3e07deaf64407ee58f3cc929bcfc1858bd81d3462404e9ac711d"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/ast.rs",
+      "path": "../naga-25.0.1/src/front/glsl/ast.rs",
+      "sha256": "7e171ae3a3812b628a4f75a67332cb7253696d83a317276ca4cdafe905d98a5f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/builtins.rs",
+      "path": "../naga-25.0.1/src/front/glsl/builtins.rs",
+      "sha256": "dc1e792c7183bc0167764adff0472409964905c3525dd4cb07a6305296522e66"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/context.rs",
+      "path": "../naga-25.0.1/src/front/glsl/context.rs",
+      "sha256": "df09c78065349070b4e61134d3b00a998e8c4ababd2735d0f12512fbe39befa4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/error.rs",
+      "path": "../naga-25.0.1/src/front/glsl/error.rs",
+      "sha256": "bb5ad998f6eb7435ac63256c5893b57b06376bbe87f90d8b446d8bfb37eda6a4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/functions.rs",
+      "path": "../naga-25.0.1/src/front/glsl/functions.rs",
+      "sha256": "7e71aed7cb33dbaf047cd806ee095449283abaaf74f008b73f59ed7c04c3f6b3"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/lex.rs",
+      "path": "../naga-25.0.1/src/front/glsl/lex.rs",
+      "sha256": "bcfb189d424f880f35afaf8f81ad43d6336552dbf444f707998e2cfa4d7bd013"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/mod.rs",
+      "path": "../naga-25.0.1/src/front/glsl/mod.rs",
+      "sha256": "e1286d5106489660453aed5f0f801014b71a2e729c38d20dfc0453cfe0f7566c"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/offset.rs",
+      "path": "../naga-25.0.1/src/front/glsl/offset.rs",
+      "sha256": "5410e07eeb4ce75db01ed9831880176868e1f566441f2a1b3f938f93c217f3bc"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/parser/declarations.rs",
+      "path": "../naga-25.0.1/src/front/glsl/parser/declarations.rs",
+      "sha256": "71a25aa3b4f47d18cfb989b475c4cdfbf41d3cd2a8dd26840c3d820704006e96"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/parser/expressions.rs",
+      "path": "../naga-25.0.1/src/front/glsl/parser/expressions.rs",
+      "sha256": "360b836636e0c8dbc074733316ceeadd00a30755a726e1fb94947a1ca902a5b5"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/parser/functions.rs",
+      "path": "../naga-25.0.1/src/front/glsl/parser/functions.rs",
+      "sha256": "6fd9b26ba47722fa88a150d067ef5019032b504c0fe33b0c69b0c414a8eca5a4"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/parser/types.rs",
+      "path": "../naga-25.0.1/src/front/glsl/parser/types.rs",
+      "sha256": "a023f5e78f0f3eb185cb4cffe426738770af0b89005177977e3e5b182f06d6fb"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/parser.rs",
+      "path": "../naga-25.0.1/src/front/glsl/parser.rs",
+      "sha256": "495095ec2025455a536cbd4fddba9ae9f8cad9c1f57724311012b8d5d13b6b0d"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/parser_tests.rs",
+      "path": "../naga-25.0.1/src/front/glsl/parser_tests.rs",
+      "sha256": "9e77908af904cf9a7e3179d9e2f27e568aab8b0962d9dee33df71e83138025df"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/token.rs",
+      "path": "../naga-25.0.1/src/front/glsl/token.rs",
+      "sha256": "98066ad157ba7ccdfea5b7c353f7f28e4205f04aa9b5b26634decbd5df6007f9"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/types.rs",
+      "path": "../naga-25.0.1/src/front/glsl/types.rs",
+      "sha256": "64d834df86dcdc5dc82d74698b2ff41f14e2845e2263cc43bc6abbe8e7708e3e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/glsl/variables.rs",
+      "path": "../naga-25.0.1/src/front/glsl/variables.rs",
+      "sha256": "04f3d7d9af6ac6988d7c51cd914420f2949bfa2886727d3db5a4d9b943d10407"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/interpolator.rs",
+      "path": "../naga-25.0.1/src/front/interpolator.rs",
+      "sha256": "ccf5bba1bc87e3a10e2ecf7e6e66c8c523adf0358f157c0b4c3f0677400b258f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/mod.rs",
+      "path": "../naga-25.0.1/src/front/mod.rs",
+      "sha256": "74bdd9b95672a00a08fb7c500ee263468a2df1e39edf3753593caa0d967a9553"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/spv/convert.rs",
+      "path": "../naga-25.0.1/src/front/spv/convert.rs",
+      "sha256": "50d2388a5efe977068316f8bdd3b0bdde364a564b4f3235babff75c3f97d53bd"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/spv/error.rs",
+      "path": "../naga-25.0.1/src/front/spv/error.rs",
+      "sha256": "492d0e0ed15383a6adb33e84e35de110606fc525b869493d096bafa361749bfb"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/spv/function.rs",
+      "path": "../naga-25.0.1/src/front/spv/function.rs",
+      "sha256": "f99cf7848c96372ac893805388a6aa47d545662aef03a35c4a7d7107bde5a661"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/spv/image.rs",
+      "path": "../naga-25.0.1/src/front/spv/image.rs",
+      "sha256": "a719cf3f8b04e9d8a77b9a7deb695e7a9ee3c97c67aa798a6a56f86cb1eb3f37"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/spv/mod.rs",
+      "path": "../naga-25.0.1/src/front/spv/mod.rs",
+      "sha256": "9d441ca54c7b5353ae0958343d5602c43cb99029ca06f64dbdfbdcc13533b670"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/spv/null.rs",
+      "path": "../naga-25.0.1/src/front/spv/null.rs",
+      "sha256": "a04b859234d020ed4fd4ddca2be35ea50e1a77a60211d80bf1538227fb6cdb87"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/type_gen.rs",
+      "path": "../naga-25.0.1/src/front/type_gen.rs",
+      "sha256": "481dd7cb27524632176f27c0465feb65166074702bf65edb3a161045b7f1d51c"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/error.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/error.rs",
+      "sha256": "d72b3433611fa1fd03f61fbd06bbd5c5d58e914af79ae69266e65f52163014a5"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/index.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/index.rs",
+      "sha256": "5d021516fce8405be26a38f51144bb59401d1c09ad139bebfc607aaba532813d"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/lower/construction.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/lower/construction.rs",
+      "sha256": "093283c676221a50f51fe7e60edfb01e7fb86edaaf0fcb012f329033349187a0"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/lower/conversion.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/lower/conversion.rs",
+      "sha256": "f02535281246150d5eefe0720d3eb3928636a29c41e6732be99ff43a209fa3c9"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/lower/mod.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/lower/mod.rs",
+      "sha256": "b090b92f8319afcaa9bdf5a2673a69f99973b8b9f31c31e4b65b806eb8fdecab"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/mod.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/mod.rs",
+      "sha256": "9c4e2e72552bc2fca2e4bbd66e58c08d27c385959d18e19240286c89ec4301da"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/ast.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/ast.rs",
+      "sha256": "87ab5b2a5839e54fb810f219952b9f4f5b7cdba7f5be2670dd57f07b1547bfbe"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/conv.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/conv.rs",
+      "sha256": "9996584ebb4d6a26e8729cfe24dc71136842554370cec78511746ebd0db8a795"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/directive/enable_extension.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/directive/enable_extension.rs",
+      "sha256": "c4ba124e6f549530a6b05ad3d48d70ca3d6f7ad9073ab9910c7f90e4c41fef50"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/directive/language_extension.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/directive/language_extension.rs",
+      "sha256": "9c245c4a09084a8d68f592f5f8cc0bd6f0e4bff65ccc824d87fb53288607b263"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/directive.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/directive.rs",
+      "sha256": "cf4dee156804b939ffffef7827a3584416290c1b08ad7843d9ba4749814de0d1"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/lexer.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/lexer.rs",
+      "sha256": "af9456df1c086e7a5f24d06ba8fe0e9ccea7de891317aa251931f447253467cf"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/mod.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/mod.rs",
+      "sha256": "92f28b21eb62e81b76d1e390603d834b051d081d0afbfc396e0cf74f7499c268"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/parse/number.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/parse/number.rs",
+      "sha256": "2ae8e182afed357f51e74f060ca05d6d10cc917da5b9cfdc705670d615772625"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/front/wgsl/tests.rs",
+      "path": "../naga-25.0.1/src/front/wgsl/tests.rs",
+      "sha256": "51d420cbb9d911d994152b6815b2d01d2203112cfecd4b6c38b26f56d19aeb06"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/ir/block.rs",
+      "path": "../naga-25.0.1/src/ir/block.rs",
+      "sha256": "733a8d2d1fdca6a8bb380687a3546bcec45d23adb39a01fa1b2ad07e038c95e0"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/ir/mod.rs",
+      "path": "../naga-25.0.1/src/ir/mod.rs",
+      "sha256": "4ac2e9a7d65c60aafdc89cb66097524eb3257873c9b5be7f679c388805d8012a"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/keywords/mod.rs",
+      "path": "../naga-25.0.1/src/keywords/mod.rs",
+      "sha256": "43530de120c7b377e5a93b1c02193a6ee154941152e57a04126f81b37c312209"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/keywords/wgsl.rs",
+      "path": "../naga-25.0.1/src/keywords/wgsl.rs",
+      "sha256": "7c4c7763c71057a113100f4d55c035a098141d36b60f981c7ca81b4d36248f74"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/lib.rs",
+      "path": "../naga-25.0.1/src/lib.rs",
+      "sha256": "a3f4ed3f585c2caedf43210d83f2e9ac13420f4ce3dd0a7e7a0c251b7e2489e2"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/non_max_u32.rs",
+      "path": "../naga-25.0.1/src/non_max_u32.rs",
+      "sha256": "c669f8b491c458a7308a607379462259425ce6429bb5c4a581f96948553cd8ad"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/constant_evaluator.rs",
+      "path": "../naga-25.0.1/src/proc/constant_evaluator.rs",
+      "sha256": "dffe8d95177fedea6385b9ab4a98b321c62450819609f0f5ff4fc71b0515188d"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/emitter.rs",
+      "path": "../naga-25.0.1/src/proc/emitter.rs",
+      "sha256": "f7a0712519e8a6ea5ab18c9c1ed2b78b8268c4312b0c50d758935764b87f82ea"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/index.rs",
+      "path": "../naga-25.0.1/src/proc/index.rs",
+      "sha256": "836a5541dc6db9bf09932d9552634f789f5f7043aa733938dcc167fe096e0d81"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/layouter.rs",
+      "path": "../naga-25.0.1/src/proc/layouter.rs",
+      "sha256": "176de4f53f868c784e206dff2f27b051d26e2a9280aefef5ad3218512d93e3a7"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/mod.rs",
+      "path": "../naga-25.0.1/src/proc/mod.rs",
+      "sha256": "405cd47ad759673796eaa7d2247e50be712248a0e375ab3b915068887536513a"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/namer.rs",
+      "path": "../naga-25.0.1/src/proc/namer.rs",
+      "sha256": "b8e99ec57abbe1ae9a3a81eff9b8858566d0bd9a3c86318b9e26b3d82d3ded24"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/any_overload_set.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/any_overload_set.rs",
+      "sha256": "fcabc7736f9b92a77e4a1f707af7290968746a9e0d9ab431ee6cf8b00584b489"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/constructor_set.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/constructor_set.rs",
+      "sha256": "3f1251ac51250eab24aaa05860630b1cd1aae7a7e485a73fc8c618ae4cb8bd9f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/list.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/list.rs",
+      "sha256": "c9bf435d72f3ea6d39ccbe329fd6272efa3bab8bba8aec86dcd254e86aecff0c"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/mathfunction.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/mathfunction.rs",
+      "sha256": "d5b9c4700eae26405117fd2bef669e026fa3a7606802286a397507e56c8cde14"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/mod.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/mod.rs",
+      "sha256": "7176d91f27e7c29eb02f9e1aa06d3ac86b7f61b8d4ab89216a8be11d25d53a41"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/one_bits_iter.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/one_bits_iter.rs",
+      "sha256": "b4f6f8a861141f64d61e2b8e56ea9ec4b244780c05da64f8dd11334ec29d4413"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/regular.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/regular.rs",
+      "sha256": "ad3ca76532656845b56e2ee979667614e7b8196dcd89826cc9d37effed8c2a34"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/rule.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/rule.rs",
+      "sha256": "43c3e0547c09337458619b13deec6c7cbc43ce7cea6f14f229ee867517fbb63f"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/scalar_set.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/scalar_set.rs",
+      "sha256": "90d6193e36a964e9b431b3e7fd880ba0e07148b785767a0a51f8ba9bb1c615f6"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/overloads/utils.rs",
+      "path": "../naga-25.0.1/src/proc/overloads/utils.rs",
+      "sha256": "51b20a1517f439081c3aa759ce730218048282b41128ececedae08935ba4c47b"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/terminator.rs",
+      "path": "../naga-25.0.1/src/proc/terminator.rs",
+      "sha256": "ff09addf858595a7470eee40188b9a14972c63962963d7b2796dcfb4e1a79033"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/type_methods.rs",
+      "path": "../naga-25.0.1/src/proc/type_methods.rs",
+      "sha256": "0b15232d4b26f561ee629a65b1bd2bc33db55df97feed68b52531f013bd021ab"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/proc/typifier.rs",
+      "path": "../naga-25.0.1/src/proc/typifier.rs",
+      "sha256": "5666f8cd87b3a7870015a397a763c2f67c42896a4e1f16273ecf35239481a763"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/span.rs",
+      "path": "../naga-25.0.1/src/span.rs",
+      "sha256": "8e756da37793a9ca516cb31eb6e7f83fa81a806c5c0d32484a42199e1e6fc004"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/analyzer.rs",
+      "path": "../naga-25.0.1/src/valid/analyzer.rs",
+      "sha256": "38db04d6131b99260252c48d28d30c8403141fa84f87f022af5067697ae997bd"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/compose.rs",
+      "path": "../naga-25.0.1/src/valid/compose.rs",
+      "sha256": "350ff6d1ab5b5be5f5f67a35de2a7a94818970015bb94a1c9c1fd416678f12b6"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/expression.rs",
+      "path": "../naga-25.0.1/src/valid/expression.rs",
+      "sha256": "89c1fad876efd732faf129dae9346bab048a51db3b46c542f5575db303783de0"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/function.rs",
+      "path": "../naga-25.0.1/src/valid/function.rs",
+      "sha256": "be206910318f29a813cb0e7928f25206fdaa17ab079047b2a7f58216ede80162"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/handles.rs",
+      "path": "../naga-25.0.1/src/valid/handles.rs",
+      "sha256": "4ff32153a6b3daf8679941c37533e78a2d70b754207f2ec4b1a53ade2ab0ea99"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/interface.rs",
+      "path": "../naga-25.0.1/src/valid/interface.rs",
+      "sha256": "07c4c867ebd932dfbf77f38c35110e396018d57c59a1f71ff89706a95c1d2de2"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/mod.rs",
+      "path": "../naga-25.0.1/src/valid/mod.rs",
+      "sha256": "077774297785b88e669cf7b774f0916d7dbdf7933431f6ad50ca92991d6d8192"
+    },
+    {
+      "source": "vendor/naga-25.0.1/src/valid/type.rs",
+      "path": "../naga-25.0.1/src/valid/type.rs",
+      "sha256": "b4f87bdd31005be532530b8c46c406fd6149566e783017abddc76cd1cc59c37e"
+    },
+    {
+      "source": "vendor/naga-25.0.1/UPSTREAM_PROVENANCE.json",
+      "path": "../naga-25.0.1/UPSTREAM_PROVENANCE.json",
+      "sha256": "4ef78cecc6962c693848d7d6f1bd8e3896798681eecfebfbcf1723ea3858a48d"
+    },
+    {
+      "source": "Cargo.toml",
+      "path": "Cargo.toml",
+      "source_sha256": "dfec66ed68612d24d5730063f585fcceb84afac922de9a9e476a405c0765c85c",
+      "sha256": "2ce322e00b86456bc1f1547970cca0de2aff7b61f63787e5c42e281dd9d4d3ae",
+      "adapted_manifest": true
+    }
+  ]
+}

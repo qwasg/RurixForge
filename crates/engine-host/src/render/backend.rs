@@ -159,6 +159,8 @@ pub enum FramePath<'a> {
 }
 
 pub trait RenderBackend: Send + Sync + 'static {
+    /// Explicit two-slot GPU presentation; no pixel readback is required.
+    fn native_present(&self) -> bool { false }
     fn info(&self) -> &BackendInfo;
     fn capabilities(&self) -> &Capabilities;
     fn path(&self) -> FramePath<'_>;

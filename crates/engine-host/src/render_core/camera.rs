@@ -1,13 +1,11 @@
 //! 相机(02 §3.1):编辑器相机、场景相机 view_proj / 射线、模型腿 eye,以及给 Godot 腿用的 `ViewSetup`。
-//! 前三者自 viewport.rs / modelrender.rs 逐字搬来。三处不对称都是现状,rurix 必须保持:
-//! 场景相机 view_proj 丢 roll(ray 含 roll);场景相机用实体本地 transform、不走 Parent 链;
-//! 模型腿 eye 在 PIE 时经 `modelrt::entity_world` 走 Parent 链。
+//! 场景相机的投影、射线与着色眼位共享世界变换，包含 Parent 链与 roll。
 
 use forge_scene::Scene;
 use serde_json::Value;
 
 use super::math::{
-    look_at_rh, m3_apply, m4_mul, orthographic_vk, perspective_vk, quat_to_mat3, v3_add, v3_cross, v3_norm, v3_sub,
+    look_at_rh, m4_mul, orthographic_vk, perspective_vk, v3_add, v3_cross, v3_norm, v3_sub,
     M4, V3,
 };
 
@@ -120,82 +118,45 @@ impl EditorCamera {
 /// 世界射线 (origin, dir)。与 [`scene_camera_view_proj`] 同一套相机参数解析,供 play 态
 /// 指针输入反投影(logic.inject_pointer):正交 = 平行射线从相机平面出发;透视 = 自相机眼
 /// 发散。无相机实体返回 None(调用方退回编辑器相机)。
+fn scene_camera_basis(scene: &Scene) -> Option<(&forge_scene::Entity, &Value, V3, V3, V3, V3)> {
+    let (cam, component) = scene.entities.iter().find_map(|e|e.components.iter().find(|c|c.ctype=="Camera"&&c.enabled).map(|c|(e,c)))?;
+    let props = &component.props;
+    let world = crate::modelrt::entity_world(scene, cam).ok()?;
+    let eye = crate::modelrt::point(world, [0.; 3]);
+    let fwd = v3_norm(crate::modelrt::vector(world, [0., 0., -1.]));
+    let up_hint = v3_norm(crate::modelrt::vector(world, [0., 1., 0.]));
+    let right = v3_norm(v3_cross(fwd, up_hint));
+    let up = v3_cross(right, fwd);
+    if !eye.iter().chain(fwd.iter()).chain(up.iter()).all(|v| v.is_finite()) || right.iter().map(|v| v*v).sum::<f32>() < 0.5 { return None; }
+    Some((cam, props, eye, right, up, fwd))
+}
+
 pub fn scene_camera_ray(scene: &Scene, nx: f32, ny: f32, aspect: f32) -> Option<(V3, V3)> {
-    let cam = scene.entities.iter().find(|e| {
-        e.components
-            .iter()
-            .any(|c| c.ctype == "Camera" && c.enabled)
-    })?;
-    let props = cam
-        .components
-        .iter()
-        .find(|c| c.ctype == "Camera")
-        .map(|c| &c.props)?;
-    let rot = quat_to_mat3(cam.transform.rotation);
-    let right = v3_norm(m3_apply(rot, [1.0, 0.0, 0.0]));
-    let up = v3_norm(m3_apply(rot, [0.0, 1.0, 0.0]));
-    let fwd = v3_norm(m3_apply(rot, [0.0, 0.0, -1.0]));
-    let eye = cam.transform.translation;
-    let projection = props
-        .get("projection")
-        .and_then(|v| v.as_str())
-        .unwrap_or("perspective");
+    let (_, props, eye, right, up, fwd) = scene_camera_basis(scene)?;
+    let aspect = aspect.max(1e-6);
+    let projection = props.get("projection").and_then(Value::as_str).unwrap_or("perspective");
     if projection == "orthographic" {
-        let hh = props.get("orthoSize").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
-        let hh = hh.max(1e-4);
-        let hw = hh * aspect.max(1e-6);
-        let origin = [
-            eye[0] + right[0] * nx * hw + up[0] * ny * hh,
-            eye[1] + right[1] * nx * hw + up[1] * ny * hh,
-            eye[2] + right[2] * nx * hw + up[2] * ny * hh,
-        ];
-        return Some((origin, fwd));
+        let hh = (props.get("orthoSize").and_then(Value::as_f64).unwrap_or(5.) as f32).max(1e-4);
+        return Some((std::array::from_fn(|i| eye[i] + right[i]*nx*hh*aspect + up[i]*ny*hh), fwd));
     }
-    let fov_deg = props.get("fov").and_then(|v| v.as_f64()).unwrap_or(60.0) as f32;
-    let t = (fov_deg.to_radians() * 0.5).tan();
-    let dir = v3_norm([
-        right[0] * nx * t * aspect + up[0] * ny * t + fwd[0],
-        right[1] * nx * t * aspect + up[1] * ny * t + fwd[1],
-        right[2] * nx * t * aspect + up[2] * ny * t + fwd[2],
-    ]);
-    Some((eye, dir))
+    let fov = props.get("fov").and_then(Value::as_f64).unwrap_or(60.) as f32;
+    let t = (fov.to_radians()*0.5).tan();
+    Some((eye, v3_norm(std::array::from_fn(|i| right[i]*nx*t*aspect + up[i]*ny*t + fwd[i]))))
 }
 
 /// 场景内置相机实体(首个启用 Camera 组件)的 view_proj。
 /// PIE 期间视口以此驱动(F-GAME-2:游戏画面 = 游戏相机画面);无相机实体返回 None。
 pub fn scene_camera_view_proj(scene: &Scene, aspect: f32) -> Option<M4> {
-    let cam = scene.entities.iter().find(|e| {
-        e.components
-            .iter()
-            .any(|c| c.ctype == "Camera" && c.enabled)
-    })?;
-    let props = cam
-        .components
-        .iter()
-        .find(|c| c.ctype == "Camera")
-        .map(|c| &c.props)?;
-    let fov_deg = props.get("fov").and_then(|v| v.as_f64()).unwrap_or(60.0) as f32;
-    let near = props.get("near").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32;
-    let far = props.get("far").and_then(|v| v.as_f64()).unwrap_or(500.0) as f32;
-    // F-GAME-3:projection=orthographic 走正交(2D 游戏相机),orthoSize=半高(世界单位)。
-    let projection = props
-        .get("projection")
-        .and_then(|v| v.as_str())
-        .unwrap_or("perspective");
-    let ortho_size = props.get("orthoSize").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
-    let t = &cam.transform;
-    let rot = quat_to_mat3(t.rotation);
-    let fwd = v3_norm(m3_apply(rot, [0.0, 0.0, -1.0]));
-    let eye = t.translation;
-    let center = v3_add(eye, fwd);
-    // proj Y 对角元取负:与 EditorCamera::view_proj 同一显示朝向约定(见其注释)。
-    let mut proj = if projection == "orthographic" {
-        orthographic_vk(ortho_size, aspect.max(1e-6), near, far)
+    let (_, props, eye, _, up, fwd) = scene_camera_basis(scene)?;
+    let near = props.get("near").and_then(Value::as_f64).unwrap_or(0.1) as f32;
+    let far = props.get("far").and_then(Value::as_f64).unwrap_or(500.) as f32;
+    let mut proj = if props.get("projection").and_then(Value::as_str) == Some("orthographic") {
+        orthographic_vk((props.get("orthoSize").and_then(Value::as_f64).unwrap_or(5.) as f32).max(1e-4), aspect.max(1e-6), near, far)
     } else {
-        perspective_vk(fov_deg.to_radians(), aspect.max(1e-6), near, far)
+        perspective_vk((props.get("fov").and_then(Value::as_f64).unwrap_or(60.) as f32).to_radians(), aspect.max(1e-6), near, far)
     };
     proj[1][1] = -proj[1][1];
-    Some(m4_mul(proj, look_at_rh(eye, center, [0.0, 1.0, 0.0])))
+    Some(m4_mul(proj, look_at_rh(eye, v3_add(eye, fwd), up)))
 }
 
 
@@ -204,17 +165,7 @@ pub fn scene_camera_view_proj(scene: &Scene, aspect: f32) -> Option<M4> {
 /// 取不到或不用场景相机时退编辑器相机眼位。
 #[cfg_attr(not(feature = "backend-rurix"), allow(dead_code))]
 pub(crate) fn model_eye(scene: &Scene, cam: &EditorCamera, use_scene_camera: bool) -> V3 {
-    if use_scene_camera {
-        scene
-            .entities
-            .iter()
-            .find(|e| e.component("Camera").is_some_and(|c| c.enabled))
-            .and_then(|e| crate::modelrt::entity_world(scene, e).ok())
-            .map(|m| crate::modelrt::point(m, [0.; 3]))
-            .unwrap_or_else(|| cam.eye())
-    } else {
-        cam.eye()
-    }
+    if use_scene_camera { scene_camera_basis(scene).map(|(_, _, eye, _, _, _)| eye).unwrap_or_else(|| cam.eye()) } else { cam.eye() }
 }
 
 // ─────────────────────────── ViewSetup(Godot 腿消费,§4;落地前非测试构建无调用方) ───────────────────────────
@@ -245,6 +196,8 @@ pub struct ViewSetup {
     pub eye: V3,
     /// look_at 注视点:Editor = cam.target;SceneCamera = eye + fwd。
     pub center: V3,
+    /// World-space up, including scene-camera roll.
+    pub up: V3,
     pub projection: Projection,
     /// Editor 恒 0.05 / far 恒 500;SceneCamera 取组件 near/far(缺省 0.1 / 500)。
     pub near: f32,
@@ -261,6 +214,7 @@ pub fn editor_view(cam: &EditorCamera, aspect: f32) -> ViewSetup {
         source: ViewSource::Editor,
         eye: cam.eye(),
         center: cam.target,
+        up: [0.,1.,0.],
         projection: if cam.ortho {
             Projection::Orthographic { half_h: cam.ortho_half_h }
         } else {
@@ -273,44 +227,19 @@ pub fn editor_view(cam: &EditorCamera, aspect: f32) -> ViewSetup {
     }
 }
 
-/// 场景相机 → ViewSetup:实体选择与 props 解析同 `scene_camera_view_proj`(本地 transform、丢 roll),
+/// 场景相机 → ViewSetup:实体选择与世界变换同 `scene_camera_view_proj`(Parent 与 roll),
 /// `view_proj` 直接取 `scene_camera_view_proj(scene, aspect)`。无相机实体返回 None。
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn scene_view(scene: &Scene, aspect: f32) -> Option<ViewSetup> {
-    let cam = scene.entities.iter().find(|e| {
-        e.components
-            .iter()
-            .any(|c| c.ctype == "Camera" && c.enabled)
-    })?;
-    let props = cam
-        .components
-        .iter()
-        .find(|c| c.ctype == "Camera")
-        .map(|c| &c.props)?;
-    let fov_deg = props.get("fov").and_then(|v| v.as_f64()).unwrap_or(60.0) as f32;
-    let near = props.get("near").and_then(|v| v.as_f64()).unwrap_or(0.1) as f32;
-    let far = props.get("far").and_then(|v| v.as_f64()).unwrap_or(500.0) as f32;
-    let projection = props
-        .get("projection")
-        .and_then(|v| v.as_str())
-        .unwrap_or("perspective");
-    let ortho_size = props.get("orthoSize").and_then(|v| v.as_f64()).unwrap_or(5.0) as f32;
-    let rot = quat_to_mat3(cam.transform.rotation);
-    let fwd = v3_norm(m3_apply(rot, [0.0, 0.0, -1.0]));
-    let eye = cam.transform.translation;
+    let (cam, props, eye, _, up, fwd) = scene_camera_basis(scene)?;
     Some(ViewSetup {
-        source: ViewSource::SceneCamera { entity: cam.id },
-        eye,
-        center: v3_add(eye, fwd),
-        projection: if projection == "orthographic" {
-            Projection::Orthographic { half_h: ortho_size }
-        } else {
-            Projection::Perspective { fov_y_deg: fov_deg }
-        },
-        near,
-        far,
-        aspect,
-        view_proj: scene_camera_view_proj(scene, aspect)?,
+        source: ViewSource::SceneCamera { entity: cam.id }, eye, center: v3_add(eye, fwd), up,
+        projection: if props.get("projection").and_then(Value::as_str) == Some("orthographic") {
+            Projection::Orthographic { half_h: (props.get("orthoSize").and_then(Value::as_f64).unwrap_or(5.) as f32).max(1e-4) }
+        } else { Projection::Perspective { fov_y_deg: props.get("fov").and_then(Value::as_f64).unwrap_or(60.) as f32 } },
+        near: props.get("near").and_then(Value::as_f64).unwrap_or(0.1) as f32,
+        far: props.get("far").and_then(Value::as_f64).unwrap_or(500.) as f32,
+        aspect, view_proj: scene_camera_view_proj(scene, aspect)?,
     })
 }
 
@@ -319,7 +248,30 @@ pub fn scene_view(scene: &Scene, aspect: f32) -> Option<ViewSetup> {
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn view_basis(v: &ViewSetup) -> (V3, V3, V3) {
     let f = v3_norm(v3_sub(v.center, v.eye));
-    let s = v3_norm(v3_cross(f, [0.0, 1.0, 0.0]));
+    let s = v3_norm(v3_cross(f, v.up));
     let u = v3_cross(s, f);
     (s, u, f)
+}
+
+#[cfg(test)]
+mod camera_contract_tests {
+    use super::*;
+    use forge_scene::{Component,Entity,Transform};
+    use serde_json::json;
+    fn near(a:V3,b:V3){for i in 0..3{assert!((a[i]-b[i]).abs()<0.00001,"{a:?} != {b:?}");}}
+    #[test]
+    fn parent_roll_projection_ray_and_eye_share_world_frame(){
+        let mut scene=Scene::new("camera");
+        let half=std::f32::consts::FRAC_1_SQRT_2;
+        scene.entities.push(Entity{entity_guid:None,id:1,name:"parent".into(),transform:Transform{translation:[10.,0.,0.],rotation:[0.,0.,half,half],scale:[1.;3]},components:vec![]});
+        scene.entities.push(Entity{entity_guid:None,id:2,name:"camera".into(),transform:Transform{translation:[2.,0.,5.],..Transform::default()},components:vec![Component::new("Parent",json!({"entity":1})),Component::new("Camera",json!({"fov":90.}))]});
+        let view=scene_view(&scene,1.).unwrap();
+        near(view.eye,[10.,2.,5.]); near(view.up,[-1.,0.,0.]);
+        near(model_eye(&scene,&EditorCamera::default(),true),view.eye);
+        let (origin,dir)=scene_camera_ray(&scene,1.,0.,1.).unwrap();near(origin,view.eye);near(dir,[0.,half,-half]);
+        let point=std::array::from_fn::<_,3,_>(|i|origin[i]+dir[i]*4.);
+        let clip: [f32;4]=std::array::from_fn(|r|view.view_proj[r][0]*point[0]+view.view_proj[r][1]*point[1]+view.view_proj[r][2]*point[2]+view.view_proj[r][3]);
+        assert!((clip[0]/clip[3]-1.).abs()<0.00001);assert!((clip[1]/clip[3]).abs()<0.00001);
+        let (right,up,forward)=view_basis(&view);near(right,[0.,1.,0.]);near(up,[-1.,0.,0.]);near(forward,[0.,0.,-1.]);
+    }
 }

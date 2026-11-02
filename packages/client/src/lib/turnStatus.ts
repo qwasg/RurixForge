@@ -1,4 +1,4 @@
-import { toolStatus, type ChatBlock } from './timeline';
+import { reasoningIsRunning, toolStatus, type ChatBlock } from './timeline';
 
 /**
  * D-047 轮次状态行(Cursor 式「调用等待」显示)的纯状态机。
@@ -81,12 +81,13 @@ export function pendingApprovalKind(blocks: ChatBlock[]): 'approval' | 'input' |
 /** 有行正在执行(它自己扫光,状态行让位)。 */
 function hasLiveRow(blocks: ChatBlock[], idleMs: number): boolean {
   const running = blocks.some(
-    (b) => (b.kind === 'tool' && toolStatus(b) === 'running') || (b.kind === 'subagent' && b.status === 'running'),
+    (b, i) => (b.kind === 'tool' && toolStatus(b) === 'running') ||
+      (b.kind === 'subagent' && b.status === 'running') ||
+      (b.kind === 'reasoning' && reasoningIsRunning(b, i === blocks.length - 1)),
   );
   if (running) return true;
   const tail = blocks[blocks.length - 1];
   if (!tail) return false;
-  if (tail.kind === 'reasoning') return true; // Thinking 行在扫
   if (tail.kind === 'plan' && !tail.final) return true; // Plan · Writing 在扫
   return tail.kind === 'text' && !tail.final && idleMs < TEXT_SETTLE_MS;
 }

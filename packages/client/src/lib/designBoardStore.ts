@@ -16,6 +16,7 @@ import { editorReference, makeAnnotation, useEditorAnnotationStore } from './edi
  * 持久化:localStorage(forge:designBoard, version 3);v1/v2 旧档自动迁移。
  */
 
+/** 旧配色档位:纯色波(2026-10-08)起类型不再分色,字段只为存档与校验兼容保留 */
 export type KindTone = 'info' | 'sage' | 'warn' | 'acc' | 'danger';
 
 export interface EntityKindDef {
@@ -116,14 +117,6 @@ export const BUILTIN_KINDS: EntityKindDef[] = [
     defaultFeatures: ['MeshRenderer'],
   },
 ];
-
-export const TONE_BAR: Record<KindTone, string> = {
-  info: 'bg-info',
-  sage: 'bg-sage',
-  warn: 'bg-warn',
-  acc: 'bg-acc',
-  danger: 'bg-danger',
-};
 
 const BOARD_KEY = 'forge:designBoard';
 

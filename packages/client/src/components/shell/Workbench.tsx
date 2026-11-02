@@ -1,5 +1,7 @@
 import {
   BookOpen,
+  Bone,
+  Box,
   FileCode2,
   FileText,
   Film,
@@ -18,11 +20,13 @@ import { runCommand } from '@/lib/commands';
 import { useWorkbenchStore, type TabKind } from '@/lib/workbenchStore';
 import EditorView from '@/views/EditorView';
 import DemoTab from '@/components/workbench/DemoTab';
+import BuildPreviewTab from '@/components/workbench/BuildPreviewTab';
 import FilePreviewTab from '@/components/workbench/FilePreviewTab';
 import PlanTab from '@/components/workbench/PlanTab';
 import ProposalsTab from '@/components/workbench/ProposalsTab';
 import SkillsTab from '@/components/workbench/SkillsTab';
 import SpriteEditorView from '@/components/sprite/SpriteEditorView';
+import RigEditorView from '@/components/rig/RigEditorView';
 import StoreTab from '@/components/workbench/StoreTab';
 import TodoTab from '@/components/workbench/TodoTab';
 import GoalTab from '@/components/workbench/GoalTab';
@@ -54,8 +58,12 @@ const TAB_ICONS: Record<TabKind, typeof FileCode2> = {
   skills: BookOpen,
   // F-GAME-4:精灵编辑器(.rxsprite 图集/动画)。
   'sprite-editor': Film,
+  // F-GAME-5:绑骨编辑器(.rxrig Live2D 式 2D rig)。
+  'rig-editor': Bone,
   // D-044:UltraPlan 网页 Demo 试玩页(按流程 id 多开)。
   demo: Gamepad2,
+  // M3 Feature 6: 3D 场景交互预览页(按 slug 多开)。
+  'build-preview': Box,
 };
 
 export default function Workbench() {
@@ -141,6 +149,8 @@ export default function Workbench() {
           <SkillsTab />
         ) : active?.kind === 'sprite-editor' ? (
           <SpriteEditorView />
+        ) : active?.kind === 'rig-editor' ? (
+          <RigEditorView />
         ) : active?.kind === 'file' && active.path ? (
           <FilePreviewTab path={active.path} tabId={active.id} />
         ) : active?.kind === 'demo' && active.upId && active.sessionId ? (
@@ -148,6 +158,14 @@ export default function Workbench() {
             key={active.id}
             upId={active.upId}
             sessionId={active.sessionId}
+            tabId={active.id}
+            title={active.title}
+          />
+        ) : active?.kind === 'build-preview' && active.slug ? (
+          <BuildPreviewTab
+            key={active.id}
+            slug={active.slug}
+            sessionId={active.sessionId ?? ''}
             tabId={active.id}
             title={active.title}
           />

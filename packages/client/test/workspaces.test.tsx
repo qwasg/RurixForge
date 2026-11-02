@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from '@/components/shell/Sidebar';
 import WorkspacePicker from '@/components/shell/WorkspacePicker';
-import { useSessionStore } from '@/lib/sessionStore';
+import { useSessionStore, type ForgeSession } from '@/lib/sessionStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
 
 const initialSession = useSessionStore.getState();
@@ -22,6 +22,32 @@ describe('Sidebar workspaces', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])('切换工作区后恢复的当前会话仍可见，切换会话后继续过滤（pinned=%s）', (pinned) => {
+    const session = (id: string, workspaceId: string, isPinned = false): ForgeSession => ({
+      id, workspaceId, title: id, status: 'idle', agentKind: 'coding', agentEngine: 'local',
+      selectedModelId: null, thinkingEnabled: false, reasoningEffort: null, contextOptionId: null,
+      webSearchEnabled: true, activeRunId: null, createdAt: '', updatedAt: '',
+      pinned: isPinned, titleManuallySet: false,
+    });
+    useSessionStore.setState({
+      sessions: [session('restored', 'ws_old', pinned), session('current', 'ws_new'), session('hidden', 'ws_third')],
+      activeSessionId: 'restored',
+    });
+    useWorkspaceStore.getState().setActive('ws_old');
+    render(<Sidebar />);
+    expect(screen.getByTestId('session-row-restored')).toBeInTheDocument();
+    expect(screen.queryByTestId('session-row-current')).not.toBeInTheDocument();
+
+    act(() => useWorkspaceStore.getState().setActive('ws_new'));
+    expect(screen.getByTestId('session-row-restored')).toBeInTheDocument();
+    expect(screen.getByTestId('session-row-current')).toBeInTheDocument();
+    expect(screen.queryByTestId('session-row-hidden')).not.toBeInTheDocument();
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe('ws_new');
+
+    fireEvent.click(screen.getByTestId('session-row-current'));
+    expect(screen.queryByTestId('session-row-restored')).not.toBeInTheDocument();
   });
 
   it('keeps the 2D form and draft after initialization fails, then allows retry', async () => {

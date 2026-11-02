@@ -134,7 +134,8 @@ pub(crate) fn capabilities_json(b: &dyn RenderBackend) -> Value {
         "legs": legs,
         "preview": c.preview,
         "particles": c.particles,
-        "frameExits": { "cpuRgba8": c.cpu_rgba8, "sharedD3d12": c.shared_d3d12, "zeroCopy": c.zero_copy },
+        "runtimeTransforms":true,
+        "frameExits": { "cpuRgba8": c.cpu_rgba8, "sharedD3d12": c.shared_d3d12, "zeroCopy": c.zero_copy, "nativeOnly": b.native_present() },
         "stats": {
             "nonzero": c.stats.nonzero,
             "triangles": c.stats.triangles,
@@ -147,7 +148,7 @@ pub(crate) fn capabilities_json(b: &dyn RenderBackend) -> Value {
             "model": c.max_draws.model,
             "sentinelsV6": c.max_draws.sentinels_v6,
         },
-        "maxSize": { "rpc": RPC_MAX_SIZE, "stream": [crate::stream::MAX_W, crate::stream::MAX_H] },
+        "maxSize": { "rpc": RPC_MAX_SIZE, "stream": [crate::stream::MAX_W, crate::stream::MAX_H], "native": [crate::stream::NATIVE_W,crate::stream::NATIVE_H], "capture": [crate::stream::NATIVE_W,crate::stream::NATIVE_H] },
     });
     if let Some(cov) = b.coverage() {
         let mut c = json!({ "skipped": cov.skipped });
@@ -204,7 +205,7 @@ mod tests {
     fn max_size_matches_the_real_clamps() {
         let huge = json!({ "width": 100_000, "height": 100_000 });
         assert_eq!(crate::rpc::viewport_size(&huge).unwrap(), (RPC_MAX_SIZE[0], RPC_MAX_SIZE[1]));
-        assert_eq!(capabilities_json(backend())["maxSize"], json!({ "rpc": [1920, 1080], "stream": [1280, 720] }));
+        assert_eq!(capabilities_json(backend())["maxSize"], json!({ "rpc": [1920, 1080], "stream": [1280, 720],"native":[2560,1440],"capture":[2560,1440] }));
     }
 
     /// 02 §4.6 的返回格式;两个方法都不接受参数,其余字段忽略。
@@ -219,6 +220,12 @@ mod tests {
             // deviceName 是进程级首帧设备名:同进程里别的测试可能已出过帧。
             let device = info.as_object_mut().unwrap().remove("deviceName").unwrap();
             assert!(device.is_null() || device.is_string(), "{device}");
+            // The existing RPC identity envelope is independent of backend capabilities.
+            assert!(info["hostEpoch"].is_string() && info["sceneGuid"].is_string());
+            assert!(info["contentRevision"].is_u64() && info["identityPersisted"].is_boolean());
+            assert_eq!(info["targetMode"],"edit");
+            assert!(info["scenePath"].is_null() || info["scenePath"].is_string());
+            for key in ["hostEpoch","sceneGuid","contentRevision","identityPersisted","targetMode","scenePath"] { info.as_object_mut().unwrap().remove(key); }
             assert_eq!(
                 info,
                 json!({
@@ -226,18 +233,24 @@ mod tests {
                     "versions": { "engineHost": env!("CARGO_PKG_VERSION"), "godot": null, "gdext": null },
                 })
             );
+            let mut caps=call(&st,"render.capabilities",params)["result"].clone();
+            assert!(caps["hostEpoch"].is_string() && caps["sceneGuid"].is_string());
+            assert!(caps["contentRevision"].is_u64() && caps["identityPersisted"].is_boolean());
+            for key in ["hostEpoch","sceneGuid","contentRevision","identityPersisted","targetMode","scenePath"] {caps.as_object_mut().unwrap().remove(key);}
             assert_eq!(
-                call(&st, "render.capabilities", params)["result"],
+                caps,
                 json!({
                     "renderBackend": "rurix",
                     "pipelined": false,
                     "legs": ["sprite_mesh", "model", "sentinels_v6"],
                     "preview": true,
                     "particles": particles,
-                    "frameExits": { "cpuRgba8": true, "sharedD3d12": cfg!(windows), "zeroCopy": cfg!(windows) },
+                    "runtimeTransforms":true,
+                    // The new empty scene has not opted into realtime, even when the process profile has.
+                    "frameExits": { "cpuRgba8": true, "sharedD3d12": cfg!(windows), "zeroCopy": cfg!(windows), "nativeOnly": false },
                     "stats": { "nonzero": true, "triangles": true, "truncated": true, "meshFallbacks": true, "meshClasses": true },
                     "maxDraws": { "spriteMesh": 256, "model": 2048, "sentinelsV6": 1536 },
-                    "maxSize": { "rpc": [1920, 1080], "stream": [1280, 720] },
+                    "maxSize": { "rpc": [1920, 1080], "stream": [1280, 720], "native":[2560,1440],"capture":[2560,1440] },
                 })
             );
         }

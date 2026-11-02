@@ -37,6 +37,8 @@ pub const FRAME_HEADER_LEN: usize = 20;
 /// base64 JSON 响应(≈4.9MB)仍在 8MB TCP 帧上限内。
 pub(crate) const MAX_W: u32 = 1280;
 pub(crate) const MAX_H: u32 = 720;
+pub(crate) const NATIVE_W: u32 = 2560;
+pub(crate) const NATIVE_H: u32 = 1440;
 /// 文本消息队列上限(status/error 小消息;溢出丢最旧,绝不堆积内存)。
 const TEXT_QUEUE_CAP: usize = 8;
 /// 空闲轮询粒度:无订阅者 50ms;编辑态 rev 未变 15ms(≈66Hz 检查,开销可忽略)。
@@ -64,6 +66,7 @@ pub fn primary_size() -> Option<(u32, u32)> {
     REGISTRY
         .get()
         .and_then(|r| r.primary_cfg())
+        .filter(|c| !c.native)
         .map(|c| (c.width, c.height))
 }
 
@@ -74,6 +77,8 @@ struct SubCfg {
     height: u32,
     max_fps: u32,
     selected: Option<u64>,
+    native: bool,
+    metrics: bool,
 }
 
 /// 单订阅者:推流线程写信箱,连接线程取走发送。
@@ -117,7 +122,7 @@ impl Registry {
 
     /// 主订阅者 = 最新注册者(重连产生的新订阅压过僵尸连接)。
     fn primary_cfg(&self) -> Option<SubCfg> {
-        plock(&self.subs).last().map(|s| s.cfg)
+        { let subs=plock(&self.subs); subs.iter().rev().find(|s|s.cfg.native).or_else(||subs.last()).map(|s|s.cfg) }
     }
 
     fn register(
@@ -152,6 +157,7 @@ impl Registry {
     fn update_cfg(&self, id: u64, v: &Value) {
         let mut subs = plock(&self.subs);
         if let Some(s) = subs.iter_mut().find(|x| x.id == id) {
+            if !valid_transport(v){plock(&s.texts).push_back(json!({"type":"error","message":"INVALID_TRANSPORT: expected rgba8 or native"}).to_string());return;}
             let next = parse_cfg(v, Some(s.cfg));
             if !cfg_eq(s.cfg, next) {
                 s.cfg = next;
@@ -163,8 +169,14 @@ impl Registry {
 
     /// 广播一帧(latest-wins:未取走的旧帧直接覆盖)。
     fn broadcast_frame(&self, buf: Arc<Vec<u8>>) {
-        for s in plock(&self.subs).iter() {
+        for s in plock(&self.subs).iter().filter(|s|!s.cfg.native) {
             *plock(&s.frame) = Some(Arc::clone(&buf));
+        }
+    }
+
+    fn broadcast_metrics(&self,text:String){
+        for s in plock(&self.subs).iter().filter(|s|s.cfg.native&&s.cfg.metrics){
+            let mut queue=plock(&s.texts);if queue.len()>=TEXT_QUEUE_CAP{queue.pop_front();}queue.push_back(text.clone());
         }
     }
 
@@ -179,8 +191,12 @@ impl Registry {
     }
 }
 
+fn valid_transport(v:&Value)->bool {
+    match v.get("transport") {None=>true,Some(Value::String(s))=>matches!(s.as_str(),"rgba8"|"native"),_=>false}
+}
+
 fn cfg_eq(a: SubCfg, b: SubCfg) -> bool {
-    a.width == b.width && a.height == b.height && a.max_fps == b.max_fps && a.selected == b.selected
+    a.width == b.width && a.height == b.height && a.max_fps == b.max_fps && a.selected == b.selected && a.native == b.native && a.metrics == b.metrics
 }
 
 /// 解析订阅配置(subscribe/resize 消息;prev 给了则未带字段沿用)。
@@ -190,13 +206,18 @@ fn parse_cfg(v: &Value, prev: Option<SubCfg>) -> SubCfg {
         height: 540,
         max_fps: 60,
         selected: None,
+        native: false,
+        metrics:false,
     });
     let gi = |k: &str, d: u32| v.get(k).and_then(Value::as_u64).map(|x| x as u32).unwrap_or(d);
+    let native=v.get("transport").and_then(Value::as_str).map(|s|s=="native").unwrap_or(base.native);
     SubCfg {
-        width: gi("width", base.width).clamp(16, MAX_W),
-        height: gi("height", base.height).clamp(16, MAX_H),
-        max_fps: gi("maxFps", base.max_fps).clamp(1, 60),
+        width: gi("width", base.width).clamp(16, if native {NATIVE_W} else {MAX_W}),
+        height: gi("height", base.height).clamp(16, if native {NATIVE_H} else {MAX_H}),
+        max_fps: gi("maxFps", base.max_fps).clamp(1, if native {240}else{60}),
         selected: base.selected,
+        native,
+        metrics:v.get("metrics").and_then(Value::as_bool).unwrap_or(base.metrics),
     }
 }
 
@@ -290,6 +311,7 @@ fn serve_ws(sock: TcpStream, state: &Mutex<HostState>, reg: &Registry) {
             Ok(Message::Text(t)) => {
                 let Ok(v) = serde_json::from_str::<Value>(&t) else { return };
                 if v.get("type").and_then(Value::as_str) == Some("subscribe") {
+                    if !valid_transport(&v){let _=ws.send(Message::Text(json!({"type":"error","message":"INVALID_TRANSPORT: expected rgba8 or native"}).to_string()));return;}
                     break parse_cfg(&v, None);
                 }
             }
@@ -309,6 +331,7 @@ fn serve_ws(sock: TcpStream, state: &Mutex<HostState>, reg: &Registry) {
         "width": cfg.width,
         "height": cfg.height,
         "maxFps": cfg.max_fps,
+        "transport": if cfg.native {"native"}else{"rgba8"},
     });
     if ws.send(Message::Text(hello.to_string())).is_err() {
         reg.unregister(sub_id);
@@ -477,18 +500,24 @@ fn pipelined_frame(
     })
 }
 
+fn diagnostic_epoch_micros()->Option<u64>{
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().and_then(|t|u64::try_from(t.as_micros()).ok())
+}
+
 /// 推流主循环:快照(短锁)→ 锁外渲染 → 喂共享纹理 → 广播;
 /// Running 全速(≤maxFps≤60),编辑态按 scene_rev/cfg_rev 空闲跳帧;
 /// 渲染失败(DEV_ENV_DEGRADE 等)同因去重广播 error 并 1s 限速重试——绝不伪造帧。
 fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
+    #[cfg(feature="backend-rurix")] let _realtime_thread=crate::modelrender::realtime::RealtimeThreadGuard;
     let mut frame_id: u32 = 0;
+    let mut previous_limiter_sleep_ms=0.0;
     // (scene_rev, cfg_rev) 已渲快照;None = 需渲。
     let mut rendered: Option<(u64, u64)> = None;
     let mut last_err: Option<String> = None;
     let mut sec_t0 = Instant::now();
     let mut sec_frames = 0u32;
     let mut fps = 0u32;
-    let mut last_status = Instant::now();
+    let mut last_status = Instant::now() - Duration::from_secs(1);
     // 后端是进程级单例(I10):出帧形态在循环外取一次。
     let path = render::backend().path();
     loop {
@@ -508,8 +537,10 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
         // ── 快照(短锁):场景克隆 + 相机 + play 态;渲染在锁外执行,
         // 物理线程与输入注入不再被帧通道阻塞(旧轮询腿的头号卡顿源)。──
         // render::snapshot 与原 (scene, cam, play, rev, vp_override) 元组同字段、同时机(02 §4.5 第 2 项)。
-        let snap = {
+        let (snap,snapshot_lock_wait_ms,snapshot_build_ms) = {
+            let lock_started=Instant::now();
             let st = rpc::lock(state);
+            let snapshot_lock_wait_ms=lock_started.elapsed().as_secs_f64()*1000.;
             let rev = st.scene_rev;
             let play = st.play;
             if play != PlayState::Running && rendered == Some((rev, cfg_rev)) {
@@ -521,7 +552,7 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
                 width: cfg.width,
                 height: cfg.height,
                 selected: cfg.selected,
-                want_readback: true,
+                want_readback: !cfg.native,
                 want_stats: false, // 推流路径跳过 nonzero 全帧扫描(诊断统计留给遗留腿)
                 requester: FrameRequester::Stream,
             };
@@ -529,23 +560,59 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
                 FramePath::Pipelined(p) => p.next_seq(),
                 FramePath::Immediate(_) => 0,
             };
-            render::snapshot(&st, params, seq)
+            let build_started=Instant::now();
+            let snap=render::snapshot(&st, params, seq);
+            (snap,snapshot_lock_wait_ms,build_started.elapsed().as_secs_f64()*1000.)
         };
         let (play, rev) = (snap.play, snap.scene_rev);
 
         // 第 3 项:Immediate 分支的八个实参与原 render_scene_frame 调用一一相同(snap.input());
         // Pipelined 分支:extract → submit(Main) → 等 FrameBus 上 seq ≥ 本快照、尺寸等于本订阅的帧。
-        let frame = match path {
-            FramePath::Immediate(r) => r.render(snap.input()).map(StreamFrame::Owned),
-            FramePath::Pipelined(p) => pipelined_frame(p, &snap).map(StreamFrame::Shared),
-        };
+        // No HostState lock inside the lease: resize RPC may hold it while waiting for this frame.
+        let frame = (|| -> Result<(StreamFrame, Result<(&'static str,bool),String>,Value),String> {
+            let lease_started=Instant::now();
+            #[cfg(windows)] let _lease=crate::share::frame_lease();
+            let output_lease_wait_ms=lease_started.elapsed().as_secs_f64()*1000.;
+            let consumer_started=Instant::now();
+            if cfg.native {
+                if !rpc::native_profile_enabled(&snap.scene) {return Err("NATIVE_PROFILE_MISMATCH: backend and scene must both enable Rurix realtime".into())}
+                #[cfg(windows)] crate::share::begin_native_frame(cfg.width,cfg.height)?;
+                #[cfg(not(windows))] return Err("NATIVE_UNSUPPORTED: Windows shared output required".into());
+            }
+            #[cfg(windows)] if !cfg.native {crate::share::wait_consumed()?;}
+            let consumer_wait_ms=consumer_started.elapsed().as_secs_f64()*1000.;
+            let renderer_started=Instant::now();
+            let frame=match path {
+                FramePath::Immediate(r)=>r.render(snap.input()).map(StreamFrame::Owned),
+                FramePath::Pipelined(p)=>pipelined_frame(p,&snap).map(StreamFrame::Shared),
+            }?;
+            let renderer_call_ms=renderer_started.elapsed().as_secs_f64()*1000.;
+            if cfg.native && (!frame.pixels().imported || !frame.pixels().rgba8.is_empty()) {
+                return Err("NATIVE_OUTPUT_CONTRACT: GPU output must be imported with no pixel readback".into())
+            }
+            let signal_started=Instant::now();
+            let share=frame.feed_share();
+            let signal_submit_ms=signal_started.elapsed().as_secs_f64()*1000.;
+            let signal_submitted_utc_micros=diagnostic_epoch_micros();
+            if cfg.native { share.as_ref().map_err(Clone::clone)?; }
+            let metrics_started=Instant::now();
+            let mut metrics=rpc::realtime_metrics();
+            let metrics_clone_ms=metrics_started.elapsed().as_secs_f64()*1000.;
+            metrics["hostTimings"]=json!({"snapshotLockWaitMs":snapshot_lock_wait_ms,"snapshotBuildMs":snapshot_build_ms,
+                "outputLeaseWaitMs":output_lease_wait_ms,"consumerWaitMs":consumer_wait_ms,"rendererCallMs":renderer_call_ms,
+                "signalSubmitMs":signal_submit_ms,"metricsCloneMs":metrics_clone_ms,"previousLimiterSleepMs":previous_limiter_sleep_ms});
+            #[cfg(windows)] {metrics["nativeFrame"]=crate::share::last_native_submission().map(|(generation,slot,producer_frame)|json!({
+                "generation":generation,"slot":slot,"producerFrame":producer_frame,"signalSubmittedUtcMicros":signal_submitted_utc_micros})).unwrap_or(Value::Null);}
+            Ok((frame,share,metrics))
+        })();
         match frame {
-            Ok(frame) => {
-                let f = frame.pixels();
-                // 共享纹理喂帧(presenter 腿自动获得推流节奏;失败随 status 如实带出)。
-                let share = frame.feed_share();
+            Ok((frame,share,mut frame_metrics)) => {
+                let f=frame.pixels();
+                let bookkeeping_started=Instant::now();
+                let bookkeeping_lock_wait_ms;
                 {
                     let mut st = rpc::lock(state);
+                    bookkeeping_lock_wait_ms=bookkeeping_started.elapsed().as_secs_f64()*1000.;
                     st.frames += 1;
                     st.last_tris = f.triangles;
                     rpc::flush_text_issues(&mut st);
@@ -553,13 +620,17 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
                         st.cpu_uploads += 1;
                     }
                 }
+                frame_metrics["hostTimings"]["bookkeepingLockWaitMs"]=json!(bookkeeping_lock_wait_ms);
+                frame_metrics["hostTimings"]["bookkeepingTotalMs"]=json!(bookkeeping_started.elapsed().as_secs_f64()*1000.);
+                frame_metrics["hostTimings"]["loopBeforePublishMs"]=json!(t0.elapsed().as_secs_f64()*1000.);
                 let playing = play == PlayState::Running;
-                reg.broadcast_frame(Arc::new(encode_frame(frame_id, f, playing)));
+                if !cfg.native { reg.broadcast_frame(Arc::new(encode_frame(frame_id, f, playing))); }
+                if cfg.native && cfg.metrics {reg.broadcast_metrics(json!({"type":"frameMetrics","frameId":frame_id,"metrics":frame_metrics}).to_string());}
                 frame_id = frame_id.wrapping_add(1);
                 rendered = Some((rev, cfg_rev));
-                last_err = None;
+                let recovered = last_err.take().is_some();
                 sec_frames += 1;
-                if last_status.elapsed() >= Duration::from_secs(1) {
+                if recovered || last_status.elapsed() >= Duration::from_secs(1) {
                     last_status = Instant::now();
                     let mut status = json!({
                         "type": "status",
@@ -568,6 +639,9 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
                         "draws": f.draws,
                         "truncated": f.truncated,
                         "fps": fps,
+                        "transport": if cfg.native {"native"}else{"rgba8"},
+                        "width": f.width, "height": f.height,
+                        "pixelReadback": !cfg.native, "maxFps":cfg.max_fps,
                     });
                     if let Err(e) = &share {
                         status["shareError"] = json!(e);
@@ -591,15 +665,18 @@ fn render_loop(state: &Mutex<HostState>, reg: &Registry) {
         }
         // 节拍:Running 全速;编辑/暂停态封顶 30fps(渲染本就 rev 驱动,
         // 此上限只约束连续相机拖拽这类高频 rev 场景)。
-        let target = if play == PlayState::Running {
+        let target = if cfg.native {cfg.max_fps.clamp(1,240)} else if play == PlayState::Running {
             cfg.max_fps.clamp(1, 60)
         } else {
             cfg.max_fps.clamp(1, 30)
         };
         let interval = Duration::from_micros(1_000_000 / u64::from(target));
         let spent = t0.elapsed();
+        previous_limiter_sleep_ms=0.0;
         if spent < interval {
+            let sleep_started=Instant::now();
             thread::sleep(interval - spent);
+            previous_limiter_sleep_ms=sleep_started.elapsed().as_secs_f64()*1000.;
         }
     }
 }
@@ -649,7 +726,7 @@ mod tests {
         );
         assert_eq!((c.width, c.height, c.max_fps), (MAX_W, 16, 60));
         // resize 未带 maxFps → 沿用;selected 由 select 消息独立管理不被覆盖。
-        let prev = SubCfg { width: 640, height: 360, max_fps: 24, selected: Some(9) };
+        let prev = SubCfg { width: 640, height: 360, max_fps: 24, selected: Some(9), native:false, metrics:false };
         let c2 = parse_cfg(&json!({ "type": "resize", "width": 800, "height": 600 }), Some(prev));
         assert_eq!((c2.width, c2.height, c2.max_fps, c2.selected), (800, 600, 24, Some(9)));
     }
@@ -660,14 +737,14 @@ mod tests {
         let f1 = Arc::new(Mutex::new(None));
         let t1 = Arc::new(Mutex::new(VecDeque::new()));
         let a = reg.register(
-            SubCfg { width: 100, height: 100, max_fps: 30, selected: None },
+            SubCfg { width: 100, height: 100, max_fps: 30, selected: None, native:false, metrics:false },
             Arc::clone(&f1),
             Arc::clone(&t1),
         );
         let f2 = Arc::new(Mutex::new(None));
         let t2 = Arc::new(Mutex::new(VecDeque::new()));
         let _b = reg.register(
-            SubCfg { width: 640, height: 360, max_fps: 60, selected: None },
+            SubCfg { width: 640, height: 360, max_fps: 60, selected: None, native:false, metrics:false },
             Arc::clone(&f2),
             Arc::clone(&t2),
         );
@@ -691,4 +768,18 @@ mod tests {
         assert_eq!(t.len(), 32);
         assert_ne!(t, "0".repeat(32));
     }
+    #[test]
+    fn native_subscription_is_1440p_without_pixel_mailbox() {
+        let cfg=parse_cfg(&json!({"transport":"native","width":2560,"height":1440,"maxFps":240}),None);
+        assert_eq!(cfg.max_fps,240);
+        assert!(cfg.native);assert_eq!((cfg.width,cfg.height),(2560,1440));
+        let web=parse_cfg(&json!({"transport":"rgba8"}),Some(cfg));assert_eq!((web.width,web.height),(1280,720));
+        let reg=Registry::new();let pixels=Arc::new(Mutex::new(None));let texts=Arc::new(Mutex::new(VecDeque::new()));
+        reg.register(cfg,Arc::clone(&pixels),texts);
+        reg.broadcast_frame(Arc::new(vec![1,2,3]));assert!(plock(&pixels).is_none());
+        let smaller=parse_cfg(&json!({"width":320,"height":180}),None);
+        reg.register(smaller,Arc::new(Mutex::new(None)),Arc::new(Mutex::new(VecDeque::new())));
+        assert!(reg.primary_cfg().unwrap().native,"pixel observer must not resize native output");
+    }
+
 }

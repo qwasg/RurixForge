@@ -366,6 +366,10 @@ export default function Sidebar() {
 
   const workspaceFilter = (workspaceId?: string | null) =>
     activeWorkspaceId === null || workspaceId === activeWorkspaceId;
+  // 工作区选择和当前对话分别保留；重启恢复/切工作区后，当前对话仍要
+  // 有可见入口。其他会话继续遵守工作区过滤，不改变用户选中的工作区。
+  const sessionVisible = (session: ForgeSession) =>
+    workspaceFilter(session.workspaceId) || session.id === activeSessionId;
 
   const visibleFolders = useMemo(
     () => folders.filter((f) => workspaceFilter(f.workspaceId)),
@@ -378,7 +382,7 @@ export default function Sidebar() {
     q === '' || s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
 
   const groups = useMemo<Group[]>(() => {
-    const matched = sessions.filter((s) => workspaceFilter(s.workspaceId) && !s.pinned && matches(s));
+    const matched = sessions.filter((s) => sessionVisible(s) && !s.pinned && matches(s));
     const folderIds = new Set(visibleFolders.map((f) => f.id));
     const byFolder = new Map<string, ForgeSession[]>();
     const unfiled: ForgeSession[] = [];
@@ -432,12 +436,12 @@ export default function Sidebar() {
     wsGroups.sort((a, b) => latest(b.sessions) - latest(a.sessions));
     return [...out, ...wsGroups];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, visibleFolders, workspaces, q, activeWorkspaceId]);
+  }, [sessions, visibleFolders, workspaces, q, activeWorkspaceId, activeSessionId]);
 
   const pinned = useMemo(
-    () => sessions.filter((s) => workspaceFilter(s.workspaceId) && s.pinned && matches(s)),
+    () => sessions.filter((s) => sessionVisible(s) && s.pinned && matches(s)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessions, q, activeWorkspaceId],
+    [sessions, q, activeWorkspaceId, activeSessionId],
   );
 
   const toggleIn = (setter: typeof setCollapsed, key: string) =>

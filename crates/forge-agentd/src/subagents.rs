@@ -19,15 +19,10 @@ pub const SOURCE_BUILTIN: &str = "builtin";
 /// profile 来源标记(D-044):个人 = `data/agents/`(含覆盖内建的同名档案)。
 pub const SOURCE_PERSONAL: &str = "personal";
 
-/// 所有子代理（含通用、个人覆盖和网页原型）的最低工作循环预算。
-pub const MIN_SUBAGENT_ITERS: usize = 512;
-
-/// 保留档案原配置用于热加载与审计；运行时保证至少 512 轮，更高配置照用。
-pub fn loop_max_iters(profile: Option<&SubagentProfile>) -> usize {
-    profile
-        .map(|p| p.max_steps as usize)
-        .unwrap_or(MIN_SUBAGENT_ITERS)
-        .max(MIN_SUBAGENT_ITERS)
+/// 交互制作子代理不按工具轮数截断；旧档案 maxSteps 仅保留供审计。
+/// None 与主代理共享无限循环语义，完成、取消或实际错误仍会结束任务。
+pub fn loop_max_iters(_profile: Option<&SubagentProfile>) -> Option<usize> {
+    None
 }
 
 /// 单个 subagent profile(04 §6 front matter)。
@@ -269,14 +264,14 @@ maxSteps: 24
     }
 
     #[test]
-    fn every_subagent_has_at_least_512_iterations() {
-        assert_eq!(loop_max_iters(None), 512, "通用子代理");
+    fn every_subagent_has_unlimited_iterations() {
+        assert_eq!(loop_max_iters(None), None, "通用子代理");
         for steps in [1, 24, 128, 500, 512, 900] {
             let p = sample_named("personal-worker", steps, SOURCE_PERSONAL);
-            assert_eq!(loop_max_iters(Some(&p)), (steps as usize).max(512));
+            assert_eq!(loop_max_iters(Some(&p)), None);
             let wire = p.to_json();
             assert_eq!(wire["maxSteps"], steps, "原配置保留供热加载与审计");
-            assert_eq!(wire["effectiveMaxSteps"], (steps as usize).max(512));
+            assert!(wire["effectiveMaxSteps"].is_null(), "null 表示无限轮数");
         }
     }
 
@@ -354,16 +349,19 @@ maxSteps: 24
     }
 
     /// 内建工种名单(D-044:仓库根 agents/;04 §6 五工种 + F10 asset-describer +
-    /// F-GAME-4 planner/reviewer + D-035 explore + D-044 web-demo-builder = 10)。
-    const BUILTIN_NAMES: [&str; 10] = [
+    /// F-GAME-4 planner/reviewer + D-035 explore + D-044 web-demo-builder + D-050 rig-artist +
+    /// Feature 7 building-artisan = 12)。
+    const BUILTIN_NAMES: [&str; 12] = [
         "asset-describer",
         "asset-wrangler",
+        "building-artisan",
         "explore",
         "logic-programmer",
         "material-smith",
         "planner",
         "qa-tester",
         "reviewer",
+        "rig-artist",
         "scene-builder",
         "web-demo-builder",
     ];
@@ -372,6 +370,25 @@ maxSteps: 24
         let (list, errors) = scan_dir(&builtin_agents_dir(), SOURCE_BUILTIN);
         assert!(errors.is_empty(), "内建 profile 解析错误: {errors:?}");
         list
+    }
+
+    /// D-050:rig-artist 只碰 rig 资产与素材生成,不持引擎场景族(场景挂接归 scene-builder)。
+    #[test]
+    fn rig_artist_allowlist_scoped_to_rig_assets() {
+        let list = builtin_profiles();
+        let ra = list.iter().find(|p| p.name == "rig-artist").expect("rig-artist 内建");
+        for t in [
+            "mcp__asset-pipeline__rig_patch",
+            "mcp__asset-pipeline__rig_preview",
+            "mcp__asset-pipeline__rig_import_psd",
+            "mcp__gen-image__gen_image",
+            "read_skill",
+        ] {
+            assert!(tool_allowed(&ra.tools, t), "rig-artist 缺 {t}");
+        }
+        for t in ["mcp__engine-scene__rig_spawn", "mcp__engine-scene__entity_create", "mcp__asset-pipeline__asset_delete"] {
+            assert!(!tool_allowed(&ra.tools, t), "rig-artist 白名单过宽: {t}");
+        }
     }
 
     fn builtin<'a>(list: &'a [SubagentProfile], name: &str) -> &'a SubagentProfile {
@@ -415,8 +432,23 @@ maxSteps: 24
         // (plan 模式的并行调研工种;混入写工具就破了只读纪律)。
         for name in ["planner", "explore"] {
             for t in &builtin(&list, name).tools {
+                let is_edit = if t.starts_with("editor_") {
+                    crate::editor::is_write_tool(t)
+                        || matches!(
+                            t.as_str(),
+                            "editor_apply_edit"
+                                | "editor_create_file"
+                                | "editor_apply"
+                                | "editor_accept_and_assemble"
+                                | "editor_document_put"
+                                | "editor_undo"
+                                | "editor_redo"
+                        )
+                } else {
+                    t.contains("edit")
+                };
                 assert!(
-                    !t.contains("write") && !t.contains("apply_patch") && !t.contains("edit"),
+                    !t.contains("write") && !t.contains("apply_patch") && !is_edit,
                     "{name} 白名单混入写工具: {t}"
                 );
                 assert!(
@@ -479,8 +511,8 @@ maxSteps: 24
                 "{name} 问题事件清单缺 logic.call_error"
             );
         }
-        // 改场景的三个工种:存盘必须显式传 path(引擎不记当前场景路径,缺省落 data/scene.rxscene)。
-        for name in ["scene-builder", "logic-programmer", "material-smith"] {
+        // 改场景的四个工种:存盘必须显式传 path(引擎不记当前场景路径,缺省落 data/scene.rxscene)。
+        for name in ["scene-builder", "logic-programmer", "material-smith", "building-artisan"] {
             let p = builtin(&list, name);
             assert!(
                 tool_allowed(&p.tools, "mcp__engine-scene__scene_save"),
@@ -589,6 +621,7 @@ maxSteps: 24
                     assert!(
                         crate::engine::NATIVE_TOOLS.contains(&t.as_str())
                             || crate::resources::RESOURCE_TOOLS.contains(&t.as_str())
+                            || crate::editor::is_tool(&t)
                             || SUBAGENT_EXTRA_TOOLS.contains(&t.as_str()),
                         "{}: {t} 不是已知的运行时/资源工具",
                         p.name
@@ -615,5 +648,27 @@ maxSteps: 24
         let (v2, _) = list_subagents(&dir);
         assert_eq!(v2[0].max_steps, 99);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Feature 7: building-artisan 专属工种断言(持 gen-model, asset-pipeline, engine-scene, 包含 3D 生成与场景摆放)。
+    #[test]
+    fn building_artisan_allowlist_and_contract() {
+        let list = builtin_profiles();
+        let ba = builtin(&list, "building-artisan");
+        for t in [
+            "mcp__gen-model__gen_mesh",
+            "mcp__gen-model__gen_mesh_refine",
+            "mcp__gen-model__gen_accept",
+            "mcp__asset-pipeline__mesh_inspect",
+            "mcp__engine-scene__scene_save",
+            "mcp__engine-scene__entity_create",
+            "mcp__engine-scene__viewport_frame",
+            "read_skill",
+        ] {
+            assert!(tool_allowed(&ba.tools, t), "building-artisan 缺 {t}");
+        }
+        assert!(ba.prompt.contains("parentEntityId"));
+        assert!(ba.prompt.contains("COHERENCE_COLLISION_DETECTED"));
+        assert!(ba.prompt.contains("COHERENCE_PROP_ORPHANED"));
     }
 }

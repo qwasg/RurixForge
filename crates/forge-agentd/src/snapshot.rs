@@ -38,39 +38,37 @@ pub(crate) fn models_json(cloud: &crate::cloud::CloudService) -> Value {
     } else {
         "needs-key"
     };
-    // F8 wave.2:openai-compat 渠道条目(availability 同源 openai_compat_status;只布尔面不出 key)。
-    let oai = llm::openai_compat_status();
-    let oai_availability = if oai.configured {
-        "available"
-    } else {
-        "needs-key"
-    };
-    // label:已配 model 用模型名,未配如实「openai-compatible(未配置)」。
-    let oai_label = if oai.model.is_empty() {
-        "openai-compatible(未配置)".to_string()
-    } else {
-        oai.model.clone()
-    };
+    // D-049:自定义模型目录(旧单槽 openai-compat 是其中 id="openai-compat" 的一项)。
+    // 目录为空时保留旧占位条目「openai-compatible(未配置)」(needs-key,不可选),与 F8 一致;
+    // 有条目时逐项下发(availability 只布尔面,不出 key)。
+    let custom = crate::custom_models::entries();
     let ag_availability = crate::antigravity::availability();
     let ag_oauth = crate::antigravity_oauth::ready();
     let dev_mock = crate::cloud::dev_mock_enabled();
     let logged_in = cloud.is_logged_in();
-    let mut models: Vec<Value> = modelspec::CATALOG
+    let mut models: Vec<Value> = Vec::new();
+    for c in modelspec::CATALOG
         .iter()
         .filter(|c| c.id != "mock" || dev_mock)
         .filter(|c| c.provider != "antigravity" || !ag_oauth)
-        .map(|c| match c.id {
-            "deepseek-chat" => modelspec::card_json(c, deepseek_availability, c.label),
-            llm::OPENAI_COMPAT_MODEL_ID => modelspec::card_json(c, oai_availability, &oai_label),
-            _ if c.provider == "antigravity" => {
-                modelspec::card_json(c, ag_availability, c.label)
+    {
+        match c.id {
+            "deepseek-chat" => models.push(modelspec::card_json(c, deepseek_availability, c.label)),
+            crate::custom_models::LEGACY_ID if custom.is_empty() => models.push(
+                modelspec::card_json(c, "needs-key", "openai-compatible(未配置)"),
+            ),
+            crate::custom_models::LEGACY_ID => {
+                models.extend(custom.iter().map(crate::custom_models::snapshot_card))
             }
-            _ if matches!(c.provider, "kimi" | "glm") => modelspec::card_json(c,
+            _ if c.provider == "antigravity" => {
+                models.push(modelspec::card_json(c, ag_availability, c.label))
+            }
+            _ if matches!(c.provider, "kimi" | "glm") => models.push(modelspec::card_json(c,
                 if crate::channels::ready(c.provider) { "available" } else { "needs-config" },
-                &crate::channels::model_label(c.provider)),
-            _ => modelspec::card_json(c, "available", c.label),
-        })
-        .collect();
+                &crate::channels::model_label(c.provider))),
+            _ => models.push(modelspec::card_json(c, "available", c.label)),
+        }
+    }
     for model in crate::antigravity_oauth::models() {
         models.push(json!({"id":model["id"],"label":model["label"],"provider":"antigravity","availability":"available","group":"Google AI","supportsThinking":false,"effortOptions":[],"contextOptions":[],"defaultEffort":null,"defaultContext":null}));
     }
@@ -78,14 +76,21 @@ pub(crate) fn models_json(cloud: &crate::cloud::CloudService) -> Value {
         cloud.last_catalog().as_ref(),
         logged_in,
     ));
+    // 未登录时默认项跟随 llm 默认渠道决议:目录里第一个配齐的自定义模型(旧单槽缺席时
+    // 不能再指向不存在的 "openai-compat")。
+    let local_default = custom
+        .iter()
+        .find(|e| e.configured())
+        .map(|e| e.model.id.clone())
+        .unwrap_or_else(|| modelspec::DEFAULT_MODEL_ID.to_string());
     let default_model_id = if logged_in {
         cloud
             .catalog_cached()
             .or_else(|| cloud.last_catalog())
             .map(|c| format!("cloud:{}", c.default_model))
-            .unwrap_or_else(|| modelspec::DEFAULT_MODEL_ID.to_string())
+            .unwrap_or(local_default)
     } else {
-        modelspec::DEFAULT_MODEL_ID.to_string()
+        local_default
     };
     json!({
         "models": models,
@@ -205,7 +210,8 @@ mod tests {
         std::env::set_var("FORGE_AGENT_DEV_MOCK", "1");
         let v = models_json(&crate::cloud::CloudService::new());
         let arr = v["models"].as_array().unwrap();
-        assert_eq!(arr.len(), 5);
+        // 目录卡全量:deepseek / mock / openai-compat / gemini×2 / kimi / glm。
+        assert_eq!(arr.len(), modelspec::CATALOG.len());
         assert_eq!(arr[0]["id"], "deepseek-chat");
         assert_eq!(arr[0]["availability"], "needs-key");
         assert_eq!(arr[1]["id"], "mock");
@@ -243,8 +249,29 @@ mod tests {
         let arr2 = v2["models"].as_array().unwrap();
         assert_eq!(arr2[2]["availability"], "available");
         assert_eq!(arr2[2]["label"], "qwen2.5-7b");
+        assert_eq!(arr2[2]["group"], crate::custom_models::GROUP);
         assert!(!v2.to_string().contains(secret), "models 面泄漏密钥(R-5)");
         assert!(!v2.to_string().contains("sk-"), "models 面含 sk- 串(R-5)");
+        // D-049:目录新文件生效 → 逐项下发,紧跟在旧单槽位置;默认项 = 第一个配齐的条目。
+        std::fs::write(
+            dir.join("llm-custom-models.json"),
+            r#"{"models":[{"id":"custom:0000aaaa","name":"Claude 中转","apiFormat":"anthropic","baseUrl":"https://relay.example.com","model":"claude-sonnet-5-5","contextWindow":204800},{"id":"custom:0000bbbb","baseUrl":"http://127.0.0.1:2","model":"qwen3"}]}"#,
+        )
+        .unwrap();
+        gend::keystore::set_key("custom:0000bbbb", "sk-test-snapshot-custom").unwrap();
+        let v3 = models_json(&crate::cloud::CloudService::new());
+        let arr3 = v3["models"].as_array().unwrap();
+        assert_eq!(arr3.len(), modelspec::CATALOG.len() + 1, "旧单槽位换成两条目录项");
+        assert_eq!(arr3[2]["id"], "custom:0000aaaa");
+        assert_eq!(arr3[2]["label"], "Claude 中转");
+        assert_eq!(arr3[2]["availability"], "needs-key");
+        assert_eq!(arr3[2]["apiFormat"], "anthropic");
+        assert_eq!(arr3[2]["defaultContext"], "200k");
+        assert_eq!(arr3[3]["id"], "custom:0000bbbb");
+        assert_eq!(arr3[3]["availability"], "available");
+        assert_eq!(arr3[3]["defaultContext"], "1m", "未声明窗口沿用旧单槽全档");
+        assert_eq!(v3["defaultModelId"], "custom:0000bbbb");
+        assert!(!v3.to_string().contains("sk-"), "models 面含 sk- 串(R-5)");
         std::env::remove_var("FORGE_GEN_DATA_DIR");
         std::env::remove_var("FORGE_AGENT_DEV_MOCK");
         std::fs::remove_dir_all(&dir).ok();

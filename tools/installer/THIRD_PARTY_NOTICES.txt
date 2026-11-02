@@ -29,6 +29,13 @@ Rust crates
   licenses), including the Rurix engine (https://github.com/qwasg/Rurix) and Jolt Physics (MIT).
   The exact versions are pinned in Cargo.lock in the source repository.
 
+Setup program (MIT, Apache-2.0, Unicode-3.0 and Zlib)
+  RurixForge-Setup-<version>.exe starts with a small setup program built from tools/installer/setup in
+  the source repository. It statically links crates from crates.io (tao, wry, webview2-com, rfd,
+  windows-sys, serde and their dependencies), pinned in tools/installer/setup/Cargo.lock, and renders its
+  pages with the Microsoft Edge WebView2 Runtime that ships with Windows. The files themselves are
+  installed by an NSIS installer (zlib/libpng license, https://nsis.sourceforge.io/License).
+
 CLIProxyAPI (MIT), only if data/antigravity-runtime/ is present
   The optional Antigravity bridge embeds CLIProxyAPI; its license is in
   data/antigravity-runtime/LICENSE.CLIProxyAPI.

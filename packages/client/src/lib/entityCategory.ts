@@ -6,28 +6,11 @@ export type EntityCategory = 'role' | 'map' | 'interaction';
 
 export const CATEGORY_ORDER: EntityCategory[] = ['role', 'map', 'interaction'];
 
-export const CATEGORY_META: Record<
-  EntityCategory,
-  { label: string; icon: typeof User; chipClass: string; headerClass: string }
-> = {
-  role: {
-    label: '角色',
-    icon: User,
-    chipClass: 'bg-info/15 text-info border-info/30',
-    headerClass: 'text-info',
-  },
-  map: {
-    label: '地图',
-    icon: Map,
-    chipClass: 'bg-sage/15 text-sage border-sage/30',
-    headerClass: 'text-sage',
-  },
-  interaction: {
-    label: '交互',
-    icon: Zap,
-    chipClass: 'bg-warn/15 text-warn border-warn/30',
-    headerClass: 'text-warn',
-  },
+/** 分类只靠名称与图标区分;纯色波(2026-10-08)起不再蓝 / 绿 / 黄分色 */
+export const CATEGORY_META: Record<EntityCategory, { label: string; icon: typeof User }> = {
+  role: { label: '角色', icon: User },
+  map: { label: '地图', icon: Map },
+  interaction: { label: '交互', icon: Zap },
 };
 
 /** event.* 节点 → 中文展示名(Scratch 式交互事件) */

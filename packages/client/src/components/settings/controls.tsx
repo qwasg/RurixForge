@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn';
 /**
  * F7 wave.5 设置控件族(参考 ui/settings.rs 控件尺寸逐值):
  * SetCard(rounded-10 border bg-sunk)/SetRow(px-16 py-14 1fr auto,title 13 medium+desc 11.5/17 text-2,
- * 末行无边) /SetToggle(32×18 胶囊,sage 开,14 白 knob)/SetSelect(pl-10 pr-6 py-5 胶囊+up-down 箭头,
+ * 末行无边) /SetToggle(32×18 胶囊,accent 开,14 白 knob)/SetSelect(pl-10 pr-6 py-5 胶囊+up-down 箭头,
  * 菜单 min-w-170 行 h-26)/SetStepper(26×26 ± 夹 mono 值格 min-w-30)/SetSlider(4px 轨 12px knob
  * accent 填充)/SetInput(rounded-6 border bg-panel px-8 py-5 12px)/SmBtn(h-26 px-10 rounded-6 border 12px)。
  */
@@ -66,7 +66,7 @@ export function SetRow({
   );
 }
 
-/** 32×18 胶囊 toggle(sage 开,14px 白 knob)。 */
+/** 32×18 胶囊 toggle(开 = 主题强调色,纯色波起不再固定绿;14px 白 knob)。 */
 export function SetToggle({
   on,
   onChange,
@@ -88,7 +88,7 @@ export function SetToggle({
       onClick={() => onChange(!on)}
       className={cn(
         'flex h-[18px] w-8 shrink-0 items-center rounded-full px-0.5 transition-colors',
-        on ? 'justify-end bg-sage' : 'justify-start bg-shell-active',
+        on ? 'justify-end bg-acc' : 'justify-start bg-shell-active',
       )}
     >
       <span className="h-3.5 w-3.5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.18)]" />

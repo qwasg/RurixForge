@@ -22,7 +22,11 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 forge-util = { path = "../forge-util" }
 forge-shader = { path = "../forge-shader" }
 # Standard glTF data path preserves UV/PBR/skin/animation alongside legacy RXGB.
-gltf = { version = "1.4.1", default-features = false, features = ["utils", "names", "extras", "KHR_materials_unlit", "KHR_texture_transform"] }
+gltf = { version = "1.4.1", default-features = false, features = ["utils", "names", "extras", "KHR_materials_unlit", "KHR_texture_transform", "KHR_materials_emissive_strength"] }
 fs2 = "0.4"
 # D-045:字体资产校验与族名读取(与 fontdue 依赖的 ttf-parser 同版本)。
 ttf-parser = "0.25"
+# F-GAME-5 / D-050:.rxrig 2D 绑骨核心(格式/校验/求值/自动网格/预览光栅,纯计算)。
+forge-rig2d = { path = "../forge-rig2d" }
+# PSD 图层读取(rig_import_psd;仅 8-bit RGB,其余 → RIG_PSD_UNSUPPORTED)。
+psd = "0.3"

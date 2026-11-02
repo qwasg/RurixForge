@@ -23,7 +23,7 @@ required-features = ["backend-rurix"]
 # 02 §5.2:rurix 渲染后端(GPU 会话、WGSL→SPIR-V)是缺省 feature;godot-host 以 default-features = false 依赖核心。
 [features]
 default = ["backend-rurix"]
-backend-rurix = ["dep:rurix-rt", "dep:naga"]
+backend-rurix = ["dep:rurix-rt", "dep:naga", "dep:rurix-render"]
 
 [dependencies]
 forge-util = { path = "../forge-util" }
@@ -31,11 +31,14 @@ forge-scene = { path = "../forge-scene" }
 forge-shader = { path = "../forge-shader" }
 # F4 wave.3:图解释执行运行时(play 态逻辑帧调度 + 热重载)。
 forge-logic = { path = "../forge-logic" }
+# F-GAME-5(D-050):2D 绑骨核心(RigSystem 运行时 + render_core RigMesh 求值)。
+forge-rig2d = { path = "../forge-rig2d" }
 rurix-physics.workspace = true
 soft-raster.workspace = true
 # wave.2 Viewport:rurix-rt vulkan 档 render_exec(场景实渲染 + Readback);loader 运行时
 # 动态装载 vulkan-1.dll,编译期零原生依赖,无设备环境可编译、运行期诚实 DEV_ENV_DEGRADE。
 rurix-rt = { workspace = true, features = ["vulkan"], optional = true }
+rurix-render = { workspace = true, features = ["realtime"], optional = true }
 # 2026-08-28 资产→视口断链接线:RXGB .rxmesh 反序列化(read_dag)+ assetd 项目面
 # (ForgeProject/.meta/cache_key——与构建链同一缓存键事实源)。
 rurix-geom-build.workspace = true

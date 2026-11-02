@@ -72,11 +72,125 @@ struct ToolTrack {
     started_ms: u128,
 }
 
+#[derive(Debug, PartialEq)]
+pub(super) enum ReasoningEvent {
+    Started { item_id: String },
+    Delta { item_id: String, delta: String },
+    Completed { item_id: String, text: String },
+}
+
+#[derive(Default)]
+struct ReasoningItem {
+    streamed: String,
+    completed: bool,
+}
+
+/// Shared by ordinary chats and managed jobs. A completed summary is a
+/// snapshot, never another delta to append to the streamed preview.
+pub(super) struct ReasoningTracker {
+    prefix: String,
+    serial: usize,
+    active: Option<String>,
+    items: HashMap<String, ReasoningItem>,
+}
+
+impl ReasoningTracker {
+    pub(super) fn new(prefix: &str) -> Self {
+        Self {
+            prefix: prefix.to_string(),
+            serial: 0,
+            active: None,
+            items: HashMap::new(),
+        }
+    }
+
+    pub(super) fn reset_turn(&mut self) {
+        self.active = None;
+        self.items.clear();
+        // Keep the serial across native Goal turns sharing the same run.
+    }
+
+    fn item_id(&mut self, params: &Value) -> String {
+        let item = item_of(params);
+        let body = item_body(&item, &item_type_of(&item));
+        let id = item
+            .get("id")
+            .or_else(|| body.get("id"))
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| item_id_of(params));
+        if !id.is_empty() {
+            return id;
+        }
+        if let Some(active) = &self.active {
+            return active.clone();
+        }
+        self.serial += 1;
+        format!("{}:reasoning:{}", self.prefix, self.serial)
+    }
+
+    /// `None` means the notification belongs to another item kind.
+    pub(super) fn handle(&mut self, method: &str, params: &Value) -> Option<Vec<ReasoningEvent>> {
+        let is_delta = matches!(
+            method,
+            "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/reasoning/delta"
+        );
+        let completed = method == "item/completed";
+        if !is_delta
+            && (!matches!(method, "item/started" | "item/completed")
+                || item_type_of(&item_of(params)) != "reasoning")
+        {
+            return None;
+        }
+
+        let item_id = self.item_id(params);
+        let mut events = Vec::new();
+        if !self.items.contains_key(&item_id) {
+            self.items.insert(item_id.clone(), ReasoningItem::default());
+            events.push(ReasoningEvent::Started {
+                item_id: item_id.clone(),
+            });
+        }
+        let item = self
+            .items
+            .get_mut(&item_id)
+            .expect("reasoning item inserted");
+        if item.completed {
+            return Some(events);
+        }
+        if !completed {
+            self.active = Some(item_id.clone());
+        }
+        if is_delta {
+            let delta = delta_of(params);
+            if !delta.is_empty() {
+                item.streamed.push_str(&delta);
+                events.push(ReasoningEvent::Delta { item_id, delta });
+            }
+        } else if completed {
+            let snapshot = reasoning_text(&item_of(params));
+            let text = if snapshot.is_empty() {
+                item.streamed.clone()
+            } else {
+                snapshot
+            };
+            item.completed = true;
+            if self.active.as_deref() == Some(item_id.as_str()) {
+                self.active = None;
+            }
+            events.push(ReasoningEvent::Completed { item_id, text });
+        }
+        Some(events)
+    }
+}
+
 /// 一轮的翻译器。持有跨通知的累积态(助手终稿、推理终稿、进行中的工具项)。
 pub struct Mapper {
     run_id: String,
     thread_id: Option<String>,
     tools: HashMap<String, ToolTrack>,
+    reasoning: ReasoningTracker,
     /// 助手正文终稿(以 `item/completed` 的全文为准;没有 completed 才退回 delta 累积)。
     assistant: String,
     assistant_streamed: String,
@@ -90,6 +204,7 @@ impl Mapper {
             run_id: run_id.to_string(),
             thread_id: None,
             tools: HashMap::new(),
+            reasoning: ReasoningTracker::new(run_id),
             assistant: String::new(),
             assistant_streamed: String::new(),
             plan_stream: String::new(),
@@ -121,6 +236,7 @@ impl Mapper {
     /// 本轮的累积，下一轮不能把上一轮正文/工具跟踪重复带进来。
     pub fn reset_turn(&mut self) {
         self.tools.clear();
+        self.reasoning.reset_turn();
         self.assistant.clear();
         self.assistant_streamed.clear();
         self.plan_stream.clear();
@@ -145,20 +261,44 @@ impl Mapper {
 
     /// 翻译一条通知。返回空 vec = 本仓不关心(如 `item/updated` 的中间态)。
     pub fn handle(&mut self, method: &str, params: &Value) -> Vec<Action> {
+        if let Some(events) = self.reasoning.handle(method, params) {
+            return events
+                .into_iter()
+                .flat_map(|event| match event {
+                    ReasoningEvent::Started { item_id } => vec![self.emit(
+                        "agent.reasoning.started",
+                        "agent",
+                        json!({ "itemId": item_id }),
+                    )],
+                    ReasoningEvent::Delta { item_id, delta } => vec![self.stream(
+                        "agent.reasoning.delta",
+                        json!({ "itemId": item_id, "delta": delta }),
+                    )],
+                    ReasoningEvent::Completed { item_id, text } => {
+                        let mut actions = Vec::new();
+                        if !text.is_empty() {
+                            actions.push(self.emit(
+                                "agent.reasoning",
+                                "agent",
+                                json!({ "itemId": item_id, "text": text }),
+                            ));
+                        }
+                        actions.push(self.emit(
+                            "agent.reasoning.completed",
+                            "agent",
+                            json!({ "itemId": item_id, "text": text }),
+                        ));
+                        actions
+                    }
+                })
+                .collect();
+        }
         match method {
             // ---- 流式 delta(全部 ephemeral) ----
             "item/agentMessage/delta" => {
                 let d = delta_of(params);
                 self.assistant_streamed.push_str(&d);
                 vec![self.stream("agent.token.stream.delta", json!({ "delta": d }))]
-            }
-            "item/reasoning/summaryTextDelta"
-            | "item/reasoning/textDelta"
-            | "item/reasoning/delta" => {
-                vec![self.stream(
-                    "agent.reasoning.delta",
-                    json!({ "delta": delta_of(params) }),
-                )]
             }
             "item/commandExecution/outputDelta" => {
                 let id = item_id_of(params);
@@ -351,8 +491,8 @@ impl Mapper {
         // 单键包裹形态下负载在包裹里;摊平后下面各分支只看一种形状。
         let item = item_body(&outer, &item_type);
         match item_type.as_str() {
-            // 正文/推理没有「开始」这一说,等 delta 与 completed。
-            "agentMessage" | "reasoning" => Vec::new(),
+            // Reasoning lifecycle is handled by the shared tracker above.
+            "agentMessage" => Vec::new(),
             "commandExecution" => {
                 let name = "shell";
                 self.track(&id, name, "command");
@@ -451,12 +591,17 @@ impl Mapper {
             }
             // Codex 起子代理:映到本仓既有的 subagent 卡片(前端已有 subagent 块)。
             "collabAgentToolCall" | "collabToolCall" => {
-                let title = item
-                    .get("description")
-                    .or_else(|| item.get("prompt"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("Codex 子代理")
-                    .to_string();
+                // Delegation instructions belong in the detail view, never in
+                // the parent timeline's task title.
+                let title = ["description", "title"]
+                    .iter()
+                    .find_map(|key| {
+                        item.get(*key)
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                    })
+                    .unwrap_or("Codex 子代理");
                 self.track(&id, "collab", "native");
                 vec![self.emit(
                     "subagent.started",
@@ -464,6 +609,7 @@ impl Mapper {
                     json!({
                         "subagentId": id,
                         "description": title,
+                        "prompt": item.get("prompt").and_then(Value::as_str),
                         "subagentType": item
                             .get("agent")
                             .or_else(|| item.get("tool"))
@@ -499,13 +645,6 @@ impl Mapper {
                     self.assistant = text;
                 }
                 Vec::new()
-            }
-            "reasoning" if completed => {
-                let text = reasoning_text(&item);
-                if text.is_empty() {
-                    return Vec::new();
-                }
-                vec![self.emit("agent.reasoning", "agent", json!({ "text": text }))]
             }
             "plan" | "todoList" | "planUpdate" => {
                 if !completed {
@@ -577,7 +716,8 @@ impl Mapper {
                 )]
             }
             // 工具类:只在 completed 收尾(updated 是中间态,重复发会让工具卡闪成两条)。
-            "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" | "dynamicToolCall" | "imageGeneration" => {
+            "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" | "dynamicToolCall"
+            | "imageGeneration" => {
                 if !completed {
                     return Vec::new();
                 }
@@ -619,7 +759,10 @@ impl Mapper {
         if name == "imagegen" {
             if status == "completed" && item.get("failure").is_none_or(Value::is_null) {
                 payload["runId"] = json!(self.run_id);
-                return vec![Action::ImageResult { item: item.clone(), payload }];
+                return vec![Action::ImageResult {
+                    item: item.clone(),
+                    payload,
+                }];
             }
             payload["error"] = json!(super::imagegen::failure_message(item));
             return vec![self.emit("agent.tool.failed", "tool", payload)];
@@ -763,25 +906,25 @@ fn text_of(item: &Value) -> String {
 
 fn reasoning_text(item: &Value) -> String {
     let body = item_body(item, &item_type_of(item));
-    if let Some(arr) = body
-        .get("summary")
-        .or_else(|| body.get("summaryText"))
-        .and_then(Value::as_array)
-    {
-        let joined: Vec<String> = arr
-            .iter()
-            .map(|v| match v.as_str() {
-                Some(s) => s.to_string(),
-                None => v
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-        if !joined.is_empty() {
-            return joined.join("\n\n");
+    for key in ["summary", "summaryText", "content"] {
+        if let Some(text) = body.get(key).and_then(Value::as_str) {
+            if !text.is_empty() {
+                return text.to_string();
+            }
+        }
+        if let Some(arr) = body.get(key).and_then(Value::as_array) {
+            let joined: Vec<&str> = arr
+                .iter()
+                .filter_map(|value| {
+                    value
+                        .as_str()
+                        .or_else(|| value.get("text").and_then(Value::as_str))
+                })
+                .filter(|text| !text.is_empty())
+                .collect();
+            if !joined.is_empty() {
+                return joined.join("\n\n");
+            }
         }
     }
     text_of(item)
@@ -1090,12 +1233,19 @@ mod tests {
         assert_eq!(kind, "agent.tool.invoked");
         assert_eq!(payload["name"], "imagegen");
         assert_eq!(payload["toolKind"], "native");
-        assert!(m.handle("item/updated", &json!({"threadId":"th_1", "item":{"type":"imageGeneration","id":"img_1"}})).is_empty());
+        assert!(m
+            .handle(
+                "item/updated",
+                &json!({"threadId":"th_1", "item":{"type":"imageGeneration","id":"img_1"}})
+            )
+            .is_empty());
         let actions = m.handle("item/completed", &json!({
             "threadId": "th_1", "item": {"type": "imageGeneration", "id": "img_1", "status": "completed", "result": "png-base64", "savedPath": "C:/native/image.png"}
         }));
         assert_eq!(actions.len(), 1);
-        let Action::ImageResult { item, payload } = &actions[0] else { panic!("expected image persistence"); };
+        let Action::ImageResult { item, payload } = &actions[0] else {
+            panic!("expected image persistence");
+        };
         assert_eq!(item["result"], "png-base64");
         assert!(payload.get("output").is_none());
         assert_eq!(payload["toolCallId"], "img_1");
@@ -1108,14 +1258,22 @@ mod tests {
         let actions = m.handle("item/completed", &json!({
             "threadId":"th_1", "item":{"type":"imageGeneration","id":"img_2","status":"completed","result":"png-base64"}
         }));
-        assert!(matches!(&actions[0], Action::Emit { payload, .. } if payload["name"] == "imagegen"));
-        assert!(matches!(&actions[1], Action::ImageResult { payload, .. } if payload["name"] == "imagegen"));
+        assert!(
+            matches!(&actions[0], Action::Emit { payload, .. } if payload["name"] == "imagegen")
+        );
+        assert!(
+            matches!(&actions[1], Action::ImageResult { payload, .. } if payload["name"] == "imagegen")
+        );
         let actions = m.handle("item/completed", &json!({
             "threadId":"th_1", "item":{"type":"imageGeneration","id":"img_3","status":"failed","result":"", "failure":{"type":"usageLimitExceeded","limitId":"imagegen"}}
         }));
-        assert!(matches!(&actions[1], Action::Emit { event_type, payload, .. }
-            if event_type == "agent.tool.failed" && payload["error"].as_str().unwrap().contains("usageLimitExceeded")));
-        assert!(!actions.iter().any(|action| matches!(action, Action::ImageResult { .. })));
+        assert!(
+            matches!(&actions[1], Action::Emit { event_type, payload, .. }
+            if event_type == "agent.tool.failed" && payload["error"].as_str().unwrap().contains("usageLimitExceeded"))
+        );
+        assert!(!actions
+            .iter()
+            .any(|action| matches!(action, Action::ImageResult { .. })));
     }
 
     #[test]
@@ -1426,7 +1584,8 @@ mod tests {
             }}),
         ));
         assert_eq!(started, "subagent.started");
-        assert_eq!(payload["description"], "检查存档逻辑");
+        assert_eq!(payload["description"], "Codex 子代理");
+        assert_eq!(payload["prompt"], "检查存档逻辑");
         assert_eq!(payload["receiverThreadIds"], json!(["th_child"]));
 
         let (completed, payload) = only_emit(m.handle(
@@ -1454,14 +1613,153 @@ mod tests {
     }
 
     #[test]
+    fn collab_dispatch_titles_keep_prompts_in_details() {
+        for (metadata, expected_title) in [
+            (
+                json!({ "description": "  检查存档  ", "title": "备用标题", "prompt": "委派正文\n验证并报告结果" }),
+                "检查存档",
+            ),
+            (
+                json!({ "description": " \n\t ", "title": "  检查接口  ", "prompt": "委派正文" }),
+                "检查接口",
+            ),
+            (
+                json!({ "description": " \n ", "title": "\t", "prompt": "不能显示为标题的委派正文" }),
+                "Codex 子代理",
+            ),
+            (json!({ "title": "检查资源" }), "检查资源"),
+            (json!({}), "Codex 子代理"),
+        ] {
+            let mut m = mapper();
+            let mut item = json!({ "id": "collab_title", "type": "collabAgentToolCall", "tool": "spawn_agent" });
+            item.as_object_mut()
+                .unwrap()
+                .extend(metadata.as_object().unwrap().clone());
+            let (event, payload) =
+                only_emit(m.handle("item/started", &json!({ "threadId": "th_1", "item": item })));
+            assert_eq!(event, "subagent.started");
+            assert_eq!(payload["description"], expected_title);
+            assert_eq!(payload["prompt"], metadata["prompt"]);
+        }
+    }
+
+    #[test]
     fn raw_reasoning_text_delta_is_streamed() {
         let mut m = mapper();
-        let (event, payload) = only_stream(m.handle(
+        let actions = m.handle(
             "item/reasoning/textDelta",
             &json!({ "threadId": "th_1", "delta": "checking state" }),
-        ));
+        );
+        let Action::Emit {
+            event_type,
+            payload: started,
+            ..
+        } = &actions[0]
+        else {
+            panic!("a missing start notification must be recovered: {actions:?}");
+        };
+        assert_eq!(event_type, "agent.reasoning.started");
+        let (event, payload) = only_stream(actions[1..].to_vec());
         assert_eq!(event, "agent.reasoning.delta");
         assert_eq!(payload["delta"], "checking state");
+        assert_eq!(payload["itemId"], started["itemId"]);
+    }
+
+    #[test]
+    fn reasoning_lifecycle_uses_one_item_snapshot_without_replaying_deltas() {
+        let mut m = mapper();
+        let started = json!({ "threadId": "th_1", "item": { "id": "r1", "type": "reasoning", "summary": [] } });
+        let (event, payload) = only_emit(m.handle("item/started", &started));
+        assert_eq!(event, "agent.reasoning.started");
+        assert_eq!(payload["itemId"], "r1");
+        assert_eq!(payload["runId"], "run_1");
+        assert!(m.handle("item/started", &started).is_empty());
+        let (_, delta) = only_stream(m.handle(
+            "item/reasoning/summaryTextDelta",
+            &json!({ "itemId": "r1", "delta": "Checking" }),
+        ));
+        assert_eq!(delta["itemId"], "r1");
+        let completed = json!({ "item": { "id": "r1", "type": "reasoning", "summary": ["Checking the scene"] } });
+        let actions = m.handle("item/completed", &completed);
+        assert_eq!(
+            actions.len(),
+            2,
+            "one legacy snapshot and one lifecycle end"
+        );
+        for action in &actions {
+            let Action::Emit { payload, .. } = action else {
+                panic!("completion must not append the full summary as a delta");
+            };
+            assert_eq!(payload["text"], "Checking the scene");
+            assert_eq!(payload["itemId"], "r1");
+        }
+        assert!(
+            matches!(&actions[1], Action::Emit { event_type, .. } if event_type == "agent.reasoning.completed")
+        );
+        assert!(m.handle("item/completed", &completed).is_empty());
+    }
+
+    #[test]
+    fn reasoning_without_visible_summary_still_has_a_complete_lifecycle() {
+        let mut m = mapper();
+        let item = json!({ "item": { "id": "silent", "type": "reasoning", "summary": [], "content": [] } });
+        assert_eq!(
+            only_emit(m.handle("item/started", &item)).0,
+            "agent.reasoning.started"
+        );
+        let (event, payload) = only_emit(m.handle("item/completed", &item));
+        assert_eq!(event, "agent.reasoning.completed");
+        assert_eq!(payload["itemId"], "silent");
+        assert_eq!(payload["text"], "");
+    }
+
+    #[test]
+    fn reasoning_fallback_ids_are_stable_within_items_and_unique_across_turns() {
+        let mut m = mapper();
+        let started = json!({ "item": { "type": "reasoning" } });
+        let (_, first) = only_emit(m.handle("item/started", &started));
+        let (_, delta) =
+            only_stream(m.handle("item/reasoning/delta", &json!({ "delta": "preview" })));
+        assert_eq!(delta["itemId"], first["itemId"]);
+        let completed = m.handle("item/completed", &started);
+        let Action::Emit { payload, .. } = &completed[1] else {
+            panic!()
+        };
+        assert_eq!(payload["itemId"], first["itemId"]);
+        assert_eq!(
+            payload["text"], "preview",
+            "empty snapshots retain visible deltas"
+        );
+        m.reset_turn();
+        let (_, second) = only_emit(m.handle("item/started", &started));
+        assert_ne!(second["itemId"], first["itemId"]);
+    }
+
+    #[test]
+    fn completed_reasoning_recovers_missing_deltas_and_tolerates_summary_shapes() {
+        let mut m = mapper();
+        let actions = m.handle(
+            "item/completed",
+            &json!({ "item": {
+                "reasoning": { "id": "r_final", "summary": [], "summaryText": "Recovered summary" }
+            }}),
+        );
+        assert_eq!(actions.len(), 3, "start, legacy snapshot, completion");
+        let Action::Emit { payload, .. } = &actions[2] else {
+            panic!()
+        };
+        assert_eq!(payload["itemId"], "r_final");
+        assert_eq!(payload["text"], "Recovered summary");
+        assert_eq!(
+            reasoning_text(&json!({ "type": "reasoning", "summary": [{ "text": "one" }, "two"] })),
+            "one\n\ntwo"
+        );
+        assert_eq!(
+            reasoning_text(
+                &json!({ "type": "reasoning", "summary": [], "content": ["visible raw fallback"] })
+            ),
+            "visible raw fallback"
+        );
     }
 
     #[test]

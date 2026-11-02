@@ -567,16 +567,17 @@ describe('<DesignBoardView /> — 自定义类型与连线', () => {
   it('新类型表单:保存后工具栏出现该类型按钮,建出的实体带默认特性', () => {
     render(<DesignBoardView />);
     fireEvent.click(screen.getByTestId('board-kind-new'));
+    // 纯色波:类型不再分色,表单里没有配色选择器
+    expect(screen.queryByTestId('board-kind-tone-danger')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId('board-kind-label'), { target: { value: '敌人' } });
-    fireEvent.click(screen.getByTestId('board-kind-tone-danger'));
     fireEvent.change(screen.getByTestId('board-kind-category'), { target: { value: 'role' } });
     fireEvent.click(screen.getByTestId('board-kind-feat-MeshRenderer'));
     fireEvent.click(screen.getByTestId('board-kind-feat-Script'));
     fireEvent.click(screen.getByTestId('board-kind-save'));
 
     const kind = board().kinds.find((k) => k.label === '敌人')!;
-    expect(kind).toMatchObject({ builtin: false, tone: 'danger', category: 'role' });
+    expect(kind).toMatchObject({ builtin: false, category: 'role' });
     expect(kind.defaultFeatures).toEqual(['MeshRenderer', 'Script']);
     expect(screen.queryByTestId('board-kind-form')).not.toBeInTheDocument();
 

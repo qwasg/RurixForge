@@ -9,11 +9,11 @@ import { normalizeTodoStatus, type TodoStatus } from '@/lib/todoStatus';
  * 只读(本仓 todo 无 run 语义,不造重跑钮;参考的 rerun 依赖 active_run + action 面,不落)。
  */
 
-const COLUMNS: Array<{ id: string; label: string; status: TodoStatus }> = [
-  { id: 'backlog', label: 'Backlog', status: 'pending' },
-  { id: 'running', label: 'Running', status: 'running' },
-  { id: 'review', label: 'Review', status: 'failed' },
-  { id: 'done', label: 'Done', status: 'completed' },
+const COLUMNS: Array<{ id: string; label: string; statuses: TodoStatus[] }> = [
+  { id: 'backlog', label: 'Backlog', statuses: ['pending'] },
+  { id: 'running', label: 'Running', statuses: ['running', 'verifying'] },
+  { id: 'review', label: 'Review', statuses: ['failed', 'blocked'] },
+  { id: 'done', label: 'Done', statuses: ['completed'] },
 ];
 
 /** 待办来源标记(todo.source);Agent 在对话中建的待办无来源字段,不画标记。 */
@@ -81,7 +81,7 @@ export default function TodoTab() {
           <KanbanColumn
             key={c.id}
             label={c.label}
-            items={todos.filter((t) => normalizeTodoStatus(t.status) === c.status)}
+            items={todos.filter((t) => c.statuses.includes(normalizeTodoStatus(t.status)))}
           />
         ))}
       </div>

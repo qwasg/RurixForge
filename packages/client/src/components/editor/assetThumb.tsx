@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import {
+  Bone,
   Box,
   FileAudio,
   FileCode,
@@ -34,6 +35,9 @@ export function typeIcon(type: string, size: number) {
     case 'sprite':
       // F-GAME-4:精灵图集(.rxsprite 帧动画语义 → 胶片图标)。
       return <Film size={size} strokeWidth={1.5} />;
+    case 'rig':
+      // F-GAME-5:2D 绑骨(.rxrig 部件网格 + 骨骼 + 参数)→ 骨头图标。
+      return <Bone size={size} strokeWidth={1.5} />;
     case 'audio':
       return <FileAudio size={size} strokeWidth={1.5} />;
     default:

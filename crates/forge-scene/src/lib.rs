@@ -358,6 +358,28 @@ pub const REGISTRY: &[ComponentSpec] = &[
             FieldSpec { name: "sortingOrder", ty: "number", default: Some("0.0") },
         ],
     },
+    // F-GAME-5(D-050,09 E-09-004):Rig2D = Live2D 风格 2D 绑骨角色——rig 为 .rxrig GUID;
+    // 渲染 = 纯函数 pose_from(rig, params, clip, time) → evaluate。编辑态摆姿势写 params;
+    // PIE 中宿主 RigSystem 是 params/clip/time 的唯一写者(每固定步回写完整参数快照)。
+    // clip 为空且文档带 animator → FSM 模式(与 Sprite 同判定)。字段顺序为契约,勿改。
+    ComponentSpec {
+        name: "Rig2D",
+        fields: &[
+            FieldSpec { name: "rig", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "clip", ty: "string", default: Some("\"\"") },
+            FieldSpec { name: "time", ty: "number", default: Some("0.0") },
+            FieldSpec { name: "speed", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "playing", ty: "bool", default: Some("true") },
+            FieldSpec { name: "params", ty: "dict", default: Some("{}") },
+            FieldSpec { name: "autoBlink", ty: "bool", default: Some("true") },
+            FieldSpec { name: "autoBreath", ty: "bool", default: Some("true") },
+            FieldSpec { name: "physics", ty: "bool", default: Some("true") },
+            FieldSpec { name: "tint", ty: "[f32;4]", default: Some("[1.0, 1.0, 1.0, 1.0]") },
+            FieldSpec { name: "flipX", ty: "bool", default: Some("false") },
+            FieldSpec { name: "flipY", ty: "bool", default: Some("false") },
+            FieldSpec { name: "sortingOrder", ty: "number", default: Some("0.0") },
+        ],
+    },
     // F4(09 §3 字段集扩展):Script = 交互逻辑挂载点——module(.rx 模块路径)或
     // graphRef(.rxgraph 路径,Content/Graphs/*)二选一非空,props 为暴露属性覆盖 dict。
     ComponentSpec {
@@ -520,6 +542,13 @@ pub const REGISTRY: &[ComponentSpec] = &[
     ComponentSpec {
         name: "RenderSettings",
         fields: &[
+            FieldSpec { name: "rurixRealtime", ty: "bool", default: Some("false") },
+            FieldSpec { name: "renderScale", ty: "number", default: Some("1.0") },
+            FieldSpec { name: "depthPrepass", ty: "bool", default: Some("false") },
+            FieldSpec { name: "tileLights", ty: "bool", default: Some("true") },
+            FieldSpec { name: "giEnabled", ty: "bool", default: Some("true") },
+            FieldSpec { name: "reflectionsEnabled", ty: "bool", default: Some("true") },
+            FieldSpec { name: "shadowsEnabled", ty: "bool", default: Some("true") },
             FieldSpec { name: "msaa3d", ty: "enum:disabled|2x|4x|8x", default: Some("\"disabled\"") },
             FieldSpec { name: "screenSpaceAA", ty: "enum:disabled|fxaa|smaa", default: Some("\"disabled\"") },
             FieldSpec { name: "taa", ty: "bool", default: Some("false") },
@@ -594,6 +623,9 @@ pub const REGISTRY: &[ComponentSpec] = &[
     ComponentSpec {
         name: "LightParams",
         fields: &[
+            FieldSpec { name: "radius", ty: "number", default: Some("0.05") },
+            FieldSpec { name: "rectSize", ty: "[f32;2]", default: Some("[0.5, 0.12]") },
+            FieldSpec { name: "innerAngle", ty: "number", default: Some("30.0") },
             FieldSpec { name: "range", ty: "number", default: Some("5.0") },
             FieldSpec { name: "attenuation", ty: "number", default: Some("1.0") },
             FieldSpec { name: "spotAngle", ty: "number", default: Some("45.0") },
@@ -1040,7 +1072,7 @@ mod tests {
     fn registry_lists_legacy_and_model_types_with_fields() {
         let v = list_types_json();
         let arr = v.as_array().unwrap();
-        assert_eq!(arr.len(), 25);
+        assert_eq!(arr.len(), 26);
         let names: Vec<&str> = arr.iter().filter_map(|t| t["name"].as_str()).collect();
         for want in [
             "ParticleEmitter",
@@ -1051,6 +1083,7 @@ mod tests {
             "Camera",
             "Sprite",
             "Text",
+            "Rig2D",
             "Script",
             "Tag",
             "Trigger",
@@ -1084,6 +1117,32 @@ mod tests {
         assert_eq!(default("sprite"), "");
         assert_eq!(default("frame"), 0.0);
         assert_eq!(default("pixelsPerUnit"), 100.0);
+        // F-GAME-5(D-050):Rig2D 字段集与顺序为契约(contract D)。
+        let rg = arr.iter().find(|t| t["name"] == "Rig2D").unwrap();
+        let rfields: Vec<&str> = rg["fields"].as_array().unwrap().iter().filter_map(|f| f["name"].as_str()).collect();
+        assert_eq!(rfields, ["rig", "clip", "time", "speed", "playing", "params", "autoBlink", "autoBreath", "physics", "tint", "flipX", "flipY", "sortingOrder"]);
+        let rdef = |name: &str| rg["fields"].as_array().unwrap().iter().find(|f| f["name"] == name).unwrap()["default"].clone();
+        assert_eq!(rdef("rig"), "");
+        assert_eq!(rdef("speed"), 1.0);
+        assert_eq!(rdef("playing"), true);
+        assert_eq!(rdef("params"), json!({}));
+        assert_eq!(rdef("tint"), json!([1.0, 1.0, 1.0, 1.0]));
+        assert_eq!(rdef("sortingOrder"), 0.0);
+    }
+
+    #[test]
+    fn rig2d_validate_and_normalize() {
+        assert!(validate_props("Rig2D", &json!({})).is_ok());
+        assert!(validate_props("Rig2D", &json!({"rig": "guid-rig", "params": {"ParamAngleX": 10.0}})).is_ok());
+        assert!(validate_props("Rig2D", &json!({"rig": 1})).is_err());
+        assert!(validate_props("Rig2D", &json!({"params": [1.0]})).is_err());
+        assert!(validate_props("Rig2D", &json!({"tint": [1.0, 1.0, 1.0]})).is_err());
+        let n = normalize_props("Rig2D", &json!({"rig": "g"})).unwrap();
+        assert_eq!(n["clip"], "");
+        assert_eq!(n["time"], 0.0);
+        assert_eq!(n["autoBlink"], true);
+        assert_eq!(n["physics"], true);
+        assert_eq!(n["flipX"], false);
     }
 
     #[test]

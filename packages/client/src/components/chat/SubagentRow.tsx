@@ -25,7 +25,7 @@ export default function SubagentRow({
   const cancelRun = useChatStore((st) => st.cancelRun);
   const cancelSubagent = useChatStore((st) => st.cancelSubagent);
   const member = useCollaborationStore((state) => state.agents.find((agent) => agent.id === block.agentId));
-  const top = subagentDispatchSummary(block.label, block.prompt ?? '');
+  const top = subagentDispatchSummary(block.label);
   const bottom = subagentLiveSummary(block.summary, block.work, block.status);
   const running = block.status === 'running';
   // D-036:后台子代理有自己的 run,Stop 只打它一个;同步子代理没有,维持中止父轮原语义。

@@ -8,6 +8,8 @@
 mod agent;
 mod agent_settings;
 mod agent_job;
+/// D-049:自定义模型「Anthropic 格式」的 Messages 出入站转换。
+mod anthropic_compat;
 mod antigravity;
 mod antigravity_oauth;
 mod channels;
@@ -21,8 +23,11 @@ mod collaboration_runtime;
 mod collaboration_stdio;
 /// 手动压缩上下文(`POST /api/forge/sessions/{id}/compact`,本地 / Codex 两种引擎)。
 mod compact;
+/// D-049:自定义模型目录(双 API 格式 + 上下文参数;取代 F8 单槽 openai-compat 配置)。
+mod custom_models;
 /// D-044:UltraPlan 网页 Demo 的进程级静态托管(回环地址,只服务 `/u/<token>/…`)。
 mod demo_host;
+mod demo_requirements;
 mod design;
 mod embedcfg;
 mod editor;
@@ -71,6 +76,7 @@ mod workspace_git;
 /// D-040:工作区文件名模糊搜索(命令面板「文件」组)。
 mod workspace_search;
 mod workspaces;
+pub mod world_build;
 
 use axum::{
     extract::{Path, Query, State},
@@ -255,6 +261,13 @@ fn build_app() -> Router {
         events.emit(
             events::EventDraft::new(&sid, "design.stage", "design")
                 .payload(design::stage_payload(&d, None)),
+        );
+    }
+    // WorldBuild 同源清扫: 进程重启将 running 置为 failed 并补发事件
+    for (sid, wb) in sessions.sweep_stale_world_build_runs() {
+        events.emit(
+            events::EventDraft::new(&sid, "world_build.stage", "world_build")
+                .payload(world_build::stage_payload(&wb, None)),
         );
     }
     // D-036 同源清扫:后台子代理 run 也只存内存,进程重启后 receipts.json 里残留的
@@ -493,14 +506,27 @@ fn build_app() -> Router {
             "/api/forge/workspace/file",
             get(workspace::workspace_file).put(workspace::workspace_file_write),
         )
-        // F8 wave.2:openai-compatible 通用渠道配置与状态
+        // F8 wave.2:openai-compatible 通用渠道配置与状态(D-049 起落在自定义模型目录的旧单槽项上)
         .route(
             "/api/forge/llm/openai-compat/config",
-            post(llm::set_openai_compat_config),
+            post(custom_models::legacy_config_handler),
         )
         .route(
             "/api/forge/llm/openai-compat/status",
-            get(llm::openai_compat_status_handler),
+            get(custom_models::legacy_status_handler),
+        )
+        // D-049:自定义模型目录(双 API 格式 + 上下文参数;R-5 不回显 key)
+        .route(
+            "/api/forge/llm/custom-models",
+            get(custom_models::list_handler).post(custom_models::upsert_handler),
+        )
+        .route(
+            "/api/forge/llm/custom-models/test",
+            post(custom_models::test_handler),
+        )
+        .route(
+            "/api/forge/llm/custom-models/{id}",
+            axum::routing::delete(custom_models::delete_handler),
         )
         // Antigravity (Google AI / Gemini) 订阅反代渠道配置、状态与额度探针
         .route(
@@ -606,6 +632,10 @@ fn build_app() -> Router {
         .route("/api/forge/gen/video/frames", post(gen_video_frames))
         .route("/api/forge/gen/audio", post(gen_audio))
         .route("/api/forge/gen/mesh", post(gen_mesh))
+        .route("/api/forge/gen/mesh/refine", post(gen_mesh_refine_handler))
+        .route("/api/forge/gen/mesh/rig", post(gen_mesh_rig_handler))
+        .route("/api/forge/gen/mesh/animate", post(gen_mesh_animate_handler))
+        .route("/api/forge/gen/mesh/publish", post(gen_mesh_publish_handler))
         .route("/api/forge/tools/ffmpeg", get(tools_ffmpeg))
         .route("/api/forge/swarm/state", get(swarm_state))
         .route("/api/forge/swarm/seed-demo", post(swarm_seed_demo))
@@ -1236,6 +1266,7 @@ async fn swarm_execute(
     };
 
     // 逻辑 worker 并行(04 §5.1 同进程逻辑 worker;每片一个 tokio task)。
+    let project_root = scope::project_of(&state, None).project_root;
     let mut handles = Vec::with_capacity(shard_ids.len());
     for id in &shard_ids {
         let shard = state.swarm.get_shard(id).expect("刚创建的分片必在");
@@ -1243,6 +1274,7 @@ async fn swarm_execute(
         let shard_type = req.shard_type.clone();
         let operation = req.operation.clone();
         let id = id.clone();
+        let project_root = project_root.clone();
         handles.push(tokio::spawn(async move {
             // F6 wave.2:test-matrix 分片整体执行腿(FreshSession 独立 engine-host + 信号量守卫)。
             if shard_type == "test-matrix" {
@@ -1260,7 +1292,7 @@ async fn swarm_execute(
                         continue;
                     }
                 };
-                match mcp::call_tool(&tool, Some(args)).await {
+                match mcp::call_tool_in(&project_root, &tool, Some(args)).await {
                     Ok(result) => {
                         // 工具级错误(content text 内含 "error")如实记 errors,不遮蔽。
                         let tool_err = result
@@ -1534,10 +1566,20 @@ async fn gen_backends_configure(Json(req): Json<GenConfigureRequest>) -> Respons
 // ---------- 素材创作波:媒体生成 REST 面(gen/video、gen/audio;预留 API 端口) ----------
 
 /// GenError → HTTP 响应(错误码如实透传:BAD_PARAMS=400 / NOT_CONFIGURED=501 /
-/// RATE_LIMITED=429 / 其余(含后端 HTTP 失败)=502)。
+/// RATE_LIMITED=429 / FILE_NOT_FOUND=404 / 其余(含后端 HTTP 失败)=502)。
 fn gen_error_response(e: gend::GenError) -> Response {
     let status = match e.code {
-        gend::GEN_BAD_PARAMS => StatusCode::BAD_REQUEST,
+        gend::GEN_BAD_PARAMS
+        | gend::GATE1_IMAGE_INVALID
+        | gend::GATE2_MODEL_INVALID
+        | gend::GATE3_POLYCOUNT_EXCEEDED
+        | gend::GATE3_DEGENERATE_MESH
+        | gend::GATE4_RIGGING_INVALID
+        | gend::GATE5_ANIMATION_INVALID
+        | gend::GATE5_PUBLISH_FAILED
+        | "MODEL_CHARACTER_INVALID"
+        | "MODEL_REVISION_CONFLICT" => StatusCode::BAD_REQUEST,
+        gend::GEN_FILE_NOT_FOUND => StatusCode::NOT_FOUND,
         // 环境缺 ffmpeg 与后端未配置同档:都是「本机还没备齐」而非生成失败。
         gend::GEN_BACKEND_NOT_CONFIGURED | gend::GEN_TOOL_MISSING => StatusCode::NOT_IMPLEMENTED,
         gend::GEN_RATE_LIMITED => StatusCode::TOO_MANY_REQUESTS,
@@ -2132,6 +2174,345 @@ async fn gen_mesh(State(state): State<Arc<AppState>>, Json(req): Json<GenMeshReq
     .await
 }
 
+fn mcp_result_to_response(res: Result<Value, mcp::McpError>) -> Response {
+    match res {
+        Ok(v) => {
+            if v.get("isError").and_then(Value::as_bool).unwrap_or(false) {
+                let raw_text = v.pointer("/content/0/text").and_then(Value::as_str);
+                let inner_json: Option<Value> = raw_text.and_then(|t| serde_json::from_str(t).ok());
+
+                // 1. Extract error code candidate
+                let code_str = inner_json
+                    .as_ref()
+                    .and_then(|j| {
+                        j.get("error")
+                            .and_then(Value::as_str)
+                            .or_else(|| j.pointer("/error/code").and_then(Value::as_str))
+                            .or_else(|| j.get("errorCode").and_then(Value::as_str))
+                            .or_else(|| j.get("code").and_then(Value::as_str))
+                    })
+                    .or_else(|| {
+                        v.pointer("/error/code")
+                            .and_then(Value::as_str)
+                            .or_else(|| v.get("error").and_then(Value::as_str))
+                            .or_else(|| v.get("code").and_then(Value::as_str))
+                    })
+                    .unwrap_or("");
+
+                // 2. Extract clean message
+                let message_str = inner_json
+                    .as_ref()
+                    .and_then(|j| {
+                        j.get("message")
+                            .and_then(Value::as_str)
+                            .or_else(|| j.pointer("/error/message").and_then(Value::as_str))
+                            .or_else(|| j.get("details").and_then(Value::as_str))
+                    })
+                    .or_else(|| {
+                        v.pointer("/error/message")
+                            .and_then(Value::as_str)
+                            .or_else(|| v.get("message").and_then(Value::as_str))
+                    })
+                    .or(raw_text)
+                    .unwrap_or("生成任务调用失败");
+
+                // 3. Map code string to &'static str
+                let mut code = match code_str {
+                    "GEN_BACKEND_NOT_CONFIGURED" => gend::GEN_BACKEND_NOT_CONFIGURED,
+                    "GEN_TOOL_MISSING" => gend::GEN_TOOL_MISSING,
+                    "GEN_BAD_PARAMS" => gend::GEN_BAD_PARAMS,
+                    "GEN_FILE_NOT_FOUND" => gend::GEN_FILE_NOT_FOUND,
+                    "GEN_RATE_LIMITED" => gend::GEN_RATE_LIMITED,
+                    "GEN_UNSUPPORTED" => gend::GEN_UNSUPPORTED,
+                    "GATE1_IMAGE_INVALID" => gend::GATE1_IMAGE_INVALID,
+                    "GATE2_MODEL_INVALID" => gend::GATE2_MODEL_INVALID,
+                    "GATE3_POLYCOUNT_EXCEEDED" => gend::GATE3_POLYCOUNT_EXCEEDED,
+                    "GATE3_DEGENERATE_MESH" => gend::GATE3_DEGENERATE_MESH,
+                    "GATE4_RIGGING_INVALID" => gend::GATE4_RIGGING_INVALID,
+                    "GATE5_ANIMATION_INVALID" => gend::GATE5_ANIMATION_INVALID,
+                    "GATE5_PUBLISH_FAILED" => gend::GATE5_PUBLISH_FAILED,
+                    "MODEL_CHARACTER_INVALID" => "MODEL_CHARACTER_INVALID",
+                    "MODEL_REVISION_CONFLICT" => "MODEL_REVISION_CONFLICT",
+                    _ => gend::GEN_BACKEND_ERROR,
+                };
+
+                // 4. Defensive keyword heuristic if code string was unmapped or generic
+                if code == gend::GEN_BACKEND_ERROR {
+                    let hay = raw_text.unwrap_or(message_str);
+                    if hay.contains("MODEL_CHARACTER_INVALID") {
+                        code = "MODEL_CHARACTER_INVALID";
+                    } else if hay.contains(gend::GATE1_IMAGE_INVALID) {
+                        code = gend::GATE1_IMAGE_INVALID;
+                    } else if hay.contains(gend::GATE2_MODEL_INVALID) {
+                        code = gend::GATE2_MODEL_INVALID;
+                    } else if hay.contains(gend::GATE3_POLYCOUNT_EXCEEDED) {
+                        code = gend::GATE3_POLYCOUNT_EXCEEDED;
+                    } else if hay.contains(gend::GATE3_DEGENERATE_MESH) {
+                        code = gend::GATE3_DEGENERATE_MESH;
+                    } else if hay.contains(gend::GATE4_RIGGING_INVALID) {
+                        code = gend::GATE4_RIGGING_INVALID;
+                    } else if hay.contains(gend::GATE5_ANIMATION_INVALID) {
+                        code = gend::GATE5_ANIMATION_INVALID;
+                    } else if hay.contains(gend::GATE5_PUBLISH_FAILED) {
+                        code = gend::GATE5_PUBLISH_FAILED;
+                    } else if hay.contains(gend::GEN_FILE_NOT_FOUND) {
+                        code = gend::GEN_FILE_NOT_FOUND;
+                    } else if hay.contains(gend::GEN_BAD_PARAMS) {
+                        code = gend::GEN_BAD_PARAMS;
+                    }
+                }
+
+                gen_error_response(gend::GenError::new(code, message_str))
+            } else {
+                let payload = v.get("structuredContent").cloned().unwrap_or_else(|| {
+                    v.pointer("/content/0/text")
+                        .and_then(Value::as_str)
+                        .and_then(|t| serde_json::from_str::<Value>(t).ok())
+                        .unwrap_or_else(|| v.clone())
+                });
+                (StatusCode::OK, Json(payload)).into_response()
+            }
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": { "code": "MCP_ERROR", "message": e.to_string() } })),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenMeshRefineRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    mesh_file_ref: String,
+    #[serde(default)]
+    target_faces: Option<u64>,
+    #[serde(default)]
+    ops: Option<Value>,
+    #[serde(default)]
+    track: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+/// POST /api/forge/gen/mesh/refine:网格精细化/拓扑优化(双轨:Meshy 远端 remesh / 本地 decimate_mesh.py)。
+async fn gen_mesh_refine_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenMeshRefineRequest>,
+) -> Response {
+    if req.mesh_file_ref.trim().is_empty() {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "meshFileRef 不可空",
+        ));
+    }
+    if req.target_faces.is_none() && req.ops.as_ref().map(|o| !o.is_object()).unwrap_or(true) {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "缺参数: ops 或 targetFaces",
+        ));
+    }
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    let mut args = json!({
+        "meshFileRef": req.mesh_file_ref,
+    });
+    if let Some(tf) = req.target_faces {
+        args["targetFaces"] = json!(tf);
+    }
+    if let Some(ops) = req.ops {
+        args["ops"] = ops;
+    }
+    if let Some(track) = req.track {
+        args["track"] = json!(track);
+    }
+    if let Some(mode) = req.mode {
+        args["mode"] = json!(mode);
+    }
+    if let Some(backend) = req.backend {
+        args["backend"] = json!(backend);
+    }
+    let res = mcp::call_tool_in(&project.root, "mcp__gen-model__gen_mesh_refine", Some(args)).await;
+    mcp_result_to_response(res)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenMeshRigRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    mesh_file_ref: String,
+    #[serde(default)]
+    height_meters: Option<f64>,
+    #[serde(default)]
+    track: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+/// POST /api/forge/gen/mesh/rig:人形骨骼绑定(双轨:Meshy 自动绑定 / 本地 auto_rig.py)。
+async fn gen_mesh_rig_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenMeshRigRequest>,
+) -> Response {
+    if req.mesh_file_ref.trim().is_empty() {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "meshFileRef 不可空",
+        ));
+    }
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    let mut args = json!({
+        "meshFileRef": req.mesh_file_ref,
+    });
+    if let Some(h) = req.height_meters {
+        args["heightMeters"] = json!(h);
+    }
+    if let Some(track) = req.track {
+        args["track"] = json!(track);
+    }
+    if let Some(backend) = req.backend {
+        args["backend"] = json!(backend);
+    }
+    let res = mcp::call_tool_in(&project.root, "mcp__gen-model__gen_mesh_rig", Some(args)).await;
+    mcp_result_to_response(res)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenMeshAnimateRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    mesh_file_ref: String,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    motion_pack: Option<String>,
+    #[serde(default)]
+    track: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+/// POST /api/forge/gen/mesh/animate:动作合入绑定模型(双轨:Meshy 动画库 / 本地 merge_motion.py)。
+async fn gen_mesh_animate_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenMeshAnimateRequest>,
+) -> Response {
+    if req.mesh_file_ref.trim().is_empty() {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "meshFileRef 不可空",
+        ));
+    }
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    let mut args = json!({
+        "meshFileRef": req.mesh_file_ref,
+    });
+    if let Some(a) = req.action {
+        args["action"] = json!(a);
+    }
+    if let Some(mp) = req.motion_pack {
+        args["motionPack"] = json!(mp);
+    }
+    if let Some(track) = req.track {
+        args["track"] = json!(track);
+    }
+    if let Some(backend) = req.backend {
+        args["backend"] = json!(backend);
+    }
+    let res = mcp::call_tool_in(&project.root, "mcp__gen-model__gen_mesh_animate", Some(args)).await;
+    mcp_result_to_response(res)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenMeshPublishRequest {
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    mesh_file_ref: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    idle_clip: Option<String>,
+    #[serde(default)]
+    walk_clip: Option<String>,
+    #[serde(default)]
+    revision: Option<u64>,
+}
+
+/// POST /api/forge/gen/mesh/publish: 角色原子打包与发布(调用 mcp__gen-model__gen_character_publish)。
+async fn gen_mesh_publish_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<GenMeshPublishRequest>,
+) -> Response {
+    if req.mesh_file_ref.trim().is_empty() {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "meshFileRef 不可空",
+        ));
+    }
+    if req.name.trim().is_empty() {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            "name 不可空",
+        ));
+    }
+    if req.name.is_empty()
+        || req.name.contains('/')
+        || req.name.contains('\\')
+        || req.name.contains(':')
+        || req.name.contains('.')
+        || req.name.starts_with(' ')
+        || req.name.ends_with(' ')
+    {
+        return gen_error_response(gend::GenError::new(
+            gend::GEN_BAD_PARAMS,
+            format!("name 须为纯文件名片段 (不含路径分隔符或扩展名): {:?}", req.name),
+        ));
+    }
+    let project = match media_project(&state, req.workspace_id.as_deref()) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    let mut args = json!({
+        "meshFileRef": req.mesh_file_ref,
+        "name": req.name,
+    });
+    if let Some(cat) = req.category {
+        args["category"] = json!(cat);
+    }
+    if let Some(idle) = req.idle_clip {
+        args["idleClip"] = json!(idle);
+    }
+    if let Some(walk) = req.walk_clip {
+        args["walkClip"] = json!(walk);
+    }
+    if let Some(rev) = req.revision {
+        args["revision"] = json!(rev);
+    }
+    let res = mcp::call_tool_in(&project.root, "mcp__gen-model__gen_character_publish", Some(args)).await;
+    mcp_result_to_response(res)
+}
+
 async fn unknown_route() -> Response {
     (
         StatusCode::NOT_FOUND,
@@ -2199,7 +2580,24 @@ mod tests {
         // F-GAME-4 wave.2:+asset-pipeline sprite_create/get/set/autoslice 四工具 = 102。
         // 补账(D-036 波发现):logic_inject_pointer 落 KNOWN_TOOLS 时漏改本计数 = 103。
         // 角色动画:+gen-image gen_video_frames = 104。
-        assert!(tools.len() >= 104);
+        // F-GAME-5 / D-050:+asset-pipeline rig_* 十一工具 + engine-scene rig_spawn = 116。
+        assert!(tools.len() >= 116);
+        for t in [
+            "mcp__asset-pipeline__rig_create",
+            "mcp__asset-pipeline__rig_get",
+            "mcp__asset-pipeline__rig_set",
+            "mcp__asset-pipeline__rig_patch",
+            "mcp__asset-pipeline__rig_mesh_auto",
+            "mcp__asset-pipeline__rig_weights_auto",
+            "mcp__asset-pipeline__rig_evaluate",
+            "mcp__asset-pipeline__rig_preview",
+            "mcp__asset-pipeline__rig_import_psd",
+            "mcp__asset-pipeline__rig_parts_from_sheet",
+            "mcp__asset-pipeline__rig_validate",
+            "mcp__engine-scene__rig_spawn",
+        ] {
+            assert!(tools.iter().any(|x| x == t), "缺 2D 绑骨工具 {t}");
+        }
         for capability in [
             "mcp__engine-scene__render_backend_info",
             "mcp__engine-scene__render_capabilities",
@@ -2298,6 +2696,9 @@ mod tests {
         assert!(tools.iter().any(|t| t == "mcp__gen-image__gen_variations"));
         assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh"));
         assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh_refine"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh_rig"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_mesh_animate"));
+        assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_character_publish"));
         assert!(tools.iter().any(|t| t == "mcp__gen-model__gen_accept"));
     }
 
@@ -2345,11 +2746,12 @@ mod tests {
     // ---------- F7 wave.1:事件基座(会话 CRUD/fork/revert + folders + snapshot + SSE) ----------
 
     /// F7 env 隔离锁(FORGE_AGENTD_DATA_DIR 进程级;set+build_app 须原子)。
-    static F7_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    pub(crate) static F7_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// 独立数据目录的 app(会话/事件落盘隔离;返回 (app, 数据根))。
     fn f7_app(tag: &str) -> (Router, std::path::PathBuf) {
         let _g = F7_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _sk = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!(
             "agentd-f7-{tag}-{}-{}",
             std::process::id(),
@@ -2832,6 +3234,7 @@ mod tests {
         seeded["activeRunId"] = json!("run_dead");
         let app = {
             let _g = F7_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _sk = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             std::fs::write(&sessions_file, json!({ "sessions": [seeded] }).to_string()).unwrap();
             std::env::set_var("FORGE_AGENTD_DATA_DIR", &dir);
             let app = build_app();
@@ -2994,7 +3397,7 @@ mod tests {
         assert_eq!(v["project"]["mode"], json!("2d"));
         assert!(v["project"]["name"].as_str().unwrap().len() > 0);
         let models = v["models"]["models"].as_array().unwrap();
-        assert_eq!(models.len(), 5);
+        assert!(models.len() >= 7, "models count: {}", models.len());
         assert_eq!(models[2]["id"], "openai-compat");
         assert_eq!(models[2]["provider"], "openai-compat");
         assert_eq!(models[2]["availability"], "needs-key");
@@ -3169,6 +3572,7 @@ mod tests {
         // 小环缓冲(4)制造超窗:env 于 build_app 读取,锁内原子 set+build。
         let (app, dir) = {
             let _g = F7_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _sk = skills::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let dir = std::env::temp_dir().join(format!(
                 "agentd-f7-gap-{}-{}",
                 std::process::id(),
@@ -3786,12 +4190,16 @@ mod tests {
             );
             return;
         }
+        let _serial = SCENE_TEST_LOCK.lock().await;
         let app = build_app();
         let req = post_json(
             "/api/forge/mcp/call",
             r#"{"tool":"mcp__engine-scene__scene_summary"}"#,
         );
-        let resp = app.oneshot(req).await.unwrap();
+        let resp = {
+            let _ws = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            app.oneshot(req)
+        }.await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let v = json_body(resp).await;
         let summary = extract_tool_json(&v);
@@ -3893,6 +4301,7 @@ mod tests {
             return;
         }
         let _serial = SCENE_TEST_LOCK.lock().await;
+        let _ws = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let app = build_app();
         let call = |app: &Router, body: &str| {
             let app = app.clone();
@@ -3998,12 +4407,12 @@ mod tests {
         );
         let list = v["subagents"].as_array().unwrap();
         // 04 §6 内建五 profile + F10 asset-describer = 6;F-GAME-4 wave.3:+planner/reviewer = 8;
-        // D-035:+explore(plan 模式并行调研)= 9。
+        // D-035:+explore(plan 模式并行调研)= 9。D-050:+rig-artist(2D 绑骨)= 10。
         // D-044:REST 清单 = 内建 agents/ + 个人 data/agents/ 合并,这里只断言「内建是子集」
         // (个人档案可以并存);精确数量由 subagents::tests::builtin_dir_matches_contract 守在内建目录上。
         assert!(
-            list.len() >= 9,
-            "内建九 profile(04 §6 + F10 + F-GAME-4 + D-035)应全部在列: {list:?}"
+            list.len() >= 10,
+            "内建十 profile(04 §6 + F10 + F-GAME-4 + D-035 + D-050)应全部在列: {list:?}"
         );
         for p in list {
             let source = p["source"].as_str().unwrap_or_default();
@@ -4021,6 +4430,7 @@ mod tests {
             "planner",
             "qa-tester",
             "reviewer",
+            "rig-artist",
             "scene-builder",
         ] {
             // 只断言「在列」:同名个人档案(data/agents,不入库)会整份覆盖内建,来源与内容都随之
@@ -5025,6 +5435,209 @@ mod tests {
         std::fs::remove_dir_all(&data).ok();
     }
 
+    #[tokio::test]
+    async fn gen_mesh_refine_rig_animate_params_gate() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data = gen_temp_dir("mesh-gate");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        std::env::remove_var("MESHY_API_KEY");
+        let app = build_app();
+
+        // 1. Refine: meshFileRef 空 -> 400 GEN_BAD_PARAMS
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh/refine", r#"{"meshFileRef":""}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        // Refine: 缺 targetFaces 与 ops -> 400 GEN_BAD_PARAMS
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh/refine", r#"{"meshFileRef":"foo.glb"}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        // 2. Rig: meshFileRef 空 -> 400 GEN_BAD_PARAMS
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh/rig", r#"{"meshFileRef":""}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        // 3. Animate: meshFileRef 空 -> 400 GEN_BAD_PARAMS
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh/animate", r#"{"meshFileRef":""}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        // 4. Publish: meshFileRef 空 -> 400 GEN_BAD_PARAMS
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh/publish", r#"{"meshFileRef":"","name":"hero"}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        // Publish: name 空 -> 400 GEN_BAD_PARAMS
+        let r = app
+            .clone()
+            .oneshot(post_json("/api/forge/gen/mesh/publish", r#"{"meshFileRef":"foo.glb","name":""}"#))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(r).await["error"]["code"], "GEN_BAD_PARAMS");
+
+        // Publish: name 含路径分隔符 / 越界 -> 400 GEN_BAD_PARAMS
+        for bad_name in ["../bad", "hero/char", r#"hero\char"#, "hero:char", "hero.glb", " hero"] {
+            let body = json!({
+                "meshFileRef": "foo.glb",
+                "name": bad_name,
+            }).to_string();
+            let r = app
+                .clone()
+                .oneshot(post_json("/api/forge/gen/mesh/publish", &body))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "bad_name={bad_name}");
+            let b = json_body(r).await;
+            assert_eq!(b["error"]["code"], "GEN_BAD_PARAMS", "bad_name={bad_name}");
+            assert!(
+                b["error"]["message"].as_str().unwrap().contains("纯文件名片段"),
+                "bad_name={bad_name}"
+            );
+        }
+
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn gen_mesh_publish_rest_endpoint_validates_params_and_publishes() {
+        let _g = llm::TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data = gen_temp_dir("gen-mesh-publish-test");
+        std::env::set_var("FORGE_GEN_DATA_DIR", &data);
+        let app = build_app();
+
+        for bad_name in ["../bad", "hero/char", r#"hero\char"#, "hero:char", "hero.glb", " hero"] {
+            let body = json!({
+                "meshFileRef": "hero.glb",
+                "name": bad_name,
+            }).to_string();
+            let r = app
+                .clone()
+                .oneshot(post_json("/api/forge/gen/mesh/publish", &body))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "bad_name={bad_name}");
+            let b = json_body(r).await;
+            assert_eq!(b["error"]["code"], "GEN_BAD_PARAMS", "bad_name={bad_name}");
+        }
+
+        std::env::remove_var("FORGE_GEN_DATA_DIR");
+        std::fs::remove_dir_all(&data).ok();
+    }
+
+    #[tokio::test]
+    async fn test_mcp_result_to_response_unpacking() {
+        // 1. Error unpacking with inner JSON content
+        let mcp_err_val = json!({
+            "isError": true,
+            "content": [{
+                "type": "text",
+                "text": "{\n  \"error\": \"GEN_BAD_PARAMS\",\n  \"message\": \"bad parameter value\"\n}"
+            }]
+        });
+        let resp = mcp_result_to_response(Ok(mcp_err_val));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(resp).await;
+        assert_eq!(body["error"]["code"], "GEN_BAD_PARAMS");
+        assert_eq!(body["error"]["message"], "bad parameter value");
+
+        // 2. GEN_FILE_NOT_FOUND mapping to 404
+        let mcp_404_val = json!({
+            "isError": true,
+            "content": [{
+                "type": "text",
+                "text": "{\"error\": \"GEN_FILE_NOT_FOUND\", \"message\": \"file missing\"}"
+            }]
+        });
+        let resp404 = mcp_result_to_response(Ok(mcp_404_val));
+        assert_eq!(resp404.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(resp404).await["error"]["code"], "GEN_FILE_NOT_FOUND");
+
+        // 3. Gate error mapping to 400
+        let mcp_gate_val = json!({
+            "isError": true,
+            "content": [{
+                "type": "text",
+                "text": "{\"error\": \"GATE4_RIGGING_INVALID\", \"message\": \"skinning failed\"}"
+            }]
+        });
+        let resp_gate = mcp_result_to_response(Ok(mcp_gate_val));
+        assert_eq!(resp_gate.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(resp_gate).await["error"]["code"], "GATE4_RIGGING_INVALID");
+
+        // 4. MODEL_CHARACTER_INVALID error code unpacking
+        let mcp_char_error = json!({
+            "isError": true,
+            "content": [{
+                "type": "text",
+                "text": json!({
+                    "error": "MODEL_CHARACTER_INVALID",
+                    "message": "mesh lacks skin weights"
+                }).to_string()
+            }]
+        });
+        let resp_char = mcp_result_to_response(Ok(mcp_char_error));
+        assert_eq!(resp_char.status(), StatusCode::BAD_REQUEST);
+        let char_body = json_body(resp_char).await;
+        assert_eq!(char_body["error"]["code"], "MODEL_CHARACTER_INVALID");
+        assert_eq!(char_body["error"]["message"], "mesh lacks skin weights");
+
+        // 5. Unskinned character rejection (Redline I-5) with keyword in message
+        let mcp_unskinned_error = json!({
+            "isError": true,
+            "content": [{
+                "type": "text",
+                "text": json!({
+                    "error": "GEN_BAD_PARAMS",
+                    "message": "角色发布校验失败 (Redline I-5): [MODEL_CHARACTER_INVALID] character requires one unambiguous \"Idle\" clip; export Idle/Walk or set manifest idleClip/walkClip"
+                }).to_string()
+            }]
+        });
+        let resp_unskin = mcp_result_to_response(Ok(mcp_unskinned_error));
+        assert_eq!(resp_unskin.status(), StatusCode::BAD_REQUEST);
+        let unskin_body = json_body(resp_unskin).await;
+        let unskin_code = unskin_body["error"]["code"].as_str().unwrap();
+        assert!(unskin_code == "GEN_BAD_PARAMS" || unskin_code == "MODEL_CHARACTER_INVALID");
+        let unskin_msg = unskin_body["error"]["message"].as_str().unwrap();
+        assert!(unskin_msg.contains("MODEL_CHARACTER_INVALID"));
+        assert!(!unskin_msg.starts_with('{'), "Error message must not be raw escaped JSON: {unskin_msg}");
+
+        // 6. Success unpacking structured content
+        let mcp_ok_val = json!({
+            "content": [{
+                "type": "text",
+                "text": "{\"modelGuid\": \"guid-123\", \"rxmodelUri\": \"Content/Models/m.rxmodel\"}"
+            }]
+        });
+        let resp_ok = mcp_result_to_response(Ok(mcp_ok_val));
+        assert_eq!(resp_ok.status(), StatusCode::OK);
+        let ok_body = json_body(resp_ok).await;
+        assert_eq!(ok_body["modelGuid"], "guid-123");
+    }
+
     /// meshy 只需 enabled + key 即可用(endpoint 有官方缺省),这条与其他 remote
     /// 后端「必须填 endpoint」的判定不同,须锁住免得日后被统一逻辑抹平。
     #[tokio::test]
@@ -5752,6 +6365,7 @@ mod tests {
             return;
         }
         let _serial = SCENE_TEST_LOCK.lock().await;
+        let _ws = WS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let app = build_app();
         // 独立场景,避免与其他测试互串
         let _ = app

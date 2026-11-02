@@ -294,6 +294,15 @@ async fn ensure_runtime() -> Result<(), String> {
         .env("FORGE_ANTIGRAVITY_BRIDGE_KEY", &api_key)
         .env("FORGE_ANTIGRAVITY_MANAGEMENT_KEY", &management_key)
         .env("FORGE_ANTIGRAVITY_BRIDGE_HOME", home());
+    if std::env::var_os("HTTPS_PROXY").is_none() && std::env::var_os("HTTP_PROXY").is_none() {
+        if let Ok(addr) = "127.0.0.1:7897".parse() {
+            if std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(50)).is_ok() {
+                cmd.env("HTTP_PROXY", "http://127.0.0.1:7897")
+                    .env("HTTPS_PROXY", "http://127.0.0.1:7897")
+                    .env("NO_PROXY", "127.0.0.1,localhost");
+            }
+        }
+    }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -688,7 +697,7 @@ async fn quota(account: &Value, refresh: bool) -> Value {
         });
     let value = data.as_ref().map(quota_windows).unwrap_or_default();
     // Restore/register the actual account catalog in the SDK, including after restart.
-    let catalog: Vec<Value> = if let Some(models) =
+    let mut catalog: Vec<Value> = if let Some(models) =
         data.as_ref().and_then(|v| v["models"].as_object())
     {
         models.iter().map(|(id, model)| json!({"id":format!("antigravity:{id}"),"upstreamId":id,"label":model["displayName"].as_str().unwrap_or(id)})).collect()
@@ -700,6 +709,22 @@ async fn quota(account: &Value, refresh: bool) -> Value {
             .map(|s| s.models.clone())
             .unwrap_or_default()
     };
+    for (id, label) in [
+        ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+        ("gemini-4", "Gemini 4"),
+        ("gemini-4-flash", "Gemini 4 Flash"),
+        ("gemini-4-pro", "Gemini 4 Pro"),
+        ("gemini-3.8-flash-high", "Gemini 3.8 Flash High"),
+        ("gemini-3-flash", "Gemini 3 Flash"),
+    ] {
+        if !catalog.iter().any(|m| m["upstreamId"].as_str() == Some(id)) {
+            catalog.push(json!({
+                "id": format!("antigravity:{id}"),
+                "upstreamId": id,
+                "label": label,
+            }));
+        }
+    }
     if !catalog.is_empty()
         && call(
             "POST",

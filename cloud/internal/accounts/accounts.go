@@ -266,6 +266,32 @@ func (s *Service) Candidates(ctx context.Context, groupID int64, platform string
 	return scanAccounts(rows)
 }
 
+// RetryAfterCooldown 返回支持当前模型和端点的账号最早结束冷却的等待时间。
+func (s *Service) RetryAfterCooldown(ctx context.Context, groupID int64, model *core.Model, endpoint string) (time.Duration, error) {
+	rows, err := s.db.Query(ctx, `SELECT `+accountCols+` FROM upstream_accounts a
+		WHERE a.platform = $1 AND a.status = 'active' AND a.cooldown_until > now()
+		  AND ($2::bigint <= 0 OR EXISTS (SELECT 1 FROM account_groups ag WHERE ag.account_id = a.id AND ag.group_id = $2::bigint))`, model.Platform, groupID)
+	if err != nil {
+		return 0, err
+	}
+	cooling, err := scanAccounts(rows)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now()
+	var wait time.Duration
+	for _, a := range cooling {
+		if !a.SupportsModel(model) || !a.SupportsEndpoint(endpoint) || !a.CoolingDown(now) {
+			continue
+		}
+		remaining := a.CooldownUntil.Sub(now)
+		if wait == 0 || remaining < wait {
+			wait = remaining
+		}
+	}
+	return wait, nil
+}
+
 // HealthyPlatforms 返回分组内存在可调度账号的平台集合（模型目录 available）。
 func (s *Service) HealthyPlatforms(ctx context.Context, groupID int64) (map[string]bool, error) {
 	rows, err := s.db.Query(ctx, `SELECT DISTINCT a.platform FROM upstream_accounts a

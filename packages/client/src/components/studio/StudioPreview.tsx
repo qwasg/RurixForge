@@ -321,7 +321,7 @@ export default function StudioPreview({
         <span className="max-w-full truncate px-1 font-mono text-[9px]">{fileBase(version.fileRef)}</span>
       )}
       {version.assetPath !== undefined && (
-        <span className="max-w-full truncate px-1 font-mono text-[9px] text-sage">{version.assetPath}</span>
+        <span className="max-w-full truncate px-1 font-mono text-[9px] text-fg-2">{version.assetPath}</span>
       )}
     </div>
   );

@@ -4,3 +4,4 @@ pub mod hashutil;
 pub mod pathutil;
 pub mod roots;
 pub mod timeutil;
+pub mod toolchain;

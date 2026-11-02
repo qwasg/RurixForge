@@ -207,11 +207,11 @@ pub(crate) mod tests {
             rex::ResourceDesc::Buffer(rex::BufferDesc{size:(row_words*height*4)as u64,
                 usage:rex::BufferUsage{storage:true,..Default::default()},data:None,device_local:true})];
         let pc:Vec<u8>=[width,height,row_words,0].into_iter().flat_map(u32::to_le_bytes).collect();
-        let passes=[rex::Pass::Raster(rex::RasterPass{blend:rex::BlendMode::Alpha,name:"blended-pack-source",
+        let passes=[rex::Pass::RasterWithBlend(rex::RasterPass {name:"blended-pack-source",
             vs_spirv:vs,fs_spirv:fs,vertex:rex::VertexData::Pull,
             draw:rex::DrawSpec::Direct{vertex_count:3,instance_count:1,first_vertex:0,first_instance:0},
             colors:vec![rex::ColorAttachmentRef{res:0,clear:Some([0.1,0.2,0.3,1.])}],depth:None,viewport:None,
-            bindings:Default::default(),conservative:None}),
+            bindings:Default::default(),conservative:None}, rex::BlendMode::Alpha),
             rex::Pass::Compute(rex::ComputePass{name:"forge_viewport_pack",spirv:pack_shader_bytes().unwrap(),entry:None,
                 dispatch:rex::DispatchSpec::Direct([width.div_ceil(8),height.div_ceil(8),1]),
                 bindings:rex::Bindings{storage_buffers:vec![1],storage_images:vec![0],push_constants:pc,..Default::default()}})];
@@ -442,6 +442,16 @@ pub(crate) mod tests {
         let (vs, fs) = shader_tex_bytes().expect("精灵着色器编译应成功");
         assert_eq!(&vs[..4], &[0x03, 0x02, 0x23, 0x07]);
         assert_eq!(&fs[..4], &[0x03, 0x02, 0x23, 0x07]);
+    }
+
+    #[test]
+    fn rig_shader_bytes_and_push_constants_wellformed() {
+        let (vs, fs) = shader_rig_bytes().expect("Rig 着色器编译应成功");
+        assert_eq!(&vs[..4], &[0x03, 0x02, 0x23, 0x07]);
+        assert_eq!(&fs[..4], &[0x03, 0x02, 0x23, 0x07]);
+        let tex = TexGpu { w: 64, h: 32, rgba: &[0u8; 4] };
+        let pc = rig_push_constants(trs_model(&Transform::default()), [1.0, 0.5, 0.25, 1.0], &tex);
+        assert_eq!(pc.len(), SPRITE_PC_LEN);
     }
 
     #[test]

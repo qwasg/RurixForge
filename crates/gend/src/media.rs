@@ -321,7 +321,7 @@ fn u64_param(params: &Value, key: &str) -> Option<u64> {
 }
 
 /// 供应商错误体回显前的密钥擦除(R-5 兜底:响应体理论上可能回显请求内容)。
-fn redact_key(text: &str, key: &str) -> String {
+pub fn redact_key(text: &str, key: &str) -> String {
     if key.is_empty() {
         return text.to_string();
     }
@@ -596,7 +596,7 @@ pub struct MeshyMesh;
 
 /// Meshy 密钥:env MESHY_API_KEY 优先(官方文档惯例,便于本地临时覆盖)→
 /// keystore["meshy"](其内部再让全局 FORGE_GEN_API_KEY 兜底,沿用 gend 既有约定)。
-fn meshy_key(keys: &Keystore) -> Option<String> {
+pub fn meshy_key(keys: &Keystore) -> Option<String> {
     if let Ok(v) = std::env::var("MESHY_API_KEY") {
         let v = v.trim().to_string();
         if !v.is_empty() {
@@ -607,7 +607,7 @@ fn meshy_key(keys: &Keystore) -> Option<String> {
 }
 
 /// 未配置守卫 + 取 endpoint(缺省官方)/ key / 条目 model。
-fn meshy_conn(cfg: &GenConfig, keys: &Keystore) -> Result<(String, String, Option<String>)> {
+pub fn meshy_conn(cfg: &GenConfig, keys: &Keystore) -> Result<(String, String, Option<String>)> {
     let entry = cfg.entry(MESHY_ID).filter(|e| e.enabled).ok_or_else(|| {
         GenError::new(
             GEN_BACKEND_NOT_CONFIGURED,
@@ -787,7 +787,17 @@ fn meshy_http_error(code: u16, body: String, key: &str) -> GenError {
             GEN_BACKEND_ERROR,
             format!("Meshy 鉴权失败(HTTP {code}):API Key 无效或已撤销"),
         ),
-        402 => GenError::new(GEN_BACKEND_ERROR, "Meshy 额度不足(HTTP 402):账户 credits 已用尽"),
+        402 => {
+            let brief: String = redact_key(body.trim(), key).chars().take(300).collect();
+            if brief.is_empty() {
+                GenError::new(GEN_BACKEND_ERROR, "Meshy 额度不足(HTTP 402):账户 credits 已用尽")
+            } else {
+                GenError::new(
+                    GEN_BACKEND_ERROR,
+                    format!("Meshy 额度不足(HTTP 402):账户 credits 已用尽 ({brief})"),
+                )
+            }
+        }
         429 => GenError::new(GEN_RATE_LIMITED, "Meshy 限流(HTTP 429)"),
         _ => {
             let brief: String = redact_key(body.trim(), key).chars().take(300).collect();
@@ -883,12 +893,15 @@ fn meshy_poll(base_url: &str, key: &str, task_id: &str, budget: std::time::Durat
 }
 
 /// 从已完成任务下载 glb。签名 URL 无需鉴权头;首 4 字节校验挡住错误页伪装成产物。
-fn meshy_download_glb(task: &Value) -> Result<Vec<u8>> {
+pub fn meshy_download_glb(task: &Value) -> Result<Vec<u8>> {
     let url = task
         .pointer("/model_urls/glb")
+        .or_else(|| task.pointer("/result/rigged_character_glb_url"))
+        .or_else(|| task.pointer("/result/animation_glb_url"))
+        .or_else(|| task.pointer("/result/model_urls/glb"))
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| GenError::new(GEN_BACKEND_ERROR, "Meshy 任务完成但无 model_urls.glb"))?;
+        .ok_or_else(|| GenError::new(GEN_BACKEND_ERROR, "Meshy 任务完成但无 glb 下载链接"))?;
     let bytes = fetch_url(url, MESHY_HTTP_TIMEOUT_SECS)?;
     if bytes.len() < 12 || &bytes[..4] != b"glTF" {
         return Err(GenError::new(
@@ -1068,6 +1081,34 @@ impl MeshyMesh {
         let bytes = meshy_download_glb(&done)?;
         Ok(vec![meshy_artifact(bytes, "image-to-3d", &done, &task_id, None, opts)])
     }
+
+    /// 多视角/三视图生 3D(v1 单阶段):image_urls 收 1..=4 张公网 URL 或 base64 data URI (如原画+三视图)。
+    fn multi_image_to_3d(
+        &self,
+        endpoint: &str,
+        key: &str,
+        images: &[String],
+        opts: &MeshyOptions,
+    ) -> Result<Vec<MediaArtifact>> {
+        let url = format!("{endpoint}/openapi/v1/multi-image-to-3d");
+        let mut body = json!({
+            "image_urls": images,
+            "ai_model": opts.ai_model,
+            "should_texture": opts.texture,
+            "target_formats": ["glb"],
+        });
+        opts.apply_geometry(&mut body);
+        if let Some(pose) = &opts.pose_mode {
+            body["pose_mode"] = json!(pose);
+        }
+        if opts.texture {
+            opts.apply_texture(&mut body);
+        }
+        let task_id = meshy_create_task(&url, key, &body)?;
+        let done = meshy_poll(&url, key, &task_id, opts.budget)?;
+        let bytes = meshy_download_glb(&done)?;
+        Ok(vec![meshy_artifact(bytes, "multi-image-to-3d", &done, &task_id, None, opts)])
+    }
 }
 
 impl MediaBackend for MeshyMesh {
@@ -1087,7 +1128,7 @@ impl MediaBackend for MeshyMesh {
 
     fn capabilities(&self) -> Value {
         json!({
-            "kinds": ["text2mesh", "image2mesh"],
+            "kinds": ["text2mesh", "image2mesh", "multiImage2mesh"],
             "formats": ["glb"],
             "maxBatch": 1,
             "provider": MESHY_ID,
@@ -1116,9 +1157,24 @@ impl MediaBackend for MeshyMesh {
         }
         let (endpoint, key, cfg_model) = meshy_conn(cfg, keys)?;
         let prompt = req.prompt.trim();
+        let multi_images: Vec<String> = req
+            .params
+            .get("imageDataUrls")
+            .or_else(|| req.params.get("imageUrls"))
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .take(4)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
         let image = str_param(&req.params, "imageDataUrl")
             .or_else(|| str_param(&req.params, "imageUrl"));
-        if prompt.is_empty() && image.is_none() {
+        if prompt.is_empty() && image.is_none() && multi_images.is_empty() {
             return Err(GenError::new(GEN_BAD_PARAMS, "prompt 与 imageDataUrl 至少其一非空"));
         }
         if prompt.chars().count() > MESHY_PROMPT_MAX {
@@ -1129,12 +1185,211 @@ impl MediaBackend for MeshyMesh {
         }
         let mut opts = MeshyOptions::parse(&req.params, cfg_model.as_deref())?;
         // 图生 3D 面:prompt 不进几何请求(官方无该参数),转作贴图引导,不白丢用户输入。
-        if image.is_some() && opts.texture_prompt.is_none() && !prompt.is_empty() {
+        if (image.is_some() || !multi_images.is_empty()) && opts.texture_prompt.is_none() && !prompt.is_empty() {
             opts.texture_prompt = Some(prompt.to_string());
         }
-        match image {
-            Some(img) => self.image_to_3d(&endpoint, &key, img, &opts),
-            None => self.text_to_3d(&endpoint, &key, prompt, &opts),
+        if multi_images.len() >= 2 {
+            self.multi_image_to_3d(&endpoint, &key, &multi_images, &opts)
+        } else if let Some(first_multi) = multi_images.first() {
+            self.image_to_3d(&endpoint, &key, first_multi, &opts)
+        } else {
+            match image {
+                Some(img) => self.image_to_3d(&endpoint, &key, img, &opts),
+                None => self.text_to_3d(&endpoint, &key, prompt, &opts),
+            }
+        }
+    }
+}
+
+// ---------- MeshyClient (Remesh / Rigging / Animations 扩展面) ----------
+
+/// Meshy 官方 API 客户端,封装 Remesh、Auto-Rigging、Animations 与动画库探测能力。
+#[derive(Debug, Clone)]
+pub struct MeshyClient {
+    pub endpoint: String,
+    pub key: String,
+}
+
+impl MeshyClient {
+    pub fn new(endpoint: impl Into<String>, key: impl Into<String>) -> Self {
+        Self {
+            endpoint: endpoint.into().trim_end_matches('/').to_string(),
+            key: key.into(),
+        }
+    }
+
+    pub fn from_config(cfg: &GenConfig, keys: &Keystore) -> Result<Self> {
+        let (endpoint, key, _) = meshy_conn(cfg, keys)?;
+        Ok(Self::new(endpoint, key))
+    }
+
+    pub fn is_configured(cfg: &GenConfig, keys: &Keystore) -> bool {
+        cfg.entry(MESHY_ID).map(|e| e.kind == "remote" && e.enabled).unwrap_or(false)
+            && meshy_key(keys).is_some()
+    }
+
+    pub fn from_env_or_config(cfg: Option<&GenConfig>, keys: Option<&Keystore>) -> Result<Self> {
+        if let Ok(k) = std::env::var("MESHY_API_KEY") {
+            let k = k.trim().to_string();
+            if !k.is_empty() {
+                let endpoint = cfg
+                    .and_then(|c| c.entry(MESHY_ID))
+                    .and_then(|e| e.endpoint.as_deref())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(MESHY_DEFAULT_ENDPOINT);
+                return Ok(Self::new(endpoint, k));
+            }
+        }
+        if let (Some(c), Some(k)) = (cfg, keys) {
+            return Self::from_config(c, k);
+        }
+        Err(GenError::new(
+            GEN_BACKEND_NOT_CONFIGURED,
+            "meshy 缺 API Key(设置页填入,或设环境变量 MESHY_API_KEY)",
+        ))
+    }
+
+    /// Remesh: 创建网格重拓扑/减面任务 (POST /openapi/v1/remesh)
+    pub fn create_remesh(
+        &self,
+        task_id_or_url: &str,
+        target_polycount: u64,
+        topology: &str,
+    ) -> Result<String> {
+        let url = format!("{}/openapi/v1/remesh", self.endpoint);
+        let mut body = json!({
+            "target_polycount": target_polycount,
+            "topology": if topology.is_empty() { "triangle" } else { topology },
+            "target_formats": ["glb"],
+        });
+        if task_id_or_url.starts_with("http://")
+            || task_id_or_url.starts_with("https://")
+            || task_id_or_url.starts_with("data:")
+        {
+            body["model_url"] = json!(task_id_or_url);
+        } else {
+            body["input_task_id"] = json!(task_id_or_url);
+        }
+        meshy_create_task(&url, &self.key, &body)
+    }
+
+    /// Remesh 全流程: 创建任务 -> 轮询状态 -> 下载重拓扑后 GLB 字节并返回 (bytes, task_doc)
+    pub fn remesh(
+        &self,
+        task_id_or_url: &str,
+        target_polycount: u64,
+        topology: &str,
+        budget: std::time::Duration,
+    ) -> Result<(Vec<u8>, Value)> {
+        let task_id = self.create_remesh(task_id_or_url, target_polycount, topology)?;
+        let poll_url = format!("{}/openapi/v1/remesh", self.endpoint);
+        let doc = meshy_poll(&poll_url, &self.key, &task_id, budget)?;
+        let bytes = meshy_download_glb(&doc)?;
+        Ok((bytes, doc))
+    }
+
+    /// 针对二进制 GLB 进行 remesh
+    pub fn remesh_glb_bytes(
+        &self,
+        glb_bytes: &[u8],
+        target_polycount: u64,
+        topology: &str,
+        budget: std::time::Duration,
+    ) -> Result<(Vec<u8>, Value)> {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(glb_bytes);
+        let data_uri = format!("data:model/gltf-binary;base64,{b64}");
+        self.remesh(&data_uri, target_polycount, topology, budget)
+    }
+
+    /// Auto-Rigging: 创建人形骨骼绑定任务 (POST /openapi/v1/rigging)
+    pub fn create_rigging(&self, task_id_or_url: &str, height_meters: f32) -> Result<String> {
+        let url = format!("{}/openapi/v1/rigging", self.endpoint);
+        let mut body = json!({
+            "height_meters": if height_meters <= 0.0 { 1.7 } else { height_meters },
+        });
+        if task_id_or_url.starts_with("http://")
+            || task_id_or_url.starts_with("https://")
+            || task_id_or_url.starts_with("data:")
+        {
+            body["model_url"] = json!(task_id_or_url);
+        } else {
+            body["input_task_id"] = json!(task_id_or_url);
+        }
+        meshy_create_task(&url, &self.key, &body)
+    }
+
+    /// Auto-Rigging 全流程: 创建任务 -> 轮询状态 -> 下载绑骨后 GLB 字节并返回 (bytes, task_doc)
+    pub fn rigging(
+        &self,
+        task_id_or_url: &str,
+        height_meters: f32,
+        budget: std::time::Duration,
+    ) -> Result<(Vec<u8>, Value)> {
+        let task_id = self.create_rigging(task_id_or_url, height_meters)?;
+        let poll_url = format!("{}/openapi/v1/rigging", self.endpoint);
+        let doc = meshy_poll(&poll_url, &self.key, &task_id, budget)?;
+        let bytes = meshy_download_glb(&doc)?;
+        Ok((bytes, doc))
+    }
+
+    /// 针对二进制 GLB 进行 rigging
+    pub fn rigging_glb_bytes(
+        &self,
+        glb_bytes: &[u8],
+        height_meters: f32,
+        budget: std::time::Duration,
+    ) -> Result<(Vec<u8>, Value)> {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(glb_bytes);
+        let data_uri = format!("data:model/gltf-binary;base64,{b64}");
+        self.rigging(&data_uri, height_meters, budget)
+    }
+
+    /// Animations: 创建动作绑定任务 (POST /openapi/v1/animations)
+    /// action_ids: 动作 ID 列表,如 [0, 27] 对应 Idle 与 Big Heart Gesture
+    pub fn create_animation(&self, rig_task_id: &str, action_ids: &[u32]) -> Result<String> {
+        let url = format!("{}/openapi/v1/animations", self.endpoint);
+        let first_id = action_ids.first().copied().unwrap_or(0);
+        let body = json!({
+            "rig_task_id": rig_task_id,
+            "action_id": first_id,
+            "action_ids": action_ids,
+        });
+        meshy_create_task(&url, &self.key, &body)
+    }
+
+    /// Animations 全流程: 创建任务 -> 轮询状态 -> 下载合入动作的 GLB 字节并返回 (bytes, task_doc)
+    pub fn animation(
+        &self,
+        rig_task_id: &str,
+        action_ids: &[u32],
+        budget: std::time::Duration,
+    ) -> Result<(Vec<u8>, Value)> {
+        let task_id = self.create_animation(rig_task_id, action_ids)?;
+        let poll_url = format!("{}/openapi/v1/animations", self.endpoint);
+        let doc = meshy_poll(&poll_url, &self.key, &task_id, budget)?;
+        let bytes = meshy_download_glb(&doc)?;
+        Ok((bytes, doc))
+    }
+
+    /// 动作库探测: GET /openapi/v1/animations/library
+    pub fn probe_animation_library(&self) -> Result<Vec<Value>> {
+        let url = format!("{}/openapi/v1/animations/library", self.endpoint);
+        let bytes = meshy_get(&url, &self.key)?;
+        let doc = meshy_json(&bytes)?;
+        if let Some(arr) = doc.as_array() {
+            Ok(arr.clone())
+        } else if let Some(arr) = doc.get("result").and_then(Value::as_array) {
+            Ok(arr.clone())
+        } else if let Some(arr) = doc.get("actions").and_then(Value::as_array) {
+            Ok(arr.clone())
+        } else {
+            Err(GenError::new(
+                GEN_BACKEND_ERROR,
+                "Meshy animations/library 响应未含动作数组",
+            ))
         }
     }
 }
@@ -1811,5 +2066,131 @@ mod tests {
         assert_eq!(err.code, GEN_RATE_LIMITED);
         assert!(!err.message.contains("sk-test-dummy"), "错误信息不得含密钥");
         std::env::remove_var("FORGE_GEN_API_KEY");
+    }
+
+    #[test]
+    fn meshy_client_remesh_roundtrip() {
+        let _g = env_lock();
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let client_posts = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let client_posts_h = Arc::clone(&client_posts);
+        let ep = http_stub_server(move |base, method, path, body| match (method, path) {
+            ("POST", "/openapi/v1/remesh") => {
+                let v: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
+                client_posts_h.lock().unwrap().push(v);
+                (200, br#"{"result":"task-remesh-1"}"#.to_vec())
+            }
+            ("GET", p) if p.contains("/openapi/v1/remesh/task-remesh-1") => (
+                200,
+                json!({
+                    "id": "task-remesh-1",
+                    "status": "SUCCEEDED",
+                    "progress": 100,
+                    "model_urls": { "glb": format!("{base}/dl/remeshed.glb") },
+                    "consumed_credits": 5,
+                })
+                .to_string()
+                .into_bytes(),
+            ),
+            ("GET", p) if p.starts_with("/dl/") => (200, FAKE_GLB.to_vec()),
+            _ => (404, b"{}".to_vec()),
+        });
+
+        let client = MeshyClient::new(&ep, "msy_client_unit_test");
+        let (bytes, doc) = client
+            .remesh("task-prev-001", 5000, "triangle", std::time::Duration::from_secs(30))
+            .expect("remesh 应成功");
+        assert_eq!(bytes, FAKE_GLB);
+        assert_eq!(doc["status"], "SUCCEEDED");
+        let posts = client_posts.lock().unwrap();
+        assert_eq!(posts.len(), 1);
+        assert_eq!(posts[0]["input_task_id"], "task-prev-001");
+        assert_eq!(posts[0]["target_polycount"], 5000);
+        assert_eq!(posts[0]["topology"], "triangle");
+    }
+
+    #[test]
+    fn meshy_client_rigging_and_animation_roundtrip() {
+        let _g = env_lock();
+        std::env::remove_var("FORGE_GEN_API_KEY");
+        let rig_posts = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let rig_posts_h = Arc::clone(&rig_posts);
+        let anim_posts = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let anim_posts_h = Arc::clone(&anim_posts);
+
+        let ep = http_stub_server(move |base, method, path, body| match (method, path) {
+            ("POST", "/openapi/v1/rigging") => {
+                let v: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
+                rig_posts_h.lock().unwrap().push(v);
+                (200, br#"{"result":"task-rig-1"}"#.to_vec())
+            }
+            ("GET", p) if p.contains("/openapi/v1/rigging/task-rig-1") => (
+                200,
+                json!({
+                    "id": "task-rig-1",
+                    "status": "SUCCEEDED",
+                    "progress": 100,
+                    "result": {
+                        "rigged_character_glb_url": format!("{base}/dl/rigged.glb"),
+                    }
+                })
+                .to_string()
+                .into_bytes(),
+            ),
+            ("POST", "/openapi/v1/animations") => {
+                let v: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
+                anim_posts_h.lock().unwrap().push(v);
+                (200, br#"{"result":"task-anim-1"}"#.to_vec())
+            }
+            ("GET", p) if p.contains("/openapi/v1/animations/task-anim-1") => (
+                200,
+                json!({
+                    "id": "task-anim-1",
+                    "status": "SUCCEEDED",
+                    "progress": 100,
+                    "result": {
+                        "animation_glb_url": format!("{base}/dl/animated.glb"),
+                    }
+                })
+                .to_string()
+                .into_bytes(),
+            ),
+            ("GET", "/openapi/v1/animations/library") => (
+                200,
+                json!([
+                    { "action_id": 0, "name": "Idle", "category": "DailyActions" },
+                    { "action_id": 30, "name": "Casual Walk", "category": "WalkAndRun" }
+                ])
+                .to_string()
+                .into_bytes(),
+            ),
+            ("GET", p) if p.starts_with("/dl/") => (200, FAKE_GLB.to_vec()),
+            _ => (404, b"{}".to_vec()),
+        });
+
+        let client = MeshyClient::new(&ep, "msy_client_unit_test");
+        // Rigging
+        let (rig_bytes, rig_doc) = client
+            .rigging("task-remesh-1", 1.8, std::time::Duration::from_secs(30))
+            .expect("rigging 应成功");
+        assert_eq!(rig_bytes, FAKE_GLB);
+        assert_eq!(rig_doc["status"], "SUCCEEDED");
+        let actual_h = rig_posts.lock().unwrap()[0]["height_meters"].as_f64().unwrap();
+        assert!((actual_h - 1.8).abs() < 1e-4);
+
+        // Animation
+        let (anim_bytes, anim_doc) = client
+            .animation("task-rig-1", &[0, 30], std::time::Duration::from_secs(30))
+            .expect("animation 应成功");
+        assert_eq!(anim_bytes, FAKE_GLB);
+        assert_eq!(anim_doc["status"], "SUCCEEDED");
+        assert_eq!(anim_posts.lock().unwrap()[0]["action_ids"], json!([0, 30]));
+
+        // Animation Library Probe
+        let actions = client.probe_animation_library().expect("probe 应成功");
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0]["action_id"], 0);
+        assert_eq!(actions[0]["name"], "Idle");
+        assert_eq!(actions[1]["action_id"], 30);
     }
 }

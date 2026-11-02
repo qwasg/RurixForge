@@ -4,6 +4,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = requir
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const backend = require('./backend.cjs');
 const { isAllowedSubframeUrl } = require('./frameGuard.cjs');
@@ -198,6 +199,7 @@ function stopBackend() {
 async function startBackend() {
   let env = process.env;
   let ports = backend.devPorts(process.env);
+  setSplashStage('prepare');
   if (layout.packaged) {
     const paths = backend.packagedPaths({ layout, userData: app.getPath('userData'), env: process.env });
     logsDir = paths.logsDir;
@@ -210,6 +212,7 @@ async function startBackend() {
   HOST_ORIGIN = `http://127.0.0.1:${ports.hostPort}`;
   HEALTH_URL = `${HOST_ORIGIN}/api/forge/health`;
 
+  setSplashStage('agentd');
   const agentd = await backend.ensureAgentd({ layout, env, port: ports.agentdPort, logsDir });
   if (agentd.missing) {
     if (layout.packaged) throw new Error(`安装不完整,缺少 AI 后端:\n${agentd.missing}\n\n请重新运行安装程序。`);
@@ -257,33 +260,59 @@ function failStartup(message) {
   });
 }
 
-/** 本地服务就绪前的小窗,免得双击后长时间没有任何反应。 */
+/** Windows 11 22H2(build 22621)起,无边框窗口也能用系统亚克力(透出桌面的毛玻璃)。 */
+function supportsAcrylic() {
+  if (process.platform !== 'win32') return false;
+  const build = Number(os.release().split('.')[2]);
+  return Number.isInteger(build) && build >= 22621;
+}
+
+let splashStage = null;
+let splashLoaded = false;
+
+/** 本地服务就绪前的启动小窗(splash.html),免得双击后长时间没有任何反应。 */
 function showSplash() {
   const dark = nativeTheme.shouldUseDarkColors;
+  const acrylic = supportsAcrylic();
   splashWindow = new BrowserWindow({
-    width: 420,
-    height: 220,
+    width: 460,
+    height: 300,
     frame: false,
     resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     movable: true,
     show: false,
     skipTaskbar: false,
-    backgroundColor: dark ? '#191A1D' : '#FFFFFF',
+    title: 'RurixForge',
+    // 亚克力需要透明底色;不支持的系统画不透明的浅色(深色)底。
+    ...(acrylic
+      ? { backgroundMaterial: 'acrylic', backgroundColor: '#00000000' }
+      : { backgroundColor: dark ? '#1B1B1B' : '#F4F4F2' }),
     icon: fs.existsSync(layout.icon) ? layout.icon : undefined,
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  const fg = dark ? '#ECECEC' : '#1A1A1A';
-  const sub = dark ? '#A0A0A0' : '#555555';
-  const html = `<!doctype html><meta charset="utf-8"><title>RurixForge</title>
-<body style="margin:0;height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;
-font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;color:${fg};-webkit-app-region:drag;user-select:none">
-<div style="font-size:26px;font-weight:600;letter-spacing:.5px">RurixForge</div>
-<div style="margin-top:14px;font-size:15px;color:${sub}">正在启动本地服务…</div></body>`;
   splashWindow.once('ready-to-show', () => splashWindow && !splashWindow.isDestroyed() && splashWindow.show());
+  splashWindow.webContents.on('did-finish-load', () => {
+    splashLoaded = true;
+    if (splashStage) setSplashStage(splashStage);
+  });
   splashWindow.on('closed', () => {
     splashWindow = null;
+    splashLoaded = false;
   });
-  void splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  void splashWindow.loadFile(path.join(__dirname, 'splash.html'), {
+    query: { theme: dark ? 'dark' : 'light', material: acrylic ? 'acrylic' : 'solid', version: app.getVersion() },
+  });
+}
+
+/** 推进启动小窗的进度:prepare → agentd → host → window。页面还没加载完时记下,加载后补上。 */
+function setSplashStage(stage) {
+  splashStage = stage;
+  if (!splashLoaded || !splashWindow || splashWindow.isDestroyed()) return;
+  splashWindow.webContents
+    .executeJavaScript(`window.splash && window.splash.stage(${JSON.stringify(stage)})`)
+    .catch(() => {});
 }
 
 function closeSplash() {
@@ -325,6 +354,11 @@ const presenter = {
 };
 
 function presenterExe() {
+  const override = process.env.FORGE_VIEWPORT_PRESENTER_BIN;
+  if (override) {
+    if (!path.isAbsolute(override) || !fs.existsSync(override)) throw new Error('FORGE_VIEWPORT_PRESENTER_BIN must identify an existing absolute executable');
+    return override;
+  }
   return PRESENTER_EXE_CANDIDATES.find((p) => fs.existsSync(p)) || null;
 }
 
@@ -386,9 +420,20 @@ function presenterWrite(line) {
  * 旧的 6 段 `bind tex|heap …` 已随纹理共享退役。尺寸必须用 engine-host 实际建的 share.width/height
  * (请求尺寸超过 1920×1080 时会被钳,presenter 按它校验行距)。
  */
+function normalizeViewportBounds(b) {
+  const finite = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
+  return { x:finite(b.x),y:finite(b.y),w:finite(b.w),h:finite(b.h),dpr:finite(b.dpr,1),
+    streamW:finite(b.streamW),streamH:finite(b.streamH),nativeOnly:b.nativeOnly===true,
+    workspaceId:typeof b.workspaceId==='string'?b.workspaceId:null,visible:b.visible===true };
+}
+
 function presenterBind(share) {
   if (share.handleKind !== 'buffer') throw new Error(`unexpected handleKind ${share.handleKind}`);
-  presenterWrite(`bind buf ${share.texHandle} ${share.fenceHandle} ${share.width} ${share.height} ${share.rowPitch}`);
+  if (share.protocol === 2) {
+    if (!Array.isArray(share.slots) || share.slots.length !== 2) throw new Error('native output requires two slots');
+    const handles = share.slots.flatMap((slot) => [slot.texHandle, slot.fenceHandle, slot.consumerFenceHandle]);
+    presenterWrite(`bind buf2 ${share.generation} ${handles.join(' ')} ${share.width} ${share.height} ${share.rowPitch}`);
+  } else presenterWrite(`bind buf ${share.texHandle} ${share.fenceHandle} ${share.width} ${share.height} ${share.rowPitch}`);
   presenter.texW = share.width;
   presenter.texH = share.height;
 }
@@ -450,7 +495,7 @@ async function syncPresenterInner(b) {
   if (!exe) return; // 未构建:canvas 腿独立可用,不噪声
 
   const workspaceId = typeof b.workspaceId === 'string' && b.workspaceId !== '' ? b.workspaceId : null;
-  if (presenter.proc && presenter.workspaceId !== workspaceId) {
+  if (presenter.proc && (presenter.workspaceId !== workspaceId || presenter.nativeOnly !== !!b.nativeOnly)) {
     // 工作区切换必须先释放旧项目的共享缓冲，再为新项目建立 presenter。
     await stopPresenter();
   }
@@ -460,19 +505,21 @@ async function syncPresenterInner(b) {
   const w = Math.max(16, Math.round(b.w * dpr));
   const h = Math.max(16, Math.round(b.h * dpr));
   // 优先使用 renderer 按当前真实能力计算出的推流尺寸；兼容旧 preload 时再按协议上限推导。
-  const streamScale = Math.min(1, 1280 / Math.max(1, b.w), 720 / Math.max(1, b.h));
+  const maxW = b.nativeOnly ? 2560 : 1280;
+  const maxH = b.nativeOnly ? 1440 : 720;
+  const streamScale = Math.min(1, maxW / Math.max(1, b.w), maxH / Math.max(1, b.h));
   const reportedW = Number(b.streamW);
   const reportedH = Number(b.streamH);
   const sw = Number.isFinite(reportedW) && reportedW > 0
-    ? Math.min(1280, Math.max(16, Math.round(reportedW)))
-    : Math.min(1280, Math.max(16, Math.round(b.w * streamScale)));
+    ? Math.min(maxW, Math.max(16, Math.round(reportedW)))
+    : Math.min(maxW, Math.max(16, Math.round(b.w * streamScale)));
   const sh = Number.isFinite(reportedH) && reportedH > 0
-    ? Math.min(720, Math.max(16, Math.round(reportedH)))
-    : Math.min(720, Math.max(16, Math.round(b.h * streamScale)));
+    ? Math.min(maxH, Math.max(16, Math.round(reportedH)))
+    : Math.min(maxH, Math.max(16, Math.round(b.h * streamScale)));
 
   if (!presenter.proc) {
     const hwnd = mainWindow.getNativeWindowHandle().readBigUInt64LE(0).toString();
-    const proc = spawn(exe, ['--hwnd', hwnd, String(x), String(y), String(w), String(h)], {
+    const proc = spawn(exe, ['--hwnd', hwnd, String(x), String(y), String(w), String(h), ...(b.nativeOnly ? ['--high-performance'] : []), ...(process.env.FORGE_VIEWPORT_PRESENT_TRACE === '1' ? ['--record-metrics'] : [])], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -519,10 +566,12 @@ async function syncPresenterInner(b) {
       pid: proc.pid,
       width: sw,
       height: sh,
+      protocol: b.nativeOnly ? 2 : 1,
     }, workspaceId);
     presenter.workspaceId = workspaceId;
     presenter.shareOpen = true;
     presenterBind(share);
+    presenter.nativeOnly = !!b.nativeOnly;
     presenter.reqW = sw;
     presenter.reqH = sh;
     presenter.winW = w;
@@ -538,7 +587,7 @@ async function syncPresenterInner(b) {
   }
 
   if (!presenter.ready) return; // 正在启动,下轮 bounds 再同步
-  if (sw !== presenter.reqW || sh !== presenter.reqH) {
+  if (sw !== presenter.reqW || sh !== presenter.reqH || presenter.nativeOnly !== !!b.nativeOnly) {
     // 尺寸变化:重建共享 buffer + 重 bind(presenter 侧 swapchain 随 bind 重建)
     if (presenter.shareOpen) {
       await mcpCallHost('mcp__engine-scene__viewport_share_close', {}, presenter.workspaceId).catch(() => {});
@@ -548,10 +597,12 @@ async function syncPresenterInner(b) {
       pid: presenter.proc.pid,
       width: sw,
       height: sh,
+      protocol: b.nativeOnly ? 2 : 1,
     }, workspaceId);
     presenter.workspaceId = workspaceId;
     presenter.shareOpen = true;
     presenterBind(share);
+    presenter.nativeOnly = !!b.nativeOnly;
     presenter.reqW = sw;
     presenter.reqH = sh;
   }
@@ -596,6 +647,10 @@ async function stopPresenter() {
   presenter.winH = 0;
   presenter.workspaceId = null;
   presenter.shareOpen = false;
+  // Stop producing and drain both shared slots before asking the consumer to exit.
+  if (shareOpen) {
+    await mcpCallHost('mcp__engine-scene__viewport_share_close', {}, workspaceId).catch((err) => smokeLog(`share close: ${err.message}`));
+  }
   if (p && p.exitCode === null && p.signalCode === null) {
     try {
       p.stdin.write('close\n');
@@ -609,10 +664,6 @@ async function stopPresenter() {
         // 已退
       }
     }, 800);
-  }
-  // 只关闭本 presenter 所属工作区的共享 buffer；无已打开 buffer 时不触碰其它工作区。
-  if (shareOpen) {
-    await mcpCallHost('mcp__engine-scene__viewport_share_close', {}, workspaceId).catch(() => {});
   }
 }
 
@@ -1513,18 +1564,7 @@ async function main() {
   });
   ipcMain.on('viewport:bounds', (event, b) => {
     if (!mainWindow || event.sender !== mainWindow.webContents || !b || typeof b !== 'object') return;
-    const finite = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
-    syncPresenter({
-      x: finite(b.x),
-      y: finite(b.y),
-      w: finite(b.w),
-      h: finite(b.h),
-      dpr: finite(b.dpr, 1),
-      streamW: finite(b.streamW),
-      streamH: finite(b.streamH),
-      workspaceId: typeof b.workspaceId === 'string' ? b.workspaceId : null,
-      visible: b.visible === true,
-    });
+    syncPresenter(normalizeViewportBounds(b));
   });
 
   // F2 wave.3:Assets 面板右键菜单桌面能力(仅桌面端可用;web 端菜单项如实禁用)。
@@ -1582,6 +1622,7 @@ async function main() {
   }
   if (isSmoke) smokeLog(`backend ready: ${runtime.agentdOrigin} host=${HOST_ORIGIN}`);
 
+  setSplashStage('host');
   if (!spawnHost(runtime.env, runtime.agentdOrigin)) return;
   if (isSmoke) smokeLog(`host spawned pid=${hostProcess && hostProcess.pid}`);
 
@@ -1593,14 +1634,17 @@ async function main() {
     return;
   }
 
+  setSplashStage('window');
   installAppMenu();
   createWindow();
 }
 
 // Isolated smoke instances must not acquire the interactive user's singleton lock
 // or modify their cookies, workspace selection and local storage.
-if (isSmoke && process.env.FORGE_SMOKE_USER_DATA) {
-  app.setPath('userData', path.resolve(process.env.FORGE_SMOKE_USER_DATA));
+const explicitUserData = process.env.FORGE_DESKTOP_USER_DATA || (isSmoke ? process.env.FORGE_SMOKE_USER_DATA : null);
+if (explicitUserData) {
+  if (!path.isAbsolute(explicitUserData)) throw new Error('FORGE_DESKTOP_USER_DATA must be an absolute profile directory');
+  app.setPath('userData', path.resolve(explicitUserData));
 }
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

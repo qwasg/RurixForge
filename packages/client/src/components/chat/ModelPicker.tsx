@@ -580,7 +580,7 @@ function Switch({ on, disabled, testId }: { on: boolean; disabled?: boolean; tes
       data-on={on ? '1' : undefined}
       className={cn(
         'relative h-[14px] w-[26px] shrink-0 rounded-full transition-colors',
-        on ? 'bg-sage' : 'bg-shell-active',
+        on ? 'bg-acc' : 'bg-shell-active',
         disabled && 'opacity-60',
       )}
     >

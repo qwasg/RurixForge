@@ -113,6 +113,14 @@ pub struct DebugSession {
         skip_serializing_if = "Option::is_none"
     )]
     pub design: Option<crate::design::DesignState>,
+    /// WorldBuild 流程状态 (3D 场景构思 → 调查 → 交互预览 → 多智能体建筑工坊 → 一致性验收)。
+    /// 写入一律走 [`SessionStore::update_world_build`]; fork 不拷贝; 宽松反序列化同 ultraplan/design。
+    #[serde(
+        default,
+        deserialize_with = "crate::world_build::deserialize_lenient",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub world_build: Option<crate::world_build::WorldBuildState>,
 }
 
 fn default_agent_engine() -> String {
@@ -156,6 +164,7 @@ impl DebugSession {
             codex_thread_id: None,
             ultraplan: None,
             design: None,
+            world_build: None,
         }
     }
 
@@ -580,6 +589,90 @@ impl SessionStore {
         swept
     }
 
+    /// WorldBuild 流程状态的读-改-写 (存贮锁内; 语义同 update_ultraplan / update_design)。
+    #[allow(dead_code)]
+    pub fn update_world_build<R>(
+        &self,
+        id: &str,
+        f: impl FnOnce(&mut Option<crate::world_build::WorldBuildState>) -> R,
+    ) -> Option<(DebugSession, R)> {
+        let mut inner = self.inner.lock().unwrap();
+        let session = inner.get_mut(id)?;
+        let out = Self::apply_world_build(session, f);
+        let snapshot = session.clone();
+        if out.1 {
+            self.persist_locked(&inner);
+        }
+        Some((snapshot, out.0))
+    }
+
+    /// 同 update_world_build, 但要求会话空闲 (重新开始等不产生轮次的 REST 操作用)。
+    #[allow(dead_code)]
+    pub fn update_world_build_idle<R>(
+        &self,
+        id: &str,
+        f: impl FnOnce(&mut Option<crate::world_build::WorldBuildState>) -> R,
+    ) -> Result<(DebugSession, R), IdleUpdateError> {
+        let mut inner = self.inner.lock().unwrap();
+        let Some(session) = inner.get_mut(id) else {
+            return Err(IdleUpdateError::NotFound);
+        };
+        if let Some(run) = &session.active_run_id {
+            return Err(IdleUpdateError::Busy(run.clone()));
+        }
+        let out = Self::apply_world_build(session, f);
+        let snapshot = session.clone();
+        if out.1 {
+            self.persist_locked(&inner);
+        }
+        Ok((snapshot, out.0))
+    }
+
+    #[allow(dead_code)]
+    fn apply_world_build<R>(
+        session: &mut DebugSession,
+        f: impl FnOnce(&mut Option<crate::world_build::WorldBuildState>) -> R,
+    ) -> (R, bool) {
+        let before = session.world_build.clone();
+        let out = f(&mut session.world_build);
+        let changed = session.world_build != before;
+        if changed {
+            if let Some(wb) = session.world_build.as_mut() {
+                wb.touch();
+            }
+            session.touch();
+        }
+        (out, changed)
+    }
+
+    /// WorldBuild 流程的 running 相位只在有 run 时成立; 进程重启后清成 failed (可重试)。
+    pub fn sweep_stale_world_build_runs(&self) -> Vec<(String, crate::world_build::WorldBuildState)> {
+        let mut inner = self.inner.lock().unwrap();
+        let mut swept = Vec::new();
+        for s in inner.values_mut() {
+            let Some(wb) = s.world_build.as_mut() else { continue };
+            if wb.phase != crate::world_build::PHASE_RUNNING {
+                continue;
+            }
+            wb.phase = crate::world_build::PHASE_FAILED.to_string();
+            wb.last_error = Some(crate::world_build::FlowError {
+                code: crate::world_build::ERR_TURN_INVALID.to_string(),
+                message: "agentd 进程重启, 上一轮中断; 重新发送同一操作即可重试".to_string(),
+            });
+            wb.touch();
+            swept.push((s.id.clone(), wb.clone()));
+        }
+        if !swept.is_empty() {
+            self.persist_locked(&inner);
+            eprintln!(
+                "[sessions] 清扫 stale WorldBuild running 相位 × {} (进程重启崩溃恢复)",
+                swept.len()
+            );
+        }
+        swept
+    }
+
+
     /// revert 收尾:锁内清 activeRunId(`reset_status` 时一并把 status 复位 idle),返回改后的会话。
     /// 只动这两个字段——revert 在读会话与写回之间要重写事件文件(磁盘 IO),
     /// 拿开头那份快照整体 `save` 会把这段时间里别处写入的字段(如 UltraPlan 阶段)盖回去。
@@ -651,7 +744,11 @@ impl SessionStore {
             let flow_active = session
                 .ultraplan
                 .as_ref()
-                .is_some_and(UltraPlanState::is_active);
+                .is_some_and(UltraPlanState::is_active)
+                || session
+                    .world_build
+                    .as_ref()
+                    .is_some_and(crate::world_build::WorldBuildState::is_active);
             if flow_active && next != session.workspace_id {
                 return Err(PatchError::UltraplanWorkspaceLocked);
             }
@@ -1266,6 +1363,9 @@ pub async fn fork_session(State(state): State<Arc<AppState>>, Path(id): Path<Str
     forked.ultraplan = None;
     // D-045:Design 流程同理不拷(一条流程一个目录与一套候选批次)。
     forked.design = None;
+    // WorldBuild 流程同理不拷 (slug、产物目录 .forge/world_build/<slug>/ 与 preview token 都是一条流程一份)。
+    // 两个会话共用同一份状态会互相覆盖 preview 与场景产物。
+    forked.world_build = None;
     // Collaboration actors, mailbox leases and task ownership are keyed by the
     // original session in a separate store. Only historical event text is copied.
     // A fork receives its own root identity and starts without a live team.
@@ -2768,4 +2868,114 @@ mod tests {
         assert!(s.find_studio(Some("ws_b"), "n1").is_none());
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    #[tokio::test]
+    async fn test_world_build_state_defaults_persists_and_not_forked() {
+        let dir = temp_dir("wb-defaults");
+        let ws_root = dir.join("ws");
+        std::fs::create_dir_all(&ws_root).unwrap();
+
+        let old_json = r#"{ "sessions": [
+            { "id": "s_old", "title": "Old Session", "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z" },
+            { "id": "s_bad", "title": "Bad Block", "createdAt": "2026-01-01T00:00:01Z", "updatedAt": "2026-01-01T00:00:01Z",
+              "worldBuild": { "id": "wb_1", "previewRev": "not_a_number" } }
+        ] }"#;
+        std::fs::write(dir.join("sessions.json"), old_json).unwrap();
+
+        let s = SessionStore::load(dir.join("sessions.json"));
+        let old_s = s.get("s_old").expect("Session exists");
+        assert!(old_s.world_build.is_none(), "Old session must have world_build = None");
+
+        let bad_s = s.get("s_bad").expect("Bad session parsed leniently");
+        assert!(bad_s.world_build.is_none(), "Corrupted state parsed leniently as None");
+
+        // CAS Update test
+        let seeded = crate::world_build::WorldBuildState::new_flow("Cyber City", Some("ws_1"), &ws_root);
+        let wb_id = seeded.id.clone();
+
+        let (sess, ()) = s.update_world_build("s_old", |slot| *slot = Some(seeded)).unwrap();
+        assert_eq!(sess.world_build.as_ref().unwrap().id, wb_id);
+
+        // Verify persistence after reload
+        let s2 = SessionStore::load(dir.join("sessions.json"));
+        assert_eq!(s2.get("s_old").unwrap().world_build.as_ref().unwrap().id, wb_id);
+
+        // Fork test
+        let (app_state, _state_dir) = crate::test_app_state("wb-fork-test");
+        let src = app_state.sessions.create("Source Session", "coding", None, true, None);
+        let seeded_src = crate::world_build::WorldBuildState::new_flow("Medieval Town", None, &ws_root);
+        app_state.sessions.update_world_build(&src.id, |slot| *slot = Some(seeded_src)).unwrap();
+
+        let resp = fork_session(axum::extract::State(app_state.clone()), axum::extract::Path(src.id.clone())).await;
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body_val: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        let forked_session = &body_val["session"];
+
+        assert!(forked_session.get("worldBuild").is_none(), "Forked session MUST NOT inherit world_build");
+        assert_eq!(app_state.sessions.get(&src.id).unwrap().world_build.as_ref().unwrap().title, "Medieval Town");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_sweep_stale_world_build_runs() {
+        let dir = temp_dir("wb-sweep");
+        let s = store(&dir);
+        let ws_root = dir.join("ws");
+        std::fs::create_dir_all(&ws_root).unwrap();
+
+        let running = s.create("跑中", "coding", None, true, None);
+        let waiting = s.create("等待", "coding", None, true, None);
+        let mut wb = crate::world_build::WorldBuildState::new_flow("测试", None, &ws_root);
+        wb.phase = crate::world_build::PHASE_RUNNING.to_string();
+        wb.running = Some("survey".to_string());
+        s.update_world_build(&running.id, |slot| *slot = Some(wb)).unwrap();
+
+        let idle = crate::world_build::WorldBuildState::new_flow("等待测试", None, &ws_root);
+        s.update_world_build(&waiting.id, |slot| *slot = Some(idle)).unwrap();
+
+        let swept = s.sweep_stale_world_build_runs();
+        assert_eq!(swept.len(), 1);
+        assert_eq!(swept[0].0, running.id);
+        assert_eq!(swept[0].1.phase, crate::world_build::PHASE_FAILED);
+        assert_eq!(
+            swept[0].1.last_error.as_ref().unwrap().code,
+            crate::world_build::ERR_TURN_INVALID
+        );
+
+        let after = s.get(&running.id).unwrap().world_build.unwrap();
+        assert_eq!(after.phase, crate::world_build::PHASE_FAILED);
+
+        // Second sweep is a no-op
+        assert!(s.sweep_stale_world_build_runs().is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_world_build_idle_update_busy_lock() {
+        let dir = temp_dir("wb-idle");
+        let s = store(&dir);
+        let ws_root = dir.join("ws");
+        std::fs::create_dir_all(&ws_root).unwrap();
+
+        let sess = s.create("会话", "coding", None, true, None);
+        let wb = crate::world_build::WorldBuildState::new_flow("空闲测试", None, &ws_root);
+        s.update_world_build(&sess.id, |slot| *slot = Some(wb)).unwrap();
+
+        s.claim_active_run(&sess.id, "run_test_1").unwrap();
+        let res = s.update_world_build_idle(&sess.id, |slot| slot.take());
+        assert_eq!(res.err(), Some(IdleUpdateError::Busy("run_test_1".to_string())));
+        assert!(s.get(&sess.id).unwrap().world_build.is_some());
+
+        s.release_active_run(&sess.id, "run_test_1");
+        let ok_res = s.update_world_build_idle(&sess.id, |slot| slot.take());
+        assert!(ok_res.is_ok());
+        assert!(s.get(&sess.id).unwrap().world_build.is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
+

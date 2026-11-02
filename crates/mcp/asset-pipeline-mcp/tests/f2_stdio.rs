@@ -79,7 +79,12 @@ fn tmp_project(tag: &str) -> PathBuf {
 }
 
 fn copy_conformance(name: &str, dest_dir: &std::path::Path) -> PathBuf {
-    let src = PathBuf::from("H:/rurix/conformance/asset/gltf/accept").join(name);
+    let primary = PathBuf::from("H:/rurix/conformance/asset/gltf/accept").join(name);
+    let src = if primary.is_file() {
+        primary
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assetd/tests/fixtures").join(name)
+    };
     let dst = dest_dir.join(name);
     std::fs::copy(&src, &dst).unwrap();
     dst
@@ -253,3 +258,62 @@ fn stdio_sprite_tools_end_to_end() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn stdio_inspect_3d_asset_roundtrip_and_cache() {
+    let root = tmp_project("inspect3d");
+    let mut c = McpChild::spawn(&root);
+
+    // 1. Verify inspect_3d_asset is exposed in tools/list
+    let list = c.call("tools/list", json!({}));
+    let tools = list.pointer("/result/tools").and_then(Value::as_array).expect("缺 tools 数组");
+    assert!(
+        tools.iter().any(|t| t["name"] == "inspect_3d_asset"),
+        "tools/list 应包含 inspect_3d_asset"
+    );
+
+    // 2. Set up test model file in Content/Meshes/
+    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../assetd/tests/fixtures/quad_indexed.glb");
+    let target = root.join("Content/Meshes/quad.glb");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::copy(&fixture_path, &target).unwrap();
+
+    // 3. Call inspect_3d_asset via stdio
+    let out1 = c.tool("inspect_3d_asset", json!({
+        "path": "Content/Meshes/quad.glb",
+        "generateThreeView": true,
+        "panelSize": 64
+    }));
+
+    assert_eq!(out1["path"], "Content/Meshes/quad.glb");
+    assert_eq!(out1["polycount"], 2);
+    assert!(out1["dimensions"]["x"].as_f64().unwrap() > 0.0);
+    assert!(out1["dimensions"]["y"].as_f64().unwrap() > 0.0);
+    assert!(out1["threeViewSheetUri"].as_str().unwrap().starts_with(".forge/cache/thumbs/"));
+    let data_url1 = out1["dataUrl"].as_str().expect("缺 dataUrl");
+    assert!(data_url1.starts_with("data:image/png;base64,"));
+    assert!(data_url1.len() > 100);
+
+    // Verify cached PNG exists on disk
+    let cached_png = root.join(out1["threeViewSheetUri"].as_str().unwrap());
+    assert!(cached_png.is_file(), "Cached PNG file must exist on disk");
+
+    // 4. Second call: verify fast cache hit
+    let out2 = c.tool("inspect_3d_asset", json!({
+        "path": "Content/Meshes/quad.glb",
+        "generateThreeView": true,
+        "panelSize": 64
+    }));
+    assert_eq!(out2["threeViewSheetUri"], out1["threeViewSheetUri"]);
+    assert_eq!(out2["dataUrl"], out1["dataUrl"]);
+
+    // 5. Nonexistent file returns error
+    let err_out = c.tool("inspect_3d_asset", json!({
+        "path": "Content/Nonexistent/ghost.glb"
+    }));
+    assert_eq!(err_out["error"], "ASSET_NOT_FOUND");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+

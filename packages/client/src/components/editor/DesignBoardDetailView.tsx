@@ -10,7 +10,7 @@ import {
 } from '@/lib/designBoardStore';
 import type { AssetItem } from '@/lib/assetStore';
 import { useCanvasViewport, type WorldRect } from '@/lib/useCanvasViewport';
-import { TONE_META, kindIcon } from './DesignBoardNode';
+import { kindIcon } from './DesignBoardNode';
 import BoardAssetPicker from './BoardAssetPicker';
 import BoardEdgeLabel from './BoardEdgeLabel';
 import CanvasHud from './CanvasHud';
@@ -25,9 +25,6 @@ import Thumb, { typeIcon } from './assetThumb';
  * 画布空白处接受 Assets 面板拖放(forge/asset-*),落点即素材卡位置。
  * 视口独立持久化(forge:designBoardDetail:<nodeId>);组件按 nodeId 重挂载。
  */
-
-const toolBtn =
-  'flex items-center gap-1 rounded-md border border-edge-strong bg-shell-panel px-2 py-0.5 text-2xs text-fg-2 transition-colors hover:bg-shell-hover disabled:opacity-40 disabled:hover:bg-shell-panel';
 
 // ---------- 几何(渲染高度与连线锚点共用同一套常量) ----------
 
@@ -333,7 +330,6 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
 
   if (!node || !kind) return null; // 悬空 nodeId 由 DesignBoardView 侧挡,这里如实不渲染
 
-  const tone = TONE_META[kind.tone];
   const Icon = kindIcon(kind);
 
   const commitName = () => {
@@ -345,15 +341,15 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
     <div className="flex min-h-0 flex-1 flex-col bg-shell-sunk" aria-label="DesignBoardDetail">
       {/* 顶栏:返回 + 实体身份 + 计数 + 添加素材 */}
       <div className="relative flex shrink-0 flex-wrap items-center gap-1.5 border-b border-edge bg-shell-panel px-2 py-1">
-        <button type="button" data-testid="detail-back" title="返回主画板" onClick={closeNode} className={toolBtn}>
+        <button type="button" data-testid="detail-back" title="返回主画板" onClick={closeNode} className="glass-btn">
           <ArrowLeft size={11} strokeWidth={1.8} />
           返回画板
         </button>
-        <Icon size={12} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
+        <Icon size={12} strokeWidth={1.8} className="shrink-0 text-fg" />
         <span data-testid="detail-title" className="max-w-[200px] truncate text-2xs font-medium text-fg">
           {node.name}
         </span>
-        <span className={cn('shrink-0 text-[10px]', tone.text)}>{kind.label}</span>
+        <span className="shrink-0 text-[10px] text-fg-3">{kind.label}</span>
         <span className="text-2xs text-fg-4">
           {node.assets.length} 素材 · {related.length} 交互
         </span>
@@ -364,7 +360,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
           data-testid="detail-add-asset"
           title="挂载素材(图片 / 建模 / 纹理等资产;也可从 Assets 面板拖入画布)"
           onClick={() => setPickerOpen((v) => !v)}
-          className={toolBtn}
+          className="glass-btn"
         >
           <Plus size={11} strokeWidth={1.8} />
           素材
@@ -410,7 +406,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
                 markerHeight="7"
                 orient="auto-start-reverse"
               >
-                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--warn)" />
+                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--accent)" />
               </marker>
             </defs>
             {/* 素材连线:素材卡右缘中点 → 中心卡左缘(细信息线,与交互边区分) */}
@@ -422,7 +418,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
                   data-detail-asset-link={a.id}
                   d={bezierH(x + ASSET_W, y + ASSET_H / 2, 0, CENTER_BAR_H + CENTER_TITLE_H / 2)}
                   fill="none"
-                  stroke="var(--info)"
+                  stroke="var(--text-4)"
                   strokeWidth="1"
                   opacity="0.7"
                 />
@@ -435,7 +431,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
                 data-detail-edge={g.edge.id}
                 d={g.d}
                 fill="none"
-                stroke="var(--warn)"
+                stroke="var(--accent)"
                 strokeWidth="1.5"
                 markerEnd="url(#detail-arrow)"
               />
@@ -453,9 +449,9 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
             className="absolute select-none rounded-md border border-edge-strong bg-shell-panel shadow-composer"
             style={{ left: 0, top: 0, width: CENTER_W }}
           >
-            <div className={cn('rounded-t-md', tone.bar)} style={{ height: CENTER_BAR_H }} />
+            <div className="rounded-t-md bg-fg" style={{ height: CENTER_BAR_H }} />
             <div className="flex items-center gap-1 px-2" style={{ height: CENTER_TITLE_H }}>
-              <Icon size={12} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
+              <Icon size={12} strokeWidth={1.8} className="shrink-0 text-fg" />
               {editingName ? (
                 <input
                   autoFocus
@@ -492,7 +488,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
                   {node.name}
                 </span>
               )}
-              <span className={cn('shrink-0 text-[10px]', tone.text)}>{kind.label}</span>
+              <span className="shrink-0 text-[10px] text-fg-3">{kind.label}</span>
             </div>
             <textarea
               data-no-drag
@@ -523,7 +519,7 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
                 >
                   <span
                     aria-hidden
-                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', f.custom ? 'bg-warn' : 'bg-fg-4')}
+                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', f.custom ? 'bg-fg' : 'bg-fg-4')}
                   />
                   <span className="shrink-0 font-mono text-[10px] text-fg">{f.type}</span>
                   {f.note !== '' && <span className="min-w-0 truncate text-[10px] text-fg-4">{f.note}</span>}
@@ -550,7 +546,6 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
           {/* 交互幽灵卡:一条边一张对端实体卡,点击跳其详情 */}
           {ghosts.map((g) => {
             const gKind = kinds.find((k) => k.id === g.other.kindId);
-            const gTone = gKind ? TONE_META[gKind.tone] : TONE_META.info;
             const GIcon = gKind ? kindIcon(gKind) : Icon;
             return (
               <button
@@ -564,9 +559,9 @@ export default function DesignBoardDetailView({ nodeId }: { nodeId: string }) {
                 style={{ left: g.x, top: g.y, width: GHOST_W, height: GHOST_H }}
               >
                 <span className="flex w-full items-center gap-1">
-                  <GIcon size={11} strokeWidth={1.8} className={cn('shrink-0', gTone.text)} />
+                  <GIcon size={11} strokeWidth={1.8} className="shrink-0 text-fg" />
                   <span className="min-w-0 flex-1 truncate text-2xs font-medium text-fg">{g.other.name}</span>
-                  {gKind && <span className={cn('shrink-0 text-[10px]', gTone.text)}>{gKind.label}</span>}
+                  {gKind && <span className="shrink-0 text-[10px] text-fg-3">{gKind.label}</span>}
                 </span>
                 <span className="text-[9px] text-fg-4">
                   {g.outgoing ? '本实体 → 对方' : '对方 → 本实体'} · 点击进入详情

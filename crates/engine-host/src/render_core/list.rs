@@ -199,6 +199,59 @@ pub enum ItemBody {
     LegacyMesh { mesh: MeshData, selected: bool },
     /// 模型腿里 MeshRenderer + albedo 贴图:unlit quad,MASK 0.02、洋红色键、不经 tonemap(legacy_draw)。
     LegacyQuad { tex: TexData, tint: [f32; 4], selected: bool },
+    /// F-GAME-5(D-050):Rig2D 实体 = 一个动态三角形列表(render_core::rig 求值;顶点不进 content 指纹)。
+    RigMesh(RigDraw),
+}
+
+/// Rig2D 一帧绘制数据(契约 F)。`verts` = pos3 nrm3 uv2(stride 32 B)非索引三角形,nrm.z = 部件 opacity,
+/// uv 已归一化到图集 0..1,flip 已在 CPU 端折入;`capacity` = 容量桶(`render_core::rig::rig_capacity`)。
+/// 相等比较**不含** verts / vertex_count:只换姿态不算换内容(RenderDelta 另以 `rig_verts` 下发顶点)。
+#[derive(Clone)]
+pub struct RigDraw {
+    pub tex: TexData,
+    pub verts: Arc<Vec<f32>>,
+    pub vertex_count: u32,
+    pub capacity: u32,
+    pub tint: [f32; 4],
+    pub flip: [bool; 2],
+    pub blend: SpriteBlend,
+    pub sorting_order: f64,
+    pub selected: bool,
+}
+
+impl PartialEq for RigDraw {
+    fn eq(&self, o: &Self) -> bool {
+        self.tex == o.tex
+            && self.capacity == o.capacity
+            && self.tint.map(f32::to_bits) == o.tint.map(f32::to_bits)
+            && self.flip == o.flip
+            && self.blend == o.blend
+            && self.sorting_order.to_bits() == o.sorting_order.to_bits()
+            && self.selected == o.selected
+    }
+}
+
+impl RigDraw {
+    /// 顶点内容位模式相等(RenderDelta 判定是否需重传顶点)。
+    pub fn same_vertices(&self, o: &Self) -> bool {
+        Arc::ptr_eq(&self.verts, &o.verts)
+            || (self.verts.len() == o.verts.len() && self.verts.iter().zip(o.verts.iter()).all(|(a, b)| a.to_bits() == b.to_bits()))
+    }
+}
+
+impl std::fmt::Debug for RigDraw {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RigDraw")
+            .field("tex", &self.tex)
+            .field("vertex_count", &self.vertex_count)
+            .field("capacity", &self.capacity)
+            .field("tint", &self.tint)
+            .field("flip", &self.flip)
+            .field("blend", &self.blend)
+            .field("sorting_order", &self.sorting_order)
+            .field("selected", &self.selected)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -550,11 +603,55 @@ pub(super) fn sprite_item(
     }))
 }
 
+/// F-GAME-5:Rig2D 实体 → `ItemBody::RigMesh`(world = trs_model(本地 transform),与 rurix 同式)。
+/// content 指纹 = 图集 + 容量桶 + tint/flip/blend/sorting/selected,**不含顶点**(姿态变化 = 只换顶点)。
+pub(super) fn rig_item(e: &forge_scene::Entity, order: u32, selected: bool, root: &std::path::Path) -> Option<RenderItem> {
+    let r = crate::render_core::rig::resolve_rig_render(e, root)?;
+    let tex = TexData { guid: r.tex_guid, w: r.tex.w, h: r.tex.h, rgba: r.tex.rgba };
+    let (verts, vertex_count, capacity, _) = crate::render_core::rig::frame_arc(r.frame);
+    let body = RigDraw {
+        tex,
+        verts,
+        vertex_count,
+        capacity,
+        tint: r.tint,
+        flip: r.flip,
+        blend: SpriteBlend::Alpha,
+        sorting_order: r.sorting_order,
+        selected,
+    };
+    let content = tex_fp("rig", &body.tex, &[
+        body.capacity as f32,
+        body.tint[0], body.tint[1], body.tint[2], body.tint[3],
+        if body.flip[0] { 1.0 } else { 0.0 }, if body.flip[1] { 1.0 } else { 0.0 },
+        if body.selected { 1.0 } else { 0.0 },
+        body.sorting_order as f32,
+    ]);
+    Some(RenderItem {
+        key: ItemKey { entity: e.id, sub: 0 },
+        order,
+        world: trs_model(&e.transform),
+        content,
+        body: ItemBody::RigMesh(body),
+        pose: None,
+    })
+}
+
 /// sprite_mesh 腿:MeshRenderer → 真网格(Mesh)或贴图 quad(TexQuad),判据与顺序同 rurix `render_scene_frame`;
 /// 世界矩阵 = trs_model(本地 transform)(rurix 这条腿不走 Parent 链)。
 fn sprite_mesh_items(scene: &Scene, selected: Option<u64>, root: &std::path::Path, stats: &mut ExtractStats) -> Vec<RenderItem> {
     let mut items = Vec::new();
     for (order, e) in scene.entities.iter().enumerate() {
+        // F-GAME-5:Rig2D 实体走独立 RigMesh(rurix 侧同为每 rig 一个 raster pass);解析失败本帧不画。
+        if crate::render_core::rig::is_rig(e) {
+            if let Some(item) = rig_item(e, order as u32, selected == Some(e.id), root) {
+                if let ItemBody::RigMesh(d) = &item.body {
+                    stats.triangles += d.vertex_count as usize / 3;
+                }
+                items.push(item);
+            }
+            continue;
+        }
         if !crate::render_core::sprite::is_renderable(e) {
             continue;
         }
@@ -614,8 +711,15 @@ fn canvas_2d_compatible(scene: &Scene, view: &ViewSetup, root: &std::path::Path)
         return false;
     }
     let mut plane_z = None;
-    for e in scene.entities.iter().filter(|e| crate::render_core::sprite::sprite_component(e).is_some()) {
-        if crate::render_core::sprite::resolve_sprite_render(crate::render_core::sprite::sprite_component(e).unwrap(), root).is_none() {
+    let is_2d_drawable = |e: &&forge_scene::Entity| {
+        crate::render_core::sprite::sprite_component(e).is_some() || crate::render_core::rig::is_rig(e)
+    };
+    for e in scene.entities.iter().filter(is_2d_drawable) {
+        if crate::render_core::rig::is_rig(e) {
+            if !crate::render_core::rig::rig_resolvable(e, root) {
+                return false;
+            }
+        } else if crate::render_core::sprite::resolve_sprite_render(crate::render_core::sprite::sprite_component(e).unwrap(), root).is_none() {
             return false;
         }
         let r = crate::render_core::math::quat_to_mat3(e.transform.rotation);

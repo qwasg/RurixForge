@@ -36,17 +36,21 @@ function resolveLayout({ packaged, resourcesPath, sourceDir }) {
 
 /**
  * 安装版的目录约定:随包资源只读看待,用户数据全部落在 userData 下,卸载/升级不动它。
- * FORGE_DATA_DIR / FORGE_AGENTD_WORKSPACE_ROOT 可由用户环境改放;描述安装本身的变量一律以安装目录为准。
+ * 数据位置的优先级:环境变量 FORGE_DATA_DIR → 安装程序里选的位置(launcher.json 的 dataDir,须为绝对路径)→ userData\data。
+ * FORGE_AGENTD_WORKSPACE_ROOT 可另指工作区;描述安装本身的变量一律以安装目录为准。
  */
 function packagedPaths({ layout, userData, env }) {
-  const dataDir = env.FORGE_DATA_DIR || path.join(userData, 'data');
+  const stateFile = path.join(userData, 'launcher.json');
+  const chosen = readJson(stateFile).dataDir;
+  const dataDir = env.FORGE_DATA_DIR
+    || (typeof chosen === 'string' && path.isAbsolute(chosen) ? chosen : path.join(userData, 'data'));
   const workspace = env.FORGE_AGENTD_WORKSPACE_ROOT || path.join(dataDir, 'workspaces', 'default');
   const logsDir = path.join(userData, 'logs');
   return {
     dataDir,
     workspace,
     logsDir,
-    stateFile: path.join(userData, 'launcher.json'),
+    stateFile,
     env: {
       FORGE_ROOT: layout.root,
       FORGE_DATA_DIR: dataDir,
@@ -179,11 +183,25 @@ function openLog(logsDir, name) {
  * 输出写日志文件——传文件句柄而不是管道,Windows 上会得到一个隐藏的控制台,
  * 它再拉起的 MCP 服务器、引擎等控制台程序都继承这个控制台,不会各自弹出窗口。
  */
+function agentdExecutable(layout, env) {
+  const override = env.FORGE_AGENTD_BIN;
+  if (override) {
+    if (!path.isAbsolute(override) || !fs.existsSync(override) || !fs.statSync(override).isFile()) {
+      throw new Error('FORGE_AGENTD_BIN must identify an existing absolute executable');
+    }
+    return override;
+  }
+  return layout.agentdCandidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
 async function ensureAgentd({ layout, env, port, logsDir, timeoutMs = 60_000 }) {
   const origin = `http://127.0.0.1:${port}`;
   const health = `${origin}/health`;
-  if (!layout.packaged && (await probe(health))) return { origin, child: null, reused: true };
-  const exe = layout.agentdCandidates.find((p) => fs.existsSync(p));
+  const exe = agentdExecutable(layout, env);
+  if (!layout.packaged && (await probe(health))) {
+    if (env.FORGE_AGENTD_BIN) throw new Error('Explicit FORGE_AGENTD_BIN requires an unused FORGE_AGENTD_ADDR; refusing to reuse an unidentified running backend');
+    return { origin, child: null, reused: true };
+  }
   if (!exe) {
     return { origin, child: null, missing: layout.agentdCandidates[0] };
   }
@@ -236,6 +254,7 @@ module.exports = {
   choosePort,
   devPorts,
   ensureAgentd,
+  agentdExecutable,
   killTree,
   openLog,
   packagedPaths,

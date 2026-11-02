@@ -259,7 +259,7 @@ describe('<App /> 新壳', () => {
     useThemeStore.getState().toggleMode();
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#F47B33');
-    expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#191A1D');
+    expect(document.documentElement.style.getPropertyValue('--bg')).toBe('#0A0A0A'); // 纯色波:暗底近黑
   });
 
   it('会话流:New Agent 建行 → 选中 → 对话列头标题;重命名/置顶/删除', async () => {

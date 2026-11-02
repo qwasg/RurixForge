@@ -118,7 +118,7 @@ export default function BlenderComposer({ node }: { node: StudioNode }) {
       </div>
     </div>}
     {error && <p role="alert" className="mb-2 text-2xs text-danger">{error}</p>}
-    {notice && <p role="status" className="mb-2 text-2xs text-sage">{notice}</p>}
+    {notice && <p role="status" className="mb-2 text-2xs text-fg-2">{notice}</p>}
     <div className="flex items-center gap-2">
       <p className="flex-1 text-[10px] leading-4 text-fg-3">在 Codex 点击一次发送后制作。{kind === 'character' ? '包含骨骼、待机／行走和基础移动。' : kind === 'map' ? '保留物体层级、材质和基础碰撞。' : '完成模型、UV 与贴图。'}</p>
       <button type="button" data-testid="blender-create" disabled={busy || !node.prompt.trim() || !status?.blender.found}

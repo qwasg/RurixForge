@@ -14,6 +14,7 @@ pub(crate) mod math;
 pub(crate) mod model;
 pub(crate) mod particles;
 pub(crate) mod pick;
+pub(crate) mod rig;
 pub(crate) mod sprite;
 pub(crate) mod text;
 

@@ -78,6 +78,7 @@ function stubRest(handlers: Record<string, unknown>, failOn?: { method: string; 
 const initial = useSessionStore.getState();
 
 beforeEach(() => {
+  localStorage.removeItem('forge:activeSessionId');
   useSessionStore.setState(initial, true);
   useToastStore.getState().clear();
 });
@@ -87,6 +88,68 @@ afterEach(() => {
 });
 
 describe('sessionStore', () => {
+  it('页面重启后恢复仍存在的上次会话，供聊天快照回放进展', async () => {
+    const saved = makeSession('sess_saved');
+    useSessionStore.getState().select(saved.id);
+    // 模拟页面重启：丢弃内存态，保留浏览器存储。
+    useSessionStore.setState(initial, true);
+    stubRest({
+      'GET /api/forge/sessions': { sessions: [saved] },
+      'GET /api/forge/chat-folders': { folders: [] },
+    });
+    await useSessionStore.getState().loadAll();
+    expect(useSessionStore.getState().activeSessionId).toBe(saved.id);
+  });
+
+  it('上次会话已被删除时清理恢复指针，后端离线时保留指针', async () => {
+    useSessionStore.getState().select('sess_deleted');
+    useSessionStore.setState(initial, true);
+    stubRest({}, { method: 'GET', path: '/api/forge/sessions' });
+    await useSessionStore.getState().loadAll();
+    expect(localStorage.getItem('forge:activeSessionId')).toBe('sess_deleted');
+
+    stubRest({
+      'GET /api/forge/sessions': { sessions: [] },
+      'GET /api/forge/chat-folders': { folders: [] },
+    });
+    await useSessionStore.getState().loadAll();
+    expect(useSessionStore.getState().activeSessionId).toBeNull();
+    expect(localStorage.getItem('forge:activeSessionId')).toBeNull();
+  });
+
+  it('当前选中的会话已被服务端删除时清理 active 和恢复指针', async () => {
+    useSessionStore.setState({ sessions: [makeSession('sess_deleted')] });
+    useSessionStore.getState().select('sess_deleted');
+    stubRest({
+      'GET /api/forge/sessions': { sessions: [] },
+      'GET /api/forge/chat-folders': { folders: [] },
+    });
+    await useSessionStore.getState().loadAll();
+    expect(useSessionStore.getState().activeSessionId).toBeNull();
+    expect(localStorage.getItem('forge:activeSessionId')).toBeNull();
+  });
+
+  it('恢复请求途中选中新会话时不被旧的保存指针覆盖', async () => {
+    localStorage.setItem('forge:activeSessionId', 'sess_saved');
+    let release!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+      if (String(url).endsWith('/sessions')) return pending;
+      return { ok: true, status: 200, json: async () => ({ folders: [] }) } as Response;
+    }));
+    const loading = useSessionStore.getState().loadAll();
+    useSessionStore.setState({ sessions: [makeSession('sess_new')] });
+    useSessionStore.getState().select('sess_new');
+    release({
+      ok: true, status: 200,
+      json: async () => ({ sessions: [makeSession('sess_saved')] }),
+    } as Response);
+    await loading;
+    expect(useSessionStore.getState().activeSessionId).toBe('sess_new');
+    expect(useSessionStore.getState().sessions.some((session) => session.id === 'sess_new')).toBe(true);
+    expect(localStorage.getItem('forge:activeSessionId')).toBe('sess_new');
+  });
+
   it('loadAll:GET sessions + chat-folders 填充', async () => {
     stubRest({
       'GET /api/forge/sessions': { sessions: [makeSession('sess_a')] },
@@ -121,6 +184,7 @@ describe('sessionStore', () => {
     const s = useSessionStore.getState();
     expect(s.sessions[0].id).toBe('sess_new');
     expect(s.activeSessionId).toBe('sess_new');
+    expect(localStorage.getItem('forge:activeSessionId')).toBe('sess_new');
     expect(calls[0].method).toBe('POST');
   });
 
@@ -259,6 +323,7 @@ describe('sessionStore', () => {
     const s = useSessionStore.getState();
     expect(s.sessions[0].id).toBe('sess_b');
     expect(s.activeSessionId).toBe('sess_b');
+    expect(localStorage.getItem('forge:activeSessionId')).toBe('sess_b');
     expect(calls[0].url).toContain('/api/forge/sessions/sess_a/fork');
   });
 

@@ -147,6 +147,21 @@ describe('openViewportStream:通道生命周期', () => {
     );
   }
 
+  it('native subscription negotiates 1440p and changes transport without reconnecting', async () => {
+    stubStreamInfo();
+    const frame = vi.fn();
+    const status = vi.fn();
+    const h = openViewportStream({ width: 2560, height: 1440, transport: 'native', onFrame: frame, onStatus: status });
+    await vi.advanceTimersByTimeAsync(0);
+    const ws = MockWebSocket.instances[0]; ws.emitOpen();
+    expect(JSON.parse(ws.sent[0])).toMatchObject({type:'subscribe',width:2560,height:1440,transport:'native'});
+    ws.emitMessage(JSON.stringify({type:'status',transport:'native',width:2560,height:1440,pixelReadback:false,playState:'play_running',fps:60}));
+    expect(frame).not.toHaveBeenCalled();expect(status).toHaveBeenCalledWith(expect.objectContaining({pixelReadback:false}));
+    h.resize(1280,720,'rgba8');
+    expect(JSON.parse(ws.sent.at(-1)!)).toEqual({type:'resize',width:1280,height:720,transport:'rgba8'});
+    h.close();
+  });
+
   it('连接→subscribe→hello/帧/状态/错误分发;输入与选中经出站消息回传', async () => {
     stubStreamInfo();
     const seen = {

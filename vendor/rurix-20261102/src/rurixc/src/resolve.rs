@@ -1,0 +1,2674 @@
+//! 名称解析(spec 条款 RXS-0032 ~ RXS-0038,spec/names.md;05 §10 / D-112)。
+//!
+//! 两遍式:
+//! 1. **收集**:构建模块树与 item 命名空间(值/类型分置),登记 enum 变体、
+//!    struct 字段、inherent impl 关联项;重复定义 → `RX1002`(双 span,RXS-0037);
+//!    随后以固定点迭代解析 `use`(RXS-0035,失败 → `RX1004`,不可见 → `RX1003`);
+//! 2. **body 走查**:作用域栈(参数与 `let` 同 body 体系、块遮蔽合法、同层重名
+//!    → `RX1002`,RXS-0033);单段路径优先级 局部 > 泛型参数 > 模块项(RXS-0034);
+//!    多段路径逐段定位且局部不可作前缀;可见性违例 → `RX1003`(区别于 `RX1001`)。
+//!
+//! M2.1 容忍口径(实现取舍,随 M2.2 typeck 收紧):**类型位置**未知路径解析为
+//! [`Res::Err`] 且不报错(语料草图类型如 `Grid`/`View` 的裁决属类型层);
+//! 表达式/模式位置与 `use` 目标解析失败按条款报错。
+//!
+//! 产物 [`Resolutions`] 以 span 为键(AST 无 NodeId 的 MVP 取舍;token span 唯一)。
+
+use std::collections::HashMap;
+
+use crate::ast::{self, Visibility};
+use crate::diag::{DiagCtxt, ErrorCode};
+use crate::hir::{Builtin, DefId, DefKind, LocalId, PrimTy, Res, Vis};
+use crate::span::Span;
+
+pub const E_UNRESOLVED_NAME: ErrorCode = ErrorCode(1001); // RX1001
+pub const E_DUPLICATE_DEFINITION: ErrorCode = ErrorCode(1002); // RX1002
+pub const E_VISIBILITY_VIOLATION: ErrorCode = ErrorCode(1003); // RX1003
+pub const E_BAD_USE_TARGET: ErrorCode = ErrorCode(1004); // RX1004
+
+/// 定义元数据(`Resolutions::defs`,DefId 索引)。
+#[derive(Clone, Debug)]
+pub struct DefData {
+    pub kind: DefKind,
+    pub name: String,
+    pub vis: Vis,
+    /// 名字 span(诊断锚点)。
+    pub span: Span,
+    /// 所属模块(模块树索引)。
+    pub module: usize,
+}
+
+/// 局部绑定声明(per-body,LocalId 索引)。
+#[derive(Clone, Debug)]
+pub struct LocalDecl {
+    pub name: String,
+    pub mutable: bool,
+    pub span: Span,
+}
+
+/// 编译器已知项最小面(RXS-0048:内建 Option/Result,仅服务 desugar;
+/// RXS-0055:内建 `Drop` trait 名,仅服务 drop elaboration 识别面;
+/// resolve 入口注入,字段在 resolve 后必有值)。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct LangItems {
+    pub option: Option<DefId>,
+    pub option_none: Option<DefId>,
+    pub option_some: Option<DefId>,
+    pub result: Option<DefId>,
+    pub result_ok: Option<DefId>,
+    pub result_err: Option<DefId>,
+    /// 内建 `Drop` trait(RXS-0055;`impl Drop for T` 识别锚点,可被用户遮蔽)。
+    pub drop_trait: Option<DefId>,
+    /// 设备 `View` 族容器与地址空间标记(RXS-0067;类型位置兜底,可被用户遮蔽)。
+    pub view: Option<DefId>,
+    pub view_mut: Option<DefId>,
+    pub buffer: Option<DefId>,
+    /// 地址空间标记(`global`/`shared`/`constant`/`local`/`host`;序见 [`ADDR_SPACES`])。
+    pub addr_spaces: [Option<DefId>; 5],
+    /// 设备线程上下文 `ThreadCtx<DIM>`(M4.2,RXS-0072;方法 → device intrinsics)。
+    pub thread_ctx: Option<DefId>,
+    /// 着色资源句柄(G2.4,RXS-0156/0174;RFC-0007):`Texture2D<F>` 纹理 / `Sampler`
+    /// 采样器。类型位置兜底识别(可被用户遮蔽),方法 `.sample(..)` → 采样 intrinsic
+    /// (typeck 层,RFC-0007 采样语义本体)。
+    pub texture2d: Option<DefId>,
+    pub sampler: Option<DefId>,
+    /// 采样超集资源句柄(G3.3,RXS-0223;RFC-0013 §4.B1):`SamplerCmp` 比较采样器
+    /// (shadow)/ `TextureRw2D<F>` 可读写 storage image。类型位置兜底识别(可被
+    /// 用户遮蔽),方法族(`sample_cmp` / rw `load`·`store`)→ 采样 intrinsic(typeck 层)。
+    pub sampler_cmp: Option<DefId>,
+    pub texture_rw2d: Option<DefId>,
+    /// host 运行时 launch 类型契约已知类型(M4.3,RXS-0074;类型/值位置兜底,
+    /// 可被用户遮蔽)。`Stream<Ctx>` 的首类型实参为 context-brand;`GridDim`/
+    /// `BlockDim` 兼为值位置构造器(变维数容忍)。
+    pub context: Option<DefId>,
+    pub module: Option<DefId>,
+    pub stream: Option<DefId>,
+    pub grid_dim: Option<DefId>,
+    pub block_dim: Option<DefId>,
+    /// 宿主 GPU 编排锁页缓冲 `PinnedBuffer<C, T>`(MS1.2,RXS-0189;类型位置
+    /// 兜底,可被用户遮蔽)。
+    pub pinned_buffer: Option<DefId>,
+    /// `Context::create` 编译器已知关联构造函数(MS1.2,RXS-0189/0190;值路径
+    /// `Context::create()` 的解析锚点,typeck 编译器已知签名分支消费)。
+    pub context_create: Option<DefId>,
+    /// present 宿主 typestate 帧状态句柄(MS1.2b,RXS-0197:`Present` / `Ready`
+    /// / `Acquired` / `Presentable`;类型位置兜底,可被用户遮蔽;非 Copy affine,
+    /// 消费式转移错序由 move 检查裁决)。
+    pub present: Option<DefId>,
+    pub present_ready: Option<DefId>,
+    pub present_acquired: Option<DefId>,
+    pub present_presentable: Option<DefId>,
+    /// `Present::create` 编译器已知关联构造函数(MS1.2b,RXS-0197;值路径
+    /// 解析锚点,镜像 `context_create`)。
+    pub present_create: Option<DefId>,
+    /// `write_ppm` 宿主图像落盘桥自由函数(MS1.2b,RXS-0199;值位置兜底,
+    /// 可被用户遮蔽;签名为 typeck 编译器已知)。
+    pub write_ppm: Option<DefId>,
+    /// `nonuniform(idx)` bindless 动态非均匀索引标注自由函数(G3.4,RXS-0232;
+    /// 值位置兜底,可被用户遮蔽)。仅在无界表索引位置有意义:`table[nonuniform(idx)]`
+    /// → strict-only 标注缺失新码 RX3016;身份语义(返回实参,SPIR-V `NonUniform` 装饰)。
+    pub nonuniform: Option<DefId>,
+    /// std::gpu 宿主无界纹理表 `TextureTable<C>`(G3.4,RXS-0235;类型位置兜底,
+    /// 可被用户遮蔽)。非 Copy affine 句柄(纪律与 brand 契约全量复用 RXS-0189,零新
+    /// 借用码);`ctx.texture_table()` / `register` / `len` 经 typeck 编译器已知签名
+    /// 分支 → `rxrt_table_*`(mir_build);kernel/device 体内 → RX3015(coloring)。
+    pub texture_table: Option<DefId>,
+    /// std::gpu 宿主 render graph 类型面(G3.5,RXS-0236;类型位置兜底,可被用户遮蔽)。
+    /// `Graph<C>` 图本体 / `GraphResource<C>` 资源句柄(color/depth target)/ `PassBuilder<C>`
+    /// pass 声明句柄——全非 Copy affine(纪律与 brand 契约全量复用 RXS-0189,零新借用码);
+    /// 方法族(`color_target`/`depth_target`/`pass`/`readback`/`execute` + `writes_rt`/
+    /// `writes_depth`/`reads`/`reads_writes_uav`)经 typeck 编译器已知签名分支 → `rxrt_graph_*`
+    /// (mir_build);kernel/device 体内 → RX3015(coloring)。`Graph::create` 关联构造镜像
+    /// `context_create`。
+    pub graph: Option<DefId>,
+    pub graph_resource: Option<DefId>,
+    pub pass_builder: Option<DefId>,
+    /// `Graph::create` 编译器已知关联构造函数(G3.5,RXS-0236;值路径解析锚点,
+    /// 镜像 `context_create`)。
+    pub graph_create: Option<DefId>,
+    /// std::gpu UC-05 最小 RHI 类型面(EI1.3 Part B,RXS-0256;RFC-0014 §4.B;类型位置兜底,
+    /// 可被用户遮蔽)。`Rhi<C>` 图根句柄 / `Res<C>` 资源句柄 / `Pass<C>` pass 声明句柄 /
+    /// `Queue<C>` submit 后消费式 typestate 结果——全非 Copy affine(纪律与 brand 契约复用
+    /// RXS-0189/0054,零新借用码);与 G3.5 `Graph` 平行的不同 lang items(compute-pass 面,
+    /// RFC-0014 §7-2)。**per-instance 新鲜 opaque brand 类型 `C`**(`Rhi::create` 每调用点
+    /// 合成新鲜 brand;跨 `Rhi` 实例误用 → RX3006,I7);方法族(`resource`/`pass`/`submit` +
+    /// `reads`/`writes`)经 typeck 编译器已知签名分支 → `rxrt_rhi_*`(mir_build);kernel/device
+    /// 体内 → RX3015(coloring)。`Rhi::create` 关联构造镜像 `context_create`。
+    pub rhi: Option<DefId>,
+    pub rhi_res: Option<DefId>,
+    pub rhi_pass: Option<DefId>,
+    pub rhi_queue: Option<DefId>,
+    /// `Rhi::create` 编译器已知关联构造函数(EI1.3 Part B,RXS-0256;值路径解析锚点,
+    /// 镜像 `context_create`/`graph_create`)。
+    pub rhi_create: Option<DefId>,
+    /// `Rhi::create_vk` 编译器已知关联构造函数(G4.4 PR-F,RXS-0293;显式 Vulkan 后端,
+    /// 镜像 `rhi_create` 解析锚点,strict 无回退)。
+    pub rhi_create_vk: Option<DefId>,
+    /// `GfxPass<C>` RHI 图形 pass 声明句柄(G4.2,RXS-0270;raster/mesh pass 产物,
+    /// 与 `Pass<C>` 同族非 Copy affine;`writes_rt`/`writes_depth`/`reads`/
+    /// `reads_writes_uav`/`binds_sampler` 方法接收者识别)。与 `Pass<C>` 平行的不同
+    /// lang item(compute-pass 面 vs 图形 pass 面,RFC-0015 §4.A1)。
+    pub rhi_gfx_pass: Option<DefId>,
+    /// `VertexBuffer<C>` VB 句柄(G8.2 M89,RXS-0319;`rhi.vertex_data` 产物;
+    /// 非 Copy affine;`draw`/`draw_indexed` 取 `&VertexBuffer` 借用)。
+    pub rhi_vertex_buffer: Option<DefId>,
+    /// `IndexBuffer<C>` IB 句柄(G8.2 M89,RXS-0319;`rhi.index_data` 产物;
+    /// 非 Copy affine;首期 u32 索引;`draw_indexed` 取 `&IndexBuffer` 借用)。
+    pub rhi_index_buffer: Option<DefId>,
+    /// device block barrier 上下文(M5.2,RXS-0079):`block.sync()` 的 `block`
+    /// 值位置兜底;`.sync()` → block 级 barrier(可被用户遮蔽)。
+    pub block_ctx: Option<DefId>,
+    /// scoped atomics 已知类型(M5.2,RXS-0080;类型位置兜底,可被用户遮蔽):
+    /// `Atomic<T, Scope>`(原子标量)/ `AtomicView<space, T, Shape>`(原子视图)。
+    pub atomic: Option<DefId>,
+    pub atomic_view: Option<DefId>,
+    /// scoped atomics 封闭枚举(M5.2,RXS-0080):`Scope ∈ {Block,Gpu,System}`、
+    /// `Ordering ∈ {Relaxed,Acquire,Release,AcqRel}`;`Scope` 变体 DefId 单列
+    /// 服务 scope 包含判定(越权 / 与地址空间不相容,RX3010)。
+    pub scope: Option<DefId>,
+    pub scope_block: Option<DefId>,
+    pub scope_gpu: Option<DefId>,
+    pub scope_system: Option<DefId>,
+    pub ordering: Option<DefId>,
+    /// `RayQuery` device 不透明遍历器类型(G7.2 W3a,RXS-0297;类型位置兜底,
+    /// 可被用户遮蔽)。一次 ray 遍历的遍历器对象(SPIR-V `OpTypeRayQueryKHR`
+    /// Function-storage);仅 compute fn 体内 function-local 变量(位置纪律
+    /// 由 [`crate::shader_stages`] 裁决),非 Copy by-construction(合成 lang
+    /// item 无 copy derive)。方法族 → [`crate::hir::RayQueryOp`](typeck 层)。
+    pub ray_query: Option<DefId>,
+    /// `ray_query_initialize` 编译器已知自由函数(G7.2 W3a,RXS-0298;值位置
+    /// 兜底,可被用户遮蔽;签名为 typeck 编译器已知,沿 `write_ppm`/`trace_ray`
+    /// 先例)。
+    pub ray_query_initialize: Option<DefId>,
+    /// `ray_query_initialize_first_hit` 编译器已知自由函数(RFC-0030 §4.6;
+    /// 签名/三态协议与 `ray_query_initialize` 完全同形,唯一差异在 SPIR-V
+    /// RayFlags = `OpaqueKHR|TerminateOnFirstHitKHR`(0x5,阴影射线早退);
+    /// 值位置兜底,可被用户遮蔽,沿 `ray_query_initialize` 纪律)。
+    pub ray_query_initialize_first_hit: Option<DefId>,
+}
+
+/// 地址空间标记名(RXS-0067;序对应 [`LangItems::addr_spaces`])。
+pub const ADDR_SPACES: [&str; 5] = ["global", "shared", "constant", "local", "host"];
+
+impl LangItems {
+    /// prelude 类型名 → 内建 enum(RXS-0048;模块 ns 未命中后的兜底)。
+    fn type_by_name(&self, name: &str) -> Option<DefId> {
+        match name {
+            "Option" => self.option,
+            "Result" => self.result,
+            "Drop" => self.drop_trait,
+            // scoped atomics 封闭枚举(RXS-0080):作类型位置 / 路径前缀(`Scope::Block`)。
+            "Scope" => self.scope,
+            "Ordering" => self.ordering,
+            _ => None,
+        }
+    }
+
+    /// 设备类型名 → 内建容器 / 地址空间标记(RXS-0067;类型位置兜底,
+    /// 在模块 ns 与 prelude 之后,用户同名定义优先遮蔽)。
+    pub fn device_type_by_name(&self, name: &str) -> Option<DefId> {
+        match name {
+            "View" => self.view,
+            "ViewMut" => self.view_mut,
+            "Buffer" | "DeviceBuffer" => self.buffer,
+            // 宿主 GPU 编排锁页缓冲(MS1.2,RXS-0189):类型位置兜底(可被用户遮蔽)。
+            "PinnedBuffer" => self.pinned_buffer,
+            // present 宿主 typestate 帧状态句柄(MS1.2b,RXS-0197):类型位置兜底
+            // (可被用户遮蔽)。
+            "Present" => self.present,
+            "Ready" => self.present_ready,
+            "Acquired" => self.present_acquired,
+            "Presentable" => self.present_presentable,
+            "ThreadCtx" => self.thread_ctx,
+            "Context" => self.context,
+            "Module" => self.module,
+            "Stream" => self.stream,
+            "GridDim" => self.grid_dim,
+            "BlockDim" => self.block_dim,
+            // scoped atomics 容器(RXS-0080):类型位置兜底(可被用户遮蔽)。
+            "Atomic" => self.atomic,
+            "AtomicView" => self.atomic_view,
+            // 着色资源句柄(RXS-0156/0174,RFC-0007):类型位置兜底(可被用户遮蔽)。
+            "Texture2D" => self.texture2d,
+            "Sampler" => self.sampler,
+            // 采样超集资源句柄(G3.3,RXS-0223):类型位置兜底(可被用户遮蔽)。
+            "SamplerCmp" => self.sampler_cmp,
+            "TextureRw2D" => self.texture_rw2d,
+            // std::gpu 宿主无界纹理表(G3.4,RXS-0235):类型位置兜底(可被用户遮蔽)。
+            "TextureTable" => self.texture_table,
+            // std::gpu render graph 类型面(G3.5,RXS-0236):类型位置兜底(可被用户遮蔽)。
+            "Graph" => self.graph,
+            "GraphResource" => self.graph_resource,
+            "PassBuilder" => self.pass_builder,
+            // std::gpu UC-05 最小 RHI 类型面(EI1.3 Part B,RXS-0256):类型位置兜底(可被用户遮蔽)。
+            "Rhi" => self.rhi,
+            "Res" => self.rhi_res,
+            "Pass" => self.rhi_pass,
+            "Queue" => self.rhi_queue,
+            // G4.2 RHI 图形 pass 句柄(RXS-0270):类型位置兜底(可被用户遮蔽)。
+            "GfxPass" => self.rhi_gfx_pass,
+            // G8.2 M89 VB/IB 句柄(RXS-0319):类型位置兜底(可被用户遮蔽)。
+            "VertexBuffer" => self.rhi_vertex_buffer,
+            "IndexBuffer" => self.rhi_index_buffer,
+            // RayQuery device 不透明遍历器类型(G7.2 W3a,RXS-0297):类型位置
+            // 兜底(可被用户遮蔽)。
+            "RayQuery" => self.ray_query,
+            _ => ADDR_SPACES
+                .iter()
+                .position(|n| *n == name)
+                .and_then(|i| self.addr_spaces[i]),
+        }
+    }
+
+    /// launch 维度构造器名 → 内建 `GridDim`/`BlockDim`(RXS-0074;值位置兜底,
+    /// 变维数容忍 — 维数 = 实参个数)。
+    pub fn device_value_by_name(&self, name: &str) -> Option<DefId> {
+        match name {
+            "GridDim" => self.grid_dim,
+            "BlockDim" => self.block_dim,
+            // device block barrier 上下文(RXS-0079):`block.sync()` 的 `block` 值。
+            "block" => self.block_ctx,
+            // 宿主图像落盘桥自由函数(MS1.2b,RXS-0199):值位置兜底(模块值 ns
+            // 优先 = 用户同名定义遮蔽);签名为 typeck 编译器已知。
+            "write_ppm" => self.write_ppm,
+            // bindless 动态非均匀索引标注(RXS-0232);值位置兜底,用户同名定义遮蔽。
+            "nonuniform" => self.nonuniform,
+            // RayQuery 构造自由函数(G7.2 W3a,RXS-0298):值位置兜底(模块值 ns
+            // 优先 = 用户同名定义遮蔽);签名为 typeck 编译器已知。
+            "ray_query_initialize" => self.ray_query_initialize,
+            // first-hit 变体(RFC-0030 §4.6):同 `ray_query_initialize` 兜底纪律。
+            "ray_query_initialize_first_hit" => self.ray_query_initialize_first_hit,
+            _ => None,
+        }
+    }
+
+    /// `nonuniform(idx)` 标注自由函数判定(RXS-0232;bindless 索引识别)。
+    pub fn is_nonuniform(&self, d: DefId) -> bool {
+        Some(d) == self.nonuniform
+    }
+
+    /// `ThreadCtx` 容器判定(RXS-0072;device intrinsic 方法识别)。
+    pub fn is_thread_ctx(&self, d: DefId) -> bool {
+        Some(d) == self.thread_ctx
+    }
+
+    /// `Texture2D<F>` 纹理句柄判定(RXS-0156/0174;采样 intrinsic 方法识别,RFC-0007)。
+    pub fn is_texture2d(&self, d: DefId) -> bool {
+        Some(d) == self.texture2d
+    }
+
+    /// `Sampler` 采样器句柄判定(RXS-0156/0174;RFC-0007)。
+    pub fn is_sampler(&self, d: DefId) -> bool {
+        Some(d) == self.sampler
+    }
+
+    /// `SamplerCmp` 比较采样器句柄判定(G3.3,RXS-0223;`sample_cmp` 实参核验)。
+    pub fn is_sampler_cmp(&self, d: DefId) -> bool {
+        Some(d) == self.sampler_cmp
+    }
+
+    /// `TextureRw2D<F>` 可读写 storage image 句柄判定(G3.3,RXS-0223;
+    /// rw `load`/`store` 方法接收者识别)。
+    pub fn is_texture_rw2d(&self, d: DefId) -> bool {
+        Some(d) == self.texture_rw2d
+    }
+
+    /// `Stream` 容器判定(RXS-0074;launch 方法接收者识别)。
+    pub fn is_stream(&self, d: DefId) -> bool {
+        Some(d) == self.stream
+    }
+
+    /// device `block` barrier 上下文判定(RXS-0079;`block.sync()` 识别)。
+    pub fn is_block_ctx(&self, d: DefId) -> bool {
+        Some(d) == self.block_ctx
+    }
+
+    /// scoped atomics 容器判定 → `Some(is_view)`(RXS-0080;原子方法接收者识别)。
+    /// `Atomic` → `Some(false)`(原子标量);`AtomicView` → `Some(true)`(原子视图)。
+    pub fn atomic_kind(&self, d: DefId) -> Option<bool> {
+        if Some(d) == self.atomic {
+            Some(false)
+        } else if Some(d) == self.atomic_view {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    /// `Scope` 变体 DefId → 包含序(`Block` < `Gpu` < `System`;RXS-0080 scope 包含
+    /// 判定);非 `Scope` 变体返回 None。
+    pub fn scope_rank(&self, d: DefId) -> Option<u8> {
+        if Some(d) == self.scope_block {
+            Some(0)
+        } else if Some(d) == self.scope_gpu {
+            Some(1)
+        } else if Some(d) == self.scope_system {
+            Some(2)
+        } else {
+            None
+        }
+    }
+
+    /// `Buffer` 容器判定(RXS-0074;launch 参数 brand 与元素消费)。
+    pub fn is_buffer(&self, d: DefId) -> bool {
+        Some(d) == self.buffer
+    }
+
+    /// `Context` 句柄判定(MS1.2,RXS-0189;宿主 GPU 方法接收者识别)。
+    pub fn is_context(&self, d: DefId) -> bool {
+        Some(d) == self.context
+    }
+
+    /// `TextureTable` 宿主无界纹理表判定(G3.4,RXS-0235;`register`/`len` 方法
+    /// 接收者识别)。
+    pub fn is_texture_table(&self, d: DefId) -> bool {
+        Some(d) == self.texture_table
+    }
+
+    /// `Graph` render graph 图本体判定(G3.5,RXS-0236;`color_target`/`depth_target`/
+    /// `pass`/`readback`/`execute` 方法接收者识别)。
+    pub fn is_graph(&self, d: DefId) -> bool {
+        Some(d) == self.graph
+    }
+
+    /// `PassBuilder` pass 声明句柄判定(G3.5,RXS-0236;`writes_rt`/`writes_depth`/
+    /// `reads`/`reads_writes_uav` 方法接收者识别)。
+    pub fn is_pass_builder(&self, d: DefId) -> bool {
+        Some(d) == self.pass_builder
+    }
+
+    /// `GraphResource` 图资源句柄判定(G3.5,RXS-0236;color/depth target,声明实参)。
+    pub fn is_graph_resource(&self, d: DefId) -> bool {
+        Some(d) == self.graph_resource
+    }
+
+    /// `Rhi<C>` UC-05 RHI 图根判定(EI1.3 Part B,RXS-0256;`resource`/`pass`/`submit`
+    /// 方法接收者识别)。
+    pub fn is_rhi(&self, d: DefId) -> bool {
+        Some(d) == self.rhi
+    }
+
+    /// `Res<C>` RHI 资源句柄判定(EI1.3 Part B,RXS-0256;`reads`/`writes` 声明实参 +
+    /// per-instance brand 核验源)。
+    pub fn is_rhi_res(&self, d: DefId) -> bool {
+        Some(d) == self.rhi_res
+    }
+
+    /// `Pass<C>` RHI pass 声明句柄判定(EI1.3 Part B,RXS-0256;`reads`/`writes` 方法
+    /// 接收者识别)。
+    pub fn is_rhi_pass(&self, d: DefId) -> bool {
+        Some(d) == self.rhi_pass
+    }
+
+    /// `GfxPass<C>` RHI 图形 pass 声明句柄判定(G4.2,RXS-0270;`writes_rt`/
+    /// `writes_depth`/`reads`/`reads_writes_uav`/`binds_sampler`/
+    /// `reads_table`(PR-C,RXS-0276)/`present`(PR-C,RXS-0274)方法接收者识别)。
+    pub fn is_rhi_gfx_pass(&self, d: DefId) -> bool {
+        Some(d) == self.rhi_gfx_pass
+    }
+
+    /// `Queue<C>` RHI submit 结果句柄判定(EI1.3 Part B,RXS-0260;submit 消费式 typestate
+    /// 结果,affine 布局消费)。
+    pub fn is_rhi_queue(&self, d: DefId) -> bool {
+        Some(d) == self.rhi_queue
+    }
+
+    /// `RayQuery` device 不透明遍历器判定(G7.2 W3a,RXS-0297;方法族接收者识别)。
+    pub fn is_ray_query(&self, d: DefId) -> bool {
+        Some(d) == self.ray_query
+    }
+
+    /// `ray_query_initialize` 构造自由函数判定(G7.2 W3a,RXS-0298;typeck 已知签名
+    /// 分支识别)。
+    pub fn is_ray_query_initialize(&self, d: DefId) -> bool {
+        Some(d) == self.ray_query_initialize
+    }
+
+    /// `ray_query_initialize_first_hit` 构造自由函数判定(RFC-0030 §4.6;typeck
+    /// 已知签名分支识别,与 `is_ray_query_initialize` 同形)。
+    pub fn is_ray_query_initialize_first_hit(&self, d: DefId) -> bool {
+        Some(d) == self.ray_query_initialize_first_hit
+    }
+
+    /// `PinnedBuffer` 锁页缓冲判定(MS1.2,RXS-0189)。
+    pub fn is_pinned_buffer(&self, d: DefId) -> bool {
+        Some(d) == self.pinned_buffer
+    }
+
+    /// present 帧状态句柄判定(MS1.2b,RXS-0197:Present / Ready / Acquired /
+    /// Presentable 任一;typeck 已知方法识别与 codegen 布局消费)。
+    pub fn is_present_state(&self, d: DefId) -> bool {
+        Some(d) == self.present
+            || Some(d) == self.present_ready
+            || Some(d) == self.present_acquired
+            || Some(d) == self.present_presentable
+    }
+
+    /// 宿主 GPU 句柄类型判定(MS1.2,RXS-0189:Context / Stream / Buffer /
+    /// PinnedBuffer;MS1.2b,RXS-0197:present 帧状态句柄并入;编译器合成布局 =
+    /// 单 u64 句柄标量,codegen 消费)。
+    pub fn is_gpu_handle(&self, d: DefId) -> bool {
+        self.is_context(d)
+            || self.is_stream(d)
+            || self.is_buffer(d)
+            || self.is_pinned_buffer(d)
+            || self.is_present_state(d)
+            || self.is_texture_table(d)
+            || self.is_graph(d)
+            || self.is_pass_builder(d)
+            || self.is_graph_resource(d)
+            || self.is_rhi(d)
+            || self.is_rhi_res(d)
+            || self.is_rhi_pass(d)
+            || self.is_rhi_gfx_pass(d)
+            || self.is_rhi_queue(d)
+            || self.is_rhi_vertex_buffer(d)
+            || self.is_rhi_index_buffer(d)
+    }
+
+    /// `VertexBuffer` VB 句柄判定(G8.2 M89,RXS-0319)。
+    pub fn is_rhi_vertex_buffer(&self, d: DefId) -> bool {
+        Some(d) == self.rhi_vertex_buffer
+    }
+
+    /// `IndexBuffer` IB 句柄判定(G8.2 M89,RXS-0319)。
+    pub fn is_rhi_index_buffer(&self, d: DefId) -> bool {
+        Some(d) == self.rhi_index_buffer
+    }
+
+    /// `GridDim` 构造器判定(RXS-0074;launch 维度契约)。
+    pub fn is_grid_dim(&self, d: DefId) -> bool {
+        Some(d) == self.grid_dim
+    }
+
+    /// `BlockDim` 构造器判定(RXS-0074;launch 维度契约)。
+    pub fn is_block_dim(&self, d: DefId) -> bool {
+        Some(d) == self.block_dim
+    }
+
+    /// launch 维度构造器判定(`GridDim`/`BlockDim`;typeck 构造容忍)。
+    pub fn is_launch_dim(&self, d: DefId) -> bool {
+        self.is_grid_dim(d) || self.is_block_dim(d)
+    }
+
+    /// `View` 族容器判定 → `Some(mutable)`(RXS-0067 地址空间一致性消费)。
+    pub fn view_mutable(&self, d: DefId) -> Option<bool> {
+        if Some(d) == self.view {
+            Some(false)
+        } else if Some(d) == self.view_mut {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    /// 地址空间标记 DefId → 展示名(RXS-0067;诊断渲染)。
+    pub fn addr_space_name(&self, d: DefId) -> Option<&'static str> {
+        self.addr_spaces
+            .iter()
+            .position(|s| *s == Some(d))
+            .map(|i| ADDR_SPACES[i])
+    }
+
+    /// prelude 变体名 → 内建变体(值/模式位置兜底)。
+    fn variant_by_name(&self, name: &str) -> Option<DefId> {
+        match name {
+            "None" => self.option_none,
+            "Some" => self.option_some,
+            "Ok" => self.result_ok,
+            "Err" => self.result_err,
+            _ => None,
+        }
+    }
+}
+
+/// 名称解析产物(lowering 与后续 query 的输入)。
+#[derive(Debug, Default)]
+pub struct Resolutions {
+    pub defs: Vec<DefData>,
+    /// ast item/variant/关联项的声明 span → DefId。
+    pub item_defs: HashMap<Span, DefId>,
+    /// 路径 span(表达式/类型/模式/struct-lit)→ 解析结果。
+    pub path_res: HashMap<Span, Res>,
+    /// 绑定定义点(名字 span)→ per-body LocalId。
+    pub bindings: HashMap<Span, LocalId>,
+    /// body 键(fn 体块 span / const 初始化器 span)→ 局部声明表。
+    pub body_locals: HashMap<Span, Vec<LocalDecl>>,
+    /// use 路径 span → 已解析目标(RXS-0035 实现要求)。
+    pub use_targets: HashMap<Span, Res>,
+    /// inherent impl 关联项:类型 DefId → (名, 关联项 DefId)(typeck 方法查找,RXS-0046)。
+    pub assoc_items: HashMap<DefId, Vec<(String, DefId)>>,
+    /// enum 变体 → 父 enum(typeck 构造/模式检查)。
+    pub variant_parents: HashMap<DefId, DefId>,
+    /// 内建函数 DefId(M2.3 最小 prelude;typeck 签名与 codegen 落点查表)。
+    pub builtins: HashMap<DefId, Builtin>,
+    /// 编译器已知项(RXS-0048;desugar 直引,不受用户遮蔽影响)。
+    pub lang_items: LangItems,
+}
+
+/// 名称解析入口:对整个源文件构建模块树并走查全部 body。
+pub fn resolve(file: &ast::SourceFile, diag: &DiagCtxt) -> Resolutions {
+    let mut r = Resolver {
+        diag,
+        modules: vec![ModuleData::root()],
+        out: Resolutions::default(),
+        pending_uses: Vec::new(),
+        pending_impls: Vec::new(),
+        assoc: HashMap::new(),
+        enum_variants: HashMap::new(),
+        unit_variants: std::collections::HashSet::new(),
+        mod_slots: Vec::new(),
+    };
+    // 内建函数预分配(M2.3 最小 prelude,目前仅 println):不入模块命名空间——
+    // 用户同名定义优先,单段值路径未命中时兜底(见 resolve_value_single)
+    {
+        let b = Builtin::Println;
+        let span = Span::new(crate::span::SourceId(0), 0, 0, crate::span::Edition::Rx0);
+        let id = r.new_def(DefKind::Fn, b.name(), Vis::Pub, span, 0);
+        r.out.builtins.insert(id, b);
+    }
+    // 编译器已知项注入(RXS-0048):内建 Option/Result enum——同样不入模块
+    // 命名空间(用户同名定义按常规作用域遮蔽,不构成 RX1002);HIR item 形态
+    // 由 lower 安装,desugar 经 lang_items 直引变体 DefId(不受遮蔽影响)
+    {
+        let span = Span::new(crate::span::SourceId(0), 0, 0, crate::span::Edition::Rx0);
+        let option = r.new_def(DefKind::Enum, "Option", Vis::Pub, span, 0);
+        let none = r.new_def(DefKind::Variant, "None", Vis::Pub, span, 0);
+        r.unit_variants.insert(none);
+        let some = r.new_def(DefKind::Variant, "Some", Vis::Pub, span, 0);
+        r.enum_variants.insert(
+            option,
+            HashMap::from([("None".to_owned(), none), ("Some".to_owned(), some)]),
+        );
+        let result = r.new_def(DefKind::Enum, "Result", Vis::Pub, span, 0);
+        let ok = r.new_def(DefKind::Variant, "Ok", Vis::Pub, span, 0);
+        let err = r.new_def(DefKind::Variant, "Err", Vis::Pub, span, 0);
+        r.enum_variants.insert(
+            result,
+            HashMap::from([("Ok".to_owned(), ok), ("Err".to_owned(), err)]),
+        );
+        let drop_trait = r.new_def(DefKind::Trait, "Drop", Vis::Pub, span, 0);
+        r.out.lang_items = LangItems {
+            option: Some(option),
+            option_none: Some(none),
+            option_some: Some(some),
+            result: Some(result),
+            result_ok: Some(ok),
+            result_err: Some(err),
+            drop_trait: Some(drop_trait),
+            view: None,
+            view_mut: None,
+            buffer: None,
+            addr_spaces: [None; 5],
+            thread_ctx: None,
+            texture2d: None,
+            sampler: None,
+            sampler_cmp: None,
+            texture_rw2d: None,
+            context: None,
+            module: None,
+            stream: None,
+            grid_dim: None,
+            block_dim: None,
+            pinned_buffer: None,
+            context_create: None,
+            present: None,
+            present_ready: None,
+            present_acquired: None,
+            present_presentable: None,
+            present_create: None,
+            write_ppm: None,
+            nonuniform: None,
+            texture_table: None,
+            graph: None,
+            graph_resource: None,
+            pass_builder: None,
+            graph_create: None,
+            rhi: None,
+            rhi_res: None,
+            rhi_pass: None,
+            rhi_queue: None,
+            rhi_create: None,
+            rhi_create_vk: None,
+            rhi_gfx_pass: None,
+            rhi_vertex_buffer: None,
+            rhi_index_buffer: None,
+            block_ctx: None,
+            atomic: None,
+            atomic_view: None,
+            scope: None,
+            scope_block: None,
+            scope_gpu: None,
+            scope_system: None,
+            ordering: None,
+            ray_query: None,
+            ray_query_initialize: None,
+            ray_query_initialize_first_hit: None,
+        };
+    }
+    r.collect_items(&file.items, 0);
+    // 设备 View 族容器 + 地址空间标记(RXS-0067):**在用户 item 收集之后**分配
+    // DefId——避免移动既有用户 DefId 编号(MIR golden 符号名 = 名+DefId,稳定性
+    // 纪律);仍先于 resolve_bodies 设入 lang_items 供类型位置兜底识别。不入模块
+    // 命名空间(用户同名定义优先遮蔽);HIR item 形态由 lower 安装。
+    {
+        let span = Span::new(crate::span::SourceId(0), 0, 0, crate::span::Edition::Rx0);
+        r.out.lang_items.view = Some(r.new_def(DefKind::Struct, "View", Vis::Pub, span, 0));
+        r.out.lang_items.view_mut = Some(r.new_def(DefKind::Struct, "ViewMut", Vis::Pub, span, 0));
+        r.out.lang_items.buffer = Some(r.new_def(DefKind::Struct, "Buffer", Vis::Pub, span, 0));
+        r.out.lang_items.addr_spaces =
+            ADDR_SPACES.map(|n| Some(r.new_def(DefKind::Struct, n, Vis::Pub, span, 0)));
+        // device 线程上下文(M4.2,RXS-0072):`ThreadCtx<DIM>` 内建容器,
+        // 方法识别为 device intrinsics(typeck 层)。同 View 族兜底纪律(可遮蔽)。
+        r.out.lang_items.thread_ctx =
+            Some(r.new_def(DefKind::Struct, "ThreadCtx", Vis::Pub, span, 0));
+        // 着色资源句柄(G2.4,RXS-0156/0174;RFC-0007):`Texture2D<F>` / `Sampler`
+        // 内建容器,方法 `.sample(samp, uv)` 识别为采样 intrinsic(typeck 层)。
+        // 追加于既有 lang items 之后,不动摇既有 DefId 编号(MIR/PTX golden 符号名
+        // 稳定性);同 View 族兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.texture2d =
+            Some(r.new_def(DefKind::Struct, "Texture2D", Vis::Pub, span, 0));
+        r.out.lang_items.sampler = Some(r.new_def(DefKind::Struct, "Sampler", Vis::Pub, span, 0));
+        // host 运行时 launch 类型契约已知类型(M4.3,RXS-0074):Context/Module/
+        // Stream(brand)/GridDim/BlockDim。追加于既有 device lang items 之后,
+        // 不动摇 view 族/ThreadCtx 既有 DefId 编号(MIR/PTX golden 符号名稳定性)。
+        r.out.lang_items.context = Some(r.new_def(DefKind::Struct, "Context", Vis::Pub, span, 0));
+        r.out.lang_items.module = Some(r.new_def(DefKind::Struct, "Module", Vis::Pub, span, 0));
+        r.out.lang_items.stream = Some(r.new_def(DefKind::Struct, "Stream", Vis::Pub, span, 0));
+        r.out.lang_items.grid_dim = Some(r.new_def(DefKind::Struct, "GridDim", Vis::Pub, span, 0));
+        r.out.lang_items.block_dim =
+            Some(r.new_def(DefKind::Struct, "BlockDim", Vis::Pub, span, 0));
+        // M5.2 shared+barrier / scoped atomics 已知项(RXS-0079/0080)。追加于既有
+        // device/launch lang items 之后,不动摇既有 DefId 编号(MIR/PTX golden 符号
+        // 名稳定性);同 View 族兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.block_ctx = Some(r.new_def(DefKind::Struct, "block", Vis::Pub, span, 0));
+        r.out.lang_items.atomic = Some(r.new_def(DefKind::Struct, "Atomic", Vis::Pub, span, 0));
+        r.out.lang_items.atomic_view =
+            Some(r.new_def(DefKind::Struct, "AtomicView", Vis::Pub, span, 0));
+        // Scope/Ordering 封闭枚举(变体作值/类型位置路径前缀:`Scope::Block` 等)。
+        let scope = r.new_def(DefKind::Enum, "Scope", Vis::Pub, span, 0);
+        let scope_block = r.new_def(DefKind::Variant, "Block", Vis::Pub, span, 0);
+        let scope_gpu = r.new_def(DefKind::Variant, "Gpu", Vis::Pub, span, 0);
+        let scope_system = r.new_def(DefKind::Variant, "System", Vis::Pub, span, 0);
+        for v in [scope_block, scope_gpu, scope_system] {
+            r.unit_variants.insert(v);
+        }
+        r.enum_variants.insert(
+            scope,
+            HashMap::from([
+                ("Block".to_owned(), scope_block),
+                ("Gpu".to_owned(), scope_gpu),
+                ("System".to_owned(), scope_system),
+            ]),
+        );
+        let ordering = r.new_def(DefKind::Enum, "Ordering", Vis::Pub, span, 0);
+        let mut ord_variants = HashMap::new();
+        for name in ["Relaxed", "Acquire", "Release", "AcqRel"] {
+            let vid = r.new_def(DefKind::Variant, name, Vis::Pub, span, 0);
+            r.unit_variants.insert(vid);
+            ord_variants.insert(name.to_owned(), vid);
+        }
+        r.enum_variants.insert(ordering, ord_variants);
+        r.out.lang_items.scope = Some(scope);
+        r.out.lang_items.scope_block = Some(scope_block);
+        r.out.lang_items.scope_gpu = Some(scope_gpu);
+        r.out.lang_items.scope_system = Some(scope_system);
+        r.out.lang_items.ordering = Some(ordering);
+        // 宿主 GPU 编排已知项(MS1.2,RXS-0189/0190):PinnedBuffer 锁页缓冲容器 +
+        // `Context::create` 关联构造(值路径解析锚点,签名为 typeck 编译器已知)。
+        // 追加于既有 lang items 之后,不动摇既有 DefId 编号(MIR/PTX golden 符号名
+        // 稳定性);同 View 族兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.pinned_buffer =
+            Some(r.new_def(DefKind::Struct, "PinnedBuffer", Vis::Pub, span, 0));
+        r.out.lang_items.context_create =
+            Some(r.new_def(DefKind::AssocFn, "create", Vis::Pub, span, 0));
+        // present 宿主 typestate 面 + 宿主图像落盘桥已知项(MS1.2b,RXS-0197/
+        // 0199):Present/Ready/Acquired/Presentable 帧状态句柄 + `Present::create`
+        // 关联构造 + `write_ppm` 自由函数。追加于既有 lang items 之后,不动摇
+        // 既有 DefId 编号(MIR/PTX golden 符号名稳定性);同 View 族兜底纪律
+        // (用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.present = Some(r.new_def(DefKind::Struct, "Present", Vis::Pub, span, 0));
+        r.out.lang_items.present_ready =
+            Some(r.new_def(DefKind::Struct, "Ready", Vis::Pub, span, 0));
+        r.out.lang_items.present_acquired =
+            Some(r.new_def(DefKind::Struct, "Acquired", Vis::Pub, span, 0));
+        r.out.lang_items.present_presentable =
+            Some(r.new_def(DefKind::Struct, "Presentable", Vis::Pub, span, 0));
+        r.out.lang_items.present_create =
+            Some(r.new_def(DefKind::AssocFn, "create", Vis::Pub, span, 0));
+        r.out.lang_items.write_ppm = Some(r.new_def(DefKind::Fn, "write_ppm", Vis::Pub, span, 0));
+        // 采样超集资源句柄(G3.3,RXS-0223;RFC-0013 §4.B1):`SamplerCmp` /
+        // `TextureRw2D<F>`。**追加于全部既有 lang items 之后**,不动摇既有 DefId 编号
+        // (MIR/PTX golden 符号名稳定性);同 View 族兜底纪律(用户同名定义优先遮蔽,
+        // 不入模块命名空间)。
+        r.out.lang_items.sampler_cmp =
+            Some(r.new_def(DefKind::Struct, "SamplerCmp", Vis::Pub, span, 0));
+        r.out.lang_items.texture_rw2d =
+            Some(r.new_def(DefKind::Struct, "TextureRw2D", Vis::Pub, span, 0));
+        // bindless 动态非均匀索引标注自由函数(G3.4,RXS-0232)。**追加于全部既有
+        // lang items 之后**,不动摇既有 DefId 编号(MIR/PTX golden 符号名稳定性)。
+        r.out.lang_items.nonuniform = Some(r.new_def(DefKind::Fn, "nonuniform", Vis::Pub, span, 0));
+        // std::gpu 宿主无界纹理表 TextureTable(G3.4,RXS-0235)。**追加于全部既有
+        // lang items 之后**,不动摇既有 DefId 编号;同 View 族兜底纪律(用户同名定义
+        // 优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.texture_table =
+            Some(r.new_def(DefKind::Struct, "TextureTable", Vis::Pub, span, 0));
+        // std::gpu render graph 类型面(G3.5,RXS-0236):`Graph` 图本体 / `GraphResource`
+        // 资源句柄 / `PassBuilder` pass 句柄 + `Graph::create` 关联构造。**追加于全部既有
+        // lang items 之后**,不动摇既有 DefId 编号(MIR/PTX golden 符号名稳定性);同 View
+        // 族兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.graph = Some(r.new_def(DefKind::Struct, "Graph", Vis::Pub, span, 0));
+        r.out.lang_items.graph_resource =
+            Some(r.new_def(DefKind::Struct, "GraphResource", Vis::Pub, span, 0));
+        r.out.lang_items.pass_builder =
+            Some(r.new_def(DefKind::Struct, "PassBuilder", Vis::Pub, span, 0));
+        r.out.lang_items.graph_create =
+            Some(r.new_def(DefKind::AssocFn, "create", Vis::Pub, span, 0));
+        // std::gpu UC-05 最小 RHI 类型面(EI1.3 Part B,RXS-0256;RFC-0014 §4.B):`Rhi` 图根 /
+        // `Res` 资源句柄 / `Pass` pass 声明句柄 / `Queue` submit 结果 + `Rhi::create` 关联构造。
+        // **追加于全部既有 lang items 之后**,不动摇既有 DefId 编号(MIR/PTX golden 符号名
+        // 稳定性);同 View 族兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。与 G3.5
+        // `Graph` 平行的不同 lang items(compute-pass 面,RFC-0014 §7-2)。
+        r.out.lang_items.rhi = Some(r.new_def(DefKind::Struct, "Rhi", Vis::Pub, span, 0));
+        r.out.lang_items.rhi_res = Some(r.new_def(DefKind::Struct, "Res", Vis::Pub, span, 0));
+        r.out.lang_items.rhi_pass = Some(r.new_def(DefKind::Struct, "Pass", Vis::Pub, span, 0));
+        r.out.lang_items.rhi_queue = Some(r.new_def(DefKind::Struct, "Queue", Vis::Pub, span, 0));
+        r.out.lang_items.rhi_create =
+            Some(r.new_def(DefKind::AssocFn, "create", Vis::Pub, span, 0));
+        // G4.4 PR-F(RXS-0293):`Rhi::create_vk` 显式 Vulkan 后端构造,镜像 `rhi_create`
+        // 解析锚点(assoc fn `create_vk`,strict 无回退)。
+        r.out.lang_items.rhi_create_vk =
+            Some(r.new_def(DefKind::AssocFn, "create_vk", Vis::Pub, span, 0));
+        // G4.2 RHI 图形 pass 句柄(RXS-0270,RFC-0015 §4.A1):`GfxPass<C>` 为 raster/mesh
+        // pass 产物,与 `Pass<C>` 同族非 Copy affine。**追加于全部既有 lang items 之后**,
+        // 不动摇既有 DefId 编号(MIR/PTX golden 符号名稳定性);同 Rhi 族兜底纪律。
+        r.out.lang_items.rhi_gfx_pass =
+            Some(r.new_def(DefKind::Struct, "GfxPass", Vis::Pub, span, 0));
+        // RayQuery device 不透明遍历器类型 + `ray_query_initialize` 构造自由函数
+        // (G7.2 W3a,RXS-0297/0298,RFC-0018 §3.A1~A4)。**追加于全部既有 lang items
+        // 之后**,不动摇既有 DefId 编号(MIR/PTX golden 符号名稳定性);同 View 族
+        // 兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.ray_query =
+            Some(r.new_def(DefKind::Struct, "RayQuery", Vis::Pub, span, 0));
+        r.out.lang_items.ray_query_initialize =
+            Some(r.new_def(DefKind::Fn, "ray_query_initialize", Vis::Pub, span, 0));
+        // G8.2 M89 VB/IB 句柄(RXS-0319):`VertexBuffer<C>` / `IndexBuffer<C>`。
+        // **追加于全部既有 lang items 之后**,不动摇既有 DefId 编号。
+        r.out.lang_items.rhi_vertex_buffer =
+            Some(r.new_def(DefKind::Struct, "VertexBuffer", Vis::Pub, span, 0));
+        r.out.lang_items.rhi_index_buffer =
+            Some(r.new_def(DefKind::Struct, "IndexBuffer", Vis::Pub, span, 0));
+        // `ray_query_initialize_first_hit` 构造自由函数(RFC-0030 §4.6):first-hit
+        // 早退变体,签名/三态协议同 `ray_query_initialize`。**追加于全部既有 lang
+        // items 之后**,不动摇既有 DefId 编号(MIR/PTX golden 符号名稳定性);同
+        // `ray_query_initialize` 兜底纪律(用户同名定义优先遮蔽,不入模块命名空间)。
+        r.out.lang_items.ray_query_initialize_first_hit = Some(r.new_def(
+            DefKind::Fn,
+            "ray_query_initialize_first_hit",
+            Vis::Pub,
+            span,
+            0,
+        ));
+    }
+    r.resolve_uses();
+    r.resolve_impl_targets();
+    r.resolve_bodies(&file.items, 0);
+    // 导出 typeck 所需的关联表(RXS-0046 方法查找 / 变体归属)
+    for (ty_def, items) in &r.assoc {
+        let mut v: Vec<(String, DefId)> = items.iter().map(|(n, (d, _))| (n.clone(), *d)).collect();
+        v.sort_by(|a, b| a.0.cmp(&b.0));
+        r.out.assoc_items.insert(*ty_def, v);
+    }
+    for (enum_def, variants) in &r.enum_variants {
+        for vid in variants.values() {
+            r.out.variant_parents.insert(*vid, *enum_def);
+        }
+    }
+    r.out
+}
+
+/// 命名空间(RXS-0037"命名类")。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Ns {
+    Type,
+    Value,
+}
+
+/// 模块作用域内的一个绑定(item 或 use 引入名)。
+#[derive(Clone, Debug)]
+struct Binding {
+    res: Res,
+    vis: Vis,
+    /// 引入点(item 名 / use 名)span。
+    span: Span,
+}
+
+#[derive(Debug)]
+struct ModuleData {
+    parent: Option<usize>,
+    types: HashMap<String, Binding>,
+    values: HashMap<String, Binding>,
+}
+
+impl ModuleData {
+    fn root() -> Self {
+        Self {
+            parent: None,
+            types: HashMap::new(),
+            values: HashMap::new(),
+        }
+    }
+
+    fn ns(&self, ns: Ns) -> &HashMap<String, Binding> {
+        match ns {
+            Ns::Type => &self.types,
+            Ns::Value => &self.values,
+        }
+    }
+}
+
+/// 待固定点解析的 use。
+struct PendingUse {
+    module: usize,
+    vis: Vis,
+    path: ast::Path,
+    /// 引入名(别名或末段)与其 span。
+    name: String,
+    name_span: Span,
+}
+
+/// 待解析 self_ty 的 impl(关联项登记需先有模块树)。
+struct PendingImpl {
+    module: usize,
+    /// self_ty 若为单段路径的文本名(多段/非路径形态 M2.1 不登记关联项)。
+    self_name: Option<String>,
+    /// (名字, DefId, 名字 span)
+    assoc_items: Vec<(String, DefId, Span)>,
+}
+
+struct Resolver<'a> {
+    diag: &'a DiagCtxt,
+    modules: Vec<ModuleData>,
+    out: Resolutions,
+    pending_uses: Vec<PendingUse>,
+    pending_impls: Vec<PendingImpl>,
+    /// inherent impl 关联项:类型 DefId → 名 → 关联项 DefId。
+    assoc: HashMap<DefId, HashMap<String, (DefId, Vis)>>,
+    /// enum DefId → 变体名 → 变体 DefId。
+    enum_variants: HashMap<DefId, HashMap<String, DefId>>,
+    /// 单元变体集(模式位置裸名裁决:单元变体优先于绑定,RXS-0048/0023)。
+    unit_variants: std::collections::HashSet<DefId>,
+    /// mod DefId → 模块树槽位。
+    mod_slots: Vec<(DefId, usize)>,
+}
+
+fn lower_vis(v: &Visibility) -> Vis {
+    match v {
+        Visibility::Inherited => Vis::Private,
+        Visibility::Pub(_) => Vis::Pub,
+        Visibility::PubPackage(_) => Vis::PubPackage,
+    }
+}
+
+/// 简易编辑距离(拼写建议,RXS-0038)。
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut cur = vec![i];
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            cur.push((prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost));
+        }
+        prev = cur;
+    }
+    prev[b.len()]
+}
+
+impl<'a> Resolver<'a> {
+    // -- 通用 ----------------------------------------------------------------
+
+    fn new_def(&mut self, kind: DefKind, name: &str, vis: Vis, span: Span, module: usize) -> DefId {
+        let id = DefId(self.out.defs.len() as u32);
+        self.out.defs.push(DefData {
+            kind,
+            name: name.to_owned(),
+            vis,
+            span,
+            module,
+        });
+        id
+    }
+
+    fn def(&self, id: DefId) -> &DefData {
+        &self.out.defs[id.0 as usize]
+    }
+
+    fn err_duplicate(&self, name: &str, first: Span, again: Span) {
+        // RXS-0037/0038:双 span(先定义 + 冲突处)
+        self.diag
+            .struct_error(E_DUPLICATE_DEFINITION, "resolve.duplicate_definition")
+            .arg("name", format!("`{name}`"))
+            .span_label(again, "redefined here")
+            .span_label(first, "first defined here")
+            .emit();
+    }
+
+    fn err_unresolved(&self, name: &str, span: Span, suggestion: Option<&str>) {
+        let mut d = self
+            .diag
+            .struct_error(E_UNRESOLVED_NAME, "resolve.unresolved_name")
+            .arg("name", format!("`{name}`"))
+            .span_label(span, "not found in this scope");
+        if let Some(s) = suggestion {
+            d = d.help(format!("a name with a similar spelling exists: `{s}`"));
+        }
+        d.emit();
+    }
+
+    fn err_visibility(&self, name: &str, use_span: Span, def: &DefData) {
+        let vis_text = match def.vis {
+            Vis::Private => "private",
+            Vis::PubPackage => "pub(package)",
+            Vis::Pub => "pub",
+        };
+        // RXS-0036/0038:引用定义处与其声明的可见性
+        self.diag
+            .struct_error(E_VISIBILITY_VIOLATION, "resolve.visibility_violation")
+            .arg("name", format!("`{name}`"))
+            .span_label(use_span, "not visible from here")
+            .span_label(def.span, format!("defined here with {vis_text} visibility"))
+            .emit();
+    }
+
+    fn err_bad_use(&self, span: Span, reason: &str) {
+        self.diag
+            .struct_error(E_BAD_USE_TARGET, "resolve.bad_use_target")
+            .arg("reason", reason.to_owned())
+            .span_label(span, "cannot import this")
+            .emit();
+    }
+
+    /// `from` 模块是否可见 `def_module` 中可见性为 `vis` 的名称(RXS-0036)。
+    fn is_visible(&self, vis: Vis, def_module: usize, from: usize) -> bool {
+        match vis {
+            // MVP 单 package:pub 与 pub(package) 在包内等效可见
+            Vis::Pub | Vis::PubPackage => true,
+            Vis::Private => {
+                // 私有 = 定义模块自身及其后代可见
+                let mut m = Some(from);
+                while let Some(cur) = m {
+                    if cur == def_module {
+                        return true;
+                    }
+                    m = self.modules[cur].parent;
+                }
+                false
+            }
+        }
+    }
+
+    /// 向模块命名空间登记名字;冲突报 RX1002(RXS-0037),保留先到者。
+    fn register(&mut self, module: usize, ns: Ns, name: &str, binding: Binding) {
+        let map = match ns {
+            Ns::Type => &mut self.modules[module].types,
+            Ns::Value => &mut self.modules[module].values,
+        };
+        if let Some(existing) = map.get(name) {
+            let first = existing.span;
+            let again = binding.span;
+            self.err_duplicate(name, first, again);
+        } else {
+            map.insert(name.to_owned(), binding);
+        }
+    }
+
+    // -- 第一遍:收集(RXS-0032/0037) ----------------------------------------
+
+    fn collect_items(&mut self, items: &[ast::Item], module: usize) {
+        for item in items {
+            self.collect_item(item, module);
+        }
+    }
+
+    fn collect_item(&mut self, item: &ast::Item, module: usize) {
+        let vis = lower_vis(&item.vis);
+        match &item.kind {
+            ast::ItemKind::Fn(f) => {
+                let id = self.new_def(DefKind::Fn, &f.name.name, vis, f.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Value,
+                    &f.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: f.name.span,
+                    },
+                );
+            }
+            ast::ItemKind::Struct(s) => {
+                let id = self.new_def(DefKind::Struct, &s.name.name, vis, s.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Type,
+                    &s.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: s.name.span,
+                    },
+                );
+                // 元组/单元结构体构造器进值命名空间
+                if !matches!(s.body, ast::VariantBody::Named(_)) {
+                    self.register(
+                        module,
+                        Ns::Value,
+                        &s.name.name,
+                        Binding {
+                            res: Res::Def(id),
+                            vis,
+                            span: s.name.span,
+                        },
+                    );
+                }
+                if let ast::VariantBody::Named(fields) = &s.body {
+                    self.collect_fields(fields, module);
+                }
+            }
+            ast::ItemKind::Enum(e) => {
+                let id = self.new_def(DefKind::Enum, &e.name.name, vis, e.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Type,
+                    &e.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: e.name.span,
+                    },
+                );
+                let mut variants: HashMap<String, DefId> = HashMap::new();
+                for v in &e.variants {
+                    let vid =
+                        self.new_def(DefKind::Variant, &v.name.name, vis, v.name.span, module);
+                    self.out.item_defs.insert(v.span, vid);
+                    if matches!(v.body, ast::VariantBody::Unit) {
+                        self.unit_variants.insert(vid);
+                    }
+                    if let Some(prev) = variants.get(&v.name.name) {
+                        let first = self.def(*prev).span;
+                        self.err_duplicate(&v.name.name, first, v.name.span);
+                    } else {
+                        variants.insert(v.name.name.clone(), vid);
+                    }
+                    if let ast::VariantBody::Named(fields) = &v.body {
+                        self.collect_fields(fields, module);
+                    }
+                }
+                self.enum_variants.insert(id, variants);
+            }
+            ast::ItemKind::Trait(t) => {
+                let id = self.new_def(DefKind::Trait, &t.name.name, vis, t.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Type,
+                    &t.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: t.name.span,
+                    },
+                );
+                self.collect_assoc_decls(&t.items, module, None);
+            }
+            ast::ItemKind::Impl(im) => {
+                let self_name = match &im.self_ty.kind {
+                    ast::TyKind::Path(p) if p.segments.len() == 1 => {
+                        Some(p.segments[0].ident.name.clone())
+                    }
+                    _ => None,
+                };
+                let assoc_items = self.collect_assoc_decls(&im.items, module, Some(item.span));
+                self.pending_impls.push(PendingImpl {
+                    module,
+                    self_name,
+                    assoc_items,
+                });
+            }
+            ast::ItemKind::Mod(m) => {
+                let id = self.new_def(DefKind::Mod, &m.name.name, vis, m.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                let child = self.modules.len();
+                self.modules.push(ModuleData {
+                    parent: Some(module),
+                    types: HashMap::new(),
+                    values: HashMap::new(),
+                });
+                self.register(
+                    module,
+                    Ns::Type,
+                    &m.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: m.name.span,
+                    },
+                );
+                // 模块树索引随 DefId 记录:用 defs[id].module 表示父,child 索引经 mod_index 表
+                self.mod_index_insert(id, child);
+                self.collect_items(&m.items, child);
+            }
+            ast::ItemKind::Use(u) => {
+                let (name, name_span) = match &u.alias {
+                    Some(a) => (a.name.clone(), a.span),
+                    None => {
+                        let last = u.path.segments.last().expect("use 路径非空");
+                        (last.ident.name.clone(), last.ident.span)
+                    }
+                };
+                self.pending_uses.push(PendingUse {
+                    module,
+                    vis,
+                    path: u.path.clone(),
+                    name,
+                    name_span,
+                });
+            }
+            ast::ItemKind::Static(s) => {
+                let id = self.new_def(DefKind::Static, &s.name.name, vis, s.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Value,
+                    &s.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: s.name.span,
+                    },
+                );
+            }
+            ast::ItemKind::Const(c) => {
+                let id = self.new_def(DefKind::Const, &c.name.name, vis, c.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Value,
+                    &c.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: c.name.span,
+                    },
+                );
+            }
+            ast::ItemKind::TypeAlias(t) => {
+                let id = self.new_def(DefKind::TypeAlias, &t.name.name, vis, t.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.register(
+                    module,
+                    Ns::Type,
+                    &t.name.name,
+                    Binding {
+                        res: Res::Def(id),
+                        vis,
+                        span: t.name.span,
+                    },
+                );
+            }
+            ast::ItemKind::ExternBlock(e) => {
+                for inner in &e.items {
+                    self.collect_item(inner, module);
+                }
+            }
+            ast::ItemKind::Err => {}
+        }
+    }
+
+    /// struct/变体具名字段:登记 DefData 并查重(RXS-0037)。
+    fn collect_fields(&mut self, fields: &[ast::FieldDef], module: usize) {
+        let mut seen: HashMap<&str, Span> = HashMap::new();
+        for f in fields {
+            let vis = lower_vis(&f.vis);
+            let id = self.new_def(DefKind::Field, &f.name.name, vis, f.name.span, module);
+            self.out.item_defs.insert(f.span, id);
+            if let Some(first) = seen.get(f.name.name.as_str()) {
+                self.err_duplicate(&f.name.name, *first, f.name.span);
+            } else {
+                seen.insert(&f.name.name, f.name.span);
+            }
+        }
+    }
+
+    /// trait / impl 关联项声明收集(声明域内查重,RXS-0037)。
+    fn collect_assoc_decls(
+        &mut self,
+        items: &[ast::AssocItem],
+        module: usize,
+        _impl_span: Option<Span>,
+    ) -> Vec<(String, DefId, Span)> {
+        let mut seen: HashMap<String, Span> = HashMap::new();
+        let mut out = Vec::new();
+        for a in items {
+            let vis = lower_vis(&a.vis);
+            let (kind, name, span) = match &a.kind {
+                ast::AssocItemKind::Fn(f) => (DefKind::AssocFn, f.name.name.clone(), f.name.span),
+                ast::AssocItemKind::Type { name, .. } => {
+                    (DefKind::AssocType, name.name.clone(), name.span)
+                }
+                ast::AssocItemKind::Const(c) => {
+                    (DefKind::AssocConst, c.name.name.clone(), c.name.span)
+                }
+            };
+            let id = self.new_def(kind, &name, vis, span, module);
+            self.out.item_defs.insert(a.span, id);
+            if let Some(first) = seen.get(&name) {
+                self.err_duplicate(&name, *first, span);
+            } else {
+                seen.insert(name.clone(), span);
+            }
+            out.push((name, id, span));
+        }
+        out
+    }
+
+    // -- 模块树索引(DefId ↔ 模块槽位) ---------------------------------------
+
+    fn mod_index_insert(&mut self, def: DefId, module_slot: usize) {
+        self.mod_slots.push((def, module_slot));
+    }
+
+    fn module_slot_of(&self, def: DefId) -> Option<usize> {
+        self.mod_slots
+            .iter()
+            .find(|(d, _)| *d == def)
+            .map(|(_, s)| *s)
+    }
+
+    // -- use 解析(RXS-0035,固定点) -----------------------------------------
+
+    fn resolve_uses(&mut self) {
+        let mut pending = std::mem::take(&mut self.pending_uses);
+        loop {
+            let before = pending.len();
+            let mut still = Vec::new();
+            for u in pending {
+                match self.try_resolve_use(&u) {
+                    UseOutcome::Done => {}
+                    UseOutcome::Retry(u) => still.push(u),
+                }
+            }
+            if still.is_empty() {
+                return;
+            }
+            if still.len() == before {
+                // 无进展:逐条报错(目标不存在/不可见/类别不合法)
+                for u in still {
+                    self.report_use_failure(&u);
+                }
+                return;
+            }
+            pending = still;
+        }
+    }
+
+    fn try_resolve_use(&mut self, u: &PendingUse) -> UseOutcome {
+        match self.walk_use_path(u) {
+            Ok(res) => {
+                self.out.use_targets.insert(u.path.span, res);
+                self.register_use(u, res);
+                UseOutcome::Done
+            }
+            Err(UseErr::NotYet) => UseOutcome::Retry(PendingUse {
+                module: u.module,
+                vis: u.vis,
+                path: u.path.clone(),
+                name: u.name.clone(),
+                name_span: u.name_span,
+            }),
+            Err(UseErr::Invisible(d)) => {
+                // 不可见目标:RX1003(RXS-0036),仍登记为 Err 防级联
+                let def = self.def(d).clone();
+                self.err_visibility(&u.name, u.path.span, &def);
+                self.register_use(u, Res::Err);
+                UseOutcome::Done
+            }
+            Err(UseErr::Hard) => {
+                self.report_use_failure(u);
+                self.register_use(u, Res::Err);
+                UseOutcome::Done
+            }
+        }
+    }
+
+    fn register_use(&mut self, u: &PendingUse, res: Res) {
+        let binding = Binding {
+            res,
+            vis: u.vis,
+            span: u.name_span,
+        };
+        // use 目标若是值(fn/const/static)入值 ns,否则入类型 ns;
+        // 同时命中两个 ns 的形态(元组结构体)按目标类别归类型 ns 起步。
+        let ns = match res {
+            Res::Def(d) => match self.def(d).kind {
+                DefKind::Fn | DefKind::Const | DefKind::Static => Ns::Value,
+                _ => Ns::Type,
+            },
+            _ => Ns::Type,
+        };
+        self.register(u.module, ns, &u.name, binding);
+    }
+
+    /// 沿 use 路径逐段下行。
+    ///
+    /// 可见性判定以 **binding 所在模块**为准(use 重导出场景下与原始定义模块
+    /// 不同;同模块引用本模块的私有 use 引入名合法,RXS-0035/0036)。
+    fn walk_use_path(&self, u: &PendingUse) -> Result<Res, UseErr> {
+        let segs = &u.path.segments;
+        let first = &segs[0].ident;
+        // 首段在所在模块作用域查(同模块必可见,RXS-0035)
+        let mut cur: Binding = match self.modules[u.module]
+            .types
+            .get(&first.name)
+            .or_else(|| self.modules[u.module].values.get(&first.name))
+        {
+            Some(b) => b.clone(),
+            None => return Err(UseErr::Hard),
+        };
+        for (i, seg) in segs.iter().enumerate().skip(1) {
+            let Res::Def(prefix_def) = cur.res else {
+                // use 链尚未解析到位(目标 Err 或暂缺)
+                return Err(UseErr::NotYet);
+            };
+            let prefix = self.def(prefix_def);
+            match prefix.kind {
+                DefKind::Mod => {
+                    let Some(slot) = self.module_slot_of(prefix_def) else {
+                        return Err(UseErr::NotYet);
+                    };
+                    let m = &self.modules[slot];
+                    let last = i == segs.len() - 1;
+                    let b = if last {
+                        m.values
+                            .get(&seg.ident.name)
+                            .or_else(|| m.types.get(&seg.ident.name))
+                    } else {
+                        m.types.get(&seg.ident.name)
+                    };
+                    let Some(b) = b else {
+                        return Err(UseErr::Hard);
+                    };
+                    // 中间段与末段都做可见性检查:binding 所在模块 = slot
+                    if !self.is_visible(b.vis, slot, u.module) {
+                        if let Res::Def(d) = b.res {
+                            return Err(UseErr::Invisible(d));
+                        }
+                        return Err(UseErr::Hard);
+                    }
+                    cur = b.clone();
+                }
+                _ => return Err(UseErr::Hard), // 前缀类别不允许(非模块)
+            }
+        }
+        Ok(cur.res)
+    }
+
+    fn report_use_failure(&self, u: &PendingUse) {
+        // 区分"目标不存在"与"目标类别不允许导入"(RXS-0038)
+        let first = &u.path.segments[0].ident;
+        let reason = if self.modules[u.module].types.contains_key(&first.name)
+            || self.modules[u.module].values.contains_key(&first.name)
+        {
+            "the path does not resolve to an importable item"
+        } else {
+            "the import target does not exist"
+        };
+        self.err_bad_use(u.path.span, reason);
+    }
+
+    // -- impl 关联项落位 -------------------------------------------------------
+
+    fn resolve_impl_targets(&mut self) {
+        let pending = std::mem::take(&mut self.pending_impls);
+        for im in &pending {
+            let Some(name) = &im.self_name else { continue };
+            let Some(res) = self.modules[im.module].types.get(name).map(|b| b.res) else {
+                continue; // 未知 self 类型:M2.1 类型位置容忍口径
+            };
+            let Res::Def(type_def) = res else { continue };
+            for (n, id, span) in &im.assoc_items {
+                let existing = self
+                    .assoc
+                    .get(&type_def)
+                    .and_then(|m| m.get(n))
+                    .map(|(first_id, _)| *first_id);
+                if let Some(first_id) = existing {
+                    let first = self.def(first_id).span;
+                    self.err_duplicate(n, first, *span);
+                } else {
+                    let vis = self.def(*id).vis;
+                    self.assoc
+                        .entry(type_def)
+                        .or_default()
+                        .insert(n.clone(), (*id, vis));
+                }
+            }
+        }
+        self.pending_impls = pending;
+    }
+}
+
+enum UseOutcome {
+    Done,
+    Retry(PendingUse),
+}
+
+enum UseErr {
+    /// use 链未就绪,固定点重试。
+    NotYet,
+    /// 存在但不可见(RX1003)。
+    Invisible(DefId),
+    /// 确定性失败(RX1004)。
+    Hard,
+}
+
+/// 局部作用域帧条目(混合 ns:绑定与块内 item 同帧裁决,RXS-0037)。
+#[derive(Clone, Copy, Debug)]
+struct ScopeEntry {
+    res: Res,
+    span: Span,
+}
+
+/// body 走查上下文(RXS-0032:item 作用域与局部作用域分离建模)。
+struct BodyCx {
+    module: usize,
+    /// 泛型参数名(impl 参数在前,fn 参数偏移其后;序号即 Res::GenericParam)。
+    generics: Vec<String>,
+    /// `Self` 是否可用(impl/trait 体内)。
+    has_self: bool,
+    /// body 键(fn 体块 span / 初始化器 span)。
+    body_key: Span,
+    locals: Vec<LocalDecl>,
+    scopes: Vec<HashMap<String, ScopeEntry>>,
+}
+
+impl BodyCx {
+    fn new(module: usize, generics: Vec<String>, has_self: bool, body_key: Span) -> Self {
+        Self {
+            module,
+            generics,
+            has_self,
+            body_key,
+            locals: Vec::new(),
+            scopes: vec![HashMap::new()],
+        }
+    }
+}
+
+/// 多段路径走查失败形态。
+enum PathFail {
+    /// 路径中某段名字不存在(段名)。
+    Missing(String),
+    /// 存在但不可见(目标 DefId)。
+    Invisible(DefId),
+}
+
+impl Resolver<'_> {
+    // -- 第二遍:body 走查(RXS-0033/0034/0036/0038) --------------------------
+
+    fn resolve_bodies(&mut self, items: &[ast::Item], module: usize) {
+        for item in items {
+            self.resolve_item_body(item, module);
+        }
+    }
+
+    fn resolve_item_body(&mut self, item: &ast::Item, module: usize) {
+        match &item.kind {
+            ast::ItemKind::Fn(f) => {
+                self.resolve_fn(f, module, Vec::new(), false);
+            }
+            ast::ItemKind::Struct(s) => {
+                let generics = generic_names(&s.generics);
+                self.resolve_variant_body_types(&s.body, module, &generics);
+            }
+            ast::ItemKind::Enum(e) => {
+                let generics = generic_names(&e.generics);
+                for v in &e.variants {
+                    self.resolve_variant_body_types(&v.body, module, &generics);
+                }
+            }
+            ast::ItemKind::Trait(t) => {
+                let trait_generics = generic_names(&t.generics);
+                for a in &t.items {
+                    self.resolve_assoc_body(a, module, &trait_generics, true);
+                }
+            }
+            ast::ItemKind::Impl(im) => {
+                let impl_generics = generic_names(&im.generics);
+                // self_ty / trait_ty 在类型位置解析(容忍口径)
+                let mut cx = BodyCx::new(module, impl_generics.clone(), true, im.self_ty.span);
+                self.resolve_ast_ty(&im.self_ty, &mut cx);
+                if let Some(t) = &im.trait_ty {
+                    self.resolve_ast_ty(t, &mut cx);
+                }
+                for a in &im.items {
+                    self.resolve_assoc_body(a, module, &impl_generics, true);
+                }
+            }
+            ast::ItemKind::Mod(m) => {
+                let Some(&id) = self.out.item_defs.get(&item.span) else {
+                    return;
+                };
+                let Some(slot) = self.module_slot_of(id) else {
+                    return;
+                };
+                self.resolve_bodies(&m.items, slot);
+            }
+            ast::ItemKind::Static(s) => {
+                let mut cx = BodyCx::new(module, Vec::new(), false, s.init.span);
+                self.resolve_ast_ty(&s.ty, &mut cx);
+                self.resolve_expr(&s.init, &mut cx);
+                self.finish_body(cx);
+            }
+            ast::ItemKind::Const(c) => {
+                let mut cx = BodyCx::new(module, Vec::new(), false, c.init.span);
+                self.resolve_ast_ty(&c.ty, &mut cx);
+                self.resolve_expr(&c.init, &mut cx);
+                self.finish_body(cx);
+            }
+            ast::ItemKind::TypeAlias(t) => {
+                let generics = generic_names(&t.generics);
+                let mut cx = BodyCx::new(module, generics, false, t.ty.span);
+                self.resolve_ast_ty(&t.ty, &mut cx);
+            }
+            ast::ItemKind::Use(_) | ast::ItemKind::Err => {}
+            ast::ItemKind::ExternBlock(e) => {
+                for inner in &e.items {
+                    self.resolve_item_body(inner, module);
+                }
+            }
+        }
+    }
+
+    fn resolve_assoc_body(
+        &mut self,
+        a: &ast::AssocItem,
+        module: usize,
+        outer_generics: &[String],
+        has_self: bool,
+    ) {
+        match &a.kind {
+            ast::AssocItemKind::Fn(f) => {
+                self.resolve_fn(f, module, outer_generics.to_vec(), has_self);
+            }
+            ast::AssocItemKind::Type { default, .. } => {
+                if let Some(ty) = default {
+                    let mut cx = BodyCx::new(module, outer_generics.to_vec(), has_self, ty.span);
+                    self.resolve_ast_ty(ty, &mut cx);
+                }
+            }
+            ast::AssocItemKind::Const(c) => {
+                let mut cx = BodyCx::new(module, outer_generics.to_vec(), has_self, c.init.span);
+                self.resolve_ast_ty(&c.ty, &mut cx);
+                self.resolve_expr(&c.init, &mut cx);
+                self.finish_body(cx);
+            }
+        }
+    }
+
+    fn resolve_fn(
+        &mut self,
+        f: &ast::FnItem,
+        module: usize,
+        outer_generics: Vec<String>,
+        has_self: bool,
+    ) {
+        let mut generics = outer_generics;
+        generics.extend(generic_names(&f.generics));
+        let body_key = f
+            .body
+            .as_ref()
+            .map(|b| b.span)
+            .unwrap_or_else(|| f.name.span);
+        let mut cx = BodyCx::new(module, generics, has_self, body_key);
+        // 参数:类型解析 + 绑定声明(参数与 body let 同 body 体系,RXS-0033)
+        for p in &f.params {
+            match &p.kind {
+                ast::ParamKind::SelfParam { mutable, .. } => {
+                    self.declare_local(&mut cx, "self", *mutable, p.span);
+                }
+                ast::ParamKind::Typed { pat, ty } => {
+                    self.resolve_ast_ty(ty, &mut cx);
+                    self.resolve_pat(pat, &mut cx);
+                }
+            }
+        }
+        if let Some(ret) = &f.ret {
+            self.resolve_ast_ty(ret, &mut cx);
+        }
+        for pred in &f.generics.where_preds {
+            self.resolve_ast_ty(&pred.ty, &mut cx);
+        }
+        if let Some(body) = &f.body {
+            self.resolve_block(body, &mut cx);
+            self.finish_body(cx);
+        }
+    }
+
+    fn resolve_variant_body_types(
+        &mut self,
+        body: &ast::VariantBody,
+        module: usize,
+        generics: &[String],
+    ) {
+        let mut cx = BodyCx::new(
+            module,
+            generics.to_vec(),
+            false,
+            Span::new(crate::span::SourceId(0), 0, 0, crate::span::Edition::Rx0),
+        );
+        match body {
+            ast::VariantBody::Named(fields) => {
+                for fd in fields {
+                    self.resolve_ast_ty(&fd.ty, &mut cx);
+                }
+            }
+            ast::VariantBody::Tuple(fields) => {
+                for fd in fields {
+                    self.resolve_ast_ty(&fd.ty, &mut cx);
+                }
+            }
+            ast::VariantBody::Unit => {}
+        }
+    }
+
+    fn finish_body(&mut self, cx: BodyCx) {
+        self.out.body_locals.insert(cx.body_key, cx.locals);
+    }
+
+    // -- 局部作用域(RXS-0033/0037) -------------------------------------------
+
+    fn declare_local(&mut self, cx: &mut BodyCx, name: &str, mutable: bool, span: Span) {
+        let id = LocalId(cx.locals.len() as u32);
+        cx.locals.push(LocalDecl {
+            name: name.to_owned(),
+            mutable,
+            span,
+        });
+        let frame = cx.scopes.last_mut().expect("作用域栈非空");
+        if let Some(prev) = frame.get(name) {
+            // 同层重名(RXS-0033/0037);内层遮蔽外层经新帧,不走此路径
+            let first = prev.span;
+            self.err_duplicate(name, first, span);
+        }
+        frame.insert(
+            name.to_owned(),
+            ScopeEntry {
+                res: Res::Local(id),
+                span,
+            },
+        );
+        self.out.bindings.insert(span, id);
+    }
+
+    fn declare_block_item(&mut self, cx: &mut BodyCx, name: &str, res: Res, span: Span) {
+        let frame = cx.scopes.last_mut().expect("作用域栈非空");
+        if let Some(prev) = frame.get(name) {
+            let first = prev.span;
+            self.err_duplicate(name, first, span);
+        }
+        frame.insert(name.to_owned(), ScopeEntry { res, span });
+    }
+
+    fn lookup_scopes(&self, cx: &BodyCx, name: &str) -> Option<ScopeEntry> {
+        for frame in cx.scopes.iter().rev() {
+            if let Some(e) = frame.get(name) {
+                return Some(*e);
+            }
+        }
+        None
+    }
+
+    fn lookup_generic(&self, cx: &BodyCx, name: &str) -> Option<Res> {
+        cx.generics
+            .iter()
+            .position(|g| g == name)
+            .map(|i| Res::GenericParam(i as u32))
+    }
+
+    // -- 路径解析(RXS-0034/0036) ----------------------------------------------
+
+    /// 单段路径,表达式/模式位置:局部 > 泛型参数 > 模块值 ns(RXS-0034)。
+    fn resolve_value_single(&mut self, name: &str, span: Span, cx: &BodyCx) -> Res {
+        if let Some(e) = self.lookup_scopes(cx, name) {
+            self.out.path_res.insert(span, e.res);
+            return e.res;
+        }
+        if let Some(res) = self.lookup_generic(cx, name) {
+            self.out.path_res.insert(span, res);
+            return res;
+        }
+        if let Some(b) = self.modules[cx.module].values.get(name) {
+            let res = b.res;
+            self.out.path_res.insert(span, res);
+            return res;
+        }
+        // 内建函数兜底(M2.3 最小 prelude;以上各级未命中才轮到)
+        if let Some(d) = self
+            .out
+            .builtins
+            .iter()
+            .find(|(_, b)| b.name() == name)
+            .map(|(d, _)| *d)
+        {
+            let res = Res::Def(d);
+            self.out.path_res.insert(span, res);
+            return res;
+        }
+        // 编译器已知项变体兜底(RXS-0048:Some/None/Ok/Err,值/模式位置)
+        if let Some(d) = self.out.lang_items.variant_by_name(name) {
+            let res = Res::Def(d);
+            self.out.path_res.insert(span, res);
+            return res;
+        }
+        // launch 维度构造器兜底(RXS-0074:`GridDim`/`BlockDim`,值位置;
+        // 模块值 ns 优先 = 可遮蔽)
+        if let Some(d) = self.out.lang_items.device_value_by_name(name) {
+            let res = Res::Def(d);
+            self.out.path_res.insert(span, res);
+            return res;
+        }
+        let suggestion = self.suggest(name, cx, Ns::Value);
+        self.err_unresolved(name, span, suggestion.as_deref());
+        self.out.path_res.insert(span, Res::Err);
+        Res::Err
+    }
+
+    /// 单段路径,类型位置:泛型参数 > Self > 原生类型 > 模块类型 ns;
+    /// 未命中容忍为 Err(M2.1 口径,M2.2 typeck 收紧)。
+    fn resolve_type_single(&mut self, name: &str, span: Span, cx: &BodyCx) -> Res {
+        let res = if let Some(r) = self.lookup_generic(cx, name) {
+            r
+        } else if name == "Self" && cx.has_self {
+            Res::SelfTy
+        } else if let Some(p) = PrimTy::from_name(name) {
+            Res::PrimTy(p)
+        } else if let Some(e) = self.lookup_scopes(cx, name) {
+            // 块内 item(struct 等)经局部帧可见
+            e.res
+        } else if let Some(b) = self.modules[cx.module].types.get(name) {
+            b.res
+        } else if let Some(d) = self.out.lang_items.type_by_name(name) {
+            // 编译器已知项兜底(RXS-0048:Option/Result;模块 ns 优先 = 可遮蔽)
+            Res::Def(d)
+        } else if let Some(d) = self.out.lang_items.device_type_by_name(name) {
+            // 设备 View 族容器 / 地址空间标记兜底(RXS-0067;模块 ns 优先 = 可遮蔽)
+            Res::Def(d)
+        } else {
+            Res::Err
+        };
+        self.out.path_res.insert(span, res);
+        res
+    }
+
+    /// 多段路径走查(首段定位模块项;局部不可作前缀,RXS-0034)。
+    fn walk_multi_path(&self, path: &ast::Path, cx: &BodyCx, last_ns: Ns) -> Result<Res, PathFail> {
+        let segs = &path.segments;
+        let first = &segs[0].ident;
+        let mut cur_res: Res = if let Some(b) = self.modules[cx.module]
+            .types
+            .get(&first.name)
+            .or_else(|| self.modules[cx.module].values.get(&first.name))
+        {
+            b.res
+        } else if let Some(e) = self.lookup_scopes(cx, &first.name) {
+            // 块内 item 可作前缀;局部绑定不可(RXS-0034)
+            match e.res {
+                Res::Local(_) => return Err(PathFail::Missing(first.name.clone())),
+                r => r,
+            }
+        } else if let Some(d) = self.out.lang_items.type_by_name(&first.name) {
+            // 编译器已知项作路径前缀(RXS-0048:`Option::Some` 等)
+            Res::Def(d)
+        } else if let Some(d) = self.out.lang_items.device_type_by_name(&first.name) {
+            // 宿主编排已知类型作路径前缀(MS1.2,RXS-0189:`Context::create`;
+            // 模块 ns 优先 = 用户同名定义遮蔽)
+            Res::Def(d)
+        } else {
+            return Err(PathFail::Missing(first.name.clone()));
+        };
+        for (i, seg) in segs.iter().enumerate().skip(1) {
+            let Res::Def(prefix_def) = cur_res else {
+                return Err(PathFail::Missing(seg.ident.name.clone()));
+            };
+            let prefix = self.def(prefix_def).clone();
+            let last = i == segs.len() - 1;
+            cur_res = match prefix.kind {
+                DefKind::Mod => {
+                    let Some(slot) = self.module_slot_of(prefix_def) else {
+                        return Err(PathFail::Missing(seg.ident.name.clone()));
+                    };
+                    let m = &self.modules[slot];
+                    let b = if last {
+                        match last_ns {
+                            Ns::Value => m
+                                .values
+                                .get(&seg.ident.name)
+                                .or_else(|| m.types.get(&seg.ident.name)),
+                            Ns::Type => m
+                                .types
+                                .get(&seg.ident.name)
+                                .or_else(|| m.values.get(&seg.ident.name)),
+                        }
+                    } else {
+                        m.types.get(&seg.ident.name)
+                    };
+                    let Some(b) = b else {
+                        return Err(PathFail::Missing(seg.ident.name.clone()));
+                    };
+                    // 可见性以 binding 所在模块(slot)为准(use 重导出兼容)
+                    if !self.is_visible(b.vis, slot, cx.module) {
+                        if let Res::Def(d) = b.res {
+                            return Err(PathFail::Invisible(d));
+                        }
+                        return Err(PathFail::Missing(seg.ident.name.clone()));
+                    }
+                    b.res
+                }
+                DefKind::Enum => {
+                    if let Some(v) = self
+                        .enum_variants
+                        .get(&prefix_def)
+                        .and_then(|m| m.get(&seg.ident.name))
+                    {
+                        Res::Def(*v)
+                    } else if let Some((a, vis)) = self
+                        .assoc
+                        .get(&prefix_def)
+                        .and_then(|m| m.get(&seg.ident.name))
+                        .copied()
+                    {
+                        let dd = self.def(a);
+                        if !self.is_visible(vis, dd.module, cx.module) {
+                            return Err(PathFail::Invisible(a));
+                        }
+                        Res::Def(a)
+                    } else {
+                        return Err(PathFail::Missing(seg.ident.name.clone()));
+                    }
+                }
+                DefKind::Struct => {
+                    if let Some((a, vis)) = self
+                        .assoc
+                        .get(&prefix_def)
+                        .and_then(|m| m.get(&seg.ident.name))
+                        .copied()
+                    {
+                        let dd = self.def(a);
+                        if !self.is_visible(vis, dd.module, cx.module) {
+                            return Err(PathFail::Invisible(a));
+                        }
+                        Res::Def(a)
+                    } else if last
+                        && last_ns == Ns::Value
+                        && Some(prefix_def) == self.out.lang_items.context
+                        && seg.ident.name == "create"
+                        && let Some(create) = self.out.lang_items.context_create
+                    {
+                        // 宿主 GPU 上下文构造(MS1.2,RXS-0189):`Context::create`
+                        // 编译器已知关联函数(用户 inherent impl 优先 = assoc 查找在前)
+                        Res::Def(create)
+                    } else if last
+                        && last_ns == Ns::Value
+                        && Some(prefix_def) == self.out.lang_items.present
+                        && seg.ident.name == "create"
+                        && let Some(create) = self.out.lang_items.present_create
+                    {
+                        // present 会话构造(MS1.2b,RXS-0197):`Present::create`
+                        // 编译器已知关联函数(镜像 `Context::create` 解析锚点)
+                        Res::Def(create)
+                    } else if last
+                        && last_ns == Ns::Value
+                        && Some(prefix_def) == self.out.lang_items.graph
+                        && seg.ident.name == "create"
+                        && let Some(create) = self.out.lang_items.graph_create
+                    {
+                        // render graph 图构造(G3.5,RXS-0236):`Graph::create`
+                        // 编译器已知关联函数(镜像 `Context::create` 解析锚点)
+                        Res::Def(create)
+                    } else if last
+                        && last_ns == Ns::Value
+                        && Some(prefix_def) == self.out.lang_items.rhi
+                        && seg.ident.name == "create"
+                        && let Some(create) = self.out.lang_items.rhi_create
+                    {
+                        // UC-05 RHI 图根构造(EI1.3 Part B,RXS-0256):`Rhi::create`
+                        // 编译器已知关联函数(镜像 `Context::create` 解析锚点)
+                        Res::Def(create)
+                    } else if last
+                        && last_ns == Ns::Value
+                        && Some(prefix_def) == self.out.lang_items.rhi
+                        && seg.ident.name == "create_vk"
+                        && let Some(create_vk) = self.out.lang_items.rhi_create_vk
+                    {
+                        // G4.4 PR-F(RXS-0293):`Rhi::create_vk` 显式 Vulkan 后端构造
+                        // 编译器已知关联函数(镜像 `Rhi::create` 解析锚点,strict 无回退)
+                        Res::Def(create_vk)
+                    } else {
+                        return Err(PathFail::Missing(seg.ident.name.clone()));
+                    }
+                }
+                _ => return Err(PathFail::Missing(seg.ident.name.clone())),
+            };
+        }
+        Ok(cur_res)
+    }
+
+    /// 表达式/模式位置的路径解析(失败按 RXS-0036/0038 报错)。
+    fn resolve_value_path(&mut self, path: &ast::Path, cx: &mut BodyCx) -> Res {
+        for seg in &path.segments {
+            if let Some(args) = &seg.args {
+                self.resolve_generic_args(args, cx);
+            }
+        }
+        if path.segments.len() == 1 {
+            let seg = &path.segments[0].ident;
+            return self.resolve_value_single(&seg.name, path.span, cx);
+        }
+        match self.walk_multi_path(path, cx, Ns::Value) {
+            Ok(res) => {
+                self.out.path_res.insert(path.span, res);
+                res
+            }
+            Err(PathFail::Missing(name)) => {
+                self.err_unresolved(&name, path.span, None);
+                self.out.path_res.insert(path.span, Res::Err);
+                Res::Err
+            }
+            Err(PathFail::Invisible(d)) => {
+                let def = self.def(d).clone();
+                let name = def.name.clone();
+                self.err_visibility(&name, path.span, &def);
+                self.out.path_res.insert(path.span, Res::Err);
+                Res::Err
+            }
+        }
+    }
+
+    /// 类型位置的路径解析(容忍口径:失败 → Err 不报错)。
+    fn resolve_type_path(&mut self, path: &ast::Path, cx: &mut BodyCx) -> Res {
+        for seg in &path.segments {
+            if let Some(args) = &seg.args {
+                self.resolve_generic_args(args, cx);
+            }
+        }
+        if path.segments.len() == 1 {
+            let seg = &path.segments[0].ident;
+            return self.resolve_type_single(&seg.name, path.span, cx);
+        }
+        if path.segments[0].ident.name == "Self" {
+            // `Self::Assoc` 等关联类型路径随 M2.2 typeck
+            self.out.path_res.insert(path.span, Res::Err);
+            return Res::Err;
+        }
+        let res = self.walk_multi_path(path, cx, Ns::Type).unwrap_or(Res::Err);
+        self.out.path_res.insert(path.span, res);
+        res
+    }
+
+    /// struct 字面量路径:类型 ns,但处于表达式位置 → 失败报错(RXS-0034/0038)。
+    fn resolve_struct_lit_path(&mut self, path: &ast::Path, cx: &mut BodyCx) -> Res {
+        for seg in &path.segments {
+            if let Some(args) = &seg.args {
+                self.resolve_generic_args(args, cx);
+            }
+        }
+        if path.segments.len() == 1 {
+            let seg = &path.segments[0].ident;
+            let res = self.resolve_type_single(&seg.name, path.span, cx);
+            if res == Res::Err {
+                let suggestion = self.suggest(&seg.name, cx, Ns::Type);
+                self.err_unresolved(&seg.name, path.span, suggestion.as_deref());
+            }
+            return res;
+        }
+        match self.walk_multi_path(path, cx, Ns::Type) {
+            Ok(res) => {
+                self.out.path_res.insert(path.span, res);
+                res
+            }
+            Err(PathFail::Missing(name)) => {
+                self.err_unresolved(&name, path.span, None);
+                self.out.path_res.insert(path.span, Res::Err);
+                Res::Err
+            }
+            Err(PathFail::Invisible(d)) => {
+                let def = self.def(d).clone();
+                let name = def.name.clone();
+                self.err_visibility(&name, path.span, &def);
+                self.out.path_res.insert(path.span, Res::Err);
+                Res::Err
+            }
+        }
+    }
+
+    /// 拼写建议(RXS-0038:同作用域相近拼写)。
+    fn suggest(&self, name: &str, cx: &BodyCx, ns: Ns) -> Option<String> {
+        let mut candidates: Vec<&str> = Vec::new();
+        for frame in &cx.scopes {
+            candidates.extend(frame.keys().map(String::as_str));
+        }
+        candidates.extend(cx.generics.iter().map(String::as_str));
+        candidates.extend(self.modules[cx.module].ns(ns).keys().map(String::as_str));
+        candidates
+            .into_iter()
+            .filter(|c| *c != name)
+            .map(|c| (edit_distance(name, c), c))
+            .filter(|(d, c)| *d > 0 && *d <= 2 && *d < c.len().max(name.len()))
+            .min_by_key(|(d, _)| *d)
+            .map(|(_, c)| c.to_owned())
+    }
+
+    // -- 类型 / 模式 / 表达式走查 ----------------------------------------------
+
+    fn resolve_generic_args(&mut self, args: &ast::GenericArgs, cx: &mut BodyCx) {
+        for arg in &args.args {
+            match arg {
+                ast::GenericArg::Type(ty) => self.resolve_ast_ty(ty, cx),
+                ast::GenericArg::Const(e) => self.resolve_expr(e, cx),
+                ast::GenericArg::Lifetime(_) => {}
+            }
+        }
+    }
+
+    fn resolve_ast_ty(&mut self, ty: &ast::Ty, cx: &mut BodyCx) {
+        match &ty.kind {
+            ast::TyKind::Path(p) => {
+                self.resolve_type_path(p, cx);
+            }
+            ast::TyKind::Ref { inner, .. } | ast::TyKind::RawPtr { inner, .. } => {
+                self.resolve_ast_ty(inner, cx);
+            }
+            ast::TyKind::Paren(inner) | ast::TyKind::Slice(inner) => {
+                self.resolve_ast_ty(inner, cx);
+            }
+            ast::TyKind::Tuple(elems) => {
+                for t in elems {
+                    self.resolve_ast_ty(t, cx);
+                }
+            }
+            ast::TyKind::Array { elem, len } => {
+                self.resolve_ast_ty(elem, cx);
+                self.resolve_expr(len, cx);
+            }
+            ast::TyKind::FnPtr { params, ret } => {
+                for t in params {
+                    self.resolve_ast_ty(t, cx);
+                }
+                if let Some(r) = ret {
+                    self.resolve_ast_ty(r, cx);
+                }
+            }
+            ast::TyKind::Infer | ast::TyKind::ConstArg(_) | ast::TyKind::Err => {}
+        }
+    }
+
+    /// 模式位置裸名 → 单元变体 Res(模块值 ns 与 lang-item 变体兜底;
+    /// 非单元变体/非变体不参与,落回绑定语义)。
+    fn unit_variant_pattern_res(&self, name: &str, cx: &BodyCx) -> Option<Res> {
+        let res = self.modules[cx.module]
+            .values
+            .get(name)
+            .map(|b| b.res)
+            .or_else(|| self.out.lang_items.variant_by_name(name).map(Res::Def))?;
+        let Res::Def(d) = res else { return None };
+        if self.def(d).kind == DefKind::Variant && self.unit_variants.contains(&d) {
+            Some(res)
+        } else {
+            None
+        }
+    }
+
+    fn resolve_pat(&mut self, pat: &ast::Pat, cx: &mut BodyCx) {
+        match &pat.kind {
+            ast::PatKind::Wild | ast::PatKind::Lit { .. } | ast::PatKind::Err => {}
+            ast::PatKind::Binding { mutable, name } => {
+                // 模式位置裸名裁决(RXS-0048/0023):解析到**单元变体**时为
+                // 路径模式(`None` 等),否则为绑定;`mut` 标注强制绑定。
+                if !*mutable && let Some(res) = self.unit_variant_pattern_res(&name.name, cx) {
+                    self.out.path_res.insert(name.span, res);
+                } else {
+                    self.declare_local(cx, &name.name, *mutable, name.span);
+                }
+            }
+            ast::PatKind::At { name, pat } => {
+                self.declare_local(cx, &name.name, false, name.span);
+                self.resolve_pat(pat, cx);
+            }
+            ast::PatKind::Range { lo, hi, .. } => {
+                self.resolve_pat(lo, cx);
+                self.resolve_pat(hi, cx);
+            }
+            ast::PatKind::Ref { pat, .. } => self.resolve_pat(pat, cx),
+            ast::PatKind::Tuple(elems) | ast::PatKind::Slice(elems) => {
+                for p in elems {
+                    self.resolve_pat(p, cx);
+                }
+            }
+            ast::PatKind::Path(p) => {
+                self.resolve_value_path(p, cx);
+            }
+            ast::PatKind::TupleStruct { path, elems } => {
+                self.resolve_value_path(path, cx);
+                for p in elems {
+                    self.resolve_pat(p, cx);
+                }
+            }
+            ast::PatKind::Struct { path, fields, .. } => {
+                self.resolve_struct_lit_path(path, cx);
+                for f in fields {
+                    match &f.pat {
+                        Some(p) => self.resolve_pat(p, cx),
+                        // 简写字段模式即绑定(RXS-0032)
+                        None => self.declare_local(cx, &f.name.name, false, f.name.span),
+                    }
+                }
+            }
+        }
+    }
+
+    fn resolve_block(&mut self, block: &ast::Block, cx: &mut BodyCx) {
+        cx.scopes.push(HashMap::new());
+        for stmt in &block.stmts {
+            match &stmt.kind {
+                ast::StmtKind::Empty => {}
+                ast::StmtKind::Let(l) => {
+                    // init 先于绑定解析(`let x = x;` 引用外层 x,RXS-0033)
+                    if let Some(ty) = &l.ty {
+                        self.resolve_ast_ty(ty, cx);
+                    }
+                    if let Some(init) = &l.init {
+                        self.resolve_expr(init, cx);
+                    }
+                    self.resolve_pat(&l.pat, cx);
+                }
+                ast::StmtKind::Expr { expr, .. } => self.resolve_expr(expr, cx),
+                ast::StmtKind::Item(item) => self.resolve_block_item(item, cx),
+            }
+        }
+        if let Some(tail) = &block.tail {
+            self.resolve_expr(tail, cx);
+        }
+        cx.scopes.pop();
+    }
+
+    /// 块内嵌套 item:登记入当前局部帧(按语句序可见,M2.1 取舍——
+    /// 块内 item 的前向引用随 M2.2 评估;RXS-0033 的顺序无关性此处仅对模块级生效)。
+    fn resolve_block_item(&mut self, item: &ast::Item, cx: &mut BodyCx) {
+        let module = cx.module;
+        let vis = lower_vis(&item.vis);
+        match &item.kind {
+            ast::ItemKind::Fn(f) => {
+                let id = self.new_def(DefKind::Fn, &f.name.name, vis, f.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.declare_block_item(cx, &f.name.name, Res::Def(id), f.name.span);
+                self.resolve_fn(f, module, Vec::new(), false);
+            }
+            ast::ItemKind::Struct(s) => {
+                let id = self.new_def(DefKind::Struct, &s.name.name, vis, s.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.declare_block_item(cx, &s.name.name, Res::Def(id), s.name.span);
+                if let ast::VariantBody::Named(fields) = &s.body {
+                    self.collect_fields(fields, module);
+                }
+                let generics = generic_names(&s.generics);
+                self.resolve_variant_body_types(&s.body, module, &generics);
+            }
+            ast::ItemKind::Const(c) => {
+                let id = self.new_def(DefKind::Const, &c.name.name, vis, c.name.span, module);
+                self.out.item_defs.insert(item.span, id);
+                self.declare_block_item(cx, &c.name.name, Res::Def(id), c.name.span);
+                let mut inner = BodyCx::new(module, Vec::new(), false, c.init.span);
+                self.resolve_ast_ty(&c.ty, &mut inner);
+                self.resolve_expr(&c.init, &mut inner);
+                self.finish_body(inner);
+            }
+            // 其余 item 形态在块内罕见:登记名字但不深入(M2.2 扩展)
+            _ => {}
+        }
+    }
+
+    fn resolve_expr(&mut self, expr: &ast::Expr, cx: &mut BodyCx) {
+        match &expr.kind {
+            ast::ExprKind::Lit(_) | ast::ExprKind::Continue | ast::ExprKind::Err => {}
+            ast::ExprKind::Path(p) => {
+                self.resolve_value_path(p, cx);
+            }
+            ast::ExprKind::Unary { expr, .. }
+            | ast::ExprKind::Borrow { expr, .. }
+            | ast::ExprKind::Try(expr)
+            | ast::ExprKind::Paren(expr)
+            | ast::ExprKind::Field { expr, .. }
+            | ast::ExprKind::TupleField { expr, .. } => self.resolve_expr(expr, cx),
+            ast::ExprKind::Cast { expr, ty } => {
+                self.resolve_expr(expr, cx);
+                self.resolve_ast_ty(ty, cx);
+            }
+            ast::ExprKind::Binary { lhs, rhs, .. } | ast::ExprKind::Assign { lhs, rhs, .. } => {
+                self.resolve_expr(lhs, cx);
+                self.resolve_expr(rhs, cx);
+            }
+            ast::ExprKind::Range { lo, hi, .. } => {
+                self.resolve_expr(lo, cx);
+                self.resolve_expr(hi, cx);
+            }
+            ast::ExprKind::Call { callee, args } => {
+                self.resolve_expr(callee, cx);
+                for a in args {
+                    self.resolve_expr(a, cx);
+                }
+            }
+            ast::ExprKind::MethodCall {
+                receiver,
+                generic_args,
+                args,
+                ..
+            } => {
+                // 方法名解析依赖接收者类型(M2.2 typeck);仅走查子表达式
+                self.resolve_expr(receiver, cx);
+                if let Some(ga) = generic_args {
+                    self.resolve_generic_args(ga, cx);
+                }
+                for a in args {
+                    self.resolve_expr(a, cx);
+                }
+            }
+            ast::ExprKind::Index { expr, index } => {
+                self.resolve_expr(expr, cx);
+                self.resolve_expr(index, cx);
+            }
+            ast::ExprKind::Tuple(elems) | ast::ExprKind::Array(elems) => {
+                for e in elems {
+                    self.resolve_expr(e, cx);
+                }
+            }
+            ast::ExprKind::Repeat { elem, len } => {
+                self.resolve_expr(elem, cx);
+                self.resolve_expr(len, cx);
+            }
+            ast::ExprKind::StructLit { path, fields } => {
+                self.resolve_struct_lit_path(path, cx);
+                for f in fields {
+                    match &f.expr {
+                        Some(e) => self.resolve_expr(e, cx),
+                        // 简写字段是对同名值的引用(RXS-0034)
+                        None => {
+                            self.resolve_value_single(&f.name.name, f.name.span, cx);
+                        }
+                    }
+                }
+            }
+            ast::ExprKind::Block(b)
+            | ast::ExprKind::Unsafe(b)
+            | ast::ExprKind::Loop { body: b } => {
+                self.resolve_block(b, cx);
+            }
+            ast::ExprKind::If { cond, then, else_ } => {
+                self.resolve_expr(cond, cx);
+                self.resolve_block(then, cx);
+                if let Some(e) = else_ {
+                    self.resolve_expr(e, cx);
+                }
+            }
+            ast::ExprKind::While { cond, body } => {
+                self.resolve_expr(cond, cx);
+                self.resolve_block(body, cx);
+            }
+            ast::ExprKind::For { pat, iter, body } => {
+                self.resolve_expr(iter, cx);
+                cx.scopes.push(HashMap::new());
+                self.resolve_pat(pat, cx);
+                self.resolve_block(body, cx);
+                cx.scopes.pop();
+            }
+            ast::ExprKind::Match { scrutinee, arms } => {
+                self.resolve_expr(scrutinee, cx);
+                for arm in arms {
+                    cx.scopes.push(HashMap::new());
+                    for p in &arm.pats {
+                        self.resolve_pat(p, cx);
+                    }
+                    if let Some(g) = &arm.guard {
+                        self.resolve_expr(g, cx);
+                    }
+                    self.resolve_expr(&arm.body, cx);
+                    cx.scopes.pop();
+                }
+            }
+            ast::ExprKind::Return(operand) | ast::ExprKind::Break(operand) => {
+                if let Some(e) = operand {
+                    self.resolve_expr(e, cx);
+                }
+            }
+            ast::ExprKind::Closure { params, body, .. } => {
+                cx.scopes.push(HashMap::new());
+                for p in params {
+                    if let Some(ty) = &p.ty {
+                        self.resolve_ast_ty(ty, cx);
+                    }
+                    self.resolve_pat(&p.pat, cx);
+                }
+                self.resolve_expr(body, cx);
+                cx.scopes.pop();
+            }
+        }
+    }
+}
+
+fn generic_names(g: &ast::Generics) -> Vec<String> {
+    g.params
+        .iter()
+        .filter_map(|p| match &p.kind {
+            ast::GenericParamKind::Type { name, .. }
+            | ast::GenericParamKind::Const { name, .. } => Some(name.name.clone()),
+            ast::GenericParamKind::Lifetime(_) => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::lex;
+    use crate::parser::parse;
+    use crate::span::{Edition, SourceId};
+
+    fn run(src: &str) -> (Resolutions, DiagCtxt) {
+        let diag = DiagCtxt::new();
+        let tokens = lex(src, SourceId(0), Edition::Rx0, &diag);
+        let file = parse(src, tokens, SourceId(0), Edition::Rx0, &diag);
+        assert!(
+            diag.emitted().is_empty(),
+            "测试源含词法/语法错误: {:?}",
+            diag.emitted()
+        );
+        let res = resolve(&file, &diag);
+        (res, diag)
+    }
+
+    fn codes(diag: &DiagCtxt) -> Vec<u16> {
+        diag.emitted()
+            .iter()
+            .filter_map(|d| d.code.map(|c| c.0))
+            .collect()
+    }
+
+    fn run_clean(src: &str) -> Resolutions {
+        let (res, diag) = run(src);
+        assert!(
+            diag.emitted().is_empty(),
+            "意外解析诊断: {:?}\n源:\n{src}",
+            diag.emitted()
+                .iter()
+                .map(|d| (d.code, d.message(diag.messages())))
+                .collect::<Vec<_>>()
+        );
+        res
+    }
+
+    //@ spec: RXS-0032
+    #[test]
+    fn item_scope_and_local_scope_are_separate() {
+        let res = run_clean(
+            "mod math {\n    pub fn add(x: i32, y: i32) -> i32 { x + y }\n    pub const BASE: i32 = 7;\n}\nfn sample<T>(x: T) -> i32 {\n    let outer = math::BASE;\n    let _keep = x;\n    outer\n}",
+        );
+        assert!(res.defs.iter().any(|d| d.kind == DefKind::Mod));
+        assert!(!res.bindings.is_empty());
+        assert!(!res.path_res.is_empty());
+    }
+
+    //@ spec: RXS-0033
+    #[test]
+    fn inner_block_shadows_outer_legally() {
+        run_clean(
+            "fn f() -> i32 {\n    let v = 1;\n    {\n        let v = 2;\n        let _x = v;\n    }\n    v\n}",
+        );
+    }
+
+    //@ spec: RXS-0033
+    #[test]
+    fn let_init_resolves_before_binding() {
+        // `let x = x;` 的 init 引用外层 x(RXS-0033)
+        run_clean("fn f(x: i32) -> i32 {\n    let x = x;\n    x\n}");
+    }
+
+    //@ spec: RXS-0033, RXS-0037
+    #[test]
+    fn same_level_duplicate_local_is_rx1002() {
+        let (_, diag) =
+            run("fn f() {\n    let value = 1;\n    let value = 2;\n    let _k = value;\n}");
+        assert_eq!(codes(&diag), vec![1002]);
+        // 双 span(RXS-0038)
+        assert!(diag.emitted()[0].labels.len() >= 2);
+    }
+
+    //@ spec: RXS-0037
+    #[test]
+    fn duplicate_bindings_in_one_pattern_is_rx1002() {
+        let (_, diag) = run("fn f(p: (i32, i32)) {\n    let (a, a) = p;\n}");
+        assert_eq!(codes(&diag), vec![1002]);
+    }
+
+    //@ spec: RXS-0034
+    #[test]
+    fn single_segment_prefers_local_over_item() {
+        let res =
+            run_clean("fn shade() -> i32 { 1 }\nfn f() -> i32 {\n    let shade = 2;\n    shade\n}");
+        // 尾表达式 shade 必须解析为局部绑定
+        let locals = res
+            .path_res
+            .values()
+            .filter(|r| matches!(r, Res::Local(_)))
+            .count();
+        assert!(locals >= 1);
+    }
+
+    //@ spec: RXS-0034
+    #[test]
+    fn generic_params_resolve_in_both_positions() {
+        run_clean(
+            "fn fill<T, const N: usize>(seed: T) -> usize {\n    let _t: T = seed;\n    N\n}",
+        );
+    }
+
+    //@ spec: RXS-0034
+    #[test]
+    fn local_cannot_prefix_multi_segment_path() {
+        let (_, diag) = run("fn f() {\n    let m = 1;\n    let _x = m::inner;\n}");
+        assert_eq!(codes(&diag), vec![1001]);
+    }
+
+    //@ spec: RXS-0034
+    #[test]
+    fn enum_variants_and_assoc_fns_resolve() {
+        run_clean(
+            "enum Shape {\n    Circle { radius: f32 },\n    Point,\n}\nstruct Counter {\n    value: u32,\n}\nimpl Counter {\n    fn new() -> Counter {\n        Counter { value: 0 }\n    }\n}\nfn f(s: Shape) -> u32 {\n    let c = Counter::new();\n    match s {\n        Shape::Circle { radius } => 1,\n        Shape::Point => 0,\n    };\n    c.value\n}",
+        );
+    }
+
+    //@ spec: RXS-0035
+    #[test]
+    fn use_alias_and_use_chain_resolve() {
+        let res = run_clean(
+            "mod geometry {\n    pub fn area(w: f32, h: f32) -> f32 { w * h }\n}\nuse geometry::area as area_fn;\nuse area_fn as area_again;\nfn measure() -> f32 {\n    area_fn(2.0, 3.0) + area_again(1.0, 1.0)\n}",
+        );
+        assert_eq!(res.use_targets.len(), 2);
+    }
+
+    //@ spec: RXS-0035
+    #[test]
+    fn use_of_missing_target_is_rx1004() {
+        let (_, diag) = run("use nowhere::nothing;\nfn f() {}");
+        assert_eq!(codes(&diag), vec![1004]);
+    }
+
+    //@ spec: RXS-0036
+    #[test]
+    fn private_item_across_module_is_rx1003() {
+        let (_, diag) =
+            run("mod m {\n    fn secret() -> i32 { 1 }\n}\nfn f() -> i32 {\n    m::secret()\n}");
+        assert_eq!(codes(&diag), vec![1003]);
+    }
+
+    //@ spec: RXS-0036
+    #[test]
+    fn use_of_private_target_is_rx1003_not_rx1001() {
+        let (_, diag) = run("mod m {\n    fn secret() {}\n}\nuse m::secret;\nfn f() {}");
+        assert_eq!(codes(&diag), vec![1003]);
+    }
+
+    //@ spec: RXS-0036
+    #[test]
+    fn descendant_sees_ancestor_private() {
+        run_clean(
+            "fn helper() -> i32 { 1 }\nmod inner {\n    pub fn call() -> i32 {\n        super_helper()\n    }\n    fn super_helper() -> i32 { 2 }\n}\nfn f() -> i32 {\n    helper() + inner::call()\n}",
+        );
+    }
+
+    //@ spec: RXS-0037
+    #[test]
+    fn duplicate_module_items_are_rx1002() {
+        let (_, diag) = run("fn same() -> i32 { 1 }\nfn same() -> i32 { 2 }");
+        assert_eq!(codes(&diag), vec![1002]);
+    }
+
+    //@ spec: RXS-0037
+    #[test]
+    fn duplicate_fields_and_variants_are_rx1002() {
+        let (_, diag) =
+            run("struct P {\n    left: i32,\n    left: i32,\n}\nenum E {\n    A,\n    A,\n}");
+        assert_eq!(codes(&diag), vec![1002, 1002]);
+    }
+
+    //@ spec: RXS-0037
+    #[test]
+    fn use_conflicting_with_item_is_rx1002() {
+        let (_, diag) = run(
+            "mod m {\n    pub fn area() -> i32 { 1 }\n}\nfn area() -> i32 { 2 }\nuse m::area;\nfn f() {}",
+        );
+        assert_eq!(codes(&diag), vec![1002]);
+    }
+
+    //@ spec: RXS-0038
+    #[test]
+    fn unresolved_name_carries_spelling_suggestion() {
+        let (_, diag) = run("fn f() {\n    let value = 1;\n    let _x = vlaue;\n}");
+        assert_eq!(codes(&diag), vec![1001]);
+        let emitted = diag.emitted();
+        assert!(
+            emitted[0].helps.iter().any(|h| h.contains("`value`")),
+            "{:?}",
+            emitted[0].helps
+        );
+    }
+
+    //@ spec: RXS-0038
+    #[test]
+    fn struct_lit_with_unknown_type_is_rx1001() {
+        let (_, diag) = run("fn f() {\n    let _p = Nowhere { x: 1 };\n}");
+        assert_eq!(codes(&diag), vec![1001]);
+    }
+
+    // 类型位置容忍口径(M2.1):未知草图类型不报错
+    //@ spec: RXS-0034
+    #[test]
+    fn unknown_type_position_paths_are_tolerated() {
+        run_clean(
+            "kernel fn k(grid: Grid<(64,)>, out: ViewMut<global, f32, (N,)>) {\n    let _i = grid.thread_index();\n}\nfn f(v: Vec3<f32>) -> f32 {\n    v.length()\n}",
+        );
+    }
+
+    //@ spec: RXS-0032
+    #[test]
+    fn block_items_resolve_in_order() {
+        run_clean(
+            "fn outer() -> usize {\n    const TILE: usize = 32;\n    fn inner(n: usize) -> usize { n * 2 }\n    struct Local {\n        v: usize,\n    }\n    let l = Local { v: TILE };\n    inner(l.v)\n}",
+        );
+    }
+
+    // M2.3:内建函数兜底(最小 prelude)
+    #[test]
+    fn builtin_println_resolves_as_fallback() {
+        let res = run_clean("fn main() {\n    println(\"hi\");\n}");
+        let d = res
+            .path_res
+            .values()
+            .find_map(|r| match r {
+                Res::Def(d) => Some(*d),
+                _ => None,
+            })
+            .expect("println 解析为 Def");
+        assert_eq!(res.builtins.get(&d), Some(&Builtin::Println));
+    }
+
+    // M2.3:用户同名定义优先于内建
+    #[test]
+    fn user_definition_shadows_builtin() {
+        let res = run_clean("fn println(n: i32) {}\nfn main() {\n    println(1);\n}");
+        let called: Vec<DefId> = res
+            .path_res
+            .values()
+            .filter_map(|r| match r {
+                Res::Def(d) => Some(*d),
+                _ => None,
+            })
+            .collect();
+        assert!(called.iter().all(|d| !res.builtins.contains_key(d)));
+    }
+
+    //@ spec: RXS-0048
+    #[test]
+    fn lang_item_names_resolve_as_fallback() {
+        let res = run_clean(
+            "fn f(flag: bool) -> Option<i32> {\n    if flag { Some(1) } else { None }\n}\nfn g() -> Result<i32, i32> {\n    Ok(2)\n}\nfn h() -> Option<i32> {\n    Option::Some(3)\n}",
+        );
+        let li = res.lang_items;
+        for d in [
+            li.option_some.unwrap(),
+            li.option_none.unwrap(),
+            li.result_ok.unwrap(),
+        ] {
+            assert!(
+                res.path_res.values().any(|r| *r == Res::Def(d)),
+                "lang item 变体 {d:?} 未被解析引用"
+            );
+        }
+    }
+
+    //@ spec: RXS-0048
+    #[test]
+    fn user_definition_shadows_lang_item() {
+        let res = run_clean("enum Option {\n    Mine,\n}\nfn f() -> Option {\n    Option::Mine\n}");
+        let li = res.lang_items;
+        // 类型位置与路径前缀均解析到用户定义,不落到内建项(RX1002 也不产生)
+        assert!(
+            res.path_res
+                .values()
+                .all(|r| *r != Res::Def(li.option.unwrap()))
+        );
+    }
+
+    //@ spec: RXS-0035
+    #[test]
+    fn use_targets_recorded_for_hir() {
+        let res =
+            run_clean("mod m {\n    pub const K: i32 = 1;\n}\nuse m::K;\nfn f() -> i32 { K }");
+        assert!(res.use_targets.values().any(|r| matches!(r, Res::Def(_))));
+    }
+}

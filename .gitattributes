@@ -1,0 +1,3 @@
+# Frozen dependency snapshots retain the bytes recorded in SNAPSHOT.json.
+vendor/rurix-20261102/** -text
+vendor/naga-25.0.1/** -text

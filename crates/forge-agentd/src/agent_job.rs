@@ -67,6 +67,8 @@ pub struct AgentJobResult {
     pub error: Option<String>,
     #[serde(default)]
     pub evidence: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_result: Option<crate::ultraplan::production::ProductionTaskResult>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -111,6 +113,7 @@ impl AgentJobRecord {
                 text: String::new(),
                 error: None,
                 evidence: Vec::new(),
+                task_result: None,
             },
         }
     }

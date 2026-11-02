@@ -175,7 +175,7 @@ export default function UserMessageCard({ msg }: { msg: ChatMsg }) {
               onClick={() => setModeMenuOpen((v) => !v)}
               className="flex h-5 items-center gap-1 rounded-full bg-acc-bg px-2 text-[11px] text-acc"
             >
-              <editModeMeta.icon size={11} className={editModeMeta.iconClassName} />
+              <editModeMeta.icon size={11} />
               {editModeMeta.label}
               <ChevronDown size={9} />
             </button>
@@ -200,7 +200,7 @@ export default function UserMessageCard({ msg }: { msg: ChatMsg }) {
                       m.id === editMode ? 'text-acc' : 'text-fg-2',
                     )}
                   >
-                    <m.icon size={11} className={m.iconClassName} />
+                    <m.icon size={11} />
                     <span className="min-w-0 flex-1 truncate">{m.label}</span>
                     {m.id === editMode && <Check size={10} />}
                   </button>
@@ -210,7 +210,7 @@ export default function UserMessageCard({ msg }: { msg: ChatMsg }) {
           </div>
         ) : (
           <span className="flex h-5 items-center gap-1 rounded-full bg-shell-sunk px-2 text-[11px] text-fg-3">
-            {modeMeta && <modeMeta.icon size={11} className={modeMeta.iconClassName} />}
+            {modeMeta && <modeMeta.icon size={11} />}
             {modeMeta?.label ?? 'Agent'}
           </span>
         )}

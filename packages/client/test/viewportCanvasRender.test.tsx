@@ -146,6 +146,19 @@ afterEach(() => {
 });
 
 describe('<ViewportCanvas /> 渲染后端与 presenter 接缝', () => {
+  it('Rurix native output uses physical 1440p while the panel stays smaller and never polls pixels', async () => {
+    const reportBounds = vi.fn(); installDesktopBridge(reportBounds);
+    const caps = {...capabilities(true),renderBackend:'rurix',pipelined:false,frameExits:{cpuRgba8:true,sharedD3d12:true,zeroCopy:true,nativeOnly:true},maxSize:{rpc:[1920,1080] as [number,number],stream:[1280,720] as [number,number],native:[2560,1440] as [number,number]}};
+    const info = {...INFO,renderBackend:'rurix',method:null,driver:null};
+    renderBackendMocks(caps,info,'[render]\nbackend = "rurix"\n');
+    useEditorStore.setState({renderCapabilities:caps,renderBackendInfo:info});
+    render(<ViewportCanvas />);
+    await waitFor(()=>expect(reportBounds).toHaveBeenLastCalledWith(expect.objectContaining({nativeOnly:true,streamW:2560,streamH:1440,w:960,h:540,visible:true})));
+    expect(screen.getByTestId('native-output-resolution')).toHaveTextContent('2560×1440');
+    const fetchMock=vi.mocked(fetch);
+    expect(fetchMock.mock.calls.filter(([,init])=>String(init?.body).includes('viewport_frame')).length).toBe(0);
+  });
+
   it('工作区能力尚未刷新时，不使用旧工作区能力打开原生视口', async () => {
     const reportBounds = vi.fn();
     installDesktopBridge(reportBounds);

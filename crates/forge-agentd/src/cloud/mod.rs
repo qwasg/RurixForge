@@ -1082,7 +1082,7 @@ fn last_error(code: &str, message: &str) -> LastError {
 /// A connected local provider or official subscription satisfies the local account gate.
 pub(crate) fn byo_configured() -> bool {
     byo_allowed()
-        && (crate::llm::deepseek_key_available() || crate::llm::openai_compat_status().configured
+        && (crate::llm::deepseek_key_available() || crate::custom_models::any_configured()
             || crate::channels::ready("kimi") || crate::channels::ready("glm") || crate::channels::ready("antigravity"))
 }
 

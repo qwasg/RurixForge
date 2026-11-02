@@ -31,6 +31,48 @@ pub fn sprite_doc_cached(sprite_guid: &str) -> Option<std::sync::Arc<assetd::spr
     loaded
 }
 
+/// F-GAME-5(D-050):`.rxrig` 编译缓存(逐 GUID 2s TTL,同 `sprite_doc_cached`)。
+/// 与精灵缓存不同:TTL 到期重读文件后若字节未变则**复用原 Arc**——`RigSystem` 以 Arc 指针
+/// 身份判定「文档已改」并重建 RigSim(参数/骨骼下标随文档变),内容不变时不得每 2s 重置运行态。
+/// 文件缺失 / 解析或编译失败 → None(同 TTL 缓存,坏文档不逐帧刷盘)。
+pub fn rig_doc_cached(rig_guid: &str) -> Option<std::sync::Arc<forge_rig2d::CompiledRig>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    type Entry = (std::time::Instant, u64, Option<Arc<forge_rig2d::CompiledRig>>);
+    static CACHE: OnceLock<Mutex<HashMap<String, Entry>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let prev = cache.lock().unwrap().get(rig_guid).cloned();
+    if let Some((at, _, doc)) = &prev {
+        if at.elapsed() < std::time::Duration::from_secs(2) {
+            return doc.clone();
+        }
+    }
+    let text = content_guid_map_cached()
+        .get(rig_guid)
+        .and_then(|p| std::fs::read_to_string(p).ok());
+    let (hash, loaded) = match text {
+        None => (0, None),
+        Some(t) => {
+            let h = crate::meshres::fnv1a64(t.as_bytes());
+            match prev {
+                Some((_, ph, Some(doc))) if ph == h => (h, Some(doc)),
+                _ => (h, compile_rig_str(&t).ok().map(Arc::new)),
+            }
+        }
+    };
+    cache
+        .lock()
+        .unwrap()
+        .insert(rig_guid.to_string(), (std::time::Instant::now(), hash, loaded.clone()));
+    loaded
+}
+
+/// `.rxrig` 文本 → CompiledRig(parse + validate + compile;错误带 RigError 码)。
+pub fn compile_rig_str(text: &str) -> Result<forge_rig2d::CompiledRig, String> {
+    let doc = forge_rig2d::parse_rxrig_str(text).map_err(|e| e.to_string())?;
+    forge_rig2d::CompiledRig::compile(doc).map_err(|e| e.to_string())
+}
+
 /// 单位立方体 36 顶点(每面 2 三角形,面法线;交错 pos3+normal3,stride 24)。
 pub(crate) fn cube_mesh_bytes() -> &'static [u8] {
     static MESH: OnceLock<&'static [u8]> = OnceLock::new();

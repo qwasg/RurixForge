@@ -13,11 +13,130 @@ use std::sync::{Arc, Mutex};
 type ToolCall<'a> = dyn Fn(String, Value) -> BoxFuture<'a, playtest::ToolResult> + Send + Sync + 'a;
 // All checks share the editor's active scene/play state. Serialize whole matrices,
 // then separately guard the production.json read-modify-write transaction.
-static EXECUTION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(crate) static EXECUTION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static RECORD_LOCK: Mutex<()> = Mutex::new(());
 const FRAME: &str = "mcp__engine-scene__viewport_frame";
 const EVENTS: &str = "mcp__engine-scene__host_events_drain";
 const EXIT: &str = "mcp__engine-scene__play_exit";
+
+/// Shared by the verification tool and approved per-task matrix handoffs.
+pub fn matrix_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{
+        "scene":{"type":"string","minLength":1,"description":"批准检查中的场景路径"},
+        "camera":{"type":"object"},"enter_play":{"type":"boolean","default":true},"enterPlay":{"type":"boolean"},
+        "settle_frames":{"type":"integer","minimum":0,"maximum":3600},"settleFrames":{"type":"integer","minimum":0,"maximum":3600},
+        "inputs":{"type":"array","maxItems":256,"items":{"type":"object","properties":{"action":{"type":"string","minLength":1},"value":{"type":"number"},"settle":{"type":"integer","minimum":0,"maximum":3600}},"required":["action","value"]}},
+        "cases":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"object","properties":{
+            "name":{"type":"string","minLength":1},"assert":{"type":"object","properties":{
+                "kind":{"type":"string","enum":["entity_count","component_field","transform_near","screenshot_ssim","screenshot_nonblank"]},
+                "entity":{"description":"实体id或唯一名称","anyOf":[{"type":"integer","minimum":0},{"type":"string"}]},
+                "type":{"type":"string","description":"component_field组件类型"},"field":{"type":"string","description":"component_field字段路径"},
+                "op":{"type":"string","enum":["eq","neq","gt","ge","lt","le"]},"expected":{},
+                "translation":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},"tolerance":{"type":"number","minimum":0},
+                "width":{"type":"integer","minimum":8,"maximum":1920},"height":{"type":"integer","minimum":8,"maximum":1080},
+                "golden":{"type":"string"},"threshold":{"type":"number","minimum":0.5,"maximum":1}
+            },"required":["kind"]}
+        },"required":["name","assert"]}}
+    },"required":["scene","cases"]})
+}
+
+pub fn check_context(checks: &Value) -> Value {
+    json!({"allowedCheckIds":checks["automated"].as_array().into_iter().flatten()
+        .filter_map(|check| check["id"].as_str()).collect::<Vec<_>>(),
+        "checks":checks["automated"].as_array().into_iter().flatten()
+            .map(|check| json!({"id":check["id"],"kind":check["kind"],"scene":check["scene"]})).collect::<Vec<_>>(),
+        "matrixSchema":matrix_schema()})
+}
+
+/// Reject malformed assertions before calling the engine so request errors do
+/// not masquerade as gameplay failures and trigger implementation repairs.
+pub(super) fn validate_matrix_shape(matrix: &playtest::Matrix) -> Result<(), String> {
+    if matrix.scene.trim().is_empty()
+        || matrix.cases.is_empty()
+        || matrix.cases.len() > 256
+        || matrix.inputs.len() > 256
+    {
+        return Err("矩阵需要 scene 与1–256个cases，inputs最多256条".into());
+    }
+    let mut frames = u64::from(matrix.settle_frames);
+    for input in &matrix.inputs {
+        if input["action"].as_str().is_none_or(|s| s.trim().is_empty())
+            || !input["value"].is_number()
+        {
+            return Err("矩阵inputs须包含非空action和数值value".into());
+        }
+        let settle = match input.get("settle") {
+            None => 1,
+            Some(value) => value.as_u64().ok_or("输入settle须为非负整数")?,
+        };
+        frames = frames.checked_add(settle).ok_or("矩阵帧数溢出")?;
+    }
+    if frames > 3600 {
+        return Err("矩阵最多推进3600帧".into());
+    }
+    for case in &matrix.cases {
+        if case.name.trim().is_empty() {
+            return Err("断言name不可为空".into());
+        }
+        let a = &case.assert_;
+        let required: &[&str] = match a["kind"].as_str() {
+            Some("entity_count") => &["expected"],
+            Some("component_field") => &["entity", "type", "field", "expected"],
+            Some("transform_near") => &["entity", "translation"],
+            Some("screenshot_ssim") => &["golden"],
+            Some("screenshot_nonblank") => &[],
+            _ => return Err(format!("断言 {} 的kind无效", case.name)),
+        };
+        for field in required {
+            if a.get(*field).is_none() {
+                return Err(format!("断言 {} 缺少{field}", case.name));
+            }
+        }
+        if let Some(op) = a.get("op") {
+            if !["eq", "neq", "gt", "ge", "lt", "le"]
+                .iter()
+                .any(|allowed| op == allowed)
+            {
+                return Err(format!("断言 {} 的op须为eq/neq/gt/ge/lt/le", case.name));
+            }
+        }
+        if let Some(entity) = a.get("entity") {
+            if entity.as_u64().is_none() && entity.as_str().is_none_or(|s| s.trim().is_empty()) {
+                return Err(format!("断言 {} 的entity须为id或非空名称", case.name));
+            }
+        }
+        for field in ["type", "field", "golden"] {
+            if a.get(field)
+                .is_some_and(|v| v.as_str().is_none_or(|s| s.trim().is_empty()))
+            {
+                return Err(format!("断言 {} 的{field}须为非空字符串", case.name));
+            }
+        }
+        if let Some(translation) = a.get("translation") {
+            if translation
+                .as_array()
+                .is_none_or(|v| v.len() != 3 || v.iter().any(|n| !n.is_number()))
+            {
+                return Err(format!("断言 {} 的translation须为三元数值数组", case.name));
+            }
+        }
+        for (field, minimum, maximum) in [("width", 8, 1920), ("height", 8, 1080)] {
+            if a.get(field)
+                .is_some_and(|v| v.as_u64().is_none_or(|n| !(minimum..=maximum).contains(&n)))
+            {
+                return Err(format!("断言 {} 的{field}越界", case.name));
+            }
+        }
+        if a.get("tolerance")
+            .is_some_and(|v| v.as_f64().is_none_or(|n| n < 0.0))
+            || a.get("threshold")
+                .is_some_and(|v| v.as_f64().is_none_or(|n| !(0.5..=1.0).contains(&n)))
+        {
+            return Err(format!("断言 {} 的tolerance或threshold无效", case.name));
+        }
+    }
+    Ok(())
+}
 
 fn current(state: &AppState, sid: &str, rid: &str, rt: &UltraRuntime) -> Result<(), String> {
     if !matches!(rt.kind, TurnKind::Production(_)) {
@@ -61,11 +180,21 @@ fn selected_check<'a>(
         .filter(|c| c["id"].as_str() == Some(id))
         .collect();
     if matches.len() != 1 {
-        return Err(format!("检查 {id} 不存在或重复"));
+        return Err(format!(
+            "检查 {id} 不存在或重复；合法检查id: {}",
+            check_context(checks)["allowedCheckIds"]
+        ));
     }
     let check = matches[0];
     let matrix: playtest::Matrix =
         serde_json::from_value(args["matrix"].clone()).map_err(|e| format!("断言矩阵无效: {e}"))?;
+    validate_matrix_shape(&matrix)?;
+    if matrix.scene != check["scene"].as_str().unwrap_or_default() {
+        return Err(format!(
+            "matrix.scene须逐字使用批准场景: {}",
+            check["scene"]
+        ));
+    }
     let visual = matrix.cases.iter().any(|c| {
         matches!(
             c.assert_["kind"].as_str(),
@@ -136,7 +265,7 @@ fn scoped_file(
             }
         }
     }
-    Err("检查文件缺失或不属于目标项目/工作区".into())
+    Err("UP_VERIFY_PREREQUISITE_MISSING: 检查文件缺失或不属于目标项目/工作区".into())
 }
 
 fn bind_paths(
@@ -350,6 +479,39 @@ async fn run_checked<'a>(
     (report, evidence.images.clone())
 }
 
+fn failure_kind(report: &Value) -> Value {
+    if report["ok"] == true {
+        return Value::Null;
+    }
+    let cases = report["matrix"]["cases"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let failed: Vec<_> = cases.iter().filter(|case| case["pass"] == false).collect();
+    let errors = format!("{} {}", report["error"], json!(failed));
+    if [
+        "PERMISSION_DENIED",
+        "CANCELLED",
+        "TOOL_FORBIDDEN",
+        "RX_CLI_NOT_FOUND",
+    ]
+    .iter()
+    .any(|code| errors.contains(code))
+    {
+        return json!("blocked");
+    }
+    if errors.contains("玩法运行错误") {
+        return json!("runtime");
+    }
+    if failed
+        .iter()
+        .any(|case| !matches!(case["kind"].as_str(), Some("lifecycle" | "inject")))
+    {
+        return json!("assertion");
+    }
+    json!("execution")
+}
+
 pub async fn execute(
     state: &AppState,
     sid: &str,
@@ -361,7 +523,51 @@ pub async fn execute(
     let result = execute_inner(state, sid, rid, rt, project_root, args).await;
     match result {
         Ok(result) => result,
-        Err(error) => (false, format!("ULTRAPLAN_VERIFY_FAILED: {error}").into()),
+        Err(error) => {
+            let checks = read_json(&rt.dir_abs.join(CHECKS_FILE)).unwrap_or(Value::Null);
+            let failure_kind = if error.starts_with("UP_VERIFY_PREREQUISITE_MISSING:") {
+                "blocked"
+            } else {
+                "invalid_request"
+            };
+            let diagnostic = json!({"ok":false,"failureKind":failure_kind,"error":error,
+                "id":args["id"],"runId":rid,"at":crate::events::now_rfc3339(),"context":check_context(&checks)});
+            // Invalid matrices and missing prerequisites are attempt diagnostics,
+            // not fabricated gameplay failures and never replace a valid report.
+            if current(state, sid, rid, rt).is_ok() {
+                let _record_guard = RECORD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(mut production) = read_json(&rt.dir_abs.join(super::PRODUCTION_FILE)) {
+                    if !production["verificationErrors"].is_array() {
+                        production["verificationErrors"] = json!([]);
+                    }
+                    let mut saved = diagnostic.clone();
+                    saved["context"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("matrixSchema");
+                    production["verificationErrors"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(saved);
+                    if let Err(save_error) = super::write_json_atomic(
+                        &rt.dir_abs.join(super::PRODUCTION_FILE),
+                        &production,
+                    ) {
+                        return (
+                            false,
+                            format!(
+                                "ULTRAPLAN_VERIFY_FAILED: {diagnostic}; 诊断记录失败: {save_error}"
+                            )
+                            .into(),
+                        );
+                    }
+                }
+            }
+            (
+                false,
+                format!("ULTRAPLAN_VERIFY_FAILED: {diagnostic}").into(),
+            )
+        }
     }
 }
 
@@ -432,10 +638,12 @@ async fn execute_inner(
         })
     });
     let (mut report, images) = run_checked(&matrix, backend, &directory, call).await;
+    report["failureKind"] = failure_kind(&report);
     let after = super::evidence::project_fingerprint(&canonical_project);
     if after.as_ref().map_or(true, |value| value != &fingerprint) {
         report["ok"] = json!(false);
         report["error"] = json!("项目在验证期间发生变化，必须重新运行全部自动检查");
+        report["failureKind"] = json!("stale");
     }
     report["id"] = json!(id);
     report["kind"] = check["kind"].clone();
@@ -545,6 +753,64 @@ mod tests {
         assert!(selected_check(&checks(), &json!({"id":"g","matrix":no_input})).is_err());
         let first_visual = json!({"scene":"game.rxscene","enterPlay":false,"cases":[{"name":"first frame","assert":{"kind":"screenshot_nonblank","width":960,"height":540}}]});
         assert!(selected_check(&checks(), &json!({"id":"v","matrix":first_visual})).is_ok());
+    }
+    #[test]
+    fn verification_context_names_approved_ids_and_documents_the_real_matrix_contract() {
+        let context = check_context(&checks());
+        assert_eq!(context["allowedCheckIds"], json!(["v", "g"]));
+        assert_eq!(
+            context["matrixSchema"]["required"],
+            json!(["scene", "cases"])
+        );
+        assert_eq!(
+            context["matrixSchema"]["properties"]["cases"]["items"]["properties"]["assert"]
+                ["properties"]["op"]["enum"],
+            json!(["eq", "neq", "gt", "ge", "lt", "le"])
+        );
+        let error =
+            selected_check(&checks(), &json!({"id":"flow_123","matrix":matrix()})).unwrap_err();
+        assert!(error.contains("合法检查id"));
+        assert!(error.contains("\"v\"") && error.contains("\"g\""));
+    }
+    #[test]
+    fn malformed_matrix_is_a_request_error_before_any_engine_work() {
+        let mut input = matrix();
+        input["cases"][0]["assert"]["translation"] = json!([1, 0]);
+        assert!(selected_check(&checks(), &json!({"id":"g","matrix":input})).is_err());
+        input = matrix();
+        input["cases"][0]["assert"] = json!({"kind":"component_field","entity":1,"type":"Transform","field":"x","op":"gte","expected":1});
+        assert!(selected_check(&checks(), &json!({"id":"g","matrix":input}))
+            .unwrap_err()
+            .contains("op"));
+        input["cases"][0]["assert"]["op"] = json!("ge");
+        assert!(selected_check(&checks(), &json!({"id":"g","matrix":input})).is_ok());
+        input["settle_frames"] = json!(3600);
+        assert!(selected_check(&checks(), &json!({"id":"g","matrix":input}))
+            .unwrap_err()
+            .contains("3600"));
+    }
+    #[test]
+    fn failure_kind_separates_capability_and_control_errors_from_gameplay_failures() {
+        assert_eq!(
+            failure_kind(&json!({"ok":false,"error":"PERMISSION_DENIED"})),
+            "blocked"
+        );
+        assert_eq!(
+            failure_kind(&json!({"ok":false,"error":"玩法运行错误: logic.call_error"})),
+            "runtime"
+        );
+        assert_eq!(
+            failure_kind(
+                &json!({"ok":false,"matrix":{"cases":[{"pass":false,"kind":"lifecycle","detail":"play_step failed"}]}})
+            ),
+            "execution"
+        );
+        assert_eq!(
+            failure_kind(
+                &json!({"ok":false,"matrix":{"cases":[{"pass":false,"kind":"transform_near","detail":"wrong position"}]}})
+            ),
+            "assertion"
+        );
     }
     #[tokio::test]
     async fn real_matrix_and_frames_decide_result_and_cleanup_survives_errors() {

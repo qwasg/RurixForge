@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RurixForge 安装程序</title>
+<link rel="stylesheet" href="setup.css">
+<script src="particles.js" defer></script>
+<script src="setup.js" defer></script>
+</head>
+<body class="booting">
+<!-- 背景:极淡的灰白柔光 + 浮尘粒子 -->
+<div class="backdrop" aria-hidden="true">
+  <div class="aurora">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+  </div>
+  <canvas id="embers"></canvas>
+</div>
+
+<!-- 共享的 logo 折带(各页用 <use> 引用) -->
+<svg width="0" height="0" class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="mk-top" x1="0" y1="0" x2="1" y2="0.3"><stop offset="0" stop-color="#424242"/><stop offset="1" stop-color="#232323"/></linearGradient>
+    <linearGradient id="mk-diag" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#2f2f2f"/><stop offset="1" stop-color="#141414"/></linearGradient>
+    <linearGradient id="mk-arm" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#525252"/><stop offset="0.75" stop-color="#262626"/><stop offset="1" stop-color="#101010"/></linearGradient>
+    <linearGradient id="mk-mid" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#151515"/><stop offset="1" stop-color="#5e5e5e"/></linearGradient>
+    <linearGradient id="mk-loopl" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#3a3a3a"/><stop offset="1" stop-color="#1c1c1c"/></linearGradient>
+    <linearGradient id="mk-loopr" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6e6e6e"/><stop offset="1" stop-color="#232323"/></linearGradient>
+    <linearGradient id="mk-sheen-g" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <path id="mk-sil" fill-rule="evenodd" d="M304 193 568 195 721 392 880 232 1117 232 1120 250 860 575 1120 936 1127 960 903 963 829 869 663 1062 355 1060 157 780 302 554 560 553 576 542 457 394 132 394 124 388 124 377Z M420 705 420 714 557 908 717 722 704 705Z"/>
+    <clipPath id="mk-clip"><use href="#mk-sil"/></clipPath>
+    <!-- 底色填满折缝,六个折面按前后次序叠上去;欢迎页的大 logo 由 setup.js 克隆这一组再逐面做动画 -->
+    <g id="mk-faces">
+      <use href="#mk-sil" class="mk-base" fill="#121212"/>
+      <polygon class="mk-f f-arm" style="--d:0" points="880,232 1117,232 1120,250 860,575 721,392" fill="url(#mk-arm)"/>
+      <polygon class="mk-f f-loopl" style="--d:1" points="157,780 302,554 663,1062 355,1060" fill="url(#mk-loopl)"/>
+      <polygon class="mk-f f-mid" style="--d:2" points="302,554 573,553 704,705 420,705" fill="url(#mk-mid)"/>
+      <polygon class="mk-f f-loopr" style="--d:3" points="557,908 717,722 829,869 663,1062" fill="url(#mk-loopr)"/>
+      <polygon class="mk-f f-top" style="--d:4" points="124,388 304,193 568,195 457,394 132,394" fill="url(#mk-top)"/>
+      <polygon class="mk-f f-diag" style="--d:5" points="568,195 1120,936 1127,960 903,963 457,394" fill="url(#mk-diag)"/>
+    </g>
+  </defs>
+</svg>
+
+<div class="window" id="app">
+  <header class="titlebar" data-drag>
+    <div class="brand" data-drag>
+      <svg class="brand-mark" viewBox="86 88 1080 1080" aria-hidden="true"><use href="#mk-faces"/></svg>
+      <span class="brand-name" data-drag><b data-bind="product">RurixForge</b> 安装程序</span>
+    </div>
+    <ol class="stepper" aria-label="安装步骤" data-drag>
+      <li data-step="welcome">欢迎</li>
+      <li data-step="options">选项</li>
+      <li data-step="installing">安装</li>
+      <li data-step="done">完成</li>
+      <li class="stepper-thumb" role="presentation" aria-hidden="true"></li>
+    </ol>
+    <div class="window-controls">
+      <button class="wc" id="btn-min" type="button" aria-label="最小化" title="最小化">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg>
+      </button>
+      <button class="wc wc-close" id="btn-close" type="button" aria-label="关闭" title="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <!-- 欢迎 -->
+    <section class="page" id="page-welcome" data-page="welcome" aria-labelledby="welcome-title">
+      <div class="hero">
+        <div class="hero-mark" aria-hidden="true">
+          <span class="halo"></span>
+          <span class="orbit"></span>
+          <svg class="mark mark-intro" id="hero-mark" viewBox="86 88 1080 1080"></svg>
+        </div>
+        <h1 id="welcome-title" class="hero-title rise" style="--i:1" tabindex="-1"><span data-bind="product">RurixForge</span></h1>
+        <p class="hero-tagline rise" style="--i:2" data-bind="description">和 AI 一起做游戏的桌面工作台</p>
+        <ul class="chips rise" style="--i:3">
+          <li class="chip chip-version">版本 <b data-bind="version">0.0.0</b></li>
+          <li class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>无需管理员权限</li>
+          <li class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg>约 <span data-bind="requiredSize">1.1 GB</span></li>
+        </ul>
+      </div>
+
+      <div class="panel glass welcome-card rise" style="--i:2">
+        <div class="upgrade-note" id="upgrade-note" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V6"/><path d="m6 11 6-6 6 6"/></svg>
+          <div><b id="upgrade-title">检测到已安装旧版本</b><span id="upgrade-detail">你的项目与设置会保留。</span></div>
+        </div>
+        <h2 class="card-title">准备就绪</h2>
+        <dl class="summary">
+          <div class="summary-row">
+            <dt><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>安装到</dt>
+            <dd class="path" data-bind="installDirResolved" title=""></dd>
+          </div>
+          <div class="summary-row">
+            <dt><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/></svg>快捷方式</dt>
+            <dd data-bind="shortcutSummary">桌面、开始菜单</dd>
+          </div>
+          <div class="summary-row">
+            <dt><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg>数据位置</dt>
+            <dd class="path" data-bind="dataDir" title=""></dd>
+          </div>
+        </dl>
+        <p class="inline-alert" id="welcome-alert" role="alert" hidden></p>
+        <button class="btn btn-primary btn-lg" id="btn-quick" type="button">
+          <span class="btn-label" data-bind="quickLabel">立即安装</span>
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13"/><path d="m13 6 6 6-6 6"/></svg>
+        </button>
+        <button class="btn btn-ghost" id="btn-customize" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+          自定义安装选项
+        </button>
+        <p class="legal">继续即表示你同意 <button type="button" class="link" id="btn-license">Apache-2.0 许可协议</button></p>
+      </div>
+    </section>
+
+    <!-- 选项 -->
+    <section class="page" id="page-options" data-page="options" aria-labelledby="options-title" hidden>
+      <div class="page-head rise" style="--i:0">
+        <button class="icon-btn" id="btn-back" type="button" aria-label="返回">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+        </button>
+        <div>
+          <h1 id="options-title" class="page-title" tabindex="-1">安装选项</h1>
+          <p class="page-sub">按需调整,所有设置都可以在下次安装时修改。</p>
+        </div>
+      </div>
+
+      <div class="options-grid">
+        <div class="col">
+          <section class="group glass rise" style="--i:1" aria-labelledby="g-location">
+            <h2 class="group-title" id="g-location">安装位置</h2>
+            <div class="field">
+              <div class="field-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg></div>
+              <div class="field-body">
+                <label class="field-label" for="install-dir">程序文件夹</label>
+                <input class="field-input" id="install-dir" type="text" spellcheck="false" autocomplete="off" aria-describedby="install-help install-status">
+              </div>
+              <button class="btn btn-small" type="button" id="btn-pick-install">更改…</button>
+            </div>
+            <p class="help" id="install-help" hidden>会新建子文件夹,实际安装到 <span class="mono" data-bind="installDirResolved"></span></p>
+            <div class="space" id="space">
+              <div class="space-bar" aria-hidden="true"><span class="space-used"></span><span class="space-need"></span></div>
+              <p class="space-text" id="space-text">正在检查磁盘空间…</p>
+            </div>
+            <p class="status" id="install-status" role="status"></p>
+          </section>
+
+          <section class="group glass rise" style="--i:2" aria-labelledby="g-data">
+            <h2 class="group-title" id="g-data">数据位置</h2>
+            <div class="field">
+              <div class="field-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg></div>
+              <div class="field-body">
+                <label class="field-label" for="data-dir">项目、会话与生成内容</label>
+                <input class="field-input" id="data-dir" type="text" spellcheck="false" autocomplete="off" aria-describedby="data-help data-status">
+              </div>
+              <button class="btn btn-small" type="button" id="btn-pick-data">更改…</button>
+            </div>
+            <p class="help" id="data-help">卸载和升级都不会删除这里的数据。<button type="button" class="link" id="btn-data-reset" hidden>恢复默认位置</button></p>
+            <p class="status" id="data-status" role="status"></p>
+          </section>
+        </div>
+
+        <div class="col">
+          <section class="group glass rise" style="--i:3" aria-labelledby="g-shortcuts">
+            <h2 class="group-title" id="g-shortcuts">快捷方式与启动</h2>
+            <div class="toggle-row">
+              <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/></svg>
+              <span class="toggle-text" id="t-desktop">桌面快捷方式</span>
+              <button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="t-desktop" data-opt="desktopShortcut"><span class="knob"></span></button>
+            </div>
+            <div class="toggle-row">
+              <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>
+              <span class="toggle-text" id="t-start">开始菜单快捷方式</span>
+              <button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="t-start" data-opt="startMenuShortcut"><span class="knob"></span></button>
+            </div>
+            <div class="toggle-row">
+              <svg class="row-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+              <span class="toggle-text" id="t-launch">安装完成后启动</span>
+              <button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="t-launch" data-opt="launchAfter"><span class="knob"></span></button>
+            </div>
+          </section>
+
+          <section class="group glass notes rise" style="--i:4" aria-label="说明">
+            <p><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>只为当前用户安装,不需要管理员权限。</p>
+            <p><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4.5h4.5"/></svg>卸载或升级会删除整个程序文件夹,所以只能装进新的、空的或原来的安装文件夹。</p>
+            <p class="running-note" id="running-note" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg><span>RurixForge 正在运行,安装时会自动关闭它,请先保存工作。</span></p>
+          </section>
+        </div>
+      </div>
+
+      <footer class="page-foot rise" style="--i:5">
+        <p class="foot-summary" id="foot-summary"></p>
+        <button class="btn btn-secondary" id="btn-options-back" type="button">返回</button>
+        <button class="btn btn-primary" id="btn-install" type="button">
+          <span class="btn-label">开始安装</span>
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 19.5h14"/></svg>
+        </button>
+      </footer>
+    </section>
+
+    <!-- 安装中 -->
+    <section class="page" id="page-installing" data-page="installing" aria-labelledby="installing-title" hidden>
+      <div class="install-layout">
+        <div class="forge" aria-hidden="true">
+          <svg class="ring" viewBox="0 0 200 200">
+            <defs>
+              <linearGradient id="ring-g" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#e8a07c"/><stop offset="0.55" stop-color="#d97757"/><stop offset="1" stop-color="#c25a32"/>
+              </linearGradient>
+            </defs>
+            <circle class="ring-track" cx="100" cy="100" r="84"/>
+            <circle class="ring-glow" cx="100" cy="100" r="84" pathLength="100"/>
+            <circle class="ring-fill" cx="100" cy="100" r="84" pathLength="100"/>
+          </svg>
+          <div class="ring-core">
+            <svg class="mark mark-pulse" viewBox="86 88 1080 1080"><use href="#mk-faces"/></svg>
+            <div class="percent"><span id="percent">0</span><small>%</small></div>
+          </div>
+        </div>
+
+        <div class="install-side">
+          <h1 id="installing-title" class="page-title rise" style="--i:0" tabindex="-1">正在安装 <span data-bind="product">RurixForge</span></h1>
+          <p class="page-sub rise" style="--i:1" id="install-hint">通常需要一两分钟,请不要关闭窗口。</p>
+          <ol class="steps glass rise" style="--i:2" id="steps">
+            <li data-phase="prepare"><span class="dot"></span><span class="step-text">准备安装内容</span></li>
+            <li data-phase="remove" hidden><span class="dot"></span><span class="step-text">移除旧版本</span></li>
+            <li data-phase="copy"><span class="dot"></span><span class="step-text">复制程序文件</span><span class="step-meta" id="copy-meta"></span></li>
+            <li data-phase="finish"><span class="dot"></span><span class="step-text">创建快捷方式与设置</span></li>
+          </ol>
+          <div class="bar rise" style="--i:3" aria-hidden="true"><span class="bar-fill" id="bar-fill"></span></div>
+          <p class="sr-only" id="progress-live" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 完成 -->
+    <section class="page" id="page-done" data-page="done" aria-labelledby="done-title" hidden>
+      <div class="result">
+        <div class="badge" aria-hidden="true">
+          <span class="badge-ring"></span>
+          <svg viewBox="0 0 64 64"><path class="check" d="M19 33.5 28 42l17.5-19" pathLength="1"/></svg>
+        </div>
+        <h1 id="done-title" class="done-title rise" style="--i:1" tabindex="-1">安装完成</h1>
+        <p class="done-text rise" style="--i:2"><span data-bind="product">RurixForge</span> 已经准备好了。</p>
+        <p class="done-path rise" style="--i:3"><span class="mono" data-bind="installedDir"></span></p>
+        <div class="done-actions rise" style="--i:4">
+          <button class="btn btn-secondary" id="btn-finish" type="button">完成</button>
+          <button class="btn btn-primary btn-lg btn-launch" id="btn-launch" type="button">
+            <span class="launch-fill" aria-hidden="true"></span>
+            <svg class="btn-icon lead" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+            <span class="btn-label">启动 <span data-bind="product">RurixForge</span></span>
+          </button>
+        </div>
+        <p class="done-sub rise" style="--i:5">
+          <span id="autolaunch-text" hidden>即将自动启动 · <button type="button" class="link" id="btn-cancel-auto">取消</button></span>
+          <button type="button" class="link" id="btn-open-folder">打开安装文件夹</button>
+        </p>
+      </div>
+    </section>
+
+    <!-- 失败 -->
+    <section class="page" id="page-failed" data-page="failed" aria-labelledby="failed-title" hidden>
+      <div class="result">
+        <div class="badge badge-warn" aria-hidden="true">
+          <span class="badge-ring"></span>
+          <svg viewBox="0 0 64 64"><path d="M32 18v17M32 44.5v.01"/></svg>
+        </div>
+        <h1 id="failed-title" class="done-title rise" style="--i:1" tabindex="-1">安装没有完成</h1>
+        <p class="done-text failed-message rise" style="--i:2" id="failed-message" role="alert"></p>
+        <div class="done-actions rise" style="--i:3">
+          <button class="btn btn-secondary" id="btn-failed-close" type="button">关闭</button>
+          <button class="btn btn-primary btn-lg" id="btn-retry" type="button">
+            <svg class="btn-icon lead" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/></svg>
+            <span class="btn-label">返回重试</span>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast glass" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <div class="sheet-scrim" id="license-sheet" hidden>
+    <div class="sheet glass" role="dialog" aria-modal="true" aria-labelledby="license-title">
+      <header class="sheet-head">
+        <h2 id="license-title">许可协议</h2>
+        <button class="icon-btn" id="btn-license-close" type="button" aria-label="关闭许可协议">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>
+        </button>
+      </header>
+      <pre class="license-text" id="license-text" tabindex="0"></pre>
+      <footer class="sheet-foot">
+        <button type="button" class="link" id="btn-homepage">在浏览器中查看项目主页</button>
+        <button class="btn btn-primary" id="btn-license-ok" type="button">好的</button>
+      </footer>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,197 @@
+# rurixc 诊断消息表(zh)— message-key 中英双语全量覆盖(RD-006,M8;07 §5 第 7 条,D-206)
+# 行格式:key = 模板文本;`{name}` 为参数占位;`#` 行注释。
+# key 集与 en.messages / registry/error_codes.json 的 message_key 完全对齐
+#   (check_schemas.py 交叉校验 + ci/bilingual_coverage.py 双语覆盖门,缺键即红)。
+# 与 en.messages 同序;{name} 占位、标识符 / 工具名 / 关键字 / 错误码保留英文,仅译散文。
+#
+# 词法诊断(RX0001 ~ RX0007,spec/lexical.md;M1.2 分配)
+lex.unexpected_char = 意外的字符序列 {found}
+lex.unterminated_block_comment = 块注释未闭合
+lex.unterminated_string = 字符串字面量未闭合
+lex.bad_char_literal = 非法的字符字面量:{reason}
+lex.bad_escape = 非法的转义序列:{esc}
+lex.bad_number = 非法的数值字面量:{reason}
+lex.bad_suffix = 非法的后缀 {suffix}
+#
+# 语法诊断(RX0008 ~ RX0011,spec/syntax.md;M1.3 分配)
+parse.expected_token = 期望 {expected},却找到 {found}
+parse.unclosed_delimiter = 定界符 {delim} 未闭合
+parse.gated_feature = 使用了受 feature `{feature}` 门控的实验性语法
+parse.unknown_feature = 未知的 feature {feature}
+#
+# 名称解析诊断(RX1001 ~ RX1004,spec/names.md;M2.1 分配)
+resolve.unresolved_name = 未解析的名称 {name}
+resolve.duplicate_definition = {name} 重复定义
+resolve.visibility_violation = {name} 在此作用域不可见
+resolve.bad_use_target = 非法的 use 目标 {target}
+#
+# 类型检查诊断(RX2001 ~ RX2006,spec/types.md;M2.2 分配)
+typeck.mismatched_types = 类型不匹配:期望 {expected},却找到 {found}
+typeck.bad_field = 类型 {ty} 上的 {kind} 字段 {field}
+typeck.arg_count_mismatch = 此调用需要 {expected} 个参数,但提供了 {found} 个
+typeck.unknown_method = 类型 {ty} 上未找到名为 {method} 的方法
+typeck.not_callable = 类型 {ty} 的表达式不可调用
+typeck.bad_operand = 运算符 {op} 不能作用于类型 {ty}
+#
+# 着色 / 地址空间诊断(RX3001 ~ RX3003,spec/device.md RXS-0066~0069;M4.1 分配)
+coloring.cross_color_call = 不能从 {context} 上下文调用 {callee}
+addrspace.mismatch = 地址空间不匹配:期望 {expected},却找到 {found}
+coloring.barrier_non_uniform = `block.sync()` 非一致可达:在依赖 thread-id 的分支内调用(需要 `unsafe`)
+#
+# 模式穷尽性诊断(RX2007,spec/borrow.md RXS-0051;M3.1 分配)
+typeck.non_exhaustive_match = match 非穷尽:{witness} 未覆盖
+#
+# Copy/Drop 定义处检查(RX2008 ~ RX2009,spec/borrow.md RXS-0053/RXS-0055;M3.2 分配)
+typeck.bad_derive_copy = `derive(Copy)` 不能作用于 {ty}:{reason}
+typeck.bad_drop_impl = {ty} 的 `Drop` impl 非法:{reason}
+#
+# move/init 数据流诊断(RX4001 ~ RX4003,spec/borrow.md RXS-0053/RXS-0054;M3.2 分配)
+borrowck.use_after_move = 使用了已移动的值 {place}
+borrowck.use_before_init = 使用了可能未初始化的值 {place}
+borrowck.move_out_of_ref = 不能将 {place} 移出引用
+#
+# NLL 借用检查诊断(RX4004 ~ RX4006,spec/borrow.md RXS-0058/RXS-0060/RXS-0061;M3.3 分配)
+borrowck.borrow_conflict = 对 {place} 的借用冲突:{kind}
+borrowck.borrow_while_borrowed = {place} 仍被借用时不能 {action}
+borrowck.dangling_reference = 对 {place} 的引用比其所指的值存活更久
+#
+# const 求值诊断(RX5001 ~ RX5003,spec/consteval.md RXS-0063/RXS-0065;M3.4 分配)
+consteval.overflow = 常量求值在 {op} 中溢出
+consteval.index_out_of_bounds = 常量索引 {index} 越界(长度为 {len})
+consteval.non_const_operation = {what} 不允许出现在常量上下文中
+#
+# codegen / 链接诊断(RX6001 ~ RX6002 / RX7001;M2.3 分配)
+codegen.unsupported_construct = codegen 暂不支持 {construct}(M2.3 host 子集)
+codegen.missing_main = 可执行目标未找到 `main` 函数
+link.toolchain_failure = 外部工具链失败:{reason}
+#
+# device codegen / ptxas 诊断(RX6003 ~ RX6005,spec/device.md RXS-0070~0073;M4.2 分配)
+codegen.device_unsupported = NVPTX device codegen 暂不支持 {detail}(M4.2 子集)
+codegen.ptxas_rejected = ptxas 拒绝了生成的 PTX:{reason}
+codegen.device_constraint = device codegen 约束被违反:{detail}
+#
+# launch 类型契约诊断(RX3004 ~ RX3006,spec/device.md RXS-0074~0075;M4.3 分配)
+launch.non_kernel = 无法 launch {callee}:只有 `kernel` 函数可被 launch
+launch.dim_mismatch = launch 的 grid 与 block 维度不一致:grid 为 {grid} 维,block 为 {block} 维
+launch.context_brand = context-brand 不匹配:{what} 与发起 launch 的 stream 属于不同的 context
+#
+# UC-05 RHI 跨 brand 资源误用诊断(RX3006 复用,spec/rhi.md RXS-0256 I7;EI1.3 Part B 分配)
+rhi.cross_brand = context-brand 不匹配:{what} 与本 pass 属于不同的 `Rhi` 实例
+#
+# UC-05 RHI const 容量接线诊断(RX2010 复用,spec/rhi.md RXS-0283;G4.3 PR-E 分配)
+rhi.graph_cap_literal = `rhi.graph::<CAP>()` 的 CAP 须为整数字面量(RXS-0283)
+rhi.graph_nonstatic = `rhi.graph::<CAP>()` 不得在循环/条件上下文内构造(RXS-0283 non-static construction strict)
+rhi.graph_dup = 单函数体内重复 `rhi.graph::<CAP>()` 声明(RXS-0283 affine 单定义链)
+#
+# views 不相交证明诊断(RX3007 ~ RX3008,spec/device.md RXS-0078;M5.1 分配)
+views.overlapping_mut = {place} 的可变子视图重叠或别名:无法证明各子视图不相交
+views.out_of_bounds = 视图切分越界:{detail}
+#
+# shared+barrier 一致性诊断(RX3009,spec/device.md RXS-0079;M5.2 分配)
+shared.barrier_consistency = 无法证明 shared 读写已由 block barrier 同步:{detail}
+#
+# scoped atomics 诊断(RX3010,spec/device.md RXS-0080;M5.2 分配)
+atomics.scope_misuse = scoped atomic 的 scope 误用:{detail}
+#
+# 着色阶段类型面诊断(RX3011 ~ RX3013,spec/shader_stages.md RXS-0154~0156;G2.1 分配)
+shader.stage_io_invalid = 非法的着色阶段 I/O 字段:{detail}
+shader.stage_interface_mismatch = 阶段间接口不匹配:{detail}
+shader.resource_handle_invalid = 非法的着色资源句柄:{detail}
+shader.sample_expr_invalid = 非法的纹理采样表达式:{detail}
+shader.nonuniform_annotation_missing = bindless 无界表动态索引须以 nonuniform(...) 标注:{detail}
+shader.mesh_entry_invalid = 非法的 mesh/task 入口标注:{detail}
+shader.ray_query_state_invalid = 非法的 RayQuery 遍历状态:{detail}
+#
+# shader permutation 域/预算诊断(RX3019 / RX7023,spec/rendering_platform.md RXS-0308~0310;G8.2 M29 分配)
+shader.permutation_domain_invalid = 非法的着色 permutation 域:{detail}
+toolchain.permutation_budget_exceeded = 着色 permutation 预算超限:{detail}
+#
+# capability profile 诊断(RX3020 ~ RX3023,spec/shader_stages.md RXS-0311 + spec/rendering_platform.md RXS-0312;G8.2 M32 分配)
+capability.missing_required = 着色入口缺失必需 capability:{detail}
+capability.forbidden_used = 着色入口使用了 profile 禁用的 capability:{detail}
+capability.fallback_incompatible = capability fallback 接口契约不兼容:{detail}
+capability.unknown_id = 未知 capability ID 或非法 `#[requires]` 用法:{detail}
+#
+# libdevice 链接 / device 数学 intrinsic 诊断(RX6006 / RX7002,spec/device.md RXS-0081~0082;M5.3 分配)
+codegen.device_math_unsupported = {detail} 不是受支持的 device 数学 intrinsic(超出 libdevice 覆盖范围或元素类型不受支持)
+link.libdevice_failure = libdevice 链接失败:{reason}
+#
+# DXIL codegen 诊断(RX6007,spec/dxil_backend.md RXS-0157;G2.2 PR-C2 分片1 分配)
+codegen.dxil_unsupported = DXIL codegen 目标不可用或暂不支持:{detail}
+codegen.dxil_stage_deferred = DXIL 阶段降级不可用:{detail}
+#
+# Vulkan/SPIR-V codegen 诊断(RX6026,spec/vulkan_backend.md RXS-0200/0201;mb1 RFC-0011 分配;跳 RX6024/6025=MS1.2b 避撞)
+codegen.vulkan_unsupported = Vulkan/SPIR-V codegen 目标不可用或暂不支持:{detail}
+#
+# DXIL B 路 strict-only 失败诊断(RX6010 ~ RX6013,spec/dxil_backend.md RXS-0157/0159/0162;G2.2 任务7 分配)
+codegen.dxil_b_transpile_failed = DXIL B 链在 {step} 转译失败:{reason}
+codegen.dxil_sig_mismatch = DXIL 签名不一致:{detail}
+codegen.dxil_sig_dropped_input = DXIL 声明输入被消除:{detail}
+codegen.dxil_unmappable = 不可映射的 DXIL 构造:{detail}
+#
+# DXIL 绑定布局推导 + 阶段间接口链接 strict-only 失败诊断(RX6014 ~ RX6017,spec/binding_layout.md RXS-0163~0166 + spec/dxil_backend.md RXS-0160;G2.3 PR-E2b-2 分配)
+codegen.dxil_stage_link_mismatch = DXIL 阶段间接口错链:{detail}
+codegen.dxil_register_conflict = DXIL 绑定 register/layout 冲突:{detail}
+codegen.dxil_root_signature_too_large = DXIL root signature 推导超 DWORD 上限:{detail}
+codegen.dxil_psv0_mismatch = DXIL PSV0 反射与推导意图不一致:{detail}
+#
+# DXIL 纹理采样首期收敛子集 strict-only 失败诊断(RX6023,spec/dxil_backend.md RXS-0175;G2.4 RFC-0007 分配)
+codegen.dxil_sample_unsupported = DXIL 纹理采样越出首期收敛子集:{detail}
+#
+# rx CLI 工具链诊断(RX7003 / RX7004,spec/toolchain.md RXS-0083/0085;M6.1 分配)
+toolchain.rx_cli_usage = rx CLI 用法错误:{detail}
+toolchain.rx_run_exec_failure = rx run:无法执行构建产物:{detail}
+#
+# 包管理诊断(RX7005 ~ RX7009,spec/toolchain.md RXS-0089~0094;M6.2 分配)
+toolchain.pkg_manifest_invalid = rurix.toml 清单非法:{detail}
+toolchain.pkg_resolution_conflict = 依赖解析冲突:{detail}
+toolchain.pkg_lock_mismatch = rurix.lock 过期或不一致:{detail}
+toolchain.pkg_digest_mismatch = 内容树 digest 不匹配:{detail}
+toolchain.pkg_source_unreachable = 依赖源不可达:{detail}
+#
+# rx test 诊断(RX7010 ~ RX7011,spec/toolchain.md RXS-0095;M6.3 分配)
+toolchain.rx_test_discovery = rx test 发现错误:{detail}
+toolchain.rx_test_exec_failure = rx test 子进程失败:{detail}
+toolchain.lsp_rename_invalid = 非法的 LSP rename 目标:{detail}
+# edition 诊断(RX7020,spec/edition.md RXS-0179;G2.5 RFC-0008 分配)
+toolchain.edition_unknown = 未知的 rurix.toml edition:{detail}
+#
+# 互操作诊断(RX7013 ~ RX7015,spec/interop.md RXS-0122~0125;M8.1 分配)
+interop.unsupported_protocol = 互操作协议不支持:{detail}
+interop.invalid_device_pointer = 非法的互操作 device 指针:{detail}
+interop.shape_mismatch = 互操作形状不匹配:{detail}
+#
+# cublas 绑定诊断(RX7016 ~ RX7019,spec/cublas.md RXS-0126~0129;M8.2 分配)
+cublas.handle_init_failed = cublas 句柄初始化失败:{detail}
+cublas.invalid_device_pointer = 非法的 cublas device 指针:{detail}
+cublas.dimension_mismatch = cublas 维度不匹配:{detail}
+cublas.runtime_failed = cublas 运行时失败:{detail}
+## UC-04 deferred 渲染器装配/编排诊断(RX6018 ~ RX6022,spec/d3d12_runtime.md RXS-0167~0170;G2.4 PR-F2 分配)
+runtime.uc04_pso_assembly_mismatch = UC-04 graphics PSO 装配不一致:{detail}
+runtime.uc04_rts0_pso_mismatch = UC-04 RTS0 ↔ PSO 绑定不一致:{detail}
+runtime.uc04_pass_orchestration = UC-04 deferred pass 编排失败:{detail}
+runtime.uc04_barrier_plan = UC-04 barrier 编排失败:{detail}
+runtime.uc04_readback_layout = UC-04 readback 缓冲布局失配:{detail}
+## UC-04 可见窗口 present 装配/重建诊断(RX6027 ~ RX6028,spec/d3d12_runtime.md RXS-0220~0222;G3.2 RFC-0013 §4.A 分配)
+runtime.uc04_present_assembly = UC-04 可见窗口 present 装配不一致:{detail}
+runtime.uc04_resize_rebuild = UC-04 swapchain 重建核验失败:{detail}
+#
+# render graph 装配核验诊断(RX6029 ~ RX6030,spec/render_graph.md RXS-0237;G3.5 RFC-0013 §4.D 分配)
+runtime.graph_structure = render graph 图结构违例(环/读未写/写写冲突/生命周期误用):{detail}
+runtime.graph_reflection_mismatch = render graph 声明-反射失配(漏声明/声明未用):{detail}
+#
+# 宿主编排前端机械面诊断(RX1005 / RX7022,spec/host_orchestration.md RXS-0195~0196;MS1.2 分配)
+resolve.module_load_failure = 无法加载 out-of-line 模块 {name}:{detail}
+link.native_lib_failure = #[link] 原生库失败:{detail}
+#
+# 宿主 GPU 编排诊断(RX2010 / RX3015 / RX6024 / RX6025 / RX7021,spec/host_orchestration.md RXS-0189~0192/0195;MS1.2 分配)
+gpu.elem_infer = 无法为宿主 GPU 缓冲定出首期合法元素类型:{detail}(元素类型须定型为 f32 / i32 / u32,RXS-0190)
+coloring.gpu_host_api_in_device = std::gpu 宿主编排 API 不可在 `kernel`/`device` 上下文中使用(RXS-0189)
+gpu.launch_arg_subset = launch 实参类型 {ty} 超出首期 marshalling 子集(Buffer 与 i32 / u32 / f32 / usize,RXS-0191)
+codegen.gpu_embed_failure = 无法把 device 产物嵌入宿主产物:{detail}(RXS-0192)
+link.rt_cabi_failure = 无法定位或构建 rurix-rt-cabi 运行时库:{detail}(定位序:RURIX_RT_CABI_LIB、<编译器>/lib/、workspace target;RXS-0195)
+#
+# `#[export(c)]` C ABI 导出诊断(RX6031 ~ RX6033,spec/export_c.md RXS-0250/0251/0252/0255;EI1.2 RFC-0014 Part A 分配)
+export_c.attr_target = `#[export(c)]` 属性只能挂在 host `pub fn` 上(RXS-0250):{detail}
+export_c.subset = `#[export(c)]` 导出面超出 C 兼容子集 v1(RXS-0251 签名 / RXS-0255 体):{detail}
+export_c.empty = `--emit=dll` 无任何 `#[export(c)]` 导出(RXS-0252):空导出集

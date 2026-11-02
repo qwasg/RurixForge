@@ -45,7 +45,9 @@ func (c *call) relay(a *accounts.Account, p *plan, resp *http.Response) *upstrea
 	return nil
 }
 
-func isSSE(ct string) bool { return strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "text/event-stream") }
+func isSSE(ct string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "text/event-stream")
+}
 
 // ---------- 写客户端 ----------
 
@@ -94,13 +96,13 @@ func (c *call) writeWhole(status int, contentType string, body []byte) {
 
 // readFailure 处理读上游流/体时的错误：客户端断开 → client_closed；尚未写出 → 冷却换号；已写出 → 流内报错。
 func (c *call) readFailure(a *accounts.Account, proto string, err error) *upstreamFailure {
-	if c.ctx.Err() != nil {
+	if c.ctx.Err() != nil || errors.Is(err, errClientStreamClosed) {
 		c.clientClosed()
 		return nil
 	}
 	if !c.started {
 		_ = c.s.d.Accounts.Cooldown(context.WithoutCancel(c.ctx), a.ID, networkCooldown, "读取上游响应失败："+err.Error())
-		return &upstreamFailure{message: "读取上游响应失败"}
+		return &upstreamFailure{message: "读取上游响应失败", retryAfter: networkCooldown}
 	}
 	c.midStreamError(proto, "上游连接中断")
 	return nil
@@ -144,8 +146,8 @@ func newTap(proto string) convert.UsageTap {
 
 type nopTap struct{}
 
-func (nopTap) Feed(convert.Event)  {}
-func (nopTap) Usage() core.Usage { return core.Usage{} }
+func (nopTap) Feed(convert.Event) {}
+func (nopTap) Usage() core.Usage  { return core.Usage{} }
 
 func usageFromBody(proto string, body []byte) core.Usage {
 	switch proto {
@@ -179,9 +181,10 @@ func isUsageOnlyChunk(data []byte) bool {
 func (c *call) relayStream(a *accounts.Account, p *plan, resp *http.Response) *upstreamFailure {
 	tap := newTap(p.proto)
 	hideUsage := p.proto == epChat && !c.includeUsage
-	rd := convert.NewSSEReader(resp.Body)
+	next, stop := c.streamEvents(resp.Body, true, streamKeepaliveEvery)
+	defer stop()
 	for {
-		ev, err := rd.Next()
+		ev, err := next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -197,6 +200,10 @@ func (c *call) relayStream(a *accounts.Account, p *plan, resp *http.Response) *u
 			c.usage = tap.Usage()
 			c.clientClosed()
 			return nil
+		}
+		// Chat 的完成帧已经结束本次响应，不再等待上游关闭连接。
+		if p.proto == epChat && bytes.Equal(bytes.TrimSpace(ev.Data), []byte("[DONE]")) {
+			break
 		}
 	}
 	c.usage = tap.Usage()
@@ -261,9 +268,10 @@ func (c *call) newToChat(proto string, includeUsage bool) convert.ToChat {
 func (c *call) relayToChat(a *accounts.Account, p *plan, resp *http.Response) *upstreamFailure {
 	streaming := p.mode == relayChatStream
 	tc := c.newToChat(p.proto, streaming && c.includeUsage)
-	rd := convert.NewSSEReader(resp.Body)
+	next, stop := c.streamEvents(resp.Body, streaming, streamKeepaliveEvery)
+	defer stop()
 	for {
-		ev, err := rd.Next()
+		ev, err := next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -289,6 +297,9 @@ func (c *call) relayToChat(a *accounts.Account, p *plan, resp *http.Response) *u
 			c.usage = tc.Usage()
 			c.clientClosed()
 			return nil
+		}
+		if tc.Done() {
+			break
 		}
 	}
 	c.usage = tc.Usage()

@@ -13,6 +13,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex};
 
+use super::map::{ReasoningEvent, ReasoningTracker};
 use super::rpc::{CodexClient, CodexError, Inbound};
 use super::service::CodexService;
 use crate::agent_job::{AgentJobRecord, AgentJobSpec, AgentJobStatus};
@@ -181,6 +182,7 @@ struct Bridge {
     serial: usize,
     final_text: String,
     stream_text: String,
+    reasoning: ReasoningTracker,
     usage: Option<Usage>,
     usage_seen: (u64, u64),
     claimed: bool,
@@ -192,6 +194,7 @@ struct Bridge {
 
 impl Bridge {
     fn new(flow: Arc<ManagedCodexRuntime>, spec: AgentJobSpec) -> Self {
+        let reasoning = ReasoningTracker::new(&spec.job_id);
         Self {
             flow,
             spec,
@@ -208,6 +211,7 @@ impl Bridge {
             serial: 0,
             final_text: String::new(),
             stream_text: String::new(),
+            reasoning,
             usage: None,
             usage_seen: (0, 0),
             claimed: false,
@@ -297,6 +301,7 @@ impl Bridge {
                 }
             }
         }
+        self.restart_known_startup_abort()?;
         self.cancellable(self.flow.ensure_ready()).await?;
         if self.thread_id.is_none() {
             self.tools = mapping;
@@ -350,6 +355,7 @@ impl Bridge {
         if self.turn_id.is_none() {
             self.final_text.clear();
             self.stream_text.clear();
+            self.reasoning.reset_turn();
             self.usage = None;
             self.seen_requests.clear();
             self.terminal_confirmed = false;
@@ -364,12 +370,17 @@ impl Bridge {
                 record.turn_id = None;
             }
             self.persist_status(AgentJobStatus::Starting, None, None)?;
+            let mut input = continuation_input(&messages, &self.completed_messages);
+            if let Some(grant) = write_grant(&self.spec, self.tools.keys().map(String::as_str)) {
+                input.insert(0, json!({ "type": "text", "text": grant }));
+            }
             let mut params = json!({
                 "threadId": self.thread_id,
-                "input": continuation_input(&messages, &self.completed_messages),
+                "input": input,
                 "cwd": self.spec.cwd.to_string_lossy(),
                 "approvalPolicy": "never",
                 "sandboxPolicy": { "type": "readOnly" },
+                "summary": "auto",
             });
             if let Some(model) = model_id(&self.spec) {
                 params["model"] = json!(model);
@@ -514,7 +525,9 @@ impl Bridge {
 
     fn check_isolation_event(&self, event: &Inbound) -> Result<(), LlmError> {
         if let Inbound::Notification { method, params } = event {
-            if method == "configWarning" || method == "skills/changed" {
+            if (method == "configWarning" && !disabled_project_config_warning(params))
+                || method == "skills/changed"
+            {
                 // These notifications are process scoped; checking threadId
                 // first would silently discard the isolation failure.
                 self.flow.cancel();
@@ -593,19 +606,30 @@ impl Bridge {
         params: &Value,
         stream: Option<&StreamSink>,
     ) -> Result<Option<StepOutcome>, LlmError> {
+        if let Some(events) = self.reasoning.handle(method, params) {
+            if let Some(sink) = stream {
+                for event in events {
+                    sink(match event {
+                        ReasoningEvent::Started { item_id } => {
+                            StreamDelta::ReasoningStarted { item_id }
+                        }
+                        ReasoningEvent::Delta { item_id, delta } => {
+                            StreamDelta::ReasoningDelta { item_id, delta }
+                        }
+                        ReasoningEvent::Completed { item_id, text } => {
+                            StreamDelta::ReasoningCompleted { item_id, text }
+                        }
+                    });
+                }
+            }
+            return Ok(None);
+        }
         match method {
             "item/agentMessage/delta" => {
                 let delta = params["delta"].as_str().unwrap_or_default();
                 self.stream_text.push_str(delta);
                 if let Some(sink) = stream {
                     sink(StreamDelta::Text(delta.to_string()));
-                }
-            }
-            "item/reasoning/textDelta" | "item/reasoning/summaryTextDelta" => {
-                if let Some(sink) = stream {
-                    sink(StreamDelta::Reasoning(
-                        params["delta"].as_str().unwrap_or_default().to_string(),
-                    ));
                 }
             }
             "item/started" | "item/completed" => {
@@ -750,6 +774,78 @@ impl Bridge {
         Ok(())
     }
 
+    fn restart_known_startup_abort(&mut self) -> Result<(), LlmError> {
+        let Some(old) = self.record.as_ref().filter(|old| {
+            self.recovered
+                && self.spec.retry_failed
+                && old.result.status == AgentJobStatus::Failed
+                && old.thread_id.is_some()
+                && old.turn_id.is_none()
+        }) else {
+            return Ok(());
+        };
+        let prefix = format!(
+            "{CAPABILITY_ERROR}: 受管配置未获接受或技能目录已变更，已停止隔离进程: configWarning: "
+        );
+        let known = old
+            .result
+            .error
+            .as_deref()
+            .and_then(|error| error.strip_prefix(&prefix))
+            .and_then(|params| serde_json::from_str::<Value>(params).ok())
+            .is_some_and(|params| disabled_project_config_warning(&params));
+        if !known {
+            return Ok(());
+        }
+        let path = crate::agent_job::journal_path(&self.spec)
+            .ok_or_else(|| recovery("启动失败缺少持久记录，禁止新建线程", old))?;
+        let archive = path.with_file_name(format!(
+            "{}.g{}.startup-abort.json",
+            path.file_stem().unwrap().to_string_lossy(),
+            old.generation
+        ));
+        let body = std::fs::read(&path)
+            .map_err(|e| LlmError::new(format!("CODEX_JOB_JOURNAL_IO: {e}")))?;
+        use std::io::Write;
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&archive)
+        {
+            Ok(mut file) => file
+                .write_all(&body)
+                .and_then(|_| file.sync_all())
+                .map_err(|e| LlmError::new(format!("CODEX_JOB_JOURNAL_IO: {e}")))?,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if std::fs::read(&archive).ok().as_ref() != Some(&body) {
+                    return Err(recovery("启动失败归档冲突，已保留原记录", old));
+                }
+            }
+            Err(e) => return Err(LlmError::new(format!("CODEX_JOB_JOURNAL_IO: {e}"))),
+        }
+        let generation = old
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| recovery("任务代次溢出，禁止新建线程", old))?;
+        let record = self.record.as_mut().unwrap();
+        record.generation = generation;
+        record.thread_id = None;
+        record.turn_id = None;
+        record.terminal_confirmed = false;
+        record.result.status = AgentJobStatus::Starting;
+        record.result.text.clear();
+        record.result.error = None;
+        record
+            .result
+            .evidence
+            .push(archive.to_string_lossy().into_owned());
+        self.thread_id = None;
+        self.turn_id = None;
+        self.terminal_confirmed = false;
+        self.recovered = false;
+        self.persist_status(AgentJobStatus::Starting, None, None)
+    }
+
     fn persist_status(
         &mut self,
         status: AgentJobStatus,
@@ -804,10 +900,7 @@ impl Bridge {
             .thread_id
             .as_deref()
             .ok_or_else(|| recovery("上次线程启动结果未知，禁止重复开工", &old))?;
-        let turn = old
-            .turn_id
-            .as_deref()
-            .ok_or_else(|| recovery("上次轮次启动结果未知，禁止重复开工", &old))?;
+        let turn = old.turn_id.as_deref();
         params
             .as_object_mut()
             .expect("thread params object")
@@ -821,6 +914,38 @@ impl Bridge {
             return Err(recovery("恢复返回了错误线程", &old));
         }
         self.thread_id = Some(thread.to_string());
+        let Some(turn) = turn else {
+            if !self.spec.retry_failed
+                || !matches!(
+                    old.result.status,
+                    AgentJobStatus::Failed
+                        | AgentJobStatus::Cancelled
+                        | AgentJobStatus::RecoveryRequired
+                )
+            {
+                return Err(recovery("上次轮次启动结果未知，禁止重复开工", &old));
+            }
+            // A saved thread without a saved turn can represent either a
+            // pre-inference failure or an unacknowledged turn/start. Only an
+            // explicit empty upstream history proves that retry is safe.
+            let read = self
+                .request(
+                    "thread/read",
+                    json!({ "threadId": thread, "includeTurns": true }),
+                )
+                .await
+                .map_err(|e| recovery(&format!("无法确认原线程尚未开始轮次: {e}"), &old))?;
+            if read.pointer("/thread/id").and_then(Value::as_str) != Some(thread)
+                || !read
+                    .pointer("/thread/turns")
+                    .and_then(Value::as_array)
+                    .is_some_and(Vec::is_empty)
+            {
+                return Err(recovery("原线程轮次历史非空或无法确认，禁止重复开工", &old));
+            }
+            self.recovered = false;
+            return Ok(None);
+        };
         if old.result.status == AgentJobStatus::Completed
             || (self.spec.retry_failed
                 && old.terminal_confirmed
@@ -1083,6 +1208,51 @@ fn declarations(tools: &[Value]) -> Result<(Vec<Value>, HashMap<String, String>)
     Ok((out, mapping))
 }
 
+/// An untrusted project's local settings staying disabled is expected. Skills
+/// still require the separate exhaustive catalog and per-thread isolation below.
+fn disabled_project_config_warning(params: &Value) -> bool {
+    const HEADER: &str = "Project-local config, hooks, and exec policies are disabled in the following folders until the project is trusted, but skills still load.\n";
+    const GUIDANCE: &str = "       To load project-local config, hooks, and exec policies, add ";
+    if !params["details"].is_null() {
+        return false;
+    }
+    let Some(body) = params["summary"]
+        .as_str()
+        .and_then(|s| s.strip_prefix(HEADER))
+    else {
+        return false;
+    };
+    let mut lines = body.lines();
+    let mut count = 0;
+    while let Some(folder) = lines.next() {
+        count += 1;
+        let Some(folder) = folder.strip_prefix(&format!("    {count}. ")) else {
+            return false;
+        };
+        let Some(guidance) = lines.next().and_then(|line| line.strip_prefix(GUIDANCE)) else {
+            return false;
+        };
+        let Some((project, config)) = guidance.split_once(" as a trusted project in ") else {
+            return false;
+        };
+        let folder = folder.replace('\\', "/");
+        let project = project.replace('\\', "/");
+        let project = project.trim_end_matches('/');
+        if !folder.strip_suffix("/.codex").is_some_and(|parent| {
+            if cfg!(windows) {
+                parent.eq_ignore_ascii_case(project)
+            } else {
+                parent == project
+            }
+        }) || project.is_empty()
+            || !config.replace('\\', "/").ends_with("/config.toml.")
+        {
+            return false;
+        }
+    }
+    count > 0
+}
+
 pub(super) fn isolated_config(
     effective: &Value,
     catalog: &Value,
@@ -1136,6 +1306,7 @@ pub(super) fn isolated_config(
         }
     }
     let mut config = json!({
+        "model_reasoning_summary": "auto",
         "agents": { "enabled": false },
         "features": { "multi_agent": false, "shell_tool": false, "unified_exec": false, "hooks": false, "apps": false, "image_generation": false },
         "skills": { "config": paths.into_iter().map(|path| json!({"path": path, "enabled": false})).collect::<Vec<_>>() },
@@ -1166,9 +1337,11 @@ fn thread_params(
         .filter_map(|m| m["content"].as_str())
         .collect::<Vec<_>>()
         .join("\n\n");
+    let grant = write_grant(spec, tools.iter().filter_map(|t| t["name"].as_str()));
+    let grant_block = grant.map(|g| format!("\n\n{g}")).unwrap_or_default();
     let mut params = json!({
         "cwd": spec.cwd.to_string_lossy(), "approvalPolicy": "never", "sandbox": "read-only",
-        "developerInstructions": format!("{instructions}\n\n你正在执行 Forge 受管任务。所有读取、写入、引擎操作与委派只使用声明的 forge__ 动态工具；原生 shell、文件编辑、MCP、子代理与 Goal 均不可使用。阶段仅由宿主出口工具推进。"),
+        "developerInstructions": format!("{instructions}\n\n你正在执行 Forge 受管任务。原生 read-only 沙箱限制 Codex 自身的 shell 和文件编辑，不把 Forge 宿主任务改成只读。所有读取、写入、引擎操作与委派只使用声明的 forge__ 动态工具；这些工具由 Forge 宿主执行，写入受当前任务范围、角色白名单和 Forge 会话权限服务约束。正式制作中，已声明且获宿主授权的 Forge 写工具可正常调用；计划或只读任务仍不得写入。不得仅因原生 read-only 拒绝获准的宿主写入，也不得把工具存在当作额外授权、假造未声明工具或绕过宿主拒绝。原生 shell、文件编辑、MCP、子代理与 Goal 均不可使用。阶段仅由宿主出口工具推进。{grant_block}"),
         "config": isolation, "dynamicTools": tools,
     });
     if let Some(model) = model_id(spec) {
@@ -1183,6 +1356,37 @@ fn model_id(spec: &AgentJobSpec) -> Option<&str> {
         .map(str::trim)
         .map(|model| model.strip_prefix("codex:").unwrap_or(model))
         .filter(|model| !model.is_empty())
+}
+
+/// Codex tells the model its native sandbox ("sandbox_mode=read-only, approval_policy=never").
+/// Production members that only saw that line concluded the whole task was read-only and never
+/// called the host write tools they had been granted (UltraPlan production stalled with no files
+/// written). When the host granted a write scope, spell the grant out with the concrete roots and
+/// the granted host write tools; the host still enforces scope and permissions on every call.
+fn write_grant<'a>(spec: &AgentJobSpec, remote_names: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    if spec.metadata.write_scope.is_empty() {
+        return None;
+    }
+    let mut writes: Vec<&str> = remote_names
+        .into_iter()
+        .filter(|name| name.strip_prefix("forge__").is_some_and(crate::agent::is_write_tool))
+        .collect();
+    if writes.is_empty() {
+        return None;
+    }
+    writes.sort_unstable();
+    writes.dedup();
+    let roots = spec
+        .metadata
+        .write_scope
+        .iter()
+        .map(|p| p.trim_start_matches(r"\\?\"))
+        .collect::<Vec<_>>()
+        .join("、");
+    Some(format!(
+        "【写入授权】本任务已获 Forge 宿主写入授权。可写范围：{roots}。已授权写工具：{}。Codex 环境信息中的 sandbox_mode=read-only / approval_policy=never 只约束原生 shell 与原生文件编辑，不代表本任务只读；需要创建或修改文件、场景、资产时，直接调用上述 forge__ 写工具，宿主仍会逐次校验范围与权限。只有当这些工具实际返回拒绝或错误时，才把它作为阻塞汇报，并附上原始错误。",
+        writes.join("、")
+    ))
 }
 
 fn initial_input(messages: &[Value]) -> Vec<Value> {
@@ -1236,6 +1440,68 @@ mod tests {
 
     fn spec(id: &str) -> AgentJobSpec {
         AgentJobSpec::new(id, std::env::temp_dir())
+    }
+
+    #[test]
+    fn native_read_only_does_not_hide_host_write_authority() {
+        let mut write = tool();
+        write["function"]["name"] = json!("write_file");
+        let (tools, _) = declarations(&[write]).unwrap();
+        let isolation = json!({"features":{"shell_tool":false,"unified_exec":false}});
+        let params = thread_params(&spec("production"), &[], tools, isolation.clone());
+        assert_eq!(params["sandbox"], "read-only");
+        assert_eq!(params["approvalPolicy"], "never");
+        assert_eq!(params["config"], isolation);
+        assert_eq!(params["dynamicTools"][0]["name"], "forge__write_file");
+        let instructions = params["developerInstructions"].as_str().unwrap();
+        assert!(instructions.contains("不把 Forge 宿主任务改成只读"));
+        assert!(instructions.contains("计划或只读任务仍不得写入"));
+        assert!(instructions.contains("不得把工具存在当作额外授权"));
+        // No write scope on this spec: no explicit grant is added.
+        assert!(!instructions.contains("【写入授权】"));
+    }
+
+    #[test]
+    fn write_scoped_job_gets_explicit_host_write_grant() {
+        let mut read = tool();
+        read["function"]["name"] = json!("read_file");
+        let mut write = tool();
+        write["function"]["name"] = json!("write_file");
+        let mut apply = tool();
+        apply["function"]["name"] = json!("editor_apply");
+        let (tools, mapping) = declarations(&[read, write, apply]).unwrap();
+        let mut spec = spec("production");
+        spec.metadata.phase = Some("production".into());
+        spec.metadata.role = Some("logic-programmer".into());
+        spec.metadata.write_scope = vec![r"\\?\E:\work\project".into()];
+
+        let params = thread_params(&spec, &[], tools, json!({}));
+        // The native sandbox stays read-only; only the host grant is spelled out.
+        assert_eq!(params["sandbox"], "read-only");
+        let instructions = params["developerInstructions"].as_str().unwrap();
+        assert!(instructions.contains("【写入授权】"));
+        assert!(instructions.contains(r"E:\work\project"));
+        assert!(!instructions.contains(r"\\?\"));
+        assert!(instructions.contains("forge__write_file"));
+        assert!(instructions.contains("forge__editor_apply"));
+        assert!(!instructions.contains("forge__read_file、"));
+
+        let grant = write_grant(&spec, mapping.keys().map(String::as_str)).unwrap();
+        assert!(grant.contains("sandbox_mode=read-only"));
+        assert!(grant.contains("forge__write_file"));
+    }
+
+    #[test]
+    fn write_grant_needs_both_scope_and_write_tools() {
+        let mut read = tool();
+        read["function"]["name"] = json!("read_file");
+        let (read_only_tools, _) = declarations(&[read]).unwrap();
+        let mut scoped = spec("qa");
+        scoped.metadata.write_scope = vec![r"E:\work\project".into()];
+        // QA members get a write scope but only read tools: no grant.
+        assert!(write_grant(&scoped, read_only_tools.iter().filter_map(|t| t["name"].as_str())).is_none());
+        // Write tools without a write scope (plan / read-only tasks): no grant.
+        assert!(write_grant(&spec("plan"), ["forge__write_file"]).is_none());
     }
 
     fn flow(transport: Arc<ScriptedTransport>) -> Arc<ManagedCodexFlow> {
@@ -1298,6 +1564,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn reasoning_stream_has_item_lifecycle_and_completed_snapshot_fallback() {
+        let flow = flow(Arc::new(ScriptedTransport::new(|_| Vec::new())));
+        let mut bridge = Bridge::new(flow.runtime.clone(), spec("reasoning-lifecycle"));
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<StreamDelta>::new()));
+        let captured = seen.clone();
+        let sink: StreamSink = Arc::new(move |event| captured.lock().unwrap().push(event));
+        for (method, params) in [
+            (
+                "item/started",
+                json!({ "item": { "id": "r1", "type": "reasoning" } }),
+            ),
+            (
+                "item/reasoning/summaryTextDelta",
+                json!({ "itemId": "r1", "delta": "Checking" }),
+            ),
+            (
+                "item/completed",
+                json!({ "item": { "id": "r1", "type": "reasoning", "summary": ["Checking the scene"] } }),
+            ),
+            // Duplicate lifecycle notifications must not replay a snapshot.
+            (
+                "item/completed",
+                json!({ "item": { "id": "r1", "type": "reasoning", "summary": ["Checking the scene"] } }),
+            ),
+            // Older servers can return the summary only at completion.
+            (
+                "item/completed",
+                json!({ "item": { "id": "r2", "type": "reasoning", "summaryText": "Recovered" } }),
+            ),
+        ] {
+            assert!(bridge
+                .notification(method, &params, Some(&sink))
+                .unwrap()
+                .is_none());
+        }
+        let events = seen.lock().unwrap();
+        assert_eq!(events.len(), 5);
+        assert!(matches!(&events[0], StreamDelta::ReasoningStarted { item_id } if item_id == "r1"));
+        assert!(
+            matches!(&events[1], StreamDelta::ReasoningDelta { item_id, delta } if item_id == "r1" && delta == "Checking")
+        );
+        assert!(
+            matches!(&events[2], StreamDelta::ReasoningCompleted { item_id, text } if item_id == "r1" && text == "Checking the scene")
+        );
+        assert!(matches!(&events[3], StreamDelta::ReasoningStarted { item_id } if item_id == "r2"));
+        assert!(
+            matches!(&events[4], StreamDelta::ReasoningCompleted { item_id, text } if item_id == "r2" && text == "Recovered")
+        );
+    }
+
     #[tokio::test]
     async fn persistent_member_reuses_one_thread_with_incremental_task_input() {
         let seen = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
@@ -1351,6 +1668,17 @@ mod tests {
             .filter(|m| m["method"] == "turn/start")
             .collect();
         assert_eq!(starts.len(), 2);
+        assert!(starts
+            .iter()
+            .all(|start| start["params"]["summary"] == "auto"));
+        let thread = seen
+            .iter()
+            .find(|message| message["method"] == "thread/start")
+            .unwrap();
+        assert_eq!(
+            thread["params"]["config"]["model_reasoning_summary"],
+            "auto"
+        );
         assert_eq!(starts[1]["params"]["threadId"], "member-thread");
         assert!(starts[1]["params"]["input"]
             .to_string()
@@ -1387,37 +1715,125 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ignored_isolation_config_stops_before_model_turn() {
-        let turns = Arc::new(AtomicUsize::new(0));
-        let count = turns.clone();
+    async fn disabled_project_config_warning_keeps_managed_isolation() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+        let captured = seen.clone();
+        let cwd = std::env::temp_dir();
+        let skill = cwd.join("disabled-project-skill/SKILL.md");
+        let expected_skill = skill.clone();
+        let summary = format!(
+            "Project-local config, hooks, and exec policies are disabled in the following folders until the project is trusted, but skills still load.\n    1. {}\n       To load project-local config, hooks, and exec policies, add {} as a trusted project in {}.\n",
+            cwd.join(".codex").display(), cwd.display(), cwd.join("managed-home/config.toml").display()
+        );
+        let warning = json!({"method":"configWarning","params":{"details":null,"summary":summary}});
         let transport = Arc::new(ScriptedTransport::new(move |m| {
-            if let Some(r) = base_reply(m) {
-                return r;
+            captured.lock().unwrap().push(m.clone());
+            if m["method"] == "skills/list" {
+                return vec![json!({"id":m["id"],"result":{"data":[{
+                    "cwd":m["params"]["cwds"][0],"skills":[{"path":skill,"enabled":true}],"errors":[]
+                }]}})];
             }
-            if m["method"] == "thread/start" {
-                return vec![
-                    json!({"method":"configWarning","params":{"message":"isolation setting unrecognized"}}),
-                    json!({"id":m["id"],"result":{"thread":{"id":"must-not-run"}}}),
-                ];
+            if let Some(mut replies) = base_reply(m) {
+                if m["method"] == "config/read" {
+                    replies.insert(0, warning.clone());
+                }
+                return replies;
             }
-            if m["method"] == "turn/start" {
-                count.fetch_add(1, Ordering::SeqCst);
+            match m["method"].as_str() {
+                Some("thread/start") => {
+                    vec![json!({"id":m["id"],"result":{"thread":{"id":"isolated-thread"}}})]
+                }
+                Some("turn/start") => vec![
+                    warning.clone(),
+                    json!({"id":m["id"],"result":{"turn":{"id":"isolated-turn"}}}),
+                    json!({"method":"item/completed","params":{"threadId":"isolated-thread","turnId":"isolated-turn","item":{"type":"agentMessage","text":"done"}}}),
+                    json!({"method":"turn/completed","params":{"threadId":"isolated-thread","turn":{"id":"isolated-turn","status":"completed"}}}),
+                ],
+                _ => vec![],
             }
-            vec![]
         }));
         let flow = flow(transport);
-        let step = flow.step(spec("ignored-config"));
-        let error = step(
+        let step = flow.step(spec("disabled-project-config"));
+        let result = step(
             vec![json!({"role":"user","content":"test"})],
             vec![tool()],
             None,
         )
         .await
-        .err()
         .unwrap();
-        assert!(error.to_string().starts_with(CAPABILITY_ERROR));
-        assert!(flow.runtime.closed.load(Ordering::Acquire));
-        assert_eq!(turns.load(Ordering::SeqCst), 0);
+        assert_eq!(result.message["content"], "done");
+        assert!(!flow.runtime.closed.load(Ordering::Acquire));
+        let seen = seen.lock().unwrap();
+        let thread = &seen.iter().find(|m| m["method"] == "thread/start").unwrap()["params"];
+        assert_eq!(thread["sandbox"], "read-only");
+        assert_eq!(thread["approvalPolicy"], "never");
+        for feature in [
+            "shell_tool",
+            "unified_exec",
+            "hooks",
+            "multi_agent",
+            "apps",
+            "image_generation",
+        ] {
+            assert_eq!(thread["config"]["features"][feature], false);
+        }
+        assert_eq!(
+            thread["config"]["skills"]["config"],
+            json!([{"path":expected_skill,"enabled":false}])
+        );
+        assert_eq!(
+            thread["config"]["mcp_servers"]["unsafe_server"]["enabled"],
+            false
+        );
+        assert_eq!(thread["config"]["plugins"]["test-plugin"]["enabled"], false);
+        assert_eq!(thread["config"]["apps"]["test-app"]["enabled"], false);
+        let turn = &seen.iter().find(|m| m["method"] == "turn/start").unwrap()["params"];
+        assert_eq!(turn["sandboxPolicy"]["type"], "readOnly");
+        assert_eq!(turn["approvalPolicy"], "never");
+        assert!(!seen.iter().any(|m| m["method"]
+            .as_str()
+            .is_some_and(|method| method.starts_with("config/") && method != "config/read")));
+    }
+
+    #[tokio::test]
+    async fn ignored_isolation_config_stops_before_model_turn() {
+        for notification in [
+            json!({"method":"configWarning","params":{"message":"isolation setting unrecognized"}}),
+            json!({"method":"configWarning","params":{"details":null,"summary":"isolation setting unrecognized"}}),
+            json!({"method":"configWarning","params":{"details":"required isolation override rejected","summary":"Project-local config, hooks, and exec policies are disabled in the following folders until the project is trusted, but skills still load.\n    1. /project/.codex\n       To load project-local config, hooks, and exec policies, add /project as a trusted project in /managed/config.toml.\n"}}),
+            json!({"method":"skills/changed","params":{}}),
+        ] {
+            let turns = Arc::new(AtomicUsize::new(0));
+            let count = turns.clone();
+            let transport = Arc::new(ScriptedTransport::new(move |m| {
+                if let Some(r) = base_reply(m) {
+                    return r;
+                }
+                if m["method"] == "thread/start" {
+                    return vec![
+                        notification.clone(),
+                        json!({"id":m["id"],"result":{"thread":{"id":"must-not-run"}}}),
+                    ];
+                }
+                if m["method"] == "turn/start" {
+                    count.fetch_add(1, Ordering::SeqCst);
+                }
+                vec![]
+            }));
+            let flow = flow(transport);
+            let step = flow.step(spec("ignored-config"));
+            let error = step(
+                vec![json!({"role":"user","content":"test"})],
+                vec![tool()],
+                None,
+            )
+            .await
+            .err()
+            .unwrap();
+            assert!(error.to_string().starts_with(CAPABILITY_ERROR));
+            assert!(flow.runtime.closed.load(Ordering::Acquire));
+            assert_eq!(turns.load(Ordering::SeqCst), 0);
+        }
     }
 
     #[tokio::test]
@@ -1824,6 +2240,212 @@ mod tests {
         assert_eq!(result.message["content"], "Recovered result");
         drop(step);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_turn_retry_requires_explicit_empty_original_thread() {
+        for (history, retry, allowed) in [
+            (json!({"id":"empty-thread","turns":[]}), true, true),
+            (
+                json!({"id":"empty-thread","turns":[{"id":"unknown-turn"}]}),
+                true,
+                false,
+            ),
+            (json!({"id":"empty-thread"}), true, false),
+            (json!({"id":"empty-thread","turns":null}), true, false),
+            (json!({"id":"other-thread","turns":[]}), true, false),
+            (json!({"id":"empty-thread","turns":[]}), false, false),
+        ] {
+            let dir = std::env::temp_dir()
+                .join(format!("forge-empty-thread-{}", crate::events::new_id("t")));
+            let mut job = spec("empty-thread-job");
+            job.state_dir = Some(dir.clone());
+            job.retry_failed = retry;
+            let (tools, _) = declarations(&[tool()]).unwrap();
+            let mut record =
+                AgentJobRecord::starting(&job, "codex", serde_json::to_string(&tools).unwrap());
+            record.thread_id = Some("empty-thread".into());
+            record.result.status = AgentJobStatus::Failed;
+            record.result.error = Some("unknown startup result".into());
+            let path = crate::agent_job::journal_path(&job).unwrap();
+            let before = serde_json::to_string(&record).unwrap();
+            crate::sessions::write_atomic(&path, &before).unwrap();
+            let starts = Arc::new(AtomicUsize::new(0));
+            let counted = starts.clone();
+            let transport = Arc::new(ScriptedTransport::new(move |m| {
+                if let Some(r) = base_reply(m) {
+                    return r;
+                }
+                match m["method"].as_str() {
+                    Some("thread/resume") => {
+                        assert_eq!(m["params"]["threadId"], "empty-thread");
+                        vec![json!({"id":m["id"],"result":{"thread":{"id":"empty-thread"}}})]
+                    }
+                    Some("thread/read") => {
+                        assert_eq!(m["params"]["includeTurns"], true);
+                        vec![json!({"id":m["id"],"result":{"thread":history}})]
+                    }
+                    Some("turn/start") => {
+                        assert_eq!(m["params"]["threadId"], "empty-thread");
+                        counted.fetch_add(1, Ordering::SeqCst);
+                        vec![
+                            json!({"id":m["id"],"result":{"turn":{"id":"fresh-turn"}}}),
+                            json!({"method":"item/completed","params":{"threadId":"empty-thread","turnId":"fresh-turn","item":{"type":"agentMessage","text":"reconciled"}}}),
+                            json!({"method":"turn/completed","params":{"threadId":"empty-thread","turn":{"id":"fresh-turn","status":"completed"}}}),
+                        ]
+                    }
+                    Some("thread/start") => {
+                        panic!("generic reconciliation must retain the original thread")
+                    }
+                    _ => vec![],
+                }
+            }));
+            let recovered = flow(transport);
+            let step = recovered.step(job.clone());
+            let result = step(
+                vec![json!({"role":"user","content":"retry"})],
+                vec![tool()],
+                None,
+            )
+            .await;
+            if allowed {
+                assert_eq!(result.unwrap().message["content"], "reconciled");
+                let saved: AgentJobRecord =
+                    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                assert_eq!(saved.generation, 2);
+                assert_eq!(saved.thread_id.as_deref(), Some("empty-thread"));
+            } else {
+                assert!(result
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("CODEX_JOB_RECOVERY_REQUIRED"));
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+            }
+            assert_eq!(starts.load(Ordering::SeqCst), usize::from(allowed));
+            drop(step);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn known_legacy_startup_abort_is_archived_before_new_thread() {
+        for (known, retry, has_turn) in [
+            (true, true, false),
+            (true, false, false),
+            (false, true, false),
+            (true, true, true),
+        ] {
+            let dir = std::env::temp_dir().join(format!(
+                "forge-startup-abort-{}",
+                crate::events::new_id("t")
+            ));
+            let mut job = spec("legacy-startup-job");
+            job.state_dir = Some(dir.clone());
+            job.retry_failed = retry;
+            let (tools, _) = declarations(&[tool()]).unwrap();
+            let mut record =
+                AgentJobRecord::starting(&job, "codex", serde_json::to_string(&tools).unwrap());
+            record.thread_id = Some("old-ephemeral-thread".into());
+            record.turn_id = has_turn.then(|| "old-turn".into());
+            record.result.status = AgentJobStatus::Failed;
+            let warning = json!({"details":null,"summary":"Project-local config, hooks, and exec policies are disabled in the following folders until the project is trusted, but skills still load.\n    1. /project/.codex\n       To load project-local config, hooks, and exec policies, add /project as a trusted project in /managed/config.toml.\n"});
+            record.result.error = Some(if known {
+                capability(&format!(
+                    "受管配置未获接受或技能目录已变更，已停止隔离进程: configWarning: {warning}"
+                ))
+                .to_string()
+            } else {
+                "unknown startup failure".into()
+            });
+            let path = crate::agent_job::journal_path(&job).unwrap();
+            let before = serde_json::to_string(&record).unwrap();
+            crate::sessions::write_atomic(&path, &before).unwrap();
+            let seen = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+            let captured = seen.clone();
+            let transport = Arc::new(ScriptedTransport::new(move |m| {
+                captured.lock().unwrap().push(m.clone());
+                if let Some(r) = base_reply(m) {
+                    return r;
+                }
+                match m["method"].as_str() {
+                    Some("thread/start") => {
+                        vec![json!({"id":m["id"],"result":{"thread":{"id":"new-thread"}}})]
+                    }
+                    Some("thread/resume") if !known => vec![
+                        json!({"id":m["id"],"error":{"code":-32000,"message":"thread unavailable"}}),
+                    ],
+                    Some("thread/resume") => vec![
+                        json!({"id":m["id"],"result":{"thread":{"id":"old-ephemeral-thread"}}}),
+                    ],
+                    Some("thread/read") => vec![
+                        json!({"id":m["id"],"result":{"thread":{"id":"old-ephemeral-thread","turns":[{"id":"old-turn","status":"completed","items":[]}]}}}),
+                    ],
+                    Some("turn/start") => vec![
+                        json!({"id":m["id"],"result":{"turn":{"id":"fresh-turn"}}}),
+                        json!({"method":"item/completed","params":{"threadId":m["params"]["threadId"],"turnId":"fresh-turn","item":{"type":"agentMessage","text":"recovered"}}}),
+                        json!({"method":"turn/completed","params":{"threadId":m["params"]["threadId"],"turn":{"id":"fresh-turn","status":"completed"}}}),
+                    ],
+                    _ => vec![],
+                }
+            }));
+            let recovered = flow(transport);
+            let step = recovered.step(job);
+            let result = step(
+                vec![json!({"role":"user","content":"retry"})],
+                vec![tool()],
+                None,
+            )
+            .await;
+            let allowed = known && retry;
+            if allowed {
+                assert_eq!(result.unwrap().message["content"], "recovered");
+            } else {
+                assert!(result
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("CODEX_JOB_RECOVERY_REQUIRED"));
+            }
+            let archive = path.with_file_name(format!(
+                "{}.g1.startup-abort.json",
+                path.file_stem().unwrap().to_string_lossy()
+            ));
+            let seen = seen.lock().unwrap();
+            let replacement = known && retry && !has_turn;
+            assert_eq!(
+                seen.iter()
+                    .filter(|m| m["method"] == "thread/start")
+                    .count(),
+                usize::from(replacement)
+            );
+            assert_eq!(
+                seen.iter().filter(|m| m["method"] == "turn/start").count(),
+                usize::from(allowed)
+            );
+            if replacement {
+                assert!(!seen
+                    .iter()
+                    .any(|m| m["method"] == "thread/resume" || m["method"] == "thread/read"));
+                assert_eq!(std::fs::read_to_string(&archive).unwrap(), before);
+                let saved: AgentJobRecord =
+                    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                assert_eq!(saved.generation, 2);
+                assert_eq!(saved.thread_id.as_deref(), Some("new-thread"));
+                assert!(saved
+                    .result
+                    .evidence
+                    .contains(&archive.to_string_lossy().into_owned()));
+            } else {
+                assert!(!archive.exists());
+                if !allowed {
+                    assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+                }
+            }
+            drop(seen);
+            drop(step);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[tokio::test]

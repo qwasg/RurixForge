@@ -335,7 +335,7 @@ impl ForgeProject {
         let content = self.content_root();
         let cache = self.cache_root();
         let tmp = self.tmp_root();
-        for sub in ["Meshes", "Models", "Textures", "Materials", "Prefabs", "Scenes", "Scripts", "Audio", "Sprites"] {
+        for sub in ["Meshes", "Models", "Textures", "Materials", "Prefabs", "Scenes", "Scripts", "Audio", "Sprites", "Rigs"] {
             std::fs::create_dir_all(content.join(sub))?;
         }
         std::fs::create_dir_all(cache.join("rxmesh"))?;

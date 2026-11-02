@@ -1,0 +1,1654 @@
+//! MIR → 文本 LLVM IR(M2.3 host codegen;07 §8 / D-209)。
+//!
+//! 绑定通道 = **文本 IR + 外部 clang**(M2_PLAN v1.3 选型留痕):本模块产出
+//! `.ll`,驱动调 pin 的 clang 22.1.x(D-205)编为 x86-64 COFF `.obj`,
+//! link.exe 链接(Microsoft x64 ABI)。
+//!
+//! debug info:CodeView module flag + DISubprogram/DILocation 行号
+//! (D-209/D-237:PDB 断点经 clang `-g` 透传)。
+//!
+//! M2.3 codegen 约定:
+//! - 全 local 进 alloca(mem2reg 交给 LLVM;不做自有优化);
+//! - `bool` 以 i8 落内存,分支处 `icmp ne 0` 还原 i1;
+//! - 字符串字面量 = NUL 终止全局常量,`&str` 即 `ptr`(len 携带随 M3 库化);
+//! - `()` 与空元组零尺寸:不开 alloca、实参/形参位跳过;
+//! - `main` 以 C ABI 暴露(CRT 启动调用),unit 返回 → `ret i32 0`。
+
+use std::collections::HashMap;
+use std::fmt::Write as _;
+
+use crate::ast::{BinOp, UnOp};
+use crate::hir::{self, Builtin, PrimTy};
+use crate::mir::{
+    Body, CallTarget, Const, Operand, Place, ProjElem, Rvalue, StatementKind, TerminatorKind,
+};
+use crate::source_map::SourceMap;
+use crate::span::Span;
+use crate::ty::Ty;
+
+pub struct CodegenOpts<'a> {
+    /// 模块名(诊断性;`; ModuleID`)。
+    pub module_name: &'a str,
+    /// DIFile filename(源文件名,cdb 源行断点锚点)。
+    pub file_name: &'a str,
+    /// DIFile directory(绝对路径)。
+    pub directory: &'a str,
+    /// 编译器已知项(MS1.2,RXS-0189:gpu 句柄 Adt → 单 u64 标量布局判定)。
+    pub lang_items: crate::resolve::LangItems,
+    /// single-source 嵌入 device 产物(MS1.2,RXS-0192):`Some` = 本单元使用
+    /// gpu 宿主 API 时 driver 传入(空 PTX = 哨兵,运行期装载协商确定性拒);
+    /// `None` 且 MIR 引用描述表 → 同哨兵空表(防御兜底)。
+    pub gpu_artifacts: Option<GpuArtifacts>,
+}
+
+/// single-source 嵌入 device 产物(RXS-0192):PTX 文本(必存;空 = 哨兵)+
+/// 可选 sm_89 预编 cubin 字节 + 多入口 SPIR-V 表(RXS-0290/0291,artifacts v2)。
+#[derive(Debug, Default)]
+pub struct GpuArtifacts {
+    pub ptx: String,
+    pub cubin: Vec<u8>,
+    /// 多入口独立 SPIR-V 模块表(RXS-0291;无合并无链接器):cargo feature
+    /// `vulkan-backend` on 时由 driver 入口迭代器收集(`build_gpu_artifacts`);
+    /// off 恒空 → `emit_gpu_artifact_globals` 发射 v1 blob,产物逐字节不变
+    /// (RXS-0290 Legality feature 门控)。
+    pub spirv_modules: Vec<SpirvModule>,
+}
+
+/// 单入口独立 SPIR-V 模块(RXS-0291 每入口一模块,无 SPIR-V 合并/链接器)。
+#[derive(Debug)]
+pub struct SpirvModule {
+    /// 入口名 = 既有 PTX launch 路径同名内核标识(device MIR `Body.symbol`,
+    /// `rxrt_launch` 的 NUL 终止 `entry` 字符串同源 mangle,单一事实源)。
+    pub name: String,
+    /// `ShaderStage` 枚举声明序(RXS-0290;见 [`stage_tag`])。
+    pub stage_tag: u32,
+    /// SPIR-V 模块小端字节(`.spv` 形态;`vulkan_codegen::words_to_bytes`)。
+    pub bytes: Vec<u8>,
+}
+
+/// `stage_tag` 映射(RXS-0290 单一事实源):[`crate::ast::ShaderStage`] 枚举声明序
+/// (0=Vertex / 1=Fragment / 2=Compute / 3=Mesh / 4=Task / 5=RayGen / 6=ClosestHit /
+/// 7=AnyHit / 8=Miss / 9=Intersection / 10=Callable)。
+pub fn stage_tag(stage: crate::ast::ShaderStage) -> u32 {
+    use crate::ast::ShaderStage;
+    match stage {
+        ShaderStage::Vertex => 0,
+        ShaderStage::Fragment => 1,
+        ShaderStage::Compute => 2,
+        ShaderStage::Mesh => 3,
+        ShaderStage::Task => 4,
+        ShaderStage::RayGen => 5,
+        ShaderStage::ClosestHit => 6,
+        ShaderStage::AnyHit => 7,
+        ShaderStage::Miss => 8,
+        ShaderStage::Intersection => 9,
+        ShaderStage::Callable => 10,
+    }
+}
+
+/// codegen 入口:全部单态化实例 → 单一 LLVM IR 模块文本。
+pub fn emit_llvm_ir(
+    bodies: &[Body],
+    krate: &hir::Crate,
+    sm: &SourceMap,
+    opts: &CodegenOpts<'_>,
+) -> String {
+    let mut cg = Cg {
+        krate,
+        sm,
+        lang: opts.lang_items,
+        fns: String::new(),
+        globals: String::new(),
+        strs: HashMap::new(),
+        md: Vec::new(),
+        locs: HashMap::new(),
+        tmp: 0,
+        cur_dbg: None,
+        cur_sp: 0,
+        need_puts: false,
+        need_gpu_artifacts: false,
+        externs: HashMap::new(),
+        drop_lbl: 0,
+    };
+    // 元数据骨架:!0 CU / !1 file / !2 !3 module flags / !4 !5 subroutine type
+    cg.md.push(
+        "distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: \"rurixc\", \
+         isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)"
+            .to_owned(),
+    );
+    cg.md.push(format!(
+        "!DIFile(filename: \"{}\", directory: \"{}\")",
+        escape_md(opts.file_name),
+        escape_md(opts.directory)
+    ));
+    cg.md.push("!{i32 2, !\"CodeView\", i32 1}".to_owned());
+    cg.md
+        .push("!{i32 2, !\"Debug Info Version\", i32 3}".to_owned());
+    cg.md.push("!DISubroutineType(types: !5)".to_owned());
+    cg.md.push("!{null}".to_owned());
+
+    for b in bodies {
+        cg.emit_body(b);
+    }
+    // single-source 嵌入描述表(MS1.2,RXS-0192):MIR 引用 @__rx_gpu_artifacts
+    // 时于常量段发射(逐字节匹配 rurix-rt-cabi artifacts.rs v1 布局)。
+    if cg.need_gpu_artifacts {
+        emit_gpu_artifact_globals(&mut cg.globals, opts.gpu_artifacts.as_ref());
+    }
+
+    let mut out = String::new();
+    let _ = writeln!(out, "; ModuleID = '{}'", opts.module_name);
+    let _ = writeln!(out, "source_filename = \"{}\"", escape_md(opts.file_name));
+    let _ = writeln!(out, "target triple = \"x86_64-pc-windows-msvc\"");
+    out.push('\n');
+    out.push_str(&cg.globals);
+    if cg.need_puts {
+        out.push_str("declare i32 @puts(ptr)\n");
+    }
+    for (sym, decl) in {
+        let mut v: Vec<_> = cg.externs.iter().collect();
+        v.sort();
+        v
+    } {
+        let _ = writeln!(out, "declare {decl} ; extern {sym}");
+    }
+    out.push('\n');
+    out.push_str(&cg.fns);
+    out.push('\n');
+    out.push_str("!llvm.dbg.cu = !{!0}\n!llvm.module.flags = !{!2, !3}\n");
+    for (i, m) in cg.md.iter().enumerate() {
+        let _ = writeln!(out, "!{i} = {m}");
+    }
+    out
+}
+
+struct Cg<'a> {
+    krate: &'a hir::Crate,
+    sm: &'a SourceMap,
+    /// 编译器已知项(MS1.2,RXS-0189:gpu 句柄布局判定)。
+    lang: crate::resolve::LangItems,
+    fns: String,
+    globals: String,
+    /// 字符串字面量 → 全局序号(去重)。
+    strs: HashMap<String, usize>,
+    /// 编号元数据节点(序号即 `!N`)。
+    md: Vec<String>,
+    /// (行, 列, 函数 SP) → DILocation 序号(去重)。
+    locs: HashMap<(u32, u32, usize), usize>,
+    tmp: u32,
+    /// 当前语句的 `!dbg` 尾缀。
+    cur_dbg: Option<usize>,
+    /// 当前函数 DISubprogram 序号。
+    cur_sp: usize,
+    need_puts: bool,
+    /// MIR 引用了 `@__rx_gpu_artifacts` 描述表(RXS-0192;模块尾部发射常量)。
+    need_gpu_artifacts: bool,
+    /// 无 body 的外部 fn:符号 → declare 文本。
+    externs: HashMap<String, String>,
+    /// drop glue 内部 LLVM 标签计数(enum 变体分支用)。
+    drop_lbl: u32,
+}
+
+impl Cg<'_> {
+    // -- 类型映射 ---------------------------------------------------------------
+
+    fn llty(&self, t: &Ty) -> String {
+        match t {
+            Ty::Prim(p) => prim_llty(*p).to_owned(),
+            Ty::Ref(..) | Ty::RawPtr(..) | Ty::FnPtr(..) => "ptr".to_owned(),
+            Ty::Tuple(v) => {
+                let parts: Vec<String> = v.iter().map(|x| self.llty(x)).collect();
+                format!("{{ {} }}", parts.join(", "))
+            }
+            // 宿主 GPU 句柄(MS1.2,RXS-0189):编译器合成布局 = 单 u64 句柄标量。
+            Ty::Adt(d, _) if self.lang.is_gpu_handle(*d) => "i64".to_owned(),
+            Ty::Adt(d, args) => match &self.krate.item(*d).kind {
+                // enum 扁平布局(M3.1 取舍,见 mir::enum_variant_layout):
+                // `{ i32 tag, 变体0载荷…, 变体1载荷…, … }`,载荷不重叠
+                hir::ItemKind::Enum { variants } => {
+                    let mut parts = vec!["i32".to_owned()];
+                    for v in variants {
+                        for ft in crate::typeck::adt_field_tys(self.krate, *v, args) {
+                            parts.push(self.llty(&ft));
+                        }
+                    }
+                    format!("{{ {} }}", parts.join(", "))
+                }
+                _ => {
+                    let fields = crate::typeck::adt_field_tys(self.krate, *d, args);
+                    let parts: Vec<String> = fields.iter().map(|x| self.llty(x)).collect();
+                    format!("{{ {} }}", parts.join(", "))
+                }
+            },
+            // 作用面外形态(RX6001 已拦截;防御性兜底)
+            Ty::Array(_) | Ty::Slice(_) | Ty::Param(_) | Ty::Infer(_) | Ty::Const(_) | Ty::Err => {
+                "i8".to_owned()
+            }
+        }
+    }
+
+    fn is_zst(&self, t: &Ty) -> bool {
+        matches!(t, Ty::Tuple(v) if v.is_empty())
+    }
+
+    // -- 工具 -------------------------------------------------------------------
+
+    fn fresh(&mut self) -> String {
+        self.tmp += 1;
+        format!("%t{}", self.tmp)
+    }
+
+    fn dbg_suffix(&self) -> String {
+        match self.cur_dbg {
+            Some(n) => format!(", !dbg !{n}"),
+            None => String::new(),
+        }
+    }
+
+    fn set_dbg(&mut self, span: Span) {
+        let lc = self.sm.lookup(span.file, span.lo);
+        let key = (lc.line, lc.col, self.cur_sp);
+        let next = self.md.len();
+        let idx = *self.locs.entry(key).or_insert_with(|| {
+            next // 占位;真正 push 在下方(entry 闭包内不可变借 self.md)
+        });
+        if idx == next {
+            self.md.push(format!(
+                "!DILocation(line: {}, column: {}, scope: !{})",
+                lc.line, lc.col, self.cur_sp
+            ));
+        }
+        self.cur_dbg = Some(idx);
+    }
+
+    fn str_global(&mut self, s: &str) -> String {
+        let next = self.strs.len();
+        let id = *self.strs.entry(s.to_owned()).or_insert(next);
+        if id == next {
+            let bytes = s.as_bytes();
+            let mut enc = String::new();
+            for b in bytes {
+                match b {
+                    0x20..=0x7e if *b != b'"' && *b != b'\\' => enc.push(*b as char),
+                    _ => enc.push_str(&format!("\\{b:02X}")),
+                }
+            }
+            enc.push_str("\\00");
+            let _ = writeln!(
+                self.globals,
+                "@.str.{id} = private unnamed_addr constant [{} x i8] c\"{enc}\"",
+                bytes.len() + 1
+            );
+        }
+        format!("@.str.{id}")
+    }
+
+    // -- 函数 ---------------------------------------------------------------------
+
+    fn emit_body(&mut self, b: &Body) {
+        self.tmp = 0;
+        let is_main = b.symbol == "main";
+        let ret_ty = b.ret_ty().clone();
+        let ret_zst = self.is_zst(&ret_ty);
+        let ll_ret = if is_main {
+            "i32".to_owned()
+        } else if ret_zst {
+            "void".to_owned()
+        } else {
+            self.llty(&ret_ty)
+        };
+
+        // DISubprogram
+        let line = self.sm.lookup(b.span.file, b.span.lo).line;
+        let sp = self.md.len();
+        self.md.push(format!(
+            "distinct !DISubprogram(name: \"{0}\", linkageName: \"{0}\", scope: !1, file: !1, \
+             line: {line}, type: !4, scopeLine: {line}, flags: DIFlagPrototyped, \
+             spFlags: DISPFlagDefinition, unit: !0)",
+            escape_md(&b.symbol)
+        ));
+        self.cur_sp = sp;
+        self.cur_dbg = None;
+
+        // 形参(unit 形参跳过;与调用点约定一致)
+        let mut params = Vec::new();
+        for i in 1..=b.arg_count {
+            let l = &b.locals[i];
+            if self.is_zst(&l.ty) {
+                continue;
+            }
+            params.push(format!("{} %arg{i}", self.llty(&l.ty)));
+        }
+        let _ = writeln!(
+            self.fns,
+            "define {ll_ret} @{}({}) !dbg !{sp} {{",
+            b.symbol,
+            params.join(", ")
+        );
+
+        // 入口:allocas + 形参落栈
+        self.fns.push_str("start:\n");
+        for (i, l) in b.locals.iter().enumerate() {
+            if self.is_zst(&l.ty) {
+                continue;
+            }
+            let _ = writeln!(self.fns, "  %l{i} = alloca {}", self.llty(&l.ty));
+        }
+        for i in 1..=b.arg_count {
+            let l = &b.locals[i];
+            if self.is_zst(&l.ty) {
+                continue;
+            }
+            let _ = writeln!(self.fns, "  store {} %arg{i}, ptr %l{i}", self.llty(&l.ty));
+        }
+        self.fns.push_str("  br label %bb0\n");
+
+        for (bi, bb) in b.blocks.iter().enumerate() {
+            let _ = writeln!(self.fns, "bb{bi}:");
+            for s in &bb.stmts {
+                self.set_dbg(s.span);
+                match &s.kind {
+                    StatementKind::Assign(p, rv) => self.emit_assign(b, p, rv),
+                }
+            }
+            self.set_dbg(bb.terminator.span);
+            self.emit_terminator(b, &bb.terminator.kind, is_main, &ret_ty);
+        }
+        self.fns.push_str("}\n\n");
+    }
+
+    // -- place / operand ----------------------------------------------------------
+
+    /// place → (指针值, 指向类型)。
+    fn place_ptr(&mut self, b: &Body, p: &Place) -> (String, Ty) {
+        let mut ptr = format!("%l{}", p.local.0);
+        let mut ty = b.local(p.local).ty.clone();
+        for elem in &p.proj {
+            match elem {
+                ProjElem::Deref => {
+                    let t = self.fresh();
+                    let _ = writeln!(self.fns, "  {t} = load ptr, ptr {ptr}{}", self.dbg_suffix());
+                    ptr = t;
+                    ty = match ty {
+                        Ty::Ref(inner, _) | Ty::RawPtr(inner, _) => *inner,
+                        other => other,
+                    };
+                }
+                ProjElem::Field(i) => {
+                    let agg = self.llty(&ty);
+                    let t = self.fresh();
+                    let _ = writeln!(
+                        self.fns,
+                        "  {t} = getelementptr inbounds {agg}, ptr {ptr}, i32 0, i32 {i}{}",
+                        self.dbg_suffix()
+                    );
+                    ptr = t;
+                    ty = match &ty {
+                        Ty::Tuple(v) => v.get(*i as usize).cloned().unwrap_or(Ty::Err),
+                        Ty::Adt(d, args) => crate::typeck::adt_field_tys(self.krate, *d, args)
+                            .get(*i as usize)
+                            .cloned()
+                            .unwrap_or(Ty::Err),
+                        _ => Ty::Err,
+                    };
+                }
+                ProjElem::VariantField {
+                    variant,
+                    base,
+                    field,
+                } => {
+                    let agg = self.llty(&ty);
+                    let idx = base + field;
+                    let t = self.fresh();
+                    let _ = writeln!(
+                        self.fns,
+                        "  {t} = getelementptr inbounds {agg}, ptr {ptr}, i32 0, i32 {idx}{}",
+                        self.dbg_suffix()
+                    );
+                    ptr = t;
+                    ty = match &ty {
+                        Ty::Adt(_, args) => {
+                            crate::typeck::adt_field_tys(self.krate, *variant, args)
+                                .get(*field as usize)
+                                .cloned()
+                                .unwrap_or(Ty::Err)
+                        }
+                        _ => Ty::Err,
+                    };
+                }
+                // View 索引(RXS-0071)是 device codegen 专属投影,host MIR 不产出。
+                ProjElem::Index(_) => {
+                    unreachable!("ProjElem::Index 仅出现在 device MIR(NVPTX codegen)")
+                }
+            }
+        }
+        (ptr, ty)
+    }
+
+    /// operand → (LLVM 类型, 值);unit → None。
+    fn operand(&mut self, b: &Body, o: &Operand) -> Option<(String, String, Ty)> {
+        match o {
+            // Copy 与 Move 的取值形态一致(按位 load;move 的语义差异由
+            // move/init 数据流静态保证,RXS-0053/0054)
+            Operand::Copy(p) | Operand::Move(p) => {
+                // 零尺寸 place 无 alloca,先以 peek 短路(不发指令)
+                let (_, peeked) = self.place_ptr_peek(b, p);
+                if self.is_zst(&peeked) {
+                    return None;
+                }
+                let (ptr, ty) = self.place_ptr(b, p);
+                let ll = self.llty(&ty);
+                let t = self.fresh();
+                let _ = writeln!(
+                    self.fns,
+                    "  {t} = load {ll}, ptr {ptr}{}",
+                    self.dbg_suffix()
+                );
+                Some((ll, t, ty))
+            }
+            Operand::Const(c) => match c {
+                Const::Unit => None,
+                Const::Int(v, p) => Some((
+                    prim_llty(*p).to_owned(),
+                    format!("{}", wrap_signed(*v, prim_width(*p))),
+                    Ty::Prim(*p),
+                )),
+                Const::Float(v, p) => {
+                    let bits = match p {
+                        PrimTy::F32 => f64::from(*v as f32).to_bits(),
+                        _ => v.to_bits(),
+                    };
+                    Some((
+                        prim_llty(*p).to_owned(),
+                        format!("0x{bits:016X}"),
+                        Ty::Prim(*p),
+                    ))
+                }
+                Const::Bool(v) => Some((
+                    "i8".to_owned(),
+                    if *v { "1" } else { "0" }.to_owned(),
+                    Ty::Prim(PrimTy::Bool),
+                )),
+                Const::Char(c) => Some((
+                    "i32".to_owned(),
+                    format!("{}", *c as u32),
+                    Ty::Prim(PrimTy::Char),
+                )),
+                Const::Str(s) => {
+                    let g = self.str_global(s);
+                    Some((
+                        "ptr".to_owned(),
+                        g,
+                        Ty::Ref(Box::new(Ty::Prim(PrimTy::Str)), false),
+                    ))
+                }
+                // 全局常量地址(MS1.2,RXS-0192:嵌入描述表指针)。
+                Const::GlobalAddr(name) => {
+                    if name == "__rx_gpu_artifacts" {
+                        self.need_gpu_artifacts = true;
+                    }
+                    Some((
+                        "ptr".to_owned(),
+                        format!("@{name}"),
+                        Ty::RawPtr(Box::new(Ty::Prim(PrimTy::U8)), false),
+                    ))
+                }
+            },
+        }
+    }
+
+    // -- 语句 -----------------------------------------------------------------------
+
+    fn emit_assign(&mut self, b: &Body, place: &Place, rv: &Rvalue) {
+        match rv {
+            Rvalue::Use(o) => {
+                let Some((ll, v, _)) = self.operand(b, o) else {
+                    return; // unit:零尺寸,无落栈
+                };
+                let (ptr, _) = self.place_ptr(b, place);
+                let _ = writeln!(self.fns, "  store {ll} {v}, ptr {ptr}{}", self.dbg_suffix());
+            }
+            Rvalue::Ref(_, src) => {
+                let (src_ptr, _) = self.place_ptr(b, src);
+                let (ptr, _) = self.place_ptr(b, place);
+                let _ = writeln!(
+                    self.fns,
+                    "  store ptr {src_ptr}, ptr {ptr}{}",
+                    self.dbg_suffix()
+                );
+            }
+            Rvalue::BinaryOp(op, a, c) => {
+                let Some((lla, va, ta)) = self.operand(b, a) else {
+                    return;
+                };
+                let Some((_, vc, _)) = self.operand(b, c) else {
+                    return;
+                };
+                let signed = ty_signed(&ta);
+                let is_float = ta.is_float();
+                let t = self.fresh();
+                let (result, result_is_i1) = match op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
+                        let inst = arith_inst(*op, is_float, signed);
+                        let _ = writeln!(
+                            self.fns,
+                            "  {t} = {inst} {lla} {va}, {vc}{}",
+                            self.dbg_suffix()
+                        );
+                        (t.clone(), false)
+                    }
+                    BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => {
+                        let inst = bit_inst(*op, signed);
+                        let _ = writeln!(
+                            self.fns,
+                            "  {t} = {inst} {lla} {va}, {vc}{}",
+                            self.dbg_suffix()
+                        );
+                        (t.clone(), false)
+                    }
+                    BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
+                        let inst = if is_float {
+                            format!("fcmp {}", fcmp_cond(*op))
+                        } else {
+                            format!("icmp {}", icmp_cond(*op, signed))
+                        };
+                        let _ = writeln!(
+                            self.fns,
+                            "  {t} = {inst} {lla} {va}, {vc}{}",
+                            self.dbg_suffix()
+                        );
+                        (t.clone(), true)
+                    }
+                    // 短路形态在 MIR 已 CFG 化(lower_short_circuit),此处不出现
+                    BinOp::And | BinOp::Or => {
+                        let _ = writeln!(
+                            self.fns,
+                            "  {t} = and {lla} {va}, {vc}{}",
+                            self.dbg_suffix()
+                        );
+                        (t.clone(), false)
+                    }
+                };
+                let val = if result_is_i1 {
+                    let z = self.fresh();
+                    let _ = writeln!(self.fns, "  {z} = zext i1 {result} to i8");
+                    z
+                } else {
+                    result
+                };
+                let (ptr, pty) = self.place_ptr(b, place);
+                let ll = self.llty(&pty);
+                let _ = writeln!(
+                    self.fns,
+                    "  store {ll} {val}, ptr {ptr}{}",
+                    self.dbg_suffix()
+                );
+            }
+            Rvalue::UnaryOp(op, a) => {
+                let Some((lla, va, ta)) = self.operand(b, a) else {
+                    return;
+                };
+                let t = self.fresh();
+                match op {
+                    UnOp::Neg if ta.is_float() => {
+                        let _ = writeln!(self.fns, "  {t} = fneg {lla} {va}{}", self.dbg_suffix());
+                    }
+                    UnOp::Neg => {
+                        let _ =
+                            writeln!(self.fns, "  {t} = sub {lla} 0, {va}{}", self.dbg_suffix());
+                    }
+                    UnOp::Not if matches!(ta, Ty::Prim(PrimTy::Bool)) => {
+                        let _ =
+                            writeln!(self.fns, "  {t} = xor {lla} {va}, 1{}", self.dbg_suffix());
+                    }
+                    UnOp::Not => {
+                        let _ =
+                            writeln!(self.fns, "  {t} = xor {lla} {va}, -1{}", self.dbg_suffix());
+                    }
+                    UnOp::Deref => unreachable!("Deref 经 place 投影"),
+                }
+                let (ptr, _) = self.place_ptr(b, place);
+                let _ = writeln!(
+                    self.fns,
+                    "  store {lla} {t}, ptr {ptr}{}",
+                    self.dbg_suffix()
+                );
+            }
+            Rvalue::Cast(o, target) => {
+                let Some((lla, va, ta)) = self.operand(b, o) else {
+                    return;
+                };
+                let ll_to = self.llty(target);
+                let val = if lla == ll_to {
+                    va
+                } else {
+                    let inst = cast_inst(&ta, target);
+                    let t = self.fresh();
+                    let _ = writeln!(
+                        self.fns,
+                        "  {t} = {inst} {lla} {va} to {ll_to}{}",
+                        self.dbg_suffix()
+                    );
+                    t
+                };
+                let (ptr, _) = self.place_ptr(b, place);
+                let _ = writeln!(
+                    self.fns,
+                    "  store {ll_to} {val}, ptr {ptr}{}",
+                    self.dbg_suffix()
+                );
+            }
+            Rvalue::Aggregate(ty, ops) => {
+                // 逐字段落位(dest GEP + store;避免 insertvalue 链)
+                let agg = self.llty(ty);
+                let (base, _) = self.place_ptr(b, place);
+                for (i, o) in ops.iter().enumerate() {
+                    let Some((ll, v, _)) = self.operand(b, o) else {
+                        continue;
+                    };
+                    let g = self.fresh();
+                    let _ = writeln!(
+                        self.fns,
+                        "  {g} = getelementptr inbounds {agg}, ptr {base}, i32 0, i32 {i}{}",
+                        self.dbg_suffix()
+                    );
+                    let _ = writeln!(self.fns, "  store {ll} {v}, ptr {g}{}", self.dbg_suffix());
+                }
+            }
+            Rvalue::VariantAggregate {
+                ty,
+                tag,
+                base: payload_base,
+                ops,
+            } => {
+                // enum 变体构造(M3.1 扁平布局):tag 落下标 0,载荷自 base 顺排
+                let agg = self.llty(ty);
+                let (base, _) = self.place_ptr(b, place);
+                let g = self.fresh();
+                let _ = writeln!(
+                    self.fns,
+                    "  {g} = getelementptr inbounds {agg}, ptr {base}, i32 0, i32 0{}",
+                    self.dbg_suffix()
+                );
+                let _ = writeln!(self.fns, "  store i32 {tag}, ptr {g}{}", self.dbg_suffix());
+                for (i, o) in ops.iter().enumerate() {
+                    let Some((ll, v, _)) = self.operand(b, o) else {
+                        continue;
+                    };
+                    let idx = payload_base + i as u32;
+                    let g = self.fresh();
+                    let _ = writeln!(
+                        self.fns,
+                        "  {g} = getelementptr inbounds {agg}, ptr {base}, i32 0, i32 {idx}{}",
+                        self.dbg_suffix()
+                    );
+                    let _ = writeln!(self.fns, "  store {ll} {v}, ptr {g}{}", self.dbg_suffix());
+                }
+            }
+            Rvalue::Discriminant(src) => {
+                // 判别读取:tag(下标 0)load i32
+                let (src_ptr, src_ty) = self.place_ptr(b, src);
+                let agg = self.llty(&src_ty);
+                let g = self.fresh();
+                let _ = writeln!(
+                    self.fns,
+                    "  {g} = getelementptr inbounds {agg}, ptr {src_ptr}, i32 0, i32 0{}",
+                    self.dbg_suffix()
+                );
+                let t = self.fresh();
+                let _ = writeln!(self.fns, "  {t} = load i32, ptr {g}{}", self.dbg_suffix());
+                let (ptr, _) = self.place_ptr(b, place);
+                let _ = writeln!(self.fns, "  store i32 {t}, ptr {ptr}{}", self.dbg_suffix());
+            }
+            // 纹理采样为图形=B(dxil-backend)着色 body 专属(RXS-0175);host MIR
+            // codegen 作用面外(RX6001 已拦截),防御性跳过不产 host LLVM。
+            // RayQuery(G7.2 W3a,RXS-0298)同例:device 专属,host 防御性跳过。
+            Rvalue::ResourceSample { .. }
+            | Rvalue::Atomic { .. }
+            | Rvalue::RayQueryInitialize { .. }
+            | Rvalue::RayQueryMethod { .. } => {}
+        }
+    }
+
+    // -- 终结子 -----------------------------------------------------------------------
+
+    fn emit_terminator(&mut self, b: &Body, t: &TerminatorKind, is_main: bool, ret_ty: &Ty) {
+        match t {
+            TerminatorKind::Goto(bb) => {
+                let _ = writeln!(self.fns, "  br label %bb{}{}", bb.0, self.dbg_suffix());
+            }
+            TerminatorKind::SwitchBool { discr, then, else_ } => {
+                let Some((ll, v, _)) = self.operand(b, discr) else {
+                    let _ = writeln!(self.fns, "  br label %bb{}{}", else_.0, self.dbg_suffix());
+                    return;
+                };
+                let c = self.fresh();
+                let _ = writeln!(self.fns, "  {c} = icmp ne {ll} {v}, 0{}", self.dbg_suffix());
+                let _ = writeln!(
+                    self.fns,
+                    "  br i1 {c}, label %bb{}, label %bb{}{}",
+                    then.0,
+                    else_.0,
+                    self.dbg_suffix()
+                );
+            }
+            TerminatorKind::Call {
+                target,
+                args,
+                dest,
+                next,
+            } => {
+                let mut arg_vals = Vec::new();
+                for a in args {
+                    if let Some((ll, v, _)) = self.operand(b, a) {
+                        arg_vals.push(format!("{ll} {v}"));
+                    }
+                }
+                let dest_ty = {
+                    let (_, t) = self.place_ptr_peek(b, dest);
+                    t
+                };
+                let dest_zst = self.is_zst(&dest_ty);
+                match target {
+                    CallTarget::Builtin(Builtin::Println) => {
+                        self.need_puts = true;
+                        let t = self.fresh();
+                        let _ = writeln!(
+                            self.fns,
+                            "  {t} = call i32 @puts({}){}",
+                            arg_vals.join(", "),
+                            self.dbg_suffix()
+                        );
+                    }
+                    CallTarget::Fn { def, symbol } => {
+                        let ll_ret = if dest_zst {
+                            "void".to_owned()
+                        } else {
+                            self.llty(&dest_ty)
+                        };
+                        // 无 body 的外部 fn:补 declare
+                        let is_extern = matches!(
+                            &self.krate.item(*def).kind,
+                            hir::ItemKind::Fn(decl) if decl.body.is_none()
+                        );
+                        if is_extern {
+                            let param_tys: Vec<String> = arg_vals
+                                .iter()
+                                .map(|a| a.split(' ').next().unwrap_or("i8").to_owned())
+                                .collect();
+                            self.externs.insert(
+                                symbol.clone(),
+                                format!("{ll_ret} @{symbol}({})", param_tys.join(", ")),
+                            );
+                        }
+                        if dest_zst {
+                            let _ = writeln!(
+                                self.fns,
+                                "  call void @{symbol}({}){}",
+                                arg_vals.join(", "),
+                                self.dbg_suffix()
+                            );
+                        } else {
+                            let t = self.fresh();
+                            let _ = writeln!(
+                                self.fns,
+                                "  {t} = call {ll_ret} @{symbol}({}){}",
+                                arg_vals.join(", "),
+                                self.dbg_suffix()
+                            );
+                            let (ptr, _) = self.place_ptr(b, dest);
+                            let _ = writeln!(
+                                self.fns,
+                                "  store {ll_ret} {t}, ptr {ptr}{}",
+                                self.dbg_suffix()
+                            );
+                        }
+                    }
+                    // 宿主 GPU 编排运行时符号(MS1.2,RXS-0191/0194):rxrt_* 字面名
+                    // declare + call(签名按调用点实参/返回类型定形;链接段静态链
+                    // rurix-rt-cabi,RXS-0195)。
+                    CallTarget::Rt { symbol } => {
+                        let ll_ret = if dest_zst {
+                            "void".to_owned()
+                        } else {
+                            self.llty(&dest_ty)
+                        };
+                        let param_tys: Vec<String> = arg_vals
+                            .iter()
+                            .map(|a| a.split(' ').next().unwrap_or("i8").to_owned())
+                            .collect();
+                        self.externs.insert(
+                            symbol.clone(),
+                            format!("{ll_ret} @{symbol}({})", param_tys.join(", ")),
+                        );
+                        if dest_zst {
+                            let _ = writeln!(
+                                self.fns,
+                                "  call void @{symbol}({}){}",
+                                arg_vals.join(", "),
+                                self.dbg_suffix()
+                            );
+                        } else {
+                            let t = self.fresh();
+                            let _ = writeln!(
+                                self.fns,
+                                "  {t} = call {ll_ret} @{symbol}({}){}",
+                                arg_vals.join(", "),
+                                self.dbg_suffix()
+                            );
+                            let (ptr, _) = self.place_ptr(b, dest);
+                            let _ = writeln!(
+                                self.fns,
+                                "  store {ll_ret} {t}, ptr {ptr}{}",
+                                self.dbg_suffix()
+                            );
+                        }
+                    }
+                    // device intrinsic(RXS-0072)/ libdevice 数学 intrinsic
+                    // (RXS-0081)是 device codegen 专属,host 不产出。
+                    CallTarget::DeviceIntrinsic(_) => {
+                        unreachable!(
+                            "CallTarget::DeviceIntrinsic 仅出现在 device MIR(NVPTX codegen)"
+                        )
+                    }
+                    CallTarget::Libdevice { .. } => {
+                        unreachable!("CallTarget::Libdevice 仅出现在 device MIR(NVPTX codegen)")
+                    }
+                    // mesh/task intrinsic(G4.2,RXS-0275)是 Vulkan device codegen
+                    // 专属,host 不产出(mesh 着色仅经 Vulkan 后端,RXS-0270/0272)。
+                    CallTarget::MeshIntrinsic(_) => {
+                        unreachable!(
+                            "CallTarget::MeshIntrinsic 仅出现在 device MIR(Vulkan codegen)"
+                        )
+                    }
+                    CallTarget::TaskIntrinsic(_) => {
+                        unreachable!(
+                            "CallTarget::TaskIntrinsic 仅出现在 device MIR(Vulkan codegen)"
+                        )
+                    }
+                }
+                let _ = writeln!(self.fns, "  br label %bb{}{}", next.0, self.dbg_suffix());
+            }
+            TerminatorKind::Drop { place, next } => {
+                // RXS-0055:若持有所有权则析构(drop flag 守卫已在 MIR 上展开为
+                // SwitchBool;此处 place 必为整 local,无条件执行 drop glue)
+                let (ptr, ty) = self.place_ptr(b, place);
+                self.emit_drop_glue(&ptr, &ty);
+                let _ = writeln!(self.fns, "  br label %bb{}{}", next.0, self.dbg_suffix());
+            }
+            TerminatorKind::Return => {
+                if is_main {
+                    if matches!(ret_ty, Ty::Prim(PrimTy::I32)) {
+                        let t = self.fresh();
+                        let _ =
+                            writeln!(self.fns, "  {t} = load i32, ptr %l0{}", self.dbg_suffix());
+                        let _ = writeln!(self.fns, "  ret i32 {t}{}", self.dbg_suffix());
+                    } else {
+                        let _ = writeln!(self.fns, "  ret i32 0{}", self.dbg_suffix());
+                    }
+                } else if self.is_zst(ret_ty) {
+                    let _ = writeln!(self.fns, "  ret void{}", self.dbg_suffix());
+                } else {
+                    let ll = self.llty(ret_ty);
+                    let t = self.fresh();
+                    let _ = writeln!(self.fns, "  {t} = load {ll}, ptr %l0{}", self.dbg_suffix());
+                    let _ = writeln!(self.fns, "  ret {ll} {t}{}", self.dbg_suffix());
+                }
+            }
+            TerminatorKind::Unreachable => {
+                self.fns.push_str("  unreachable\n");
+            }
+        }
+    }
+
+    /// drop glue(RXS-0055):先调本类型 `Drop::drop`(若有),再按字段/元素序
+    /// 递归 drop needs-drop 组件;enum 经判别 switch 仅 drop 活动变体载荷。
+    /// 直线发射(struct/tuple/array);enum 引入本地 LLVM 标签分支。
+    fn emit_drop_glue(&mut self, ptr: &str, ty: &Ty) {
+        if !crate::ty::needs_drop(self.krate, ty) {
+            return;
+        }
+        match ty {
+            Ty::Adt(d, args) => {
+                // 自身 Drop::drop(&mut self)
+                if let Some(fnd) = self.krate.drop_fn_of(*d) {
+                    let sym = crate::mir::mangle(&self.krate.item(fnd).name, fnd, args);
+                    let _ = writeln!(
+                        self.fns,
+                        "  call void @{sym}(ptr {ptr}){}",
+                        self.dbg_suffix()
+                    );
+                }
+                match &self.krate.item(*d).kind {
+                    hir::ItemKind::Struct { .. } => {
+                        let fields = crate::typeck::adt_field_tys(self.krate, *d, args);
+                        let agg = self.llty(ty);
+                        for (i, ft) in fields.iter().enumerate() {
+                            if crate::ty::needs_drop(self.krate, ft) {
+                                let fp = self.gep_field(&agg, ptr, i);
+                                self.emit_drop_glue(&fp, ft);
+                            }
+                        }
+                    }
+                    hir::ItemKind::Enum { variants } => {
+                        self.emit_enum_drop_glue(ptr, ty, variants, args);
+                    }
+                    _ => {}
+                }
+            }
+            Ty::Tuple(elems) => {
+                let agg = self.llty(ty);
+                for (i, et) in elems.iter().enumerate() {
+                    if crate::ty::needs_drop(self.krate, et) {
+                        let ep = self.gep_field(&agg, ptr, i);
+                        self.emit_drop_glue(&ep, et);
+                    }
+                }
+            }
+            // 数组按值 drop 随数组支持(M3.1 RX6001 作用面外,防御性跳过)
+            _ => {}
+        }
+    }
+
+    /// enum drop:读判别 → 逐变体 icmp 分支 → drop 该变体 needs-drop 载荷 →
+    /// 汇合到 cont。变体载荷布局基址同 [`crate::mir::enum_variant_layout`]。
+    fn emit_enum_drop_glue(&mut self, ptr: &str, ty: &Ty, variants: &[hir::DefId], args: &[Ty]) {
+        let agg = self.llty(ty);
+        // 判别 = 下标 0 的 i32
+        let tag_ptr = self.gep_field(&agg, ptr, 0);
+        let tag = self.fresh();
+        let _ = writeln!(
+            self.fns,
+            "  {tag} = load i32, ptr {tag_ptr}{}",
+            self.dbg_suffix()
+        );
+        let base = self.next_drop_label();
+        let cont = format!("{base}.cont");
+        // 变体载荷布局:tag 占下标 0,各变体载荷自 1 起顺排(不重叠)
+        let mut layout_base = 1u32;
+        let mut arms: Vec<(usize, u32, hir::DefId)> = Vec::new();
+        for (vi, v) in variants.iter().enumerate() {
+            arms.push((vi, layout_base, *v));
+            layout_base += crate::typeck::adt_field_tys(self.krate, *v, args).len() as u32;
+        }
+        for (vi, vbase, v) in &arms {
+            let fields = crate::typeck::adt_field_tys(self.krate, *v, args);
+            let needs = fields.iter().any(|f| crate::ty::needs_drop(self.krate, f));
+            if !needs {
+                continue;
+            }
+            let cmp = self.fresh();
+            let arm_lbl = format!("{base}.v{vi}");
+            let nxt_lbl = format!("{base}.n{vi}");
+            let _ = writeln!(
+                self.fns,
+                "  {cmp} = icmp eq i32 {tag}, {vi}{}",
+                self.dbg_suffix()
+            );
+            let _ = writeln!(
+                self.fns,
+                "  br i1 {cmp}, label %{arm_lbl}, label %{nxt_lbl}{}",
+                self.dbg_suffix()
+            );
+            let _ = writeln!(self.fns, "{arm_lbl}:");
+            for (fi, ft) in fields.iter().enumerate() {
+                if crate::ty::needs_drop(self.krate, ft) {
+                    let idx = *vbase as usize + fi;
+                    let fp = self.gep_field(&agg, ptr, idx);
+                    self.emit_drop_glue(&fp, ft);
+                }
+            }
+            let _ = writeln!(self.fns, "  br label %{cont}{}", self.dbg_suffix());
+            let _ = writeln!(self.fns, "{nxt_lbl}:");
+        }
+        let _ = writeln!(self.fns, "  br label %{cont}{}", self.dbg_suffix());
+        let _ = writeln!(self.fns, "{cont}:");
+    }
+
+    /// 字段 GEP(下标 idx),返回新指针 SSA 值。
+    fn gep_field(&mut self, agg: &str, ptr: &str, idx: usize) -> String {
+        let t = self.fresh();
+        let _ = writeln!(
+            self.fns,
+            "  {t} = getelementptr inbounds {agg}, ptr {ptr}, i32 0, i32 {idx}{}",
+            self.dbg_suffix()
+        );
+        t
+    }
+
+    fn next_drop_label(&mut self) -> String {
+        self.drop_lbl += 1;
+        format!("drop{}", self.drop_lbl)
+    }
+
+    /// place 的指向类型(不发指令;仅 dest 类型预查)。
+    fn place_ptr_peek(&self, b: &Body, p: &Place) -> (String, Ty) {
+        let mut ty = b.local(p.local).ty.clone();
+        for elem in &p.proj {
+            ty = match elem {
+                ProjElem::Deref => match ty {
+                    Ty::Ref(inner, _) | Ty::RawPtr(inner, _) => *inner,
+                    other => other,
+                },
+                ProjElem::Field(i) => match &ty {
+                    Ty::Tuple(v) => v.get(*i as usize).cloned().unwrap_or(Ty::Err),
+                    Ty::Adt(d, args) => crate::typeck::adt_field_tys(self.krate, *d, args)
+                        .get(*i as usize)
+                        .cloned()
+                        .unwrap_or(Ty::Err),
+                    _ => Ty::Err,
+                },
+                ProjElem::VariantField { variant, field, .. } => match &ty {
+                    Ty::Adt(_, args) => crate::typeck::adt_field_tys(self.krate, *variant, args)
+                        .get(*field as usize)
+                        .cloned()
+                        .unwrap_or(Ty::Err),
+                    _ => Ty::Err,
+                },
+                ProjElem::Index(_) => {
+                    unreachable!("ProjElem::Index 仅出现在 device MIR(NVPTX codegen)")
+                }
+            };
+        }
+        (String::new(), ty)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// single-source 嵌入描述表(MS1.2,RXS-0192)
+// ---------------------------------------------------------------------------
+
+/// 字节序列 → LLVM `c"..."` 常量体编码(十六进制转义,含 NUL 安全)。
+fn encode_bytes(bytes: &[u8]) -> String {
+    let mut enc = String::with_capacity(bytes.len());
+    for b in bytes {
+        match b {
+            0x20..=0x7e if *b != b'"' && *b != b'\\' => enc.push(*b as char),
+            _ => enc.push_str(&format!("\\{b:02X}")),
+        }
+    }
+    enc
+}
+
+/// 发射 `@__rx_gpu_ptx` / `@__rx_gpu_cubin_sm89` / `@__rx_gpu_artifacts`(RXS-0192);
+/// artifacts v2(RXS-0290/0291)追加 `@__rx_gpu_spirv_<i>` / `@__rx_gpu_spirv_name_<i>`
+/// / `@__rx_gpu_spirv_entries`(feature `vulkan-backend`,同函数加性发射)。
+///
+/// 描述表 v1 布局**逐字节匹配** rurix-rt-cabi `artifacts.rs`(48 字节,LE):
+/// `<{ i32 version=1, i32 reserved, ptr ptx, i64 ptx_len, ptr cubin, i64 cubin_len,
+/// [8 x i8] sm_key }>`(packed;i32×2 + ptr/i64×4 + 8 = 48;指针字段为全局常量
+/// 绝对地址,链接期重定位)。PTX 常量带尾 NUL(RFC-0009 §4.4),`ptx_len` 不含
+/// 尾 NUL。哨兵(无 kernel / 工具链缺失 / driver 未传)= 全 null 描述表 →
+/// `rxrt_ctx_create` 解析确定性拒(RXS-0193,无静默降级)。
+///
+/// 版本分叉(RXS-0290 Legality feature 门控):cargo feature `vulkan-backend`
+/// **off → v1 blob,产物逐字节不变**;on → v2 blob(64B,v1 48B 前缀原位不变 +
+/// `spirv_count`/`spirv_entries_ptr` 追加)。
+fn emit_gpu_artifact_globals(globals: &mut String, gpu: Option<&GpuArtifacts>) {
+    let sentinel = GpuArtifacts::default();
+    let gpu = gpu.unwrap_or(&sentinel);
+    #[cfg(not(feature = "vulkan-backend"))]
+    emit_gpu_artifact_globals_v1(globals, gpu);
+    #[cfg(feature = "vulkan-backend")]
+    emit_gpu_artifact_globals_v2(globals, gpu);
+}
+
+/// v1 blob 发射(feature `vulkan-backend` off 唯一路径;产物与既有逐字节一致)。
+#[cfg(not(feature = "vulkan-backend"))]
+fn emit_gpu_artifact_globals_v1(globals: &mut String, gpu: &GpuArtifacts) {
+    if gpu.ptx.is_empty() {
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_artifacts = private unnamed_addr constant \
+             <{{ i32, i32, ptr, i64, ptr, i64, [8 x i8] }}> \
+             <{{ i32 1, i32 0, ptr null, i64 0, ptr null, i64 0, [8 x i8] zeroinitializer }}>"
+        );
+        return;
+    }
+    let ptx_bytes = gpu.ptx.as_bytes();
+    let mut ptx_nul = ptx_bytes.to_vec();
+    ptx_nul.push(0);
+    let _ = writeln!(
+        globals,
+        "@__rx_gpu_ptx = private unnamed_addr constant [{} x i8] c\"{}\"",
+        ptx_nul.len(),
+        encode_bytes(&ptx_nul)
+    );
+    let (cubin_ref, cubin_len, sm_key) = if gpu.cubin.is_empty() {
+        ("ptr null".to_owned(), 0usize, "zeroinitializer".to_owned())
+    } else {
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_cubin_sm89 = private unnamed_addr constant [{} x i8] c\"{}\"",
+            gpu.cubin.len(),
+            encode_bytes(&gpu.cubin)
+        );
+        (
+            "ptr @__rx_gpu_cubin_sm89".to_owned(),
+            gpu.cubin.len(),
+            // "sm_89" + 3 NUL(cabi sm_key 8 字节 NUL 填充口径)
+            "c\"sm_89\\00\\00\\00\"".to_owned(),
+        )
+    };
+    let _ = writeln!(
+        globals,
+        "@__rx_gpu_artifacts = private unnamed_addr constant \
+         <{{ i32, i32, ptr, i64, ptr, i64, [8 x i8] }}> \
+         <{{ i32 1, i32 0, ptr @__rx_gpu_ptx, i64 {}, {cubin_ref}, i64 {cubin_len}, [8 x i8] {sm_key} }}>",
+        ptx_bytes.len()
+    );
+}
+
+/// v2 blob 发射(RXS-0290/0291;feature `vulkan-backend` on):
+///
+/// 描述表 v2 布局**逐字节匹配** rurix-rt-cabi `artifacts.rs`(64 字节 packed,LE;
+/// v1 48B 字段原位不变 = v1 前缀兼容):
+/// `<{ i32 version=2, i32 reserved, ptr ptx, i64 ptx_len, ptr cubin, i64 cubin_len,
+/// [8 x i8] sm_key, i64 spirv_count, ptr spirv_entries }>`
+/// (i32×2 + ptr/i64×6 + 8 = 64;`spirv_count` @48,`spirv_entries_ptr` @56)。
+/// 入口表项 40B packed:`<{ ptr name, i64 name_len, i32 stage_tag, i32 reserved,
+/// ptr spv, i64 spv_len }>`(ptr/i64×2 + i32×2 = 40);表 = 连续 `spirv_count` 项。
+/// `spirv_count == 0` 合法(entries_ptr = null,RXS-0290 Legality)。
+//@ spec: RXS-0290
+#[cfg(feature = "vulkan-backend")]
+fn emit_gpu_artifact_globals_v2(globals: &mut String, gpu: &GpuArtifacts) {
+    if gpu.ptx.is_empty() {
+        // 哨兵空表 v2(RXS-0291 Dynamic Semantics sentinel 纪律:不伪造产物;
+        // 缺 PTX 运行期确定性拒,RXS-0193 口径不变)。
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_artifacts = private unnamed_addr constant \
+             <{{ i32, i32, ptr, i64, ptr, i64, [8 x i8], i64, ptr }}> \
+             <{{ i32 2, i32 0, ptr null, i64 0, ptr null, i64 0, [8 x i8] zeroinitializer, \
+             i64 0, ptr null }}>"
+        );
+        return;
+    }
+    let ptx_bytes = gpu.ptx.as_bytes();
+    let mut ptx_nul = ptx_bytes.to_vec();
+    ptx_nul.push(0);
+    let _ = writeln!(
+        globals,
+        "@__rx_gpu_ptx = private unnamed_addr constant [{} x i8] c\"{}\"",
+        ptx_nul.len(),
+        encode_bytes(&ptx_nul)
+    );
+    let (cubin_ref, cubin_len, sm_key) = if gpu.cubin.is_empty() {
+        ("ptr null".to_owned(), 0usize, "zeroinitializer".to_owned())
+    } else {
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_cubin_sm89 = private unnamed_addr constant [{} x i8] c\"{}\"",
+            gpu.cubin.len(),
+            encode_bytes(&gpu.cubin)
+        );
+        (
+            "ptr @__rx_gpu_cubin_sm89".to_owned(),
+            gpu.cubin.len(),
+            // "sm_89" + 3 NUL(cabi sm_key 8 字节 NUL 填充口径)
+            "c\"sm_89\\00\\00\\00\"".to_owned(),
+        )
+    };
+    // `@__rx_gpu_spirv` 段(RXS-0291):每入口名字节全局 + 模块字节全局 + 入口表全局。
+    for (i, m) in gpu.spirv_modules.iter().enumerate() {
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_spirv_name_{i} = private unnamed_addr constant [{} x i8] c\"{}\"",
+            m.name.len(),
+            encode_bytes(m.name.as_bytes())
+        );
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_spirv_{i} = private unnamed_addr constant [{} x i8] c\"{}\"",
+            m.bytes.len(),
+            encode_bytes(&m.bytes)
+        );
+    }
+    let (spirv_count, entries_ref) = if gpu.spirv_modules.is_empty() {
+        (0usize, "ptr null".to_owned())
+    } else {
+        let mut rows = String::new();
+        for (i, m) in gpu.spirv_modules.iter().enumerate() {
+            if i > 0 {
+                rows.push_str(", ");
+            }
+            // 数组常量元素须带元素类型(`[<elem-ty> <elem-val>, …]`)——
+            // 裸 `<{ … }>` 会被 clang 拒(expected '}' at end of struct)。
+            let _ = write!(
+                rows,
+                "<{{ ptr, i64, i32, i32, ptr, i64 }}> \
+                 <{{ ptr @__rx_gpu_spirv_name_{i}, i64 {}, i32 {}, i32 0, \
+                 ptr @__rx_gpu_spirv_{i}, i64 {} }}>",
+                m.name.len(),
+                m.stage_tag,
+                m.bytes.len()
+            );
+        }
+        let _ = writeln!(
+            globals,
+            "@__rx_gpu_spirv_entries = private unnamed_addr constant \
+             [{} x <{{ ptr, i64, i32, i32, ptr, i64 }}>] [{rows}]",
+            gpu.spirv_modules.len()
+        );
+        (
+            gpu.spirv_modules.len(),
+            "ptr @__rx_gpu_spirv_entries".to_owned(),
+        )
+    };
+    let _ = writeln!(
+        globals,
+        "@__rx_gpu_artifacts = private unnamed_addr constant \
+         <{{ i32, i32, ptr, i64, ptr, i64, [8 x i8], i64, ptr }}> \
+         <{{ i32 2, i32 0, ptr @__rx_gpu_ptx, i64 {}, {cubin_ref}, i64 {cubin_len}, \
+         [8 x i8] {sm_key}, i64 {spirv_count}, {entries_ref} }}>",
+        ptx_bytes.len()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 指令选择表
+// ---------------------------------------------------------------------------
+
+pub(crate) fn prim_llty(p: PrimTy) -> &'static str {
+    match p {
+        PrimTy::I8 | PrimTy::U8 | PrimTy::Bool => "i8",
+        PrimTy::I16 | PrimTy::U16 => "i16",
+        PrimTy::I32 | PrimTy::U32 | PrimTy::Char => "i32",
+        PrimTy::I64 | PrimTy::U64 | PrimTy::Usize => "i64",
+        PrimTy::F32 => "float",
+        PrimTy::F64 => "double",
+        PrimTy::Str => "ptr",
+    }
+}
+
+pub(crate) fn ty_signed(t: &Ty) -> bool {
+    matches!(
+        t,
+        Ty::Prim(PrimTy::I8 | PrimTy::I16 | PrimTy::I32 | PrimTy::I64)
+    )
+}
+
+pub(crate) fn arith_inst(op: BinOp, is_float: bool, signed: bool) -> &'static str {
+    match (op, is_float) {
+        (BinOp::Add, true) => "fadd",
+        (BinOp::Add, false) => "add",
+        (BinOp::Sub, true) => "fsub",
+        (BinOp::Sub, false) => "sub",
+        (BinOp::Mul, true) => "fmul",
+        (BinOp::Mul, false) => "mul",
+        (BinOp::Div, true) => "fdiv",
+        (BinOp::Div, false) if signed => "sdiv",
+        (BinOp::Div, false) => "udiv",
+        (BinOp::Rem, true) => "frem",
+        (BinOp::Rem, false) if signed => "srem",
+        (BinOp::Rem, false) => "urem",
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) fn bit_inst(op: BinOp, signed: bool) -> &'static str {
+    match op {
+        BinOp::BitAnd => "and",
+        BinOp::BitOr => "or",
+        BinOp::BitXor => "xor",
+        BinOp::Shl => "shl",
+        BinOp::Shr if signed => "ashr",
+        BinOp::Shr => "lshr",
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) fn icmp_cond(op: BinOp, signed: bool) -> &'static str {
+    match (op, signed) {
+        (BinOp::Eq, _) => "eq",
+        (BinOp::Ne, _) => "ne",
+        (BinOp::Lt, true) => "slt",
+        (BinOp::Lt, false) => "ult",
+        (BinOp::Gt, true) => "sgt",
+        (BinOp::Gt, false) => "ugt",
+        (BinOp::Le, true) => "sle",
+        (BinOp::Le, false) => "ule",
+        (BinOp::Ge, true) => "sge",
+        (BinOp::Ge, false) => "uge",
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) fn fcmp_cond(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Eq => "oeq",
+        BinOp::Ne => "une",
+        BinOp::Lt => "olt",
+        BinOp::Gt => "ogt",
+        BinOp::Le => "ole",
+        BinOp::Ge => "oge",
+        _ => unreachable!(),
+    }
+}
+
+/// 数值/bool/char 转换指令(RXS-0046 合法面;同 LLVM 类型在调用方短路)。
+/// 指针 ↔ 整数(MS1.2,RXS-0191:pinned 元素寻址,mir_build gpu lowering 专属
+/// 产出)→ ptrtoint / inttoptr。
+pub(crate) fn cast_inst(from: &Ty, to: &Ty) -> &'static str {
+    if matches!(from, Ty::Ref(..) | Ty::RawPtr(..) | Ty::FnPtr(..)) && to.is_int() {
+        return "ptrtoint";
+    }
+    if from.is_int() && matches!(to, Ty::Ref(..) | Ty::RawPtr(..)) {
+        return "inttoptr";
+    }
+    let (Ty::Prim(f), Ty::Prim(t)) = (from, to) else {
+        return "bitcast";
+    };
+    let fw = prim_width(*f);
+    let tw = prim_width(*t);
+    match (from.is_float(), to.is_float()) {
+        (true, true) => {
+            if fw < tw {
+                "fpext"
+            } else {
+                "fptrunc"
+            }
+        }
+        (true, false) => {
+            if ty_signed(to) {
+                "fptosi"
+            } else {
+                "fptoui"
+            }
+        }
+        (false, true) => {
+            // bool/char/unsigned → uitofp;有符号整数 → sitofp
+            if ty_signed(from) { "sitofp" } else { "uitofp" }
+        }
+        (false, false) => {
+            if fw > tw {
+                "trunc"
+            } else if ty_signed(from) && !matches!(f, PrimTy::Bool | PrimTy::Char) {
+                "sext"
+            } else {
+                "zext"
+            }
+        }
+    }
+}
+
+pub(crate) fn prim_width(p: PrimTy) -> u32 {
+    match p {
+        PrimTy::I8 | PrimTy::U8 | PrimTy::Bool => 8,
+        PrimTy::I16 | PrimTy::U16 => 16,
+        PrimTy::I32 | PrimTy::U32 | PrimTy::Char | PrimTy::F32 => 32,
+        PrimTy::I64 | PrimTy::U64 | PrimTy::Usize | PrimTy::F64 => 64,
+        PrimTy::Str => 64,
+    }
+}
+
+/// 整数常量按位宽回卷为有符号文本(LLVM IR 整数常量为有符号解读;位宽 ≤64)。
+pub(crate) fn wrap_signed(v: i128, width: u32) -> i128 {
+    let m = v & ((1i128 << width) - 1);
+    if m >= (1i128 << (width - 1)) {
+        m - (1i128 << width)
+    } else {
+        m
+    }
+}
+
+fn escape_md(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diag::DiagCtxt;
+    use crate::query::QueryCtx;
+    use crate::span::Edition;
+
+    fn ir_for(src: &str) -> String {
+        let diag = DiagCtxt::new();
+        let mut sm = crate::source_map::SourceMap::new();
+        let id = sm.add_file("test.rx", src, Edition::Rx0);
+        let cx = QueryCtx::new(src, id, Edition::Rx0, &diag);
+        cx.check_crate();
+        let mir = cx.mir_crate();
+        assert!(diag.emitted().is_empty(), "诊断非空: {:?}", diag.emitted());
+        let krate = cx.hir_crate();
+        let lang_items = cx.resolutions().lang_items;
+        emit_llvm_ir(
+            &mir,
+            &krate,
+            &sm,
+            &CodegenOpts {
+                module_name: "test",
+                file_name: "test.rx",
+                directory: "H:\\tmp",
+                lang_items,
+                gpu_artifacts: None,
+            },
+        )
+    }
+
+    #[test]
+    fn hello_world_ir_essentials() {
+        let ir =
+            ir_for("fn main() {\n    let greeting = \"hello, rurix\";\n    println(greeting);\n}");
+        assert!(ir.contains("define i32 @main()"), "{ir}");
+        assert!(ir.contains("call i32 @puts(ptr"), "{ir}");
+        assert!(
+            ir.contains("c\"hello, rurix\\00\""),
+            "字符串全局缺失:\n{ir}"
+        );
+        assert!(ir.contains("ret i32 0"), "{ir}");
+        assert!(ir.contains("\"CodeView\", i32 1"), "{ir}");
+        assert!(ir.contains("!DISubprogram(name: \"main\""), "{ir}");
+        assert!(
+            ir.contains("!DILocation(line: 3"),
+            "println 行号缺失:\n{ir}"
+        );
+    }
+
+    #[test]
+    fn arithmetic_and_calls_emit() {
+        let ir = ir_for(
+            "fn add(a: i32, b: i32) -> i32 { a + b }\nfn main() {\n    let s = add(40, 2);\n    if s == 42 {\n        println(\"ok\");\n    }\n}",
+        );
+        assert!(ir.contains("define i32 @rx_add_"), "{ir}");
+        assert!(ir.contains("= add i32"), "{ir}");
+        assert!(ir.contains("icmp eq i32"), "{ir}");
+        assert!(ir.contains("br i1"), "{ir}");
+    }
+
+    /// `stage_tag` 映射 = [`crate::ast::ShaderStage`] 枚举声明序(RXS-0290 单一事实源)。
+    //@ spec: RXS-0290
+    #[test]
+    fn stage_tag_maps_shader_stage_declaration_order() {
+        use crate::ast::ShaderStage;
+        let expect = [
+            (ShaderStage::Vertex, 0),
+            (ShaderStage::Fragment, 1),
+            (ShaderStage::Compute, 2),
+            (ShaderStage::Mesh, 3),
+            (ShaderStage::Task, 4),
+            (ShaderStage::RayGen, 5),
+            (ShaderStage::ClosestHit, 6),
+            (ShaderStage::AnyHit, 7),
+            (ShaderStage::Miss, 8),
+            (ShaderStage::Intersection, 9),
+            (ShaderStage::Callable, 10),
+        ];
+        for (stage, tag) in expect {
+            assert_eq!(stage_tag(stage), tag, "{stage:?} stage_tag 错");
+        }
+    }
+
+    /// artifacts v2 blob 布局 golden(RXS-0290/0291,feature `vulkan-backend` on):
+    /// 描述表 64B packed(`i32×2 + ptr/i64×6 + [8 x i8]` = 4+4+48+8 = 64;
+    /// `spirv_count` @48 / `spirv_entries_ptr` @56,v1 48B 前缀原位不变),
+    /// 入口表项 40B packed(`ptr/i64×2 + i32×2` = 40)。逐字节 golden 锚定字段序
+    /// 与初始值;cabi 侧 `DESC_LEN_V2 = 64` / `ENTRY_LEN_V2 = 40` 同值锚(artifacts.rs)。
+    //@ spec: RXS-0290, RXS-0291
+    #[cfg(feature = "vulkan-backend")]
+    #[test]
+    fn artifacts_v2_blob_layout_golden() {
+        let gpu = GpuArtifacts {
+            ptx: ".version 8.0\n".to_owned(),
+            cubin: vec![0x7F, 0x45],
+            spirv_modules: vec![
+                SpirvModule {
+                    name: "rx_k_3".to_owned(),
+                    stage_tag: 2,
+                    bytes: vec![0x03, 0x02, 0x23, 0x07],
+                },
+                SpirvModule {
+                    name: "rx_vs_5".to_owned(),
+                    stage_tag: 0,
+                    bytes: vec![0xAA],
+                },
+            ],
+        };
+        let mut globals = String::new();
+        emit_gpu_artifact_globals(&mut globals, Some(&gpu));
+        let expected = "@__rx_gpu_ptx = private unnamed_addr constant [14 x i8] c\".version 8.0\\0A\\00\"\n\
+             @__rx_gpu_cubin_sm89 = private unnamed_addr constant [2 x i8] c\"\\7FE\"\n\
+             @__rx_gpu_spirv_name_0 = private unnamed_addr constant [6 x i8] c\"rx_k_3\"\n\
+             @__rx_gpu_spirv_0 = private unnamed_addr constant [4 x i8] c\"\\03\\02#\\07\"\n\
+             @__rx_gpu_spirv_name_1 = private unnamed_addr constant [7 x i8] c\"rx_vs_5\"\n\
+             @__rx_gpu_spirv_1 = private unnamed_addr constant [1 x i8] c\"\\AA\"\n\
+             @__rx_gpu_spirv_entries = private unnamed_addr constant [2 x <{ ptr, i64, i32, i32, ptr, i64 }>] \
+             [<{ ptr, i64, i32, i32, ptr, i64 }> <{ ptr @__rx_gpu_spirv_name_0, i64 6, i32 2, i32 0, ptr @__rx_gpu_spirv_0, i64 4 }>, \
+             <{ ptr, i64, i32, i32, ptr, i64 }> <{ ptr @__rx_gpu_spirv_name_1, i64 7, i32 0, i32 0, ptr @__rx_gpu_spirv_1, i64 1 }>]\n\
+             @__rx_gpu_artifacts = private unnamed_addr constant \
+             <{ i32, i32, ptr, i64, ptr, i64, [8 x i8], i64, ptr }> \
+             <{ i32 2, i32 0, ptr @__rx_gpu_ptx, i64 13, ptr @__rx_gpu_cubin_sm89, i64 2, \
+             [8 x i8] c\"sm_89\\00\\00\\00\", i64 2, ptr @__rx_gpu_spirv_entries }>\n";
+        assert_eq!(globals, expected);
+    }
+
+    /// artifacts v2 发射 IR 的 clang 编译红绿(RXS-0291,反 YAML-only):golden 文本锚
+    /// 不证「clang 接受」——v2 入口表数组元素须带元素类型(裸 `<{…}>` 曾被 clang 拒,
+    /// 本测试把发射产物真喂 clang,并构造裸元素变体断言其必红(红绿闭合)。
+    /// 缺 clang → SKIP(dev-env degrade,不充绿)。
+    //@ spec: RXS-0290, RXS-0291
+    #[cfg(feature = "vulkan-backend")]
+    #[test]
+    fn artifacts_v2_emitted_ir_clang_accepts_and_tamper_rejects() {
+        let gpu = GpuArtifacts {
+            ptx: ".version 8.0\n".to_owned(),
+            cubin: Vec::new(),
+            spirv_modules: vec![
+                SpirvModule {
+                    name: "rx_k_3".to_owned(),
+                    stage_tag: 2,
+                    bytes: vec![0x03, 0x02, 0x23, 0x07],
+                },
+                SpirvModule {
+                    name: "rx_vs_5".to_owned(),
+                    stage_tag: 0,
+                    bytes: vec![0xAA],
+                },
+            ],
+        };
+        let mut globals = String::new();
+        emit_gpu_artifact_globals(&mut globals, Some(&gpu));
+        let Ok(clang) = crate::toolchain::locate_clang() else {
+            eprintln!("SKIP: clang not found (dev-env degrade, not a pass)");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("rx_g42_v2_ir_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let compile = |name: &str, body: &str| -> bool {
+            let f = dir.join(name);
+            std::fs::write(&f, body).unwrap();
+            let out = std::process::Command::new(&clang)
+                .args(["-x", "ir", "-c"])
+                .arg(&f)
+                .args(["-o", dir.join(name.replace(".ll", ".o")).to_str().unwrap()])
+                .output()
+                .unwrap();
+            out.status.success()
+        };
+        // GREEN:真发射产物(含 2 入口表 + v2 blob)clang 接受。
+        assert!(
+            compile("v2_green.ll", &globals),
+            "clang 拒收 v2 发射 IR:\n{globals}"
+        );
+        // RED:裸元素变体(剥掉元素类型)必被 clang 拒——证 GREEN 非「全绿橡皮章」。
+        let tampered = globals.replace(
+            "<{ ptr, i64, i32, i32, ptr, i64 }> <{ ptr @__rx_gpu_spirv_name_0,",
+            "<{ ptr @__rx_gpu_spirv_name_0,",
+        );
+        assert_ne!(tampered, globals, "篡改构造未生效");
+        assert!(
+            !compile("v2_red.ll", &tampered),
+            "裸元素变体竟被 clang 接受"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// v2 空表合法(RXS-0290:`spirv_count == 0` → `entries_ptr = null`)+ v2 哨兵
+    /// (无 PTX → 全 null 描述表,运行期确定性拒,RXS-0193 口径不变)。
+    //@ spec: RXS-0290
+    #[cfg(feature = "vulkan-backend")]
+    #[test]
+    fn artifacts_v2_empty_table_and_sentinel() {
+        // 有 PTX、无 cubin、无 SPIR-V 入口:count = 0 + entries_ptr = null。
+        let gpu = GpuArtifacts {
+            ptx: ".version 8.0\n".to_owned(),
+            cubin: Vec::new(),
+            spirv_modules: Vec::new(),
+        };
+        let mut globals = String::new();
+        emit_gpu_artifact_globals(&mut globals, Some(&gpu));
+        let expected = "@__rx_gpu_ptx = private unnamed_addr constant [14 x i8] c\".version 8.0\\0A\\00\"\n\
+             @__rx_gpu_artifacts = private unnamed_addr constant \
+             <{ i32, i32, ptr, i64, ptr, i64, [8 x i8], i64, ptr }> \
+             <{ i32 2, i32 0, ptr @__rx_gpu_ptx, i64 13, ptr null, i64 0, \
+             [8 x i8] zeroinitializer, i64 0, ptr null }>\n";
+        assert_eq!(globals, expected);
+
+        // 哨兵(None 与空 GpuArtifacts 同形):version = 2 全 null。
+        let mut globals = String::new();
+        emit_gpu_artifact_globals(&mut globals, None);
+        let expected = "@__rx_gpu_artifacts = private unnamed_addr constant \
+             <{ i32, i32, ptr, i64, ptr, i64, [8 x i8], i64, ptr }> \
+             <{ i32 2, i32 0, ptr null, i64 0, ptr null, i64 0, \
+             [8 x i8] zeroinitializer, i64 0, ptr null }>\n";
+        assert_eq!(globals, expected);
+    }
+
+    /// feature `vulkan-backend` **off → v1 blob 逐字节不变**(RXS-0290 Legality feature
+    /// 门控):即使 `GpuArtifacts.spirv_modules` 非空也不产 SPIR-V 段,v1 golden 与
+    /// 既有产物逐字节一致(48B 描述表 `<{ i32, i32, ptr, i64, ptr, i64, [8 x i8] }>`)。
+    //@ spec: RXS-0290
+    #[cfg(not(feature = "vulkan-backend"))]
+    #[test]
+    fn artifacts_v1_blob_zero_drift_when_feature_off() {
+        let gpu = GpuArtifacts {
+            ptx: ".version 8.0\n".to_owned(),
+            cubin: vec![0x7F, 0x45],
+            // feature off 下收集恒空(driver collect_spirv_entries stub);此处故意
+            // 构造非空,证 v1 发射路径对其完全不可见(零漂移)。
+            spirv_modules: vec![SpirvModule {
+                name: "rx_k_3".to_owned(),
+                stage_tag: 2,
+                bytes: vec![0x03, 0x02, 0x23, 0x07],
+            }],
+        };
+        let mut globals = String::new();
+        emit_gpu_artifact_globals(&mut globals, Some(&gpu));
+        let expected = "@__rx_gpu_ptx = private unnamed_addr constant [14 x i8] c\".version 8.0\\0A\\00\"\n\
+             @__rx_gpu_cubin_sm89 = private unnamed_addr constant [2 x i8] c\"\\7FE\"\n\
+             @__rx_gpu_artifacts = private unnamed_addr constant \
+             <{ i32, i32, ptr, i64, ptr, i64, [8 x i8] }> \
+             <{ i32 1, i32 0, ptr @__rx_gpu_ptx, i64 13, ptr @__rx_gpu_cubin_sm89, i64 2, \
+             [8 x i8] c\"sm_89\\00\\00\\00\" }>\n";
+        assert_eq!(globals, expected);
+
+        // 哨兵:v1 全 null 描述表(与既有产物逐字节一致)。
+        let mut globals = String::new();
+        emit_gpu_artifact_globals(&mut globals, None);
+        let expected = "@__rx_gpu_artifacts = private unnamed_addr constant \
+             <{ i32, i32, ptr, i64, ptr, i64, [8 x i8] }> \
+             <{ i32 1, i32 0, ptr null, i64 0, ptr null, i64 0, [8 x i8] zeroinitializer }>\n";
+        assert_eq!(globals, expected);
+    }
+}

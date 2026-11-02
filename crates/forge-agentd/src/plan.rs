@@ -7,15 +7,56 @@
 //!   完成置 completed/failed + todo.updated 事件;依赖失败向下游如实传播;
 //!   循环依赖/悬空依赖如实报停摆,不死循环。
 //! - `run_team_flow` 编排循环:leader 轮产出的结构化计划(带 role 的 queued 任务)→
-//!   波次执行 → verify=qa 任务完成后自动派 qa-tester 复测 → 问题回注 leader 修复轮
-//!   (上限 max_fix_rounds,超限如实 failed)→ 全部完成后派 reviewer 终审
+//!   波次执行 → leader 编写 qa-tester 复测委派词后派发 → 问题回注 leader 修复轮
+//!   (上限 max_fix_rounds,超限如实 failed)→ leader 编写 reviewer 终审委派词后派发
 //!   (VERDICT: APPROVE 收束 / REJECT 回修复轮)。
 //!
-//! 注入面:leader 修复轮与子代理派发都是泛型闭包(生产 = run_tool_loop /
+//! 注入面:leader 委派编写/修复轮与子代理派发都是泛型闭包(生产 = run_tool_loop /
 //! run_nested_task;单测 = 脚本闭包全内存,不触网不触 MCP,mock 恒绿纪律)。
 //! 事件面只复用既有信封(todo.updated / subagent.* 由派发方发;不发明新 kind)。
 
 use serde_json::json;
+use std::path::Path;
+
+mod execution;
+
+pub(crate) fn authorize_blocked_retry(dir: &Path, ids: &[String]) -> Result<(), String> {
+    execution::authorize_blocked_retry(dir, ids)
+}
+
+pub(crate) fn authorize_production_retry(
+    dir: &Path,
+    ids: &[String],
+    maximum: usize,
+) -> Result<(), String> {
+    execution::reserve_retry(dir, ids, maximum)
+}
+
+pub(crate) fn active_attempt(dir: &Path, id: &str) -> Option<u32> {
+    execution::active_attempt(dir, id).ok().flatten()
+}
+
+pub(crate) fn advance_production_plan(dir: &Path) -> Result<(), String> {
+    execution::advance_plan(dir)
+}
+
+pub(crate) fn legacy_revalidation_attempt(
+    dir: &Path,
+    id: &str,
+    prompt: &str,
+) -> Result<Option<u32>, String> {
+    execution::legacy_revalidation_attempt(dir, id, prompt)
+}
+
+pub(crate) fn finish_revalidation(
+    dir: &Path,
+    id: &str,
+    attempt: u32,
+    status: &str,
+    report: &str,
+) -> Result<(), String> {
+    execution::finish_attempt(dir, id, attempt, status, report)
+}
 
 use crate::agent::{PatchTodoRequest, TodoItem, TodoStore};
 use crate::events::{EventBus, EventDraft};
@@ -30,6 +71,36 @@ pub(crate) struct DispatchReq {
     pub prompt: String,
     pub description: String,
     pub tool_call_id: String,
+    pub task_id: Option<String>,
+    pub attempt: Option<u32>,
+}
+
+/// Provider completion is not a production completion. The host adapter only
+/// returns Completed after accepting the worker's structured handoff.
+pub(crate) enum DispatchOutcome {
+    Completed(String),
+    Blocked(String),
+    Failed(String),
+    Cancelled(String),
+}
+
+impl From<(bool, String)> for DispatchOutcome {
+    fn from((ok, text): (bool, String)) -> Self {
+        if ok {
+            Self::Completed(text)
+        } else {
+            Self::Failed(text)
+        }
+    }
+}
+
+impl DispatchOutcome {
+    fn into_result(self) -> (bool, String) {
+        match self {
+            Self::Completed(text) => (true, text),
+            Self::Blocked(text) | Self::Failed(text) | Self::Cancelled(text) => (false, text),
+        }
+    }
 }
 
 /// team 编排上下文(全部借用;闭包注入见 run_team_flow)。
@@ -48,6 +119,11 @@ pub(crate) struct TeamFlowCtx<'a> {
     pub serialize_engine: bool,
     /// Server-side evidence gate. QA_RESULT/VERDICT alone cannot satisfy UltraPlan.
     pub validate: Option<&'a (dyn Fn() -> Result<(), String> + Send + Sync)>,
+    /// Durable UltraPlan scheduling journal, separate from verification reports.
+    pub production_dir: Option<&'a Path>,
+    /// Only confirmed server-side product failures authorize implementation repair.
+    pub verification_issues:
+        Option<&'a (dyn Fn() -> Result<Vec<serde_json::Value>, String> + Send + Sync)>,
 }
 
 // ---------- 纯函数调度核心 ----------
@@ -155,17 +231,11 @@ pub(crate) struct WaveReport {
     pub completed: Vec<String>,
     /// (todoId, 失败原因)——含执行失败与依赖失败传播。
     pub failed: Vec<(String, String)>,
+    /// Unavailable prerequisites/capabilities are not product defects.
+    pub blocked: Vec<(String, String)>,
     /// Some = 调度停摆(循环依赖/悬空依赖),如实诊断文本。
     pub stalled: Option<String>,
     pub cancelled: bool,
-}
-
-fn clip(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        return s.to_string();
-    }
-    let head: String = s.chars().take(max).collect();
-    format!("{head}…")
 }
 
 /// todo 状态迁移 + todo.updated 事件(与 REST PATCH / todo_update 同 payload 形态)。
@@ -187,6 +257,16 @@ fn mark(ctx: &TeamFlowCtx<'_>, id: &str, status: &str, summary: Option<String>) 
 
 /// 会话内可调度任务快照。
 fn schedulable_tasks(ctx: &TeamFlowCtx<'_>) -> Vec<TodoItem> {
+    let active = ctx.production_dir.map(|dir| {
+        std::fs::read(dir.join("production.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|report| report["activeTodoIds"].as_array().cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|id| id.as_str().map(str::to_owned))
+            .collect::<std::collections::HashSet<_>>()
+    });
     ctx.todos
         .list_by_session(ctx.session_id)
         .into_iter()
@@ -196,6 +276,7 @@ fn schedulable_tasks(ctx: &TeamFlowCtx<'_>) -> Vec<TodoItem> {
                 |source| t.source == source,
             )
         })
+        .filter(|t| active.as_ref().is_none_or(|ids| ids.contains(&t.id)))
         .collect()
 }
 
@@ -236,7 +317,8 @@ fn execution_wave(all: &[TodoItem], serialize_engine: bool) -> Vec<String> {
 pub(crate) async fn run_ready_waves<D, DFut>(ctx: &TeamFlowCtx<'_>, dispatch: &D) -> WaveReport
 where
     D: Fn(DispatchReq) -> DFut,
-    DFut: std::future::Future<Output = (bool, String)>,
+    DFut: std::future::Future,
+    DFut::Output: Into<DispatchOutcome>,
 {
     let mut report = WaveReport::default();
     loop {
@@ -245,8 +327,86 @@ where
             return report;
         }
         let all = schedulable_tasks(ctx);
+        if ctx.source_filter.is_some() {
+            if let Some(dir) = ctx.production_dir {
+                let mut reconciled = false;
+                for task in all.iter().filter(|task| {
+                    is_schedulable(task) && matches!(task.status.as_str(), "running" | "verifying")
+                }) {
+                    match execution::recover_result(dir, task, &all) {
+                        Ok(Some((status, text))) => {
+                            mark(ctx, &task.id, &status, Some(text.clone()));
+                            match status.as_str() {
+                                "completed" => report.completed.push(task.id.clone()),
+                                "blocked" => report.blocked.push((task.id.clone(), text)),
+                                _ => report.failed.push((task.id.clone(), text)),
+                            }
+                            reconciled = true;
+                        }
+                        Ok(None) => {
+                            report.stalled = Some(format!(
+                                "ULTRAPLAN_RECOVERY_REQUIRED: 任务{}仍有未确认终态的执行，未派发",
+                                task.id
+                            ));
+                            return report;
+                        }
+                        Err(error) => {
+                            report.stalled = Some(error);
+                            return report;
+                        }
+                    }
+                }
+                if reconciled {
+                    continue;
+                }
+            }
+            // A downstream task has not failed execution when its prerequisite
+            // failed. Release it only after that prerequisite's verified handoff.
+            let mut changed = false;
+            for task in all
+                .iter()
+                .filter(|t| is_schedulable(t) && t.status == "blocked")
+            {
+                if task
+                    .summary
+                    .as_deref()
+                    .is_some_and(|s| s.starts_with("DEPENDENCY_BLOCKED:"))
+                    && task.deps.iter().all(|d| {
+                        dep_resolved(&all, &task.id, d).is_some_and(|t| t.status == "completed")
+                    })
+                {
+                    mark(ctx, &task.id, "queued", None);
+                    changed = true;
+                }
+            }
+            if changed {
+                continue;
+            }
+            let mut propagated = false;
+            for task in all
+                .iter()
+                .filter(|t| is_schedulable(t) && t.status == "queued")
+            {
+                if let Some(dep) = task.deps.iter().find(|d| {
+                    dep_resolved(&all, &task.id, d)
+                        .is_some_and(|t| matches!(t.status.as_str(), "failed" | "blocked"))
+                }) {
+                    let why = format!("DEPENDENCY_BLOCKED: 依赖 {dep} 未通过交接，本任务未执行");
+                    mark(ctx, &task.id, "blocked", Some(why.clone()));
+                    report.blocked.push((task.id.clone(), why));
+                    propagated = true;
+                }
+            }
+            if propagated {
+                continue;
+            }
+        }
         // 失败传播优先:先把被失败依赖阻塞的任务如实标掉,再算就绪波。
-        let prop = failed_dependents(&all);
+        let prop = if ctx.source_filter.is_some() {
+            Vec::new()
+        } else {
+            failed_dependents(&all)
+        };
         if !prop.is_empty() {
             for (id, why) in prop {
                 mark(ctx, &id, "failed", Some(why.clone()));
@@ -274,34 +434,126 @@ where
                 let Some(t) = all.iter().find(|x| &x.id == id) else {
                     continue;
                 };
+                let Some(prompt) = t
+                    .prompt
+                    .as_ref()
+                    .filter(|p| !p.trim().is_empty() && p.trim() != t.title.trim())
+                else {
+                    let why = format!(
+                        "任务「{}」缺少主 agent 编写的委派提示词（不能为空或仅为任务标题），未派发",
+                        t.title
+                    );
+                    mark(ctx, id, "failed", Some(why.clone()));
+                    report.failed.push((id.clone(), why));
+                    continue;
+                };
+                let mut upstream = Vec::new();
+                if ctx.source_filter.is_some() {
+                    for dep in &t.deps {
+                        let Some(dependency) = dep_resolved(&all, &t.id, dep) else {
+                            continue;
+                        };
+                        let handoff = match ctx.production_dir {
+                            Some(dir) => {
+                                match execution::completed_handoff(dir, dependency, &all) {
+                                    Ok(handoff) => handoff,
+                                    Err(error) => {
+                                        report.stalled = Some(error);
+                                        return report;
+                                    }
+                                }
+                            }
+                            None => {
+                                json!({"taskId":dependency.id,"title":dependency.title,"summary":dependency.summary})
+                            }
+                        };
+                        upstream.push(handoff);
+                    }
+                }
+                let attempt = if let Some(dir) = ctx.production_dir {
+                    match execution::recover_result(dir, t, &all) {
+                        Ok(Some((status, text))) => {
+                            mark(ctx, id, &status, Some(text.clone()));
+                            match status.as_str() {
+                                "completed" => report.completed.push(id.clone()),
+                                "blocked" => report.blocked.push((id.clone(), text)),
+                                _ => report.failed.push((id.clone(), text)),
+                            }
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            report.stalled = Some(error);
+                            return report;
+                        }
+                    }
+                    match execution::begin_attempt(dir, id, prompt) {
+                        Ok(number) => Some(number),
+                        Err(error) => {
+                            report.stalled = Some(error);
+                            return report;
+                        }
+                    }
+                } else {
+                    None
+                };
                 mark(ctx, id, "running", None);
                 let req = DispatchReq {
                     subagent_type: t.role.clone().unwrap_or_default(),
                     prompt: format!(
-                        "{}{}",
-                        t.prompt
-                            .clone()
-                            .filter(|p| !p.trim().is_empty())
-                            .unwrap_or_else(|| t.title.clone()),
+                        "{}{}{}",
+                        prompt,
                         t.summary
                             .as_ref()
-                            .map(|s| format!("\n上次执行记录（本轮需实际修复并重新执行）：{s}"))
-                            .unwrap_or_default()
+                            .filter(|s| !s.starts_with("DEPENDENCY_BLOCKED:"))
+                            .map(|s| format!("\n[上次执行报告]\n{s}"))
+                            .unwrap_or_default(),
+                        if upstream.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\n[上游已验证交接资料]\n{}", json!(upstream))
+                        }
                     ),
                     description: t.title.clone(),
                     tool_call_id: format!("team-{}", t.id),
+                    task_id: ctx.source_filter.map(|_| t.id.clone()),
+                    attempt,
                 };
                 let id2 = id.clone();
-                futs.push(async move { (id2, dispatch(req).await) });
+                futs.push(async move { (id2, attempt, dispatch(req).await.into()) });
             }
-            for (id, (ok, text)) in futures_util::future::join_all(futs).await {
-                let status = if ok { "completed" } else { "failed" };
-                mark(ctx, &id, status, Some(clip(&text, 500)));
-                if ok {
-                    report.completed.push(id);
-                } else {
-                    report.failed.push((id, clip(&text, 500)));
+            for (id, attempt, outcome) in futures_util::future::join_all(futs).await {
+                let (status, text) = match outcome {
+                    DispatchOutcome::Completed(text) => ("completed", text),
+                    DispatchOutcome::Blocked(text) => (
+                        if ctx.source_filter.is_some() {
+                            "blocked"
+                        } else {
+                            "failed"
+                        },
+                        text,
+                    ),
+                    DispatchOutcome::Failed(text) => ("failed", text),
+                    DispatchOutcome::Cancelled(text) => {
+                        report.cancelled = true;
+                        ("failed", text)
+                    }
+                };
+                if let (Some(dir), Some(number)) = (ctx.production_dir, attempt) {
+                    if let Err(error) = execution::finish_attempt(dir, &id, number, status, &text) {
+                        report.stalled = Some(error);
+                        return report;
+                    }
                 }
+                mark(ctx, &id, status, Some(text.clone()));
+                match status {
+                    "completed" => report.completed.push(id),
+                    "blocked" => report.blocked.push((id, text)),
+                    _ => report.failed.push((id, text)),
+                }
+            }
+            if report.cancelled {
+                return report;
             }
         }
     }
@@ -322,10 +574,9 @@ pub(crate) fn parse_verdict(text: &str) -> Verdict {
     match (a, r) {
         (Some(ai), Some(ri)) if ai > ri => Verdict::Approve,
         (Some(_), None) => Verdict::Approve,
-        (_, Some(ri)) => Verdict::Reject(clip(&text[ri..], 300)),
+        (_, Some(_)) => Verdict::Reject(text.to_string()),
         (None, None) => Verdict::Reject(format!(
-            "终审未按格式输出 VERDICT(按 REJECT 处理);原文截断:{}",
-            clip(text, 200)
+            "终审未按格式输出 VERDICT(按 REJECT 处理);完整报告:{text}"
         )),
     }
 }
@@ -333,51 +584,92 @@ pub(crate) fn parse_verdict(text: &str) -> Verdict {
 /// qa 复测结论:Ok(()) = PASS;Err(原因) = 有问题(派发失败/显式 FAIL/缺标记均如实算问题)。
 pub(crate) fn parse_qa_result(ok: bool, text: &str) -> Result<(), String> {
     if !ok {
-        return Err(format!("qa 复测派发失败:{}", clip(text, 200)));
+        return Err(format!("qa 复测派发失败:{text}"));
     }
     let p = text.rfind("QA_RESULT: PASS");
     let f = text.rfind("QA_RESULT: FAIL");
     match (p, f) {
         (Some(pi), Some(fi)) if pi > fi => Ok(()),
         (Some(_), None) => Ok(()),
-        (_, Some(fi)) => Err(clip(&text[fi..], 300)),
+        (_, Some(_)) => Err(text.to_string()),
         (None, None) => Err(format!(
-            "复测报告未按格式输出 QA_RESULT(按未通过处理);原文截断:{}",
-            clip(text, 200)
+            "复测报告未按格式输出 QA_RESULT(按未通过处理);完整报告:{text}"
         )),
     }
 }
 
-// ---------- 提示词拼装 ----------
+// ---------- 主 agent 委派编写与修复请求 ----------
 
-fn qa_retest_prompt(t: &TodoItem) -> String {
+const DELEGATION_DRAFT_PREFIX: &str = "[team 委派编写]";
+
+/// These templates instruct the leader; they are never dispatched to a worker.
+fn qa_delegation_request(goal: &str, t: &TodoItem) -> String {
     format!(
-        "{}\n\n——以上是原任务委派词,该任务已由工种 {} 执行完毕,其汇报如下:\n{}\n\n\
-         请复测该任务是否真正达成验收标准:运行取证(play/viewport/scene 查询类工具),\
-         逐条给出 PASS/FAIL 与证据;只测不改。最终消息必须以 `QA_RESULT: PASS` 或 \
-         `QA_RESULT: FAIL`(附问题清单)结尾。",
+        "{DELEGATION_DRAFT_PREFIX} 请你作为主 agent，先阅读以下用户需求、任务委派词与执行结果，\
+         再亲自为 qa-tester 编写本次复测的详细提示词。输出将原样交给该子 agent。\
+         本轮仅输出完整委派提示词，不调用 task 或 plan_write，不直接执行复测或给出验收结论。\n\n\
+         用户目标:{goal}\n任务:{}\n原任务委派词:\n{}\n执行工种:{}\n执行汇报:\n{}\n\n\
+         提示词必须明确需求背景、复测范围、只测不改的边界、具体检查步骤和验收标准、\
+         必须获取的真实证据(play/viewport/scene 查询类工具)及报告格式。\
+         要求 qa-tester 逐项给出 PASS/FAIL 与证据，并以 `QA_RESULT: PASS` 或 \
+         `QA_RESULT: FAIL`(附问题清单)结束报告。不要仅转发模板或任务标题。",
+        t.title,
         t.prompt.as_deref().unwrap_or(&t.title),
         t.role.as_deref().unwrap_or("?"),
         t.summary.as_deref().unwrap_or("(无汇报)"),
     )
 }
 
-fn reviewer_prompt(goal: &str, tasks: &[TodoItem]) -> String {
+fn reviewer_delegation_request(goal: &str, tasks: &[TodoItem]) -> String {
     let mut lines = String::new();
     for t in tasks.iter().filter(|t| is_schedulable(t)) {
         lines.push_str(&format!(
-            "- [{}] {}:{}\n",
+            "- [{}] {} (工种:{})\n原任务委派词:{}\n执行汇报:{}\n",
             t.status,
             t.title,
-            clip(t.summary.as_deref().unwrap_or("(无汇报)"), 160)
+            t.role.as_deref().unwrap_or("?"),
+            t.prompt.as_deref().unwrap_or("(无委派记录)"),
+            t.summary.as_deref().unwrap_or("(无汇报)")
         ));
     }
     format!(
-        "用户目标:{goal}\n\n计划任务执行情况:\n{lines}\n\
-         请以对抗式终审姿态复核成品:按 Functionality(功能可用)→ Visual(画面正确)→ \
-         Playability(可玩性)顺序递进检查,发现足以否决的问题立即停止并输出。\
-         最终消息必须以 `VERDICT: APPROVE` 或 `VERDICT: REJECT`(附理由)结尾。"
+        "{DELEGATION_DRAFT_PREFIX} 请你作为主 agent，先阅读以下用户需求、各任务委派词与执行结果，\
+         再亲自为 reviewer 编写本次终审的详细提示词。输出将原样交给该子 agent。\
+         本轮仅输出完整委派提示词，不调用 task 或 plan_write，不直接执行终审或给出验收结论。\n\n\
+         用户目标:{goal}\n\n计划任务执行情况:\n{lines}\n\
+         提示词必须明确需求背景、审查范围与边界、具体检查步骤、验收标准、证据和报告要求。\
+         要求 reviewer 对照用户需求，以对抗式终审姿态按 Functionality(功能可用)→ Visual(画面正确)→ \
+         Playability(可玩性)递进检查，发现足以否决的问题立即停止并输出，\
+         最终以 `VERDICT: APPROVE` 或 `VERDICT: REJECT`(附理由)结束报告。不要仅转发模板或任务标题。"
     )
+}
+
+/// A missing leader response must never fall back to an automatic worker template.
+/// None means the authoring turn was cancelled; no dispatch is allowed afterwards.
+async fn author_delegation<L, LFut>(
+    ctx: &TeamFlowCtx<'_>,
+    leader_round: &L,
+    request: String,
+) -> Result<Option<String>, String>
+where
+    L: Fn(String) -> LFut,
+    LFut: std::future::Future<Output = Result<(String, bool), String>>,
+{
+    if (ctx.cancelled)() {
+        return Ok(None);
+    }
+    let response = leader_round(request).await;
+    if (ctx.cancelled)() {
+        return Ok(None);
+    }
+    match response {
+        Ok((_, true)) => Ok(None),
+        Ok((prompt, false)) if !prompt.trim().is_empty() => Ok(Some(prompt)),
+        Ok(_) => Err("主 agent 未输出委派提示词，未启动子 agent".to_string()),
+        Err(error) => Err(format!(
+            "主 agent 编写委派提示词失败，未启动子 agent:{error}"
+        )),
+    }
 }
 
 fn fix_prompt(problems: &[String]) -> String {
@@ -399,8 +691,8 @@ fn fix_prompt(problems: &[String]) -> String {
 ///
 /// 返回 (status, text, error) 三元组,与 execute_turn 的 outcome 同形态:
 /// - 没有任何带 role 的任务 → 如实失败;恢复全 completed 任务时仍复测、终审并验证证据;
-/// - 波次执行 → verify=qa 完成后自动复测 → 问题回注 leader 修复轮(共享上限);
-/// - 全部完成 → reviewer 终审:APPROVE 收束 completed;REJECT 回修复轮;
+/// - 波次执行 → leader 编写 verify=qa 复测委派词 → 复测 → 问题回注 leader 修复轮;
+/// - 全部完成 → leader 编写 reviewer 委派词 → 终审:APPROVE 收束;REJECT 回修复轮;
 /// - 修复轮超限 / 修复轮未产出新任务 / 调度停摆 → 如实 failed(不伪装通过)。
 pub(crate) async fn run_team_flow<L, LFut, D, DFut>(
     ctx: &TeamFlowCtx<'_>,
@@ -412,8 +704,12 @@ where
     L: Fn(String) -> LFut,
     LFut: std::future::Future<Output = Result<(String, bool), String>>,
     D: Fn(DispatchReq) -> DFut,
-    DFut: std::future::Future<Output = (bool, String)>,
+    DFut: std::future::Future,
+    DFut::Output: Into<DispatchOutcome>,
 {
+    if ctx.source_filter.is_some() {
+        return run_production_flow(ctx, leader_text, leader_round, dispatch).await;
+    }
     let has_queued = |tasks: &[TodoItem]| {
         tasks
             .iter()
@@ -465,16 +761,28 @@ where
             })
             .collect();
         for t in qa_targets {
-            if (ctx.cancelled)() {
-                return ("cancelled".to_string(), String::new(), None);
-            }
+            let prompt = match author_delegation(
+                ctx,
+                &leader_round,
+                qa_delegation_request(ctx.user_goal, t),
+            )
+            .await
+            {
+                Ok(Some(prompt)) => prompt,
+                Ok(None) => return ("cancelled".to_string(), String::new(), None),
+                Err(error) => return ("failed".to_string(), last_text, Some(error)),
+            };
             let (ok, text) = dispatch(DispatchReq {
                 subagent_type: "qa-tester".to_string(),
-                prompt: qa_retest_prompt(t),
+                prompt,
                 description: format!("qa 复测:{}", t.title),
                 tool_call_id: format!("team-qa-{}", t.id),
+                task_id: None,
+                attempt: None,
             })
-            .await;
+            .await
+            .into()
+            .into_result();
             qa_done.insert(t.id.clone());
             if let Err(why) = parse_qa_result(ok, &text) {
                 problems.push(format!("任务「{}」qa 复测未通过:{why}", t.title));
@@ -489,22 +797,34 @@ where
         }
         // 无问题 → reviewer 终审(计划非空即终审,verify=reviewer 任务也归口于此)。
         if problems.is_empty() {
-            if (ctx.cancelled)() {
-                return ("cancelled".to_string(), String::new(), None);
-            }
+            let prompt = match author_delegation(
+                ctx,
+                &leader_round,
+                reviewer_delegation_request(ctx.user_goal, &tasks),
+            )
+            .await
+            {
+                Ok(Some(prompt)) => prompt,
+                Ok(None) => return ("cancelled".to_string(), String::new(), None),
+                Err(error) => return ("failed".to_string(), last_text, Some(error)),
+            };
             review_attempts += 1;
             let (ok, text) = dispatch(DispatchReq {
                 subagent_type: "reviewer".to_string(),
-                prompt: reviewer_prompt(ctx.user_goal, &tasks),
+                prompt,
                 description: format!("reviewer 终审(第 {review_attempts} 次)"),
                 tool_call_id: format!("team-review-{review_attempts}"),
+                task_id: None,
+                attempt: None,
             })
-            .await;
+            .await
+            .into()
+            .into_result();
             if !ok {
                 return (
                     "failed".to_string(),
                     last_text,
-                    Some(format!("reviewer 终审派发失败:{}", clip(&text, 300))),
+                    Some(format!("reviewer 终审派发失败:{text}")),
                 );
             }
             match parse_verdict(&text) {
@@ -559,20 +879,6 @@ where
                 }
             }
         }
-        if ctx.source_filter.is_some() {
-            // Any production repair can change shared behavior. An earlier QA
-            // failure (or PASS against old code) must be rerun after repairs.
-            qa_done.clear();
-            // A failed approved task remains part of the accepted scope. A new
-            // repair task cannot silently replace it; rerun it with its failure
-            // evidence so only the scheduler can confirm completion.
-            for task in schedulable_tasks(ctx)
-                .into_iter()
-                .filter(|t| t.status == "failed" && is_schedulable(t))
-            {
-                mark(ctx, &task.id, "queued", None);
-            }
-        }
         if !has_queued(&schedulable_tasks(ctx)) {
             return (
                 "failed".to_string(),
@@ -586,10 +892,427 @@ where
     }
 }
 
+/// UltraPlan uses verified worker handoffs, one integrated QA per candidate, and
+/// explicit retries of existing tasks. Ordinary Team retains its original policy.
+fn recollect_evidence(
+    ctx: &TeamFlowCtx<'_>,
+    candidate: &str,
+    qa_cache: &mut std::collections::HashMap<String, String>,
+    recollections: &mut std::collections::HashSet<String>,
+) -> Result<bool, String> {
+    let allowed = match ctx.production_dir {
+        Some(dir) => execution::reserve_evidence_recollection(dir, candidate)?,
+        None => recollections.insert(candidate.into()),
+    };
+    if allowed {
+        if let Some(dir) = ctx.production_dir {
+            execution::invalidate_qa(dir, candidate)?;
+        }
+        qa_cache.remove(candidate);
+    }
+    Ok(allowed)
+}
+
+async fn run_production_flow<L, LFut, D, DFut>(
+    ctx: &TeamFlowCtx<'_>,
+    leader_text: String,
+    leader_round: L,
+    dispatch: D,
+) -> (String, String, Option<String>)
+where
+    L: Fn(String) -> LFut,
+    LFut: std::future::Future<Output = Result<(String, bool), String>>,
+    D: Fn(DispatchReq) -> DFut,
+    DFut: std::future::Future,
+    DFut::Output: Into<DispatchOutcome>,
+{
+    let mut last_text = leader_text;
+    let mut rounds = match ctx.production_dir.map(execution::fix_rounds).transpose() {
+        Ok(value) => value.unwrap_or(0),
+        Err(error) => return ("failed".into(), last_text, Some(error)),
+    };
+    let mut qa_cache = std::collections::HashMap::<String, String>::new();
+    let mut evidence_recollections = std::collections::HashSet::new();
+    if let Some(dir) = ctx.production_dir {
+        let recovery_tasks = schedulable_tasks(ctx);
+        for task in recovery_tasks
+            .iter()
+            .filter(|t| is_schedulable(t) && t.status == "completed")
+        {
+            if let Err(error) = execution::validate_completed(dir, task, &recovery_tasks) {
+                return ("failed".into(), last_text, Some(error));
+            }
+        }
+    }
+    let mut transient_candidate = 0u64;
+    let mut reviews = 0usize;
+    loop {
+        if (ctx.cancelled)() {
+            return ("cancelled".into(), String::new(), None);
+        }
+        let wave = run_ready_waves(ctx, &dispatch).await;
+        if wave.cancelled {
+            return ("cancelled".into(), String::new(), None);
+        }
+        if let Some(error) = wave.stalled {
+            return ("failed".into(), last_text, Some(error));
+        }
+        if !wave.completed.is_empty() {
+            transient_candidate += 1;
+        }
+        let tasks = schedulable_tasks(ctx);
+        if !tasks.iter().any(is_schedulable) {
+            return (
+                "failed".into(),
+                last_text,
+                Some("team 没有可执行任务，不能判定游戏完成".into()),
+            );
+        }
+        let blockers: Vec<_> = tasks
+            .iter()
+            .filter(|t| {
+                is_schedulable(t)
+                    && t.status == "blocked"
+                    && !t
+                        .summary
+                        .as_deref()
+                        .is_some_and(|s| s.starts_with("DEPENDENCY_BLOCKED:"))
+            })
+            .map(|t| {
+                format!(
+                    "任务 {}「{}」阻塞：{}",
+                    t.id,
+                    t.title,
+                    t.summary.as_deref().unwrap_or("缺少阻塞详情")
+                )
+            })
+            .collect();
+        if !blockers.is_empty() {
+            return (
+                "failed".into(),
+                last_text,
+                Some(format!(
+                    "ULTRAPLAN_PRODUCTION_BLOCKED: {}。未派发修复任务；先解决能力或环境阻塞。",
+                    blockers.join("\n")
+                )),
+            );
+        }
+        let mut problems: Vec<_> = tasks
+            .iter()
+            .filter(|t| is_schedulable(t) && t.status == "failed")
+            .map(|t| {
+                format!(
+                    "任务 {}「{}」执行失败：{}",
+                    t.id,
+                    t.title,
+                    t.summary.as_deref().unwrap_or("缺少失败详情")
+                )
+            })
+            .collect();
+        let all_completed = tasks
+            .iter()
+            .filter(|t| is_schedulable(t))
+            .all(|t| t.status == "completed");
+        if problems.is_empty() && !all_completed {
+            return (
+                "failed".into(),
+                last_text,
+                Some("ULTRAPLAN_PRODUCTION_BLOCKED: 仍有任务未通过依赖交接，不能启动终验".into()),
+            );
+        }
+        if problems.is_empty() {
+            let candidate = match ctx.production_dir.map(execution::candidate).transpose() {
+                Ok(value) => value.unwrap_or_else(|| format!("transient-{transient_candidate}")),
+                Err(error) => return ("failed".into(), last_text, Some(error)),
+            };
+            let prior = match ctx.production_dir {
+                Some(dir) => match execution::qa_result(dir, &candidate) {
+                    Ok(report) => report,
+                    Err(error) => return ("failed".into(), last_text, Some(error)),
+                },
+                None => qa_cache.get(&candidate).cloned(),
+            };
+            let unchanged_failed_candidate = !wave.completed.is_empty()
+                && prior
+                    .as_ref()
+                    .is_some_and(|report| parse_qa_result(true, report).is_err());
+            let qa = if let Some(report) = prior {
+                report
+            } else {
+                let details = tasks
+                    .iter()
+                    .filter(|t| is_schedulable(t))
+                    .map(|t| {
+                        format!(
+                            "任务id:{}\n任务:{}\n委派:{}\n完整交接报告:{}",
+                            t.id,
+                            t.title,
+                            t.prompt.as_deref().unwrap_or(""),
+                            t.summary.as_deref().unwrap_or("")
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                let request = format!("{DELEGATION_DRAFT_PREFIX} 请为本候选版本亲自编写一份整合 qa-tester 委派词。用户目标：{}。\n候选版本:{candidate}\n{details}\n逐项覆盖批准 checks.json 的全部自动检查及核心操作、胜负和重开，用 ultraplan_verify 获取当前版本的真实证据；只测不改。不要按历史任务拆成多个 QA。完整报告保留每项预期、实际及证据路径，结尾 QA_RESULT: PASS 或 QA_RESULT: FAIL。仅输出委派词，不调用 task/plan_write。", ctx.user_goal);
+                let prompt = match author_delegation(ctx, &leader_round, request).await {
+                    Ok(Some(prompt)) => prompt,
+                    Ok(None) => return ("cancelled".into(), String::new(), None),
+                    Err(error) => return ("failed".into(), last_text, Some(error)),
+                };
+                let outcome: DispatchOutcome = dispatch(DispatchReq {
+                    subagent_type: "qa-tester".into(),
+                    prompt,
+                    description: "候选版本整合 QA".into(),
+                    tool_call_id: format!("team-qa-candidate-{candidate}"),
+                    task_id: None,
+                    attempt: None,
+                })
+                .await
+                .into();
+                let report = match outcome {
+                    DispatchOutcome::Completed(report) => report,
+                    DispatchOutcome::Cancelled(_) => {
+                        return ("cancelled".into(), String::new(), None)
+                    }
+                    DispatchOutcome::Blocked(error) => {
+                        return (
+                            "failed".into(),
+                            last_text,
+                            Some(format!("ULTRAPLAN_PRODUCTION_BLOCKED: {error}")),
+                        )
+                    }
+                    DispatchOutcome::Failed(error) => {
+                        return (
+                            "failed".into(),
+                            last_text,
+                            Some(format!("QA 执行失败（未创建产品修复）：{error}")),
+                        )
+                    }
+                };
+                if let Some(dir) = ctx.production_dir {
+                    if let Err(error) = execution::record_qa(dir, &candidate, &report) {
+                        return ("failed".into(), last_text, Some(error));
+                    }
+                } else {
+                    qa_cache.insert(candidate.clone(), report.clone());
+                }
+                report
+            };
+            if let Some(classify) = ctx.verification_issues {
+                let issues = match classify() {
+                    Ok(issues) => issues,
+                    Err(error) => return ("failed".into(), last_text, Some(error)),
+                };
+                if issues.iter().any(|issue| {
+                    !matches!(
+                        issue["status"].as_str(),
+                        Some("missing" | "stale" | "failed")
+                    )
+                }) {
+                    return ("failed".into(), last_text, Some(format!("ULTRAPLAN_VERIFICATION_BLOCKED: {}；保留产物，未创建产品修复。\n完整 QA：{qa}", json!(issues))));
+                }
+                if issues
+                    .iter()
+                    .any(|issue| matches!(issue["status"].as_str(), Some("missing" | "stale")))
+                {
+                    match recollect_evidence(ctx, &candidate, &mut qa_cache, &mut evidence_recollections) {
+                        Ok(true) => continue,
+                        Ok(false) => return ("failed".into(), last_text, Some(format!("ULTRAPLAN_EVIDENCE_INCOMPLETE: {}；本候选版本已补取证一次，未创建产品修复。\n完整 QA：{qa}", json!(issues)))),
+                        Err(error) => return ("failed".into(), last_text, Some(error)),
+                    }
+                }
+                problems.extend(
+                    issues
+                        .iter()
+                        .filter(|issue| issue["status"] == "failed")
+                        .map(|issue| format!("服务端已确认产品失败：{issue}\n完整 QA：{qa}")),
+                );
+                if problems.is_empty() {
+                    if let Err(error) = parse_qa_result(true, &qa) {
+                        return ("failed".into(), last_text, Some(format!("UP_QA_UNCONFIRMED: QA 未通过，但没有服务端确认的产品缺陷，不派制作修复。\n{error}")));
+                    }
+                }
+            } else if let Err(error) = parse_qa_result(true, &qa) {
+                problems.push(error);
+            }
+            if unchanged_failed_candidate && !problems.is_empty() {
+                return ("failed".into(), last_text, Some("ULTRAPLAN_REPAIR_NO_PROGRESS: 修复后正式游戏文件版本未变化，既有 QA 失败仍有效；停止重复派遣".into()));
+            }
+            if problems.is_empty() {
+                if let Some(validate) = ctx.validate {
+                    if let Err(error) = validate() {
+                        match recollect_evidence(
+                            ctx,
+                            &candidate,
+                            &mut qa_cache,
+                            &mut evidence_recollections,
+                        ) {
+                            Ok(true) => continue,
+                            Ok(false) => {}
+                            Err(persist_error) => {
+                                return ("failed".into(), last_text, Some(persist_error))
+                            }
+                        }
+                        // Missing/stale evidence is a verification failure, not an
+                        // instruction to rebuild the approved game scope.
+                        return (
+                            "failed".into(),
+                            last_text,
+                            Some(format!(
+                                "服务端自动验证未通过（保留产物，需补足验证证据）：{error}"
+                            )),
+                        );
+                    }
+                }
+            }
+        }
+        if problems.is_empty() {
+            let prompt = match author_delegation(
+                ctx,
+                &leader_round,
+                reviewer_delegation_request(ctx.user_goal, &tasks),
+            )
+            .await
+            {
+                Ok(Some(prompt)) => prompt,
+                Ok(None) => return ("cancelled".into(), String::new(), None),
+                Err(error) => return ("failed".into(), last_text, Some(error)),
+            };
+            reviews += 1;
+            let outcome: DispatchOutcome = dispatch(DispatchReq {
+                subagent_type: "reviewer".into(),
+                prompt,
+                description: format!("reviewer 终审(第 {reviews} 次)"),
+                tool_call_id: format!("team-review-{reviews}"),
+                task_id: None,
+                attempt: None,
+            })
+            .await
+            .into();
+            let text = match outcome {
+                DispatchOutcome::Completed(text) => text,
+                DispatchOutcome::Cancelled(_) => return ("cancelled".into(), String::new(), None),
+                other => {
+                    return (
+                        "failed".into(),
+                        last_text,
+                        Some(format!("reviewer 终审执行未完成:{}", other.into_result().1)),
+                    )
+                }
+            };
+            match parse_verdict(&text) {
+                Verdict::Approve => {
+                    if let Some(validate) = ctx.validate {
+                        if let Err(error) = validate() {
+                            return ("failed".into(), last_text, Some(error));
+                        }
+                    }
+                    return ("completed".into(), format!("{last_text}\n\n[team 编排] 计划任务 {} 项全部完成；修复轮 {rounds} 次；整合 QA 与 reviewer APPROVE。", tasks.iter().filter(|t| is_schedulable(t)).count()), None);
+                }
+                Verdict::Reject(error) => {
+                    if let Some(classify) = ctx.verification_issues {
+                        let issues = match classify() {
+                            Ok(issues) => issues,
+                            Err(error) => return ("failed".into(), last_text, Some(error)),
+                        };
+                        if issues.is_empty()
+                            || issues.iter().any(|issue| issue["status"] != "failed")
+                        {
+                            return ("failed".into(), last_text, Some(format!("UP_REVIEW_UNCONFIRMED: 审阅未通过，但未取得可修复的服务端产品失败；保留产物。{error}\n{}", json!(issues))));
+                        }
+                        problems.extend(
+                            issues
+                                .iter()
+                                .map(|issue| format!("服务端已确认产品失败：{issue}\n{error}")),
+                        );
+                    } else {
+                        problems.push(error);
+                    }
+                }
+            }
+        }
+        if rounds >= ctx.max_fix_rounds {
+            return (
+                "failed".into(),
+                last_text,
+                Some(format!(
+                    "修复轮已达上限 {}，问题仍未解决:{}",
+                    ctx.max_fix_rounds,
+                    problems.join("\n")
+                )),
+            );
+        }
+        let task_context = tasks
+            .iter()
+            .filter(|t| is_schedulable(t))
+            .map(|t| format!("{} [{}] {}", t.id, t.status, t.title))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let request = format!("[team 定向修复] 以下完整证据需要处理：\n{}\n已有批准任务：\n{task_context}\n请定位根因，只用 todo_update {{id,prompt,status:\"queued\"}} 为确需修复的已有任务编写具体修复委派并授权一次重试。prompt 必须根据本次证据实际更新，写清保留范围、修改点与交接验收。不得 plan_write 追加修复任务，不得重建全部游戏。DEPENDENCY_BLOCKED 任务从未执行，不是额外产品缺陷，不重排它们；上游交接通过后系统释放。无法修复的环境/能力问题如实报告。", problems.join("\n\n"));
+        match leader_round(request).await {
+            Ok((_, true)) => return ("cancelled".into(), String::new(), None),
+            Ok((text, false)) => {
+                if !text.trim().is_empty() {
+                    last_text = text;
+                }
+            }
+            Err(error) => return ("failed".into(), last_text, Some(error)),
+        }
+        if (ctx.cancelled)() {
+            return ("cancelled".into(), String::new(), None);
+        }
+        let after = schedulable_tasks(ctx);
+        if after
+            .iter()
+            .any(|t| is_schedulable(t) && !tasks.iter().any(|old| old.id == t.id))
+        {
+            return (
+                "failed".into(),
+                last_text,
+                Some(
+                    "ULTRAPLAN_REPAIR_SCOPE: 修复轮新增了任务，未派发；只能定向重试已有批准任务"
+                        .into(),
+                ),
+            );
+        }
+        let mut retry = Vec::new();
+        for task in after
+            .iter()
+            .filter(|t| is_schedulable(t) && t.status == "queued")
+        {
+            let old = tasks.iter().find(|old| old.id == task.id).unwrap();
+            if !matches!(old.status.as_str(), "failed" | "completed")
+                || task.prompt == old.prompt
+                || task.prompt.as_deref().is_none_or(|p| p.trim().is_empty())
+            {
+                return ("failed".into(), last_text, Some(format!("ULTRAPLAN_RETRY_NOT_AUTHORIZED: {} 未提供针对当前失败的新委派，不执行重复重试", task.id)));
+            }
+            retry.push(task.id.clone());
+        }
+        if retry.is_empty() {
+            return (
+                "failed".into(),
+                last_text,
+                Some(format!(
+                    "主 agent 未授权任何已有任务的定向修复：{}",
+                    problems.join("\n")
+                )),
+            );
+        }
+        if let Some(dir) = ctx.production_dir {
+            if let Err(error) = execution::reserve_retry(dir, &retry, ctx.max_fix_rounds) {
+                return ("failed".into(), last_text, Some(error));
+            }
+        }
+        rounds += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::agent::NewTodo;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     fn test_env(tag: &str) -> (Arc<TodoStore>, Arc<EventBus>, std::path::PathBuf) {
@@ -630,6 +1353,397 @@ mod tests {
 
     fn never_cancel() -> impl Fn() -> bool + Send + Sync {
         || false
+    }
+
+    fn production_task(todos: &TodoStore, title: &str, deps: Vec<String>) -> TodoItem {
+        todos
+            .create(
+                "s",
+                NewTodo {
+                    title: title.into(),
+                    role: Some("logic-programmer".into()),
+                    source: Some("ultraplan:regression:1".into()),
+                    prompt: Some(format!("实现并验证{title}的具体交接")),
+                    deps,
+                    verify: Some("qa".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn production_blocked_worker_never_completes_or_dispatches_dependents_or_repairs() {
+        let (todos, events, dir) = test_env("blockedhandoff");
+        let first = production_task(&todos, "基础脚本", vec![]);
+        let second = production_task(&todos, "下游场景", vec![first.id.clone()]);
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "game",
+            cancelled: &cancelled,
+            max_fix_rounds: 5,
+            source_filter: Some("ultraplan:regression:1"),
+            serialize_engine: true,
+            validate: None,
+            production_dir: None,
+            verification_issues: None,
+        };
+        let count = AtomicUsize::new(0);
+        let dispatch = |_req: DispatchReq| {
+            count.fetch_add(1, Ordering::SeqCst);
+            async {
+                DispatchOutcome::Blocked("缺少脚本写入能力，未生成任何产物".into())
+            }
+        };
+        let leader =
+            |_request: String| async { panic!("能力阻塞不得开启修复或QA委派") };
+        let (status, _, error) = run_team_flow(&ctx, String::new(), leader, dispatch).await;
+        assert_eq!(status, "failed");
+        assert!(error.unwrap().contains("PRODUCTION_BLOCKED"));
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        let tasks = todos.list_by_session("s");
+        assert_eq!(
+            tasks.iter().find(|t| t.id == first.id).unwrap().status,
+            "blocked"
+        );
+        let dependent = tasks.iter().find(|t| t.id == second.id).unwrap();
+        assert_eq!(dependent.status, "blocked");
+        assert!(dependent
+            .summary
+            .as_deref()
+            .unwrap()
+            .starts_with("DEPENDENCY_BLOCKED:"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn production_twelve_tasks_use_one_integrated_qa_and_preserve_reports() {
+        let (todos, events, dir) = test_env("integratedqa");
+        for index in 0..12 {
+            production_task(&todos, &format!("模块{index}"), vec![]);
+        }
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "game",
+            cancelled: &cancelled,
+            max_fix_rounds: 5,
+            source_filter: Some("ultraplan:regression:1"),
+            serialize_engine: true,
+            validate: None,
+            production_dir: None,
+            verification_issues: None,
+        };
+        let qa = AtomicUsize::new(0);
+        let workers = AtomicUsize::new(0);
+        let report = format!(
+            "{}关键接口及真实产物路径在报告尾部",
+            "详细验证结果".repeat(200)
+        );
+        let dispatch = |req: DispatchReq| {
+            let text = match req.subagent_type.as_str() {
+                "qa-tester" => {
+                    qa.fetch_add(1, Ordering::SeqCst);
+                    "QA_RESULT: PASS".into()
+                }
+                "reviewer" => "VERDICT: APPROVE".into(),
+                _ => {
+                    workers.fetch_add(1, Ordering::SeqCst);
+                    report.clone()
+                }
+            };
+            async { DispatchOutcome::Completed(text) }
+        };
+        let leader = |request: String| async move {
+            assert!(request.contains("关键接口及真实产物路径在报告尾部"));
+            Ok((request, false))
+        };
+        let (status, _, error) = run_team_flow(&ctx, String::new(), leader, dispatch).await;
+        assert_eq!(status, "completed", "{error:?}");
+        assert_eq!(workers.load(Ordering::SeqCst), 12);
+        assert_eq!(qa.load(Ordering::SeqCst), 1);
+        assert!(todos
+            .list_by_session("s")
+            .iter()
+            .all(|t| t.summary.as_deref() == Some(report.as_str())));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn production_failed_handoff_retries_only_original_then_releases_dependency() {
+        let (todos, events, dir) = test_env("targetedretry");
+        let first = production_task(&todos, "基础接口", vec![]);
+        let second = production_task(&todos, "消费接口", vec![first.id.clone()]);
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "game",
+            cancelled: &cancelled,
+            max_fix_rounds: 5,
+            source_filter: Some("ultraplan:regression:1"),
+            serialize_engine: true,
+            validate: None,
+            production_dir: None,
+            verification_issues: None,
+        };
+        let first_attempts = AtomicUsize::new(0);
+        let second_attempts = AtomicUsize::new(0);
+        let dispatch = |req: DispatchReq| {
+            let outcome = if req.task_id.as_deref() == Some(first.id.as_str()) {
+                if first_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    DispatchOutcome::Failed("接口产物缺失".into())
+                } else {
+                    DispatchOutcome::Completed("接口已落盘并通过交接".into())
+                }
+            } else if req.task_id.as_deref() == Some(second.id.as_str()) {
+                assert_eq!(first_attempts.load(Ordering::SeqCst), 2);
+                second_attempts.fetch_add(1, Ordering::SeqCst);
+                DispatchOutcome::Completed("消费接口通过".into())
+            } else {
+                DispatchOutcome::Completed(
+                    if req.subagent_type == "qa-tester" {
+                        "QA_RESULT: PASS"
+                    } else {
+                        "VERDICT: APPROVE"
+                    }
+                    .into(),
+                )
+            };
+            async { outcome }
+        };
+        let leader = |request: String| {
+            if !request.starts_with(DELEGATION_DRAFT_PREFIX) {
+                assert!(request.contains(&first.id));
+                todos
+                    .patch(
+                        &first.id,
+                        &PatchTodoRequest {
+                            status: Some("queued".into()),
+                            prompt: Some("只补齐基础接口产物并重新验证，不重建消费者".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+            }
+            async { Ok(("已亲自编写本次委派".into(), false)) }
+        };
+        let (status, _, error) = run_team_flow(&ctx, String::new(), leader, dispatch).await;
+        assert_eq!(status, "completed", "{error:?}");
+        assert_eq!(first_attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(second_attempts.load(Ordering::SeqCst), 1);
+        assert_eq!(todos.list_by_session("s").len(), 2);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn production_missing_server_evidence_recollects_once_without_rebuilding() {
+        let (todos, events, dir) = test_env("evidencerecollect");
+        production_task(&todos, "完成的游戏", vec![]);
+        let cancelled = never_cancel();
+        let validations = AtomicUsize::new(0);
+        let validate = || {
+            if validations.fetch_add(1, Ordering::SeqCst) == 0 {
+                Err("自动检查gameplay-1缺少当前证据".into())
+            } else {
+                Ok(())
+            }
+        };
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "game",
+            cancelled: &cancelled,
+            max_fix_rounds: 5,
+            source_filter: Some("ultraplan:regression:1"),
+            serialize_engine: true,
+            validate: Some(&validate),
+            production_dir: None,
+            verification_issues: None,
+        };
+        let h = FlowHarness::new(
+            vec!["VERDICT: APPROVE"],
+            vec!["QA_RESULT: PASS", "QA_RESULT: PASS"],
+        );
+        let leader = |request: String| async move {
+            assert!(
+                request.starts_with(DELEGATION_DRAFT_PREFIX),
+                "缺验证证据不得派产品修复"
+            );
+            Ok((request, false))
+        };
+        let (status, _, error) = run_team_flow(&ctx, String::new(), leader, h.dispatch_fn()).await;
+        assert_eq!(status, "completed", "{error:?}");
+        let calls = h.dispatches.lock().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|(role, _)| role == "logic-programmer")
+                .count(),
+            1
+        );
+        assert_eq!(
+            calls.iter().filter(|(role, _)| role == "qa-tester").count(),
+            2
+        );
+        assert_eq!(todos.list_by_session("s").len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn production_qa_fail_requires_confirmed_product_defect_before_repair() {
+        for kind in [
+            "missing",
+            "stale",
+            "blocked",
+            "invalid_request",
+            "unconfirmed",
+        ] {
+            let (todos, events, dir) = test_env(&format!("qa-classification-{kind}"));
+            production_task(&todos, "已有游戏", vec![]);
+            let cancelled = never_cancel();
+            let issues = || {
+                Ok(if kind == "unconfirmed" {
+                    vec![]
+                } else {
+                    vec![json!({"id":"gameplay-1","status":kind,"reason":"真实验证诊断"})]
+                })
+            };
+            let ctx = TeamFlowCtx {
+                todos: &todos,
+                events: &events,
+                session_id: "s",
+                user_goal: "game",
+                cancelled: &cancelled,
+                max_fix_rounds: 5,
+                source_filter: Some("ultraplan:regression:1"),
+                serialize_engine: true,
+                validate: None,
+                production_dir: None,
+                verification_issues: Some(&issues),
+            };
+            let h = FlowHarness::new(
+                vec![],
+                vec![
+                    "QA_RESULT: FAIL 没有通过验证",
+                    "QA_RESULT: FAIL 没有通过验证",
+                ],
+            );
+            let leader = |request: String| async move {
+                assert!(
+                    request.starts_with(DELEGATION_DRAFT_PREFIX),
+                    "{kind} 不得启动制作修复"
+                );
+                Ok((request, false))
+            };
+            let (status, _, error) =
+                run_team_flow(&ctx, String::new(), leader, h.dispatch_fn()).await;
+            assert_eq!(status, "failed", "{kind}");
+            assert!(error.is_some());
+            let calls = h.dispatches.lock().unwrap();
+            assert_eq!(
+                calls
+                    .iter()
+                    .filter(|(role, _)| role == "logic-programmer")
+                    .count(),
+                1,
+                "{kind}"
+            );
+            assert_eq!(
+                calls.iter().filter(|(role, _)| role == "qa-tester").count(),
+                if matches!(kind, "missing" | "stale") {
+                    2
+                } else {
+                    1
+                },
+                "{kind}"
+            );
+            assert_eq!(todos.list_by_session("s").len(), 1);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn production_interrupted_attempt_reconciles_host_result_without_replay() {
+        use crate::ultraplan::production::{self, ProductionTaskStatus};
+        for has_result in [false, true] {
+            let (todos, events, dir) = test_env(&format!("interrupted-{has_result}"));
+            let upstream = production_task(&todos, "写游戏", vec![]);
+            let downstream = production_task(&todos, "接续游戏", vec![upstream.id.clone()]);
+            std::fs::write(
+                dir.join("production.json"),
+                serde_json::to_vec(&json!({
+                    "flowId":"flow","planRev":1,"planHash":"approved",
+                    "activeTodoIds":[upstream.id,downstream.id]
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            execution::begin_attempt(&dir, &upstream.id, "write game").unwrap();
+            todos
+                .patch(
+                    &upstream.id,
+                    &PatchTodoRequest {
+                        status: Some("verifying".into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            if has_result {
+                let mut result = production::ProductionTaskResult::failure(
+                    "RX_CLI_NOT_FOUND",
+                    "compiler missing",
+                );
+                result.status = ProductionTaskStatus::Blocked;
+                production::save_task_result(&dir, &upstream.id, 1, &result).unwrap();
+            }
+            let cancelled = never_cancel();
+            let ctx = TeamFlowCtx {
+                todos: &todos,
+                events: &events,
+                session_id: "s",
+                user_goal: "game",
+                cancelled: &cancelled,
+                max_fix_rounds: 5,
+                source_filter: Some("ultraplan:regression:1"),
+                serialize_engine: true,
+                validate: None,
+                production_dir: Some(&dir),
+                verification_issues: None,
+            };
+            let calls = AtomicUsize::new(0);
+            let dispatch = |_: DispatchReq| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async { DispatchOutcome::Completed("unexpected".into()) }
+            };
+            let report = run_ready_waves(&ctx, &dispatch).await;
+            assert_eq!(calls.load(Ordering::SeqCst), 0);
+            let tasks = todos.list_by_session("s");
+            let first = tasks.iter().find(|task| task.id == upstream.id).unwrap();
+            if has_result {
+                assert_eq!(first.status, "blocked");
+                assert_eq!(
+                    tasks
+                        .iter()
+                        .find(|task| task.id == downstream.id)
+                        .unwrap()
+                        .status,
+                    "blocked"
+                );
+                assert!(report.stalled.is_none());
+            } else {
+                assert_eq!(first.status, "verifying");
+                assert!(report.stalled.unwrap().contains("RECOVERY_REQUIRED"));
+            }
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     // ---------- 纯函数调度核心 ----------
@@ -792,6 +1906,8 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let dispatched = Arc::new(Mutex::new(0usize));
         let d2 = dispatched.clone();
@@ -877,6 +1993,8 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let a_id = a.id.clone();
         let dispatch = move |req: DispatchReq| {
@@ -947,6 +2065,8 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         type Span = (std::time::Instant, std::time::Instant);
         let spans: Arc<Mutex<Vec<Span>>> = Default::default();
@@ -1112,13 +2232,19 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let leader_calls = h.leader_calls.clone();
         let todos2 = todos.clone();
         let leader_round = move |fix: String| {
-            leader_calls.lock().unwrap().push(fix);
+            let leader_calls = leader_calls.clone();
             let todos = todos2.clone();
             async move {
+                if fix.starts_with(DELEGATION_DRAFT_PREFIX) {
+                    return Ok(("主 agent 编写的本次终审委派词".into(), false));
+                }
+                leader_calls.lock().unwrap().push(fix);
                 // leader 修复轮:追加一个修复任务(等价 plan_write 落库)。
                 todos
                     .create(
@@ -1192,15 +2318,21 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let leader_calls = h.leader_calls.clone();
         let todos2 = todos.clone();
         let n = Arc::new(Mutex::new(0usize));
         let leader_round = move |fix: String| {
-            leader_calls.lock().unwrap().push(fix);
+            let leader_calls = leader_calls.clone();
             let todos = todos2.clone();
             let n = n.clone();
             async move {
+                if fix.starts_with(DELEGATION_DRAFT_PREFIX) {
+                    return Ok(("主 agent 编写的本次终审委派词".into(), false));
+                }
+                leader_calls.lock().unwrap().push(fix);
                 let mut n = n.lock().unwrap();
                 *n += 1;
                 todos
@@ -1209,6 +2341,7 @@ mod tests {
                         NewTodo {
                             title: format!("修复 {n}"),
                             role: Some("scene-builder".to_string()),
+                            prompt: Some(format!("按第 {n} 次终审的问题修复场景并取证")),
                             ..Default::default()
                         },
                     )
@@ -1259,19 +2392,26 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let leader_calls = h.leader_calls.clone();
         let todos2 = todos.clone();
         let leader_round = move |fix: String| {
-            leader_calls.lock().unwrap().push(fix);
+            let leader_calls = leader_calls.clone();
             let todos = todos2.clone();
             async move {
+                if fix.starts_with(DELEGATION_DRAFT_PREFIX) {
+                    return Ok(("主 agent 编写的本次验收委派词".into(), false));
+                }
+                leader_calls.lock().unwrap().push(fix);
                 todos
                     .create(
                         sid,
                         NewTodo {
                             title: "修输入响应".to_string(),
                             role: Some("logic-programmer".to_string()),
+                            prompt: Some("修复挡板输入响应并实际运行取证".into()),
                             ..Default::default()
                         },
                     )
@@ -1307,6 +2447,7 @@ mod tests {
                     role: Some("logic-programmer".into()),
                     verify: Some("qa".into()),
                     source: Some(source.into()),
+                    prompt: Some("实现批准的挡板玩法并实际运行取证".into()),
                     ..Default::default()
                 },
             )
@@ -1326,18 +2467,32 @@ mod tests {
             source_filter: Some(source),
             serialize_engine: true,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let todos2 = todos.clone();
-        let leader_round = move |_fix: String| {
+        let original_id = original.id.clone();
+        let leader_round = move |fix: String| {
             let todos = todos2.clone();
+            let original_id = original_id.clone();
             async move {
+                if fix.starts_with(DELEGATION_DRAFT_PREFIX) {
+                    return Ok(("主 agent 编写的本次验收委派词".into(), false));
+                }
                 todos
-                    .create(
-                        sid,
-                        NewTodo {
-                            title: "修输入响应".into(),
-                            role: Some("logic-programmer".into()),
-                            source: Some(source.into()),
+                    .patch(
+                        &original_id,
+                        &PatchTodoRequest {
+                            status: Some("queued".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                todos
+                    .patch(
+                        &original_id,
+                        &PatchTodoRequest {
+                            prompt: Some("只修复挡板输入响应并验证交接，保留原场景".into()),
                             ..Default::default()
                         },
                     )
@@ -1349,13 +2504,8 @@ mod tests {
             run_team_flow(&ctx, "计划已排".into(), leader_round, h.dispatch_fn()).await;
         assert_eq!(status, "completed", "{error:?}");
         let d = h.dispatches.lock().unwrap();
-        let qa_id = format!("team-qa-{}", original.id);
-        assert_eq!(
-            d.iter()
-                .filter(|(role, id)| role == "qa-tester" && id == &qa_id)
-                .count(),
-            2
-        );
+        assert_eq!(d.iter().filter(|(role, _)| role == "qa-tester").count(), 2);
+        assert_eq!(todos.list_by_session(sid).len(), 1, "定向修复不追加任务");
         assert_eq!(d.last().map(|(role, _)| role.as_str()), Some("reviewer"));
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1379,6 +2529,8 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let leader_round = |_fix: String| async move { Ok(("不应被调".to_string(), false)) };
         let (status, text, error) =
@@ -1416,6 +2568,8 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         // leader 修复轮嘴上答应,不落任何新任务。
         let leader_round = |_fix: String| async move { Ok(("知道了".to_string(), false)) };
@@ -1477,6 +2631,8 @@ mod tests {
             source_filter: None,
             serialize_engine: false,
             validate: None,
+            production_dir: None,
+            verification_issues: None,
         };
         let leader_round = |_fix: String| async move { Ok(("不应被调".to_string(), false)) };
         let (status, _text, _error) =
@@ -1581,11 +2737,13 @@ mod tests {
             source_filter: Some(source),
             serialize_engine: true,
             validate: Some(&validate),
+            production_dir: None,
+            verification_issues: None,
         };
         let (status, _, error) = run_team_flow(
             &ctx,
             "resume".into(),
-            |_| async { Ok((String::new(), false)) },
+            |_| async { Ok(("主 agent 编写的恢复后终审委派词".into(), false)) },
             h.dispatch_fn(),
         )
         .await;
@@ -1602,7 +2760,7 @@ mod tests {
                 .iter()
                 .map(|(role, _)| role.as_str())
                 .collect::<Vec<_>>(),
-            ["reviewer"]
+            ["qa-tester", "reviewer"]
         );
         assert_eq!(
             todos
@@ -1641,11 +2799,13 @@ mod tests {
             source_filter: None,
             serialize_engine: true,
             validate: Some(&validate),
+            production_dir: None,
+            verification_issues: None,
         };
         let (status, _, error) = run_team_flow(
             &ctx,
             "build".into(),
-            |_| async { Ok((String::new(), false)) },
+            |_| async { Ok(("主 agent 编写的证据复测委派词".into(), false)) },
             h.dispatch_fn(),
         )
         .await;
@@ -1657,6 +2817,209 @@ mod tests {
             .unwrap()
             .iter()
             .any(|(role, _)| role == "reviewer"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn team_flow_leader_authors_qa_and_reviewer_before_each_dispatch() {
+        let (todos, events, dir) = test_env("authoreddelegations");
+        seed(
+            &todos,
+            "s",
+            "实现挡板输入",
+            Some("logic-programmer"),
+            &[],
+            None,
+            Some("qa"),
+        );
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "制作键盘控制的打砖块游戏",
+            cancelled: &cancelled,
+            max_fix_rounds: 0,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
+            production_dir: None,
+            verification_issues: None,
+        };
+        const QA_PROMPT: &str =
+            "  主 agent：使用键盘左右移动挡板，检查边界并记录证据。\nQA_RESULT: PASS 或 FAIL\n";
+        const REVIEW_PROMPT: &str =
+            " 主 agent：按打砖块需求复核挡板输入与成品。\nVERDICT: APPROVE 或 REJECT  ";
+        let sequence = Arc::new(Mutex::new(Vec::new()));
+        let leader_sequence = sequence.clone();
+        let leader_round = move |request: String| {
+            assert!(request.starts_with(DELEGATION_DRAFT_PREFIX));
+            assert!(request.contains("制作键盘控制的打砖块游戏"));
+            assert!(request.contains("做「实现挡板输入」"));
+            assert!(request.contains("已实现键盘输入，证据: input-check"));
+            let (event, prompt) = if request.contains("为 qa-tester") {
+                assert!(request.contains("QA_RESULT"));
+                ("leader:qa", QA_PROMPT)
+            } else {
+                assert!(request.contains("为 reviewer"));
+                assert!(request.contains("VERDICT"));
+                ("leader:reviewer", REVIEW_PROMPT)
+            };
+            leader_sequence.lock().unwrap().push(event);
+            async move { Ok((prompt.to_string(), false)) }
+        };
+        let dispatch_sequence = sequence.clone();
+        let dispatch = move |req: DispatchReq| {
+            let (event, report) = match req.subagent_type.as_str() {
+                "logic-programmer" => {
+                    assert_eq!(req.prompt, "做「实现挡板输入」");
+                    ("worker", "已实现键盘输入，证据: input-check")
+                }
+                "qa-tester" => {
+                    assert_eq!(req.prompt, QA_PROMPT, "主 agent 输出必须原样派发");
+                    ("qa", "QA_RESULT: PASS")
+                }
+                "reviewer" => {
+                    assert_eq!(req.prompt, REVIEW_PROMPT, "主 agent 输出必须原样派发");
+                    ("reviewer", "VERDICT: APPROVE")
+                }
+                other => panic!("unexpected role: {other}"),
+            };
+            dispatch_sequence.lock().unwrap().push(event);
+            async move { (true, report.to_string()) }
+        };
+        let (status, _, error) =
+            run_team_flow(&ctx, "计划已排".into(), leader_round, dispatch).await;
+        assert_eq!(status, "completed", "{error:?}");
+        assert_eq!(
+            *sequence.lock().unwrap(),
+            ["worker", "leader:qa", "qa", "leader:reviewer", "reviewer"]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn missing_failed_or_cancelled_authoring_never_dispatches_a_template() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        for verify in [Some("qa"), None] {
+            for outcome in ["empty", "error", "cancelled", "token"] {
+                let (todos, events, dir) = test_env("draftfailure");
+                let task = seed(
+                    &todos,
+                    "s",
+                    "已完成的批准任务",
+                    Some("scene-builder"),
+                    &[],
+                    None,
+                    verify,
+                );
+                todos
+                    .patch(
+                        &task.id,
+                        &PatchTodoRequest {
+                            status: Some("completed".into()),
+                            summary: Some("实际执行结果".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                let flag = AtomicBool::new(false);
+                let cancelled = || flag.load(Ordering::SeqCst);
+                let ctx = TeamFlowCtx {
+                    todos: &todos,
+                    events: &events,
+                    session_id: "s",
+                    user_goal: "真实用户需求",
+                    cancelled: &cancelled,
+                    max_fix_rounds: 3,
+                    source_filter: None,
+                    serialize_engine: false,
+                    validate: None,
+                    production_dir: None,
+                    verification_issues: None,
+                };
+                let leader_round = |request: String| {
+                    assert!(request.starts_with(DELEGATION_DRAFT_PREFIX));
+                    if outcome == "token" {
+                        flag.store(true, Ordering::SeqCst);
+                    }
+                    async move {
+                        match outcome {
+                            "empty" => Ok((" \n\t".to_string(), false)),
+                            "error" => Err("主 agent 模型不可用".to_string()),
+                            "cancelled" => Ok(("不应派发的部分输出".to_string(), true)),
+                            "token" => Ok(("取消时返回的完整输出".to_string(), false)),
+                            _ => unreachable!(),
+                        }
+                    }
+                };
+                let h = FlowHarness::new(vec![], vec![]);
+                let (status, _, error) =
+                    run_team_flow(&ctx, "原计划".into(), leader_round, h.dispatch_fn()).await;
+                if matches!(outcome, "cancelled" | "token") {
+                    assert_eq!(status, "cancelled");
+                    assert!(error.is_none());
+                } else {
+                    assert_eq!(status, "failed");
+                    assert!(error.unwrap().contains("未启动子 agent"));
+                }
+                assert!(
+                    h.dispatches.lock().unwrap().is_empty(),
+                    "verify={verify:?}, outcome={outcome}: 不得回退到固定模板派发"
+                );
+                std::fs::remove_dir_all(&dir).ok();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn queued_task_without_leader_prompt_fails_without_title_fallback() {
+        let (todos, events, dir) = test_env("noprompt");
+        for prompt in [
+            None,
+            Some(" \n\t".to_string()),
+            Some(" \t标题不是委派提示词\n".to_string()),
+        ] {
+            todos
+                .create(
+                    "s",
+                    NewTodo {
+                        title: "标题不是委派提示词".into(),
+                        role: Some("scene-builder".into()),
+                        prompt,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+        }
+        let cancelled = never_cancel();
+        let ctx = TeamFlowCtx {
+            todos: &todos,
+            events: &events,
+            session_id: "s",
+            user_goal: "用户需求",
+            cancelled: &cancelled,
+            max_fix_rounds: 0,
+            source_filter: None,
+            serialize_engine: false,
+            validate: None,
+            production_dir: None,
+            verification_issues: None,
+        };
+        let h = FlowHarness::new(vec![], vec![]);
+        let report = run_ready_waves(&ctx, &h.dispatch_fn()).await;
+        assert_eq!(report.failed.len(), 3);
+        assert!(report.completed.is_empty());
+        assert!(h.dispatches.lock().unwrap().is_empty());
+        assert!(report
+            .failed
+            .iter()
+            .all(|(_, error)| error.contains("缺少主 agent 编写的委派提示词")));
+        assert!(todos
+            .list_by_session("s")
+            .iter()
+            .all(|task| task.status == "failed"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }

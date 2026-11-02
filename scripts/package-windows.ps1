@@ -8,7 +8,9 @@
     2. 网页端:@forge/protocol → host → client → desktop(含 UltraPlan 浏览器校验运行时)
     3. Rust:release 构建全部服务;Godot 运行时用 release 版 godot_host.dll + 官方模板(缺模板时自动下载并校验)
     4. 按 apps\desktop\src\backend.cjs 约定的布局收集到 target\installer\stage\forge(安装后位于 resources\forge)
-    5. electron-builder 生成 NSIS 安装包,并写 SHA256SUMS.txt
+    5. electron-builder 生成内层 NSIS 安装包(target\installer\nsis,负责解压、注册卸载信息、快捷方式)
+    6. 构建安装界面外壳 tools\installer\setup(Rust + WebView2),与内层安装包拼成最终的
+       RurixForge-Setup-<版本>.exe,并写 SHA256SUMS.txt
 
   资源目录(agents\、skills\、registry\、tools\blender\、projects\demo\)只收 git 跟踪的文件,
   本机数据、密钥与生成记录不会进安装包。
@@ -44,7 +46,9 @@ $Out = [IO.Path]::GetFullPath($Out)
 $stage = Join-Path $Out 'stage'
 $forge = Join-Path $stage 'forge'
 $appDir = Join-Path $stage 'app'
+$nsisOut = Join-Path $Out 'nsis'
 $dist = Join-Path $Out 'out'
+$setupTarget = Join-Path $root 'target\forge-setup'
 $version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 $godotTag = (Get-Content (Join-Path $root 'GODOT_PIN.json') -Raw | ConvertFrom-Json).godot.tag
 $started = Get-Date
@@ -140,7 +144,7 @@ Copy-Tree (Join-Path $root 'packages\protocol\dist') (Join-Path $protocolDir 'di
 Copy-Item -LiteralPath (Join-Path $root 'packages\protocol\package.json') -Destination $protocolDir
 Copy-Tree (Join-Path $root 'packages\client\dist') (Join-Path $forge 'packages\client\dist')
 
-$count = Copy-TrackedFiles -Paths @('agents', 'skills', 'registry', 'tools/blender', 'projects/demo/forge.toml', 'projects/demo/Content') -Destination $forge
+$count = Copy-TrackedFiles -Paths @('agents', 'skills', 'registry', 'tools/blender', 'tools/model', 'assets/motion-packs', 'projects/demo/forge.toml', 'projects/demo/Content') -Destination $forge
 Write-Note "随包资源:$count 个受跟踪文件"
 # 首次启动复制成用户的默认工作区(仓根的「默认工作区」项目)。
 $null = Copy-TrackedFiles -Paths @('forge.toml', 'Content') -Destination (Join-Path $forge 'templates\default-workspace')
@@ -158,7 +162,10 @@ if (Test-Command go) {
     Write-Warn '未安装 Go,安装包不含 Antigravity 桥接(其余功能不受影响)。'
 }
 
-Get-ChildItem -LiteralPath (Join-Path $root 'apps\desktop\src') -Filter '*.cjs' | Copy-Item -Destination (Join-Path $appDir 'src')
+# 桌面壳:主进程脚本 + 启动小窗页面(splash.html)。
+Get-ChildItem -LiteralPath (Join-Path $root 'apps\desktop\src') -File |
+    Where-Object { $_.Extension -in '.cjs', '.html' } |
+    Copy-Item -Destination (Join-Path $appDir 'src')
 $appPackage = [ordered]@{
     name        = 'rurixforge'
     productName = 'RurixForge'
@@ -173,11 +180,11 @@ $appPackage = [ordered]@{
 $stageBytes = (Get-ChildItem -LiteralPath $stage -Recurse -File | Measure-Object Length -Sum).Sum
 Write-Note ("待打包内容:{0:N0} MB" -f ($stageBytes / 1MB))
 
-Write-Step '生成安装程序(electron-builder + NSIS)'
+Write-Step '生成内层安装包(electron-builder + NSIS)'
 $electronPkg = Resolve-LinkTarget (Join-Path $root 'apps\desktop\node_modules\electron')
 $electronVersion = (Get-Content (Join-Path $electronPkg 'package.json') -Raw | ConvertFrom-Json).version
 $env:FORGE_PKG_FORGE = $forge
-$env:FORGE_PKG_OUT = $dist
+$env:FORGE_PKG_OUT = $nsisOut
 $env:FORGE_PKG_ELECTRON_VERSION = $electronVersion
 $electronDist = Join-Path $electronPkg 'dist'
 if (Test-Path -LiteralPath (Join-Path $electronDist 'electron.exe')) {
@@ -187,13 +194,42 @@ if (Test-Path -LiteralPath (Join-Path $electronDist 'electron.exe')) {
 }
 # 没有代码签名证书:关掉自动查找,安装包不签名(首次运行 Windows 可能提示「未知发布者」)。
 $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
-if (Test-Path -LiteralPath $dist) { Remove-Item -LiteralPath $dist -Recurse -Force }
+foreach ($dir in $nsisOut, $dist) {
+    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
+}
 Invoke-Native -File 'node' -Arguments @($builderCli, '--win', 'nsis', '--x64',
     '--config', (Join-Path $root 'tools\installer\electron-builder.config.cjs'),
     '--projectDir', $appDir) -WorkingDirectory $root
+$core = Join-Path $nsisOut "RurixForge-Core-$version.exe"
+if (-not (Test-Path -LiteralPath $core)) { throw "没有生成 $core" }
 
+# 安装界面外壳是安装程序的一部分,-SkipBuild 也照常(增量)构建。
+Write-Step '构建安装界面(tools\installer\setup)'
+$env:FORGE_SETUP_VERSION = $version
+Invoke-Native -File 'cargo' -Arguments @('build', '--release', '--locked',
+    '--manifest-path', (Join-Path $root 'tools\installer\setup\Cargo.toml'),
+    '--target-dir', $setupTarget) -WorkingDirectory $root
+
+Write-Step '拼装安装程序(安装界面 + 内层安装包)'
+$unpacked = Join-Path $nsisOut 'win-unpacked'
+$installedBytes = (Get-ChildItem -LiteralPath $unpacked -Recurse -File | Measure-Object Length -Sum).Sum
+$meta = [ordered]@{
+    productName    = $appPackage.productName
+    version        = $version
+    exeName        = "$($appPackage.productName).exe"
+    installedBytes = [int64]$installedBytes
+    # 安装界面的大标题已经是产品名,简介去掉开头的「RurixForge:」。
+    description    = $appPackage.description -replace "^$([regex]::Escape($appPackage.productName))\s*[:：]\s*", ''
+    homepage       = $appPackage.homepage
+    license        = [IO.File]::ReadAllText((Join-Path $root 'LICENSE'))
+}
+$metaFile = Join-Path $Out 'setup-meta.json'
+[IO.File]::WriteAllText($metaFile, ($meta | ConvertTo-Json), $utf8)
+New-Item -ItemType Directory -Force -Path $dist | Out-Null
 $installer = Join-Path $dist "RurixForge-Setup-$version.exe"
-if (-not (Test-Path -LiteralPath $installer)) { throw "没有生成 $installer" }
+Invoke-Native -File (Join-Path $setupTarget 'release\forge-setup-pack.exe') -Arguments @(
+    '--stub', (Join-Path $setupTarget 'release\forge-setup.exe'),
+    '--payload', $core, '--meta', $metaFile, '--out', $installer)
 $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS.txt'), "$hash  $(Split-Path -Leaf $installer)`n", $utf8)
 
@@ -201,5 +237,6 @@ Write-Step '完成'
 Write-Host "  安装程序:$installer"
 Write-Host ("  大小:{0:N0} MB" -f ((Get-Item -LiteralPath $installer).Length / 1MB))
 Write-Host "  SHA-256:$hash"
-Write-Host "  免安装试运行:$(Join-Path $dist 'win-unpacked\RurixForge.exe')"
+Write-Host "  免安装试运行:$(Join-Path $unpacked 'RurixForge.exe')"
+Write-Host "  只含经典向导的内层安装包(调试用):$core"
 Write-Host ("  用时:{0:N0} 分钟" -f ((Get-Date) - $started).TotalMinutes)

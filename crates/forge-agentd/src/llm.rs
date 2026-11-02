@@ -1,7 +1,8 @@
 //! RD-F1-002 真 LLM 工具循环:provider 抽象(mock|deepseek)+ POST /api/forge/llm/chat。
 //! 循环:tools/list 实测拉取五 server schema → OpenAI tools 格式 → DeepSeek chat.completions
 //! (tools, tool_choice=auto)→ tool_calls 逐项进程内 mcp::call_tool → role:tool 回注 →
-//! 终止(无 tool_calls 或达到配置的循环上限)→ { provider, text, toolCalls[{name,ok,summary}], iters }。
+//! 默认不限轮数,无 tool_calls、用户取消或达到显式配置的上限时终止 →
+//! { provider, text, toolCalls[{name,ok,summary}], iters }。
 //! 密钥红线(R-5):FORGE_LLM_API_KEY env 优先 → gend keystore["deepseek"](key_for 语义,
 //! FORGE_GEN_API_KEY 共享 dev-key 覆盖如实标注);皆无 → provider=mock。密钥只进
 //! Authorization 请求头,永不进日志/事件/工具返回/错误消息。
@@ -23,22 +24,24 @@
 //! (测试/脚本面,语义不变)→ 已配齐的 openai-compat 渠道(默认落点,配齐即默认)→
 //! keystore deepseek → mock;modelspec::DEFAULT_MODEL_ID 同步指向 openai-compat。
 //! 显式选 deepseek-chat 的会话由 provider_for_session 直连 deepseek 渠道,不被默认劫持。
+//!
+//! D-049:单槽 openai-compat 泛化为自定义模型目录(custom_models.rs)——旧单槽是 id =
+//! "openai-compat" 的目录项,新增条目 id = `custom:<hex>`;每项可选 OpenAI chat.completions
+//! 或 Anthropic Messages(anthropic_compat.rs 出入站转换)并声明上下文窗口/最大输出。
+//! Provider::OpenAiCompat 携带 CustomApi(格式/输出上限/视觉声明),默认渠道 = 目录里
+//! 第一个配齐的条目。
 
 use axum::response::IntoResponse;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
-use std::path::PathBuf;
 
 use crate::mcp;
 
 /// DeepSeek 官方端点(OpenAI 兼容)。
 const DEEPSEEK_URL: &str = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_MODEL: &str = "deepseek-chat";
-/// 工具循环上限(防失控;耗尽如实标注 truncated)。完整游戏制作一轮需数十次工具
-/// 调用(逐素材生成/导入/建实体/写脚本),16 轮实测不够。
-pub(crate) const DEFAULT_MAX_ITERS: usize = 128;
 /// 回注 LLM 的工具结果截断(控 token);响应记录的 summary 另行 ≤200ch。
-const TOOL_FEEDBACK_MAX: usize = 4000;
+pub(crate) const TOOL_FEEDBACK_MAX: usize = 4000;
 /// 单次 HTTP 请求超时(工具循环多轮,每轮一个请求)。
 const HTTP_TIMEOUT_SECS: u64 = 60;
 /// 步进瞬时错误重试上限(1 次原始请求 + 9 次重试;退避 2/8/18/32/50/72/98/128/162/200s,
@@ -56,6 +59,9 @@ const LLM_STEP_HARD_TIMEOUT_SECS: u64 = 1800;
 /// 明确的应用层语义错误(4xx 鉴权/参数/配额)外一律重试。重试幂等:LLM 请求无副作用。
 fn is_transient_llm_error(e: &LlmError) -> bool {
     let s = e.to_string().to_lowercase();
+    if s.contains("unknown provider for model") {
+        return true;
+    }
     ![
         "401",
         "402",
@@ -177,11 +183,13 @@ pub(crate) enum Provider {
     Official { channel: &'static str },
     /// DeepSeek 官方 API;String 仅用于 Authorization 头组装。
     Deepseek(String),
-    /// F8 wave.2:openai-compatible 通用渠道(已配齐 baseUrl+model+key;key 仅用于 Authorization 头)。
+    /// F8 wave.2:openai-compatible 通用渠道(已配齐 baseUrl+model+key;key 仅用于鉴权头)。
+    /// D-049:即自定义模型目录项,api 携带请求格式与上下文参数。
     OpenAiCompat {
         base_url: String,
         model: String,
         key: String,
+        api: CustomApi,
     },
     /// F8 wave.2:会话显式选 openai-compat 但未配齐 → 显式 NOT_CONFIGURED 分支(不静默回落)。
     OpenAiCompatNotConfigured,
@@ -206,6 +214,18 @@ pub(crate) enum Provider {
     AntigravityNotConfigured,
 }
 
+/// 自定义模型的调用面(D-049;目录项里除端点/模型名/密钥外的部分,不含任何机密)。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct CustomApi {
+    /// 目录 id(= 会话模型 id:"openai-compat" 或 `custom:<hex>`)。
+    pub id: String,
+    pub format: crate::custom_models::ApiFormat,
+    /// 声明的最大输出;None = OpenAI 格式不发 max_tokens,Anthropic 格式发缺省值。
+    pub max_output_tokens: Option<u64>,
+    /// 用户声明的视觉能力(决定工具产出的图片是否随对话回注)。
+    pub vision: bool,
+}
+
 /// Debug 脱敏(R-5):Deepseek/OpenAiCompat/Antigravity 变体永不打印密钥本体。
 impl std::fmt::Debug for Provider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -214,12 +234,16 @@ impl std::fmt::Debug for Provider {
             Provider::Official { channel } => f.debug_struct("Official").field("channel", channel).finish(),
             Provider::Deepseek(_) => f.write_str("Deepseek(<redacted>)"),
             Provider::OpenAiCompat {
-                base_url, model, ..
+                base_url,
+                model,
+                api,
+                ..
             } => f
                 .debug_struct("OpenAiCompat")
                 .field("base_url", base_url)
                 .field("model", model)
                 .field("key", &"<redacted>")
+                .field("api", api)
                 .finish(),
             Provider::OpenAiCompatNotConfigured => f.write_str("OpenAiCompatNotConfigured"),
             Provider::Cloud {
@@ -281,12 +305,8 @@ pub(crate) fn resolve_provider_with_cloud(cloud: &crate::cloud::CloudService) ->
     {
         return Provider::Deepseek(k);
     }
-    if let Some((base_url, model, key)) = resolve_openai_compat() {
-        return Provider::OpenAiCompat {
-            base_url,
-            model,
-            key,
-        };
+    if let Some(p) = crate::custom_models::default_provider() {
+        return p;
     }
     if let Some(k) = resolve_deepseek_key() {
         return Provider::Deepseek(k);
@@ -463,7 +483,7 @@ fn map_cloud_gateway_code(code: &str) -> Option<&'static str> {
 
 /// 非 2xx 的错误面:状态码 + 正文 message,不含密钥。云端再带上映射后的失败码,
 /// 以及 `retry-after=N`(秒),供步进重试按 Retry-After 等待。
-fn llm_error_http(provider_label: &str, code: u16, response: ureq::Response) -> LlmError {
+pub(crate) fn llm_error_http(provider_label: &str, code: u16, response: ureq::Response) -> LlmError {
     let retry_after = response
         .header("Retry-After")
         .and_then(|h| h.trim().parse::<u64>().ok());
@@ -550,21 +570,6 @@ fn chat_completions(
     post_chat_completions(DEEPSEEK_URL, "DeepSeek", key, &body, &[])
 }
 
-/// 单次 openai-compat chat.completions 调用(阻塞,调用方须 spawn_blocking;F8 wave.2)。
-/// URL = {baseUrl 去尾斜杠}/v1/chat/completions;错误面同 R-5 纪律(不含密钥)。
-fn chat_completions_openai_compat(
-    base_url: &str,
-    model: &str,
-    key: &str,
-    messages: &[Value],
-    tools: &[Value],
-    spec: &RequestSpec,
-) -> Result<Value, LlmError> {
-    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    let body = build_request_body(model, messages, tools, spec);
-    post_chat_completions(&url, "openai-compat", key, &body, &[])
-}
-
 fn read_body(resp: ureq::Response) -> Result<Vec<u8>, std::io::Error> {
     use std::io::Read;
     let mut buf = Vec::new();
@@ -584,8 +589,20 @@ pub(crate) fn chat_completions_stream(
     sink: Option<&StreamSink>,
     extra_headers: &[(&str, &str)],
 ) -> Result<Value, LlmError> {
+    let body = build_request_body(model, messages, tools, spec);
+    stream_chat_body(url, provider_label, key, body, sink, extra_headers)
+}
+
+/// [`chat_completions_stream`] 的成品请求体版本(自定义模型要在标准体上追加 max_tokens)。
+fn stream_chat_body(
+    url: &str,
+    provider_label: &str,
+    key: &str,
+    mut body: Value,
+    sink: Option<&StreamSink>,
+    extra_headers: &[(&str, &str)],
+) -> Result<Value, LlmError> {
     use std::io::{BufRead, BufReader};
-    let mut body = build_request_body(model, messages, tools, spec);
     body["stream"] = json!(true);
     body["stream_options"] = json!({ "include_usage": true });
     // F-TEAM-5:流式禁用 overall timeout(它是「请求发起到响应体读完」的总时长封顶,
@@ -868,16 +885,17 @@ async fn run_openai_compat_loop(
     base_url: &str,
     model: &str,
     key: &str,
+    api: &CustomApi,
 ) -> Result<(String, Vec<ToolCallRecord>, usize), LlmError> {
     let mcp_tools = mcp::list_all_tools()
         .await
         .map_err(|e| LlmError(format!("MCP 工具面拉取失败: {e}")))?;
     let tools = to_openai_tools(&mcp_tools);
     // llm/chat 是无会话的调试路由,没有规格三档可解析 → 默认 spec。
-    let step = openai_compat_step(base_url, model, key, &RequestSpec::default());
+    let step = custom_step(base_url, model, key, api, &RequestSpec::default());
     let execute = mcp_executor();
-    // 视觉面按渠道声明(vision 字段)如实发,不按渠道名猜测。
-    let vision = load_openai_compat_file().vision;
+    // 视觉面按目录项声明(vision 字段)如实发,不按渠道名猜测。
+    let vision = api.vision;
     let out = run_tool_loop(
         SYSTEM_PROMPT,
         text,
@@ -1040,6 +1058,11 @@ pub type ExecFn = dyn Fn(String, Value) -> BoxFut<(bool, ToolFeedback)> + Send +
 pub enum StreamDelta {
     Text(String),
     Reasoning(String),
+    /// Codex item identity keeps concurrent reasoning summaries separate.
+    ReasoningStarted { item_id: String },
+    ReasoningDelta { item_id: String, delta: String },
+    /// The completed snapshot replaces this item's streamed preview.
+    ReasoningCompleted { item_id: String, text: String },
     ToolArgs {
         index: u32,
         tool_call_id: String,
@@ -1095,7 +1118,7 @@ pub enum LoopEvent {
 
 /// 工具循环结果。
 pub struct ToolLoopOutcome {
-    /// True only when the loop reached its limit without a terminal model response.
+    /// True only when an explicitly configured limit was reached without a terminal response.
     pub exhausted: bool,
     pub text: String,
     pub records: Vec<ToolCallRecord>,
@@ -1122,7 +1145,8 @@ pub struct ToolLoopCfg<'a> {
     /// F10 预检索上下文:Some(非空) = 在 system 与 user 之间插入第三条 role:system
     /// 「工作区上下文」消息(不污染 system prompt 本体);None/空 = 原两条消息行为。
     pub preamble: Option<String>,
-    /// 迭代上限覆盖(team 子代理按 profile.maxSteps 收口);None = 缺省 DEFAULT_MAX_ITERS。
+    /// 显式迭代上限(测试/研究预算);None = 不限轮数,由终稿或取消收束。
+    /// Some(0) 沿用旧行为,至少允许一轮。
     pub max_iters: Option<usize>,
     /// D-038:中途收件——每迭代开头(取消检查之后、步进之前)问一次,Some(text) 即以一条
     /// role:user 消息插进上下文。用途是把后台子代理的回执送进**正在跑**的主 agent 循环,
@@ -1191,47 +1215,58 @@ pub fn deepseek_step(key: &str, spec: &RequestSpec) -> Box<StepFn> {
     })
 }
 
-/// openai-compat 步进工厂(F8 wave.2;同 deepseek 形态:spawn_blocking + Bearer 头,闭包不外泄)。
-/// spec 承载会话规格(思考开 + 该渠道收 reasoning_effort → body 带该字段)。
-pub fn openai_compat_step(
+/// 自定义模型步进工厂(F8 openai-compat 步进的泛化;D-049 按目录项 API 格式分派)。
+/// 同 deepseek 形态:spawn_blocking + 密钥只进鉴权头,闭包不外泄(R-5)。
+/// spec 承载会话规格(思考开 + 该渠道收 reasoning_effort → OpenAI 体带该字段 /
+/// Anthropic 体换算成思考预算);api.max_output_tokens 声明了才进 OpenAI 体。
+pub(crate) fn custom_step(
     base_url: &str,
     model: &str,
     key: &str,
+    api: &CustomApi,
     spec: &RequestSpec,
 ) -> Box<StepFn> {
-    let base_url = base_url.to_string();
+    let url = crate::custom_models::endpoint_url(base_url, api.format);
     let model = model.to_string();
     let key = key.to_string();
+    let api = api.clone();
     let spec = spec.clone();
     Box::new(move |messages, tools, stream| {
-        let base_url = base_url.clone();
+        let url = url.clone();
         let model = model.clone();
         let key = key.clone();
+        let api = api.clone();
         let spec = spec.clone();
         Box::pin(async move {
-            let resp = tokio::task::spawn_blocking(move || {
-                if let Some(sink) = stream {
-                    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-                    chat_completions_stream(
-                        &url,
-                        "openai-compat",
-                        &model,
-                        &key,
+            let label = api.format.label();
+            let resp = tokio::task::spawn_blocking(move || match api.format {
+                crate::custom_models::ApiFormat::Openai => {
+                    let mut body = build_request_body(&model, &messages, &tools, &spec);
+                    if let Some(n) = api.max_output_tokens {
+                        body["max_tokens"] = json!(n);
+                    }
+                    match stream {
+                        Some(sink) => stream_chat_body(&url, label, &key, body, Some(&sink), &[]),
+                        None => post_chat_completions(&url, label, &key, &body, &[]),
+                    }
+                }
+                crate::custom_models::ApiFormat::Anthropic => {
+                    let max_tokens = api
+                        .max_output_tokens
+                        .unwrap_or(crate::custom_models::ANTHROPIC_DEFAULT_MAX_TOKENS);
+                    let body = crate::anthropic_compat::build_body(
+                        spec.model.as_deref().unwrap_or(&model),
                         &messages,
                         &tools,
                         &spec,
-                        Some(&sink),
-                        &[],
-                    )
-                } else {
-                    chat_completions_openai_compat(
-                        &base_url, &model, &key, &messages, &tools, &spec,
-                    )
+                        max_tokens,
+                    );
+                    crate::anthropic_compat::call(&url, &key, body, stream.as_ref())
                 }
             })
             .await
             .map_err(|e| LlmError(format!("spawn_blocking join 失败: {e}")))??;
-            parse_step_response(&resp, "openai-compat")
+            parse_step_response(&resp, label)
         })
     })
 }
@@ -1498,6 +1533,7 @@ pub fn mcp_executor_in(project_root: std::path::PathBuf) -> Box<ExecFn> {
     Box::new(move |name, args| {
         let root = project_root.clone();
         Box::pin(async move {
+            let args = crate::editor::without_play_stop_stamp(&name, args);
             if let Err(error) = crate::editor::validate_scene_write(&name, &args) {
                 return (false, error.into());
             }
@@ -1536,7 +1572,7 @@ pub fn mcp_executor_in(project_root: std::path::PathBuf) -> Box<ExecFn> {
 }
 
 /// 工具循环主流程(F7 wave.2 抽出;llm/chat 以 sink/forbidden/cancelled 全 None 调用,
-/// 行为与 RD-F1-002 原 run_deepseek_loop 逐行等价:同一消息序/截断/记录面/轮数语义)。
+/// 共用消息序、截断和记录语义;默认不限轮数,显式 max_iters 才启用预算提醒与耗尽结果)。
 pub async fn run_tool_loop(
     system_prompt: &str,
     user_text: &str,
@@ -1633,9 +1669,10 @@ async fn run_tool_loop_inner(
     messages.push(json!({ "role": "user", "content": user_text }));
     let mut records: Vec<ToolCallRecord> = Vec::new();
     let mut iters_done = 0usize;
-    let max_iters = cfg.max_iters.unwrap_or(DEFAULT_MAX_ITERS).max(1);
+    let max_iters = cfg.max_iters.map(|limit| limit.max(1));
 
-    for iter in 1..=max_iters {
+    while max_iters.map_or(true, |limit| iters_done < limit) {
+        let iter = iters_done.saturating_add(1);
         // 每迭代检查取消令牌(F7 wave.2 runs cancel;llm/chat 传 None 恒 false)。
         if cfg.cancelled.map(|c| c()).unwrap_or(false) {
             return Ok(ToolLoopOutcome {
@@ -1655,10 +1692,12 @@ async fn run_tool_loop_inner(
         }
         // 保留最后四轮供验证、保存和终稿。通知放在完整工具结果之后，保持调用配对，
         // 也让受管 Codex 桥把它随本批次结果送入同一轮次；不重启或重放已执行工作。
-        if max_iters >= 8 && iter == max_iters - 3 {
-            messages.push(json!({ "role": "user", "content": format!(
-                "工作循环预算提醒：本次上限 {max_iters} 轮，剩余 4 轮（含本轮和最终汇报）。请优先验证、保存已有产物并完成汇报；尚未完成的工作如实列出，供上级基于现有产物继续。"
-            ) }));
+        if let Some(max_iters) = max_iters {
+            if max_iters >= 8 && iter == max_iters - 3 {
+                messages.push(json!({ "role": "user", "content": format!(
+                    "工作循环预算提醒：本次上限 {max_iters} 轮，剩余 4 轮（含本轮和最终汇报）。请优先验证、保存已有产物并完成汇报；尚未完成的工作如实列出，供上级基于现有产物继续。"
+                ) }));
+            }
         }
         // 步进带瞬时网络错误重试(远端渠道 peer closed/超时等抖动实测会打断整轮;
         // 重试前发 StreamReset 让前端清掉半截流,幂等重启本轮 LLM 请求)。
@@ -1945,12 +1984,12 @@ async fn run_tool_loop_inner(
             sink(LoopEvent::ContextAccepted(messages.clone()));
         }
     }
-    // 轮数耗尽:如实标注,不伪造收尾。
+    // 只有显式有限预算才会耗尽:如实标注,不伪造收尾。
     Ok(ToolLoopOutcome {
         exhausted: true,
-        text: format!("(工具循环已达上限 {max_iters} 轮,未收束;以上为已执行部分)"),
+        text: format!("(工具循环已达上限 {iters_done} 轮,未收束;以上为已执行部分)"),
         records,
-        iters: max_iters,
+        iters: iters_done,
         cancelled: false,
     })
 }
@@ -2198,7 +2237,8 @@ pub async fn chat(
             base_url,
             model,
             key,
-        } => match run_openai_compat_loop(&req.text, &base_url, &model, &key).await {
+            api,
+        } => match run_openai_compat_loop(&req.text, &base_url, &model, &key, &api).await {
             Ok((text, records, iters)) => Ok(axum::Json(json!({
                 "provider": "openai-compat",
                 "text": text,
@@ -2321,116 +2361,23 @@ pub async fn set_llm_key(axum::Json(req): axum::Json<LlmKeyRequest>) -> axum::re
     axum::Json(json!({ "ok": true, "configured": deepseek_key_available() })).into_response()
 }
 
-// ---------- F8 wave.2:openai-compatible 通用渠道(设置·模型页渠道卡 + ask:execute provider 分支) ----------
+// ---------- F8 wave.2 / D-049:自定义模型渠道(目录与 REST 见 custom_models.rs) ----------
 
-/// keystore 条目 id(R-5:key 只进 keystore/Authorization 头,永不落本模块 JSON/响应/日志)。
-pub(crate) const OPENAI_COMPAT_KEYSTORE_ID: &str = "openai-compat";
-/// 会话选模 id(design-snapshot models 条目 id;client 菜单经 snapshot 数据面自动纳入)。
-pub(crate) const OPENAI_COMPAT_MODEL_ID: &str = "openai-compat";
 /// 未配置显式错误码(GEN_BACKEND_NOT_CONFIGURED 同族精神;消息面不含 key/机密)。
 pub(crate) const OPENAI_COMPAT_NOT_CONFIGURED: &str = "OPENAI_COMPAT_NOT_CONFIGURED";
 
-/// openai-compat 配置文件(baseUrl/model 面;key 永不进本文件——走 keystore)。
-/// 路径 = gend::config::data_dir()/llm-openai-compat.json(与 keystore/gen-backends 同根)。
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct OpenAiCompatFile {
-    #[serde(default)]
-    pub base_url: String,
-    #[serde(default)]
-    pub model: String,
-    /// 该端点后面接的模型是否收图片。无法从端点探知(同一个 baseUrl 可以换任意模型),
-    /// 故由用户在渠道配置里声明;缺省 false = 不发图,宁可少一项能力也不发出会被拒的请求。
-    #[serde(default)]
-    pub vision: bool,
-}
-
-/// 配置 JSON 读-改-写串行锁(同 sessions/todos 纪律;整文件原子写)。
-static OPENAI_COMPAT_FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-fn openai_compat_config_path() -> PathBuf {
-    gend::config::data_dir().join("llm-openai-compat.json")
-}
-
-/// 读配置文件;缺失/解析失败按未配置处理(eprintln 如实,不含机密面)。
-pub(crate) fn load_openai_compat_file() -> OpenAiCompatFile {
-    let path = openai_compat_config_path();
-    match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-            eprintln!(
-                "llm-openai-compat.json 解析失败({}): {e},按未配置处理",
-                path.display()
-            );
-            OpenAiCompatFile::default()
-        }),
-        Err(_) => OpenAiCompatFile::default(),
-    }
-}
-
-/// 原子写:tmp 全量写 + rename(调用方须持 OPENAI_COMPAT_FILE_LOCK)。
-fn save_openai_compat_file(cfg: &OpenAiCompatFile) -> std::io::Result<()> {
-    let path = openai_compat_config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let text = serde_json::to_string_pretty(cfg)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, &path)
-}
-
-/// keystore["openai-compat"] 密钥面(key_for 语义含 FORGE_GEN_API_KEY 共享 dev-key 覆盖,如实)。
-fn openai_compat_key() -> Option<String> {
-    let ks = gend::keystore::Keystore::load();
-    match ks.key_for(OPENAI_COMPAT_KEYSTORE_ID) {
-        Some(k) if !k.is_empty() => Some(k),
-        _ => None,
-    }
-}
-
-/// 状态面(REST status 与 snapshot availability 同源;只布尔+baseUrl+model,绝无 key)。
-pub(crate) struct OpenAiCompatStatus {
-    pub configured: bool,
-    pub base_url: String,
-    pub model: String,
-    pub key_configured: bool,
-    pub vision: bool,
-}
-
-pub(crate) fn openai_compat_status() -> OpenAiCompatStatus {
-    let file = load_openai_compat_file();
-    let key_configured = openai_compat_key().is_some();
-    let configured = !file.base_url.is_empty() && !file.model.is_empty() && key_configured;
-    OpenAiCompatStatus {
-        configured,
-        base_url: file.base_url,
-        model: file.model,
-        key_configured,
-        vision: file.vision,
-    }
-}
-
 /// 该 provider 能否收图片。判定看「实际要调的渠道」而非会话选了什么名字。
 /// deepseek chat 与本地 mock 都没有视觉面 → 恒 false(发过去只会被拒或当噪声);
-/// openai-compat 端点背后接什么模型只有人知道 → 读渠道配置里用户声明的那一位。
+/// 自定义模型端点背后接什么模型只有人知道 → 读目录项里用户声明的那一位。
 pub(crate) fn provider_vision(provider: &Provider) -> bool {
     match provider {
-        Provider::OpenAiCompat { .. } => load_openai_compat_file().vision,
+        Provider::OpenAiCompat { api, .. } => api.vision,
         Provider::Antigravity { .. } => true,
         Provider::Cloud { model, .. } => crate::cloud::global()
             .catalog_cached()
             .is_some_and(|c| c.find(model).is_some_and(|m| m.capabilities.vision)),
         _ => false,
     }
-}
-
-/// provider 解析:baseUrl+model+key 全齐 → Some;任一缺 → None(调用方走显式 NOT_CONFIGURED)。
-pub(crate) fn resolve_openai_compat() -> Option<(String, String, String)> {
-    let file = load_openai_compat_file();
-    if file.base_url.is_empty() || file.model.is_empty() {
-        return None;
-    }
-    openai_compat_key().map(|k| (file.base_url, file.model, k))
 }
 
 /// provider → 步进工厂(ask_execute 主循环与 team 子代理共用一处 match,防两处漂移)。
@@ -2443,7 +2390,8 @@ pub(crate) fn step_for_provider(provider: &Provider, spec: &RequestSpec) -> Box<
             base_url,
             model,
             key,
-        } => openai_compat_step(base_url, model, key, spec),
+            api,
+        } => custom_step(base_url, model, key, api, spec),
         Provider::OpenAiCompatNotConfigured => openai_compat_not_configured_step(),
         Provider::Cloud {
             server_url,
@@ -2469,105 +2417,10 @@ pub fn openai_compat_not_configured_step() -> Box<StepFn> {
     Box::new(|_m, _t, _s| {
         Box::pin(async move {
             Err(LlmError(format!(
-                "{OPENAI_COMPAT_NOT_CONFIGURED}: openai-compat 渠道未配齐(baseUrl/model/key 缺一);请在 设置→模型 页配置"
+                "{OPENAI_COMPAT_NOT_CONFIGURED}: 所选自定义模型未配齐或已删除(baseUrl/model/key 缺一);请在 设置→模型 页配置"
             )))
         })
     })
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenAiCompatConfigRequest {
-    /// OpenAI 兼容端点根(调用时拼 /v1/chat/completions);必填,空 → 400 EMPTY_BASE_URL。
-    #[serde(default)]
-    base_url: String,
-    /// 模型名(请求体 model 域);必填,空 → 400 EMPTY_MODEL。
-    #[serde(default)]
-    model: String,
-    /// API Key;可省略 = 只改 baseUrl/model;非空 → 写 keystore["openai-compat"](永不回显)。
-    #[serde(default)]
-    key: Option<String>,
-    /// 该模型是否收图片;省略 = 保留既有(免得只改 baseUrl 的请求把它悄悄关掉)。
-    #[serde(default)]
-    vision: Option<bool>,
-}
-
-/// POST /api/forge/llm/openai-compat/config {baseUrl, model, key?}。
-/// 空 baseUrl → 400 EMPTY_BASE_URL;空 model → 400 EMPTY_MODEL;写盘失败 → 500 FORGE_IO(仅 IO 面)。
-/// 响应 {ok, configured, baseUrl, model, keyConfigured}——绝无 key(R-5)。
-pub async fn set_openai_compat_config(
-    axum::Json(req): axum::Json<OpenAiCompatConfigRequest>,
-) -> axum::response::Response {
-    let base_url = req.base_url.trim().to_string();
-    if base_url.is_empty() {
-        return (
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(
-                json!({ "error": { "code": "EMPTY_BASE_URL", "message": "baseUrl 不可空" } }),
-            ),
-        )
-            .into_response();
-    }
-    let model = req.model.trim().to_string();
-    if model.is_empty() {
-        return (
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(json!({ "error": { "code": "EMPTY_MODEL", "message": "model 不可空" } })),
-        )
-            .into_response();
-    }
-    // baseUrl/model 落 JSON(Mutex 串行 + 原子写;key 不进本文件)。
-    {
-        let _g = OPENAI_COMPAT_FILE_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let file = OpenAiCompatFile {
-            base_url: base_url.clone(),
-            model: model.clone(),
-            vision: req
-                .vision
-                .unwrap_or_else(|| load_openai_compat_file().vision),
-        };
-        if let Err(e) = save_openai_compat_file(&file) {
-            return (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
-            )
-                .into_response();
-        }
-    }
-    // key 非空 → 写 keystore(读-改-写保留其他条目;错误仅 IO 面不带 key 值)。
-    if let Some(k) = req.key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
-        if let Err(e) = gend::keystore::set_key(OPENAI_COMPAT_KEYSTORE_ID, k) {
-            return (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(json!({ "error": { "code": "FORGE_IO", "message": e.to_string() } })),
-            )
-                .into_response();
-        }
-    }
-    let st = openai_compat_status();
-    axum::Json(json!({
-        "ok": true,
-        "configured": st.configured,
-        "baseUrl": st.base_url,
-        "model": st.model,
-        "keyConfigured": st.key_configured,
-        "vision": st.vision,
-    }))
-    .into_response()
-}
-
-/// GET /api/forge/llm/openai-compat/status → {configured, baseUrl, model, keyConfigured, vision}(无 key)。
-pub async fn openai_compat_status_handler() -> axum::Json<Value> {
-    let st = openai_compat_status();
-    axum::Json(json!({
-        "configured": st.configured,
-        "baseUrl": st.base_url,
-        "model": st.model,
-        "keyConfigured": st.key_configured,
-        "vision": st.vision,
-    }))
 }
 
 #[cfg(test)]
@@ -3229,23 +3082,89 @@ mod tests {
         }
     }
 
-    /// max_iters 覆盖生效(team 子代理 profile.maxSteps 收口):上限 1 轮 → 执行完
+    /// 显式 max_iters 生效:上限 1 轮 → 执行完
     /// 首轮工具即如实收尾,不再步进第二轮。
     #[tokio::test]
     async fn loop_respects_max_iters_override() {
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let step = scripted_step(
-            vec![
-                tool_call_msg("mcp__engine-scene__entity_list", "{}"),
-                final_msg("不该走到第二轮"),
-            ],
-            seen.clone(),
-        );
-        let execute: Box<ExecFn> =
-            Box::new(|name, _args| Box::pin(async move { (true, format!("{name} ok").into()) }));
+        for max_iters in [0, 1] {
+            let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let step = scripted_step(
+                vec![
+                    tool_call_msg("mcp__engine-scene__entity_list", "{}"),
+                    final_msg("不该走到第二轮"),
+                ],
+                seen.clone(),
+            );
+            let execute: Box<ExecFn> =
+                Box::new(|name, _args| Box::pin(async move { (true, format!("{name} ok").into()) }));
+            let out = run_tool_loop(
+                "sys",
+                "用户输入",
+                ToolLoopCfg {
+                    tools: vec![],
+                    step: step.as_ref(),
+                    execute: execute.as_ref(),
+                    vision: false,
+                    sink: None,
+                    forbidden: None,
+                    cancelled: None,
+                    stream: None,
+                    preamble: None,
+                    inbox: None,
+                    history: Vec::new(),
+                    max_iters: Some(max_iters),
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(out.iters, 1);
+            assert!(out.exhausted);
+            assert_eq!(seen.lock().unwrap().len(), 1, "零/一轮预算都只步进一轮");
+            assert!(out.text.contains("已达上限 1 轮"), "如实标注: {}", out.text);
+            assert_eq!(out.records.len(), 1, "首轮工具照常执行");
+        }
+    }
+
+    /// 默认循环跨过原有 128/512 轮上限,保留完整工具结果后由模型终稿收束。
+    #[tokio::test]
+    async fn loop_without_limit_runs_past_512_tool_rounds_then_finishes() {
+        const TOOL_ROUNDS: usize = 600;
+        let steps = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let steps2 = steps.clone();
+        let step: Box<StepFn> = Box::new(move |messages, _, _| {
+            let iter = steps2.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            assert_eq!(messages.len(), 2 * iter, "每轮工具调用与结果完整配对");
+            assert_eq!(
+                messages.iter().filter(|m| m["role"] == "user").count(),
+                1,
+                "无限循环不得注入轮数预算提醒"
+            );
+            if iter > 1 {
+                assert_eq!(
+                    messages.last().unwrap()["content"],
+                    format!("completed {}", iter - 1)
+                );
+            }
+            let message = if iter <= TOOL_ROUNDS {
+                let mut msg = tool_call_msg("read_file", &format!(r#"{{"round":{iter}}}"#));
+                msg["tool_calls"][0]["id"] = json!(format!("call_{iter}"));
+                msg
+            } else {
+                final_msg("600 轮工作完成并已验证")
+            };
+            Box::pin(async move {
+                Ok(StepOutcome {
+                    message,
+                    usage: None,
+                })
+            })
+        });
+        let execute: Box<ExecFn> = Box::new(|_, args| {
+            Box::pin(async move { (true, format!("completed {}", args["round"]).into()) })
+        });
         let out = run_tool_loop(
             "sys",
-            "用户输入",
+            "完成全部工作",
             ToolLoopCfg {
                 tools: vec![],
                 step: step.as_ref(),
@@ -3258,25 +3177,29 @@ mod tests {
                 preamble: None,
                 inbox: None,
                 history: Vec::new(),
-                max_iters: Some(1),
+                max_iters: None,
             },
         )
         .await
         .unwrap();
-        assert_eq!(out.iters, 1);
-        assert!(out.exhausted);
-        assert_eq!(seen.lock().unwrap().len(), 1, "只允许步进一轮");
-        assert!(out.text.contains("已达上限 1 轮"), "如实标注: {}", out.text);
-        assert_eq!(out.records.len(), 1, "首轮工具照常执行");
+        assert!(!out.exhausted && !out.cancelled);
+        assert_eq!(out.iters, TOOL_ROUNDS + 1);
+        assert_eq!(
+            steps.load(std::sync::atomic::Ordering::SeqCst),
+            TOOL_ROUNDS + 1
+        );
+        assert_eq!(out.records.len(), TOOL_ROUNDS);
+        assert!(out.records.iter().all(|r| r.ok));
+        assert_eq!(out.text, "600 轮工作完成并已验证");
     }
 
-    /// 用真实内建档案和低预算个人覆盖各跑 500 轮工具调用，之后仍可返回终稿。
+    /// 用真实内建档案和低预算个人覆盖各跑 600 轮工具调用，之后仍可返回终稿。
     #[tokio::test]
-    async fn every_subagent_can_execute_500_tool_rounds_and_then_finish() {
+    async fn every_subagent_can_execute_600_tool_rounds_and_then_finish() {
         let (profiles, errors) =
             crate::subagents::list_subagents(&crate::subagents::builtin_agents_dir());
         assert!(errors.is_empty(), "{errors:?}");
-        let mut budgets: Vec<(String, usize)> = profiles
+        let mut budgets: Vec<(String, Option<usize>)> = profiles
             .iter()
             .map(|p| (p.name.clone(), crate::subagents::loop_max_iters(Some(p))))
             .collect();
@@ -3290,14 +3213,15 @@ mod tests {
         ));
         for (name, max_iters) in budgets {
             let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-            let mut messages: Vec<Value> = (0..500)
+            assert_eq!(max_iters, None, "{name} 不应有隐式轮数上限");
+            let mut messages: Vec<Value> = (0..600)
                 .map(|i| {
                     let mut msg = tool_call_msg("read_file", "{}");
                     msg["tool_calls"][0]["id"] = json!(format!("call_{i}"));
                     msg
                 })
                 .collect();
-            messages.push(final_msg("500 轮工作完成并已验证"));
+            messages.push(final_msg("600 轮工作完成并已验证"));
             let step = scripted_step(messages, seen.clone());
             let execute: Box<ExecFn> =
                 Box::new(|_, _| Box::pin(async { (true, "已读取".into()) }));
@@ -3316,16 +3240,16 @@ mod tests {
                     preamble: None,
                     inbox: None,
                     history: Vec::new(),
-                    max_iters: Some(max_iters),
+                    max_iters,
                 },
             )
             .await
             .unwrap();
             assert!(!out.exhausted && !out.cancelled, "{name}");
-            assert_eq!(out.iters, 501, "{name} 必须能在 500 轮工具后汇报");
-            assert_eq!(out.records.len(), 500, "{name}");
-            assert_eq!(seen.lock().unwrap().len(), 501, "{name}");
-            assert_eq!(out.text, "500 轮工作完成并已验证", "{name}");
+            assert_eq!(out.iters, 601, "{name} 必须能在 600 轮工具后汇报");
+            assert_eq!(out.records.len(), 600, "{name}");
+            assert_eq!(seen.lock().unwrap().len(), 601, "{name}");
+            assert_eq!(out.text, "600 轮工作完成并已验证", "{name}");
         }
     }
 
@@ -4164,20 +4088,23 @@ mod tests {
 
     #[tokio::test]
     async fn loop_cancel_between_iterations() {
-        // step 恒产工具调用;executor 首调后置取消旗 → 第二迭代开头收束 cancelled。
+        // 无限循环跨过旧上限后仍检查取消,取消后不再请求模型或执行新工具。
+        const TOOL_ROUNDS: usize = 600;
         let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let flag2 = flag.clone();
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let step = scripted_step(
-            vec![
-                tool_call_msg("mcp__engine-scene__entity_list", "{}"),
-                tool_call_msg("mcp__engine-scene__entity_list", "{}"),
-                final_msg("不应到达"),
-            ],
-            seen,
+            (0..=TOOL_ROUNDS)
+                .map(|_| tool_call_msg("mcp__engine-scene__entity_list", "{}"))
+                .collect(),
+            seen.clone(),
         );
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let calls2 = calls.clone();
         let execute: Box<ExecFn> = Box::new(move |_n, _a| {
-            flag2.store(true, std::sync::atomic::Ordering::SeqCst);
+            if calls2.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 == TOOL_ROUNDS {
+                flag2.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
             Box::pin(async move { (true, "ok".into()) })
         });
         let flag3 = flag.clone();
@@ -4204,9 +4131,17 @@ mod tests {
         .await
         .unwrap();
         assert!(out.cancelled);
+        assert!(!out.exhausted);
         assert_eq!(out.text, "");
-        assert_eq!(out.iters, 1, "仅完成一迭代");
-        assert_eq!(log.lock().unwrap().len(), 2, "invoked+completed 后取消");
+        assert_eq!(out.iters, TOOL_ROUNDS);
+        assert_eq!(out.records.len(), TOOL_ROUNDS);
+        assert_eq!(seen.lock().unwrap().len(), TOOL_ROUNDS, "取消后不再步进");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), TOOL_ROUNDS);
+        assert_eq!(
+            log.lock().unwrap().len(),
+            2 * TOOL_ROUNDS,
+            "保留已执行的工具事件"
+        );
     }
 
     #[tokio::test]
@@ -4281,7 +4216,7 @@ mod tests {
 
     /// 隔离数据目录 + env 守卫(三环境变量统一清/复;锁由调用方持有)。
     struct DataDirGuard {
-        dir: PathBuf,
+        dir: std::path::PathBuf,
     }
     impl DataDirGuard {
         fn new(tag: &str) -> Self {
@@ -4310,18 +4245,20 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    use crate::custom_models::{LegacyConfigRequest, LEGACY_ID};
+
     #[tokio::test]
     async fn oai_config_write_read_roundtrip_and_key_only_in_keystore() {
         let _g = env_lock();
         let guard = DataDirGuard::new("roundtrip");
         let secret = "sk-test-oai-REDLINE-roundtrip";
         // 未配置前置:status configured=false / keyConfigured=false。
-        let v = openai_compat_status_handler().await.0;
+        let v = crate::custom_models::legacy_status_handler().await.0;
         assert_eq!(v["configured"], false);
         assert_eq!(v["keyConfigured"], false);
         assert_eq!(v["baseUrl"], "");
         // POST config(baseUrl+model+key)→ {ok,configured,...} 响应面无 key。
-        let resp = set_openai_compat_config(axum::Json(OpenAiCompatConfigRequest {
+        let resp = crate::custom_models::legacy_config_handler(axum::Json(LegacyConfigRequest {
             base_url: "http://127.0.0.1:9100".to_string(),
             model: "qwen2.5-7b".to_string(),
             key: Some(secret.to_string()),
@@ -4341,8 +4278,8 @@ mod tests {
             !v.to_string().contains(secret),
             "config 响应回显密钥(R-5): {v}"
         );
-        // 配置 JSON 落盘:含 baseUrl/model,绝不含 key 子串。
-        let text = std::fs::read_to_string(guard.dir.join("llm-openai-compat.json")).unwrap();
+        // 配置 JSON 落盘(D-049 起为自定义模型目录):含 baseUrl/model,绝不含 key 子串。
+        let text = std::fs::read_to_string(guard.dir.join("llm-custom-models.json")).unwrap();
         assert!(text.contains("http://127.0.0.1:9100"), "{text}");
         assert!(text.contains("qwen2.5-7b"), "{text}");
         assert!(!text.contains(secret), "配置 JSON 落密钥(R-5): {text}");
@@ -4354,18 +4291,19 @@ mod tests {
             "keystore 落盘含明文(R-5): {ks_text}"
         );
         let ks = gend::keystore::Keystore::load_from(&guard.dir.join("keystore.json"));
-        assert_eq!(
-            ks.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(),
-            Some(secret)
-        );
-        // resolve 三联 = (base_url, model, key)。
-        let (bu, m, k) = resolve_openai_compat().expect("已配齐应 Some");
-        assert_eq!(
-            (bu.as_str(), m.as_str(), k.as_str()),
-            ("http://127.0.0.1:9100", "qwen2.5-7b", secret)
-        );
+        assert_eq!(ks.key_for(LEGACY_ID).as_deref(), Some(secret));
+        // provider 三联 = (base_url, model, key)。
+        match crate::custom_models::provider(LEGACY_ID) {
+            Provider::OpenAiCompat {
+                base_url, model, key, ..
+            } => assert_eq!(
+                (base_url.as_str(), model.as_str(), key.as_str()),
+                ("http://127.0.0.1:9100", "qwen2.5-7b", secret)
+            ),
+            other => panic!("已配齐应可调用: {other:?}"),
+        }
         // key 省略 = 只改 baseUrl/model;keystore 既有 key 保留。
-        let resp = set_openai_compat_config(axum::Json(OpenAiCompatConfigRequest {
+        let resp = crate::custom_models::legacy_config_handler(axum::Json(LegacyConfigRequest {
             base_url: "http://127.0.0.1:9200".to_string(),
             model: "glm-4-air".to_string(),
             key: None,
@@ -4380,23 +4318,20 @@ mod tests {
         assert_eq!(v["baseUrl"], "http://127.0.0.1:9200");
         let ks2 = gend::keystore::Keystore::load_from(&guard.dir.join("keystore.json"));
         assert_eq!(
-            ks2.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(),
+            ks2.key_for(LEGACY_ID).as_deref(),
             Some(secret),
             "key 省略不得清既有 keystore 条目"
         );
         // 渠道 key 不互踩:deepseek 条目写入后 openai-compat 原样。
         gend::keystore::set_key("deepseek", "sk-test-oai-deepseek-neighbor").unwrap();
         let ks3 = gend::keystore::Keystore::load_from(&guard.dir.join("keystore.json"));
-        assert_eq!(
-            ks3.key_for(OPENAI_COMPAT_KEYSTORE_ID).as_deref(),
-            Some(secret)
-        );
+        assert_eq!(ks3.key_for(LEGACY_ID).as_deref(), Some(secret));
         assert_eq!(
             ks3.key_for("deepseek").as_deref(),
             Some("sk-test-oai-deepseek-neighbor")
         );
         // status 响应面终态仍无 key。
-        let v = openai_compat_status_handler().await.0;
+        let v = crate::custom_models::legacy_status_handler().await.0;
         assert_eq!(v["configured"], true);
         assert!(
             !v.to_string().contains("sk-"),
@@ -4409,7 +4344,7 @@ mod tests {
         let _g = env_lock();
         let _guard = DataDirGuard::new("empty");
         // 空 baseUrl → 400 EMPTY_BASE_URL。
-        let resp = set_openai_compat_config(axum::Json(OpenAiCompatConfigRequest {
+        let resp = crate::custom_models::legacy_config_handler(axum::Json(LegacyConfigRequest {
             base_url: "  ".to_string(),
             model: "m".to_string(),
             key: None,
@@ -4422,7 +4357,7 @@ mod tests {
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["error"]["code"], "EMPTY_BASE_URL");
         // 空 model → 400 EMPTY_MODEL。
-        let resp = set_openai_compat_config(axum::Json(OpenAiCompatConfigRequest {
+        let resp = crate::custom_models::legacy_config_handler(axum::Json(LegacyConfigRequest {
             base_url: "http://x".to_string(),
             model: "".to_string(),
             key: None,
@@ -4435,15 +4370,19 @@ mod tests {
         let v: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["error"]["code"], "EMPTY_MODEL");
         // 两次 400 后配置面仍未配置(无副作用落盘)。
-        assert_eq!(load_openai_compat_file().base_url, "");
+        assert!(crate::custom_models::load().is_empty());
     }
 
     #[tokio::test]
     async fn oai_not_configured_explicit_error_and_resolve_none() {
         let _g = env_lock();
         let _guard = DataDirGuard::new("notcfg");
-        // 空目录:resolve → None;not_configured 步进首轮即显式错。
-        assert!(resolve_openai_compat().is_none());
+        // 空目录:无默认自定义模型,显式选中 = NotConfigured;not_configured 步进首轮即显式错。
+        assert!(crate::custom_models::default_provider().is_none());
+        assert!(matches!(
+            crate::custom_models::provider(LEGACY_ID),
+            Provider::OpenAiCompatNotConfigured
+        ));
         let step = openai_compat_not_configured_step();
         let execute: Box<ExecFn> = Box::new(|_n, _a| Box::pin(async move { (true, "x".into()) }));
         let err = match run_tool_loop(
@@ -4474,23 +4413,20 @@ mod tests {
             "显式 NOT_CONFIGURED 同族: {err}"
         );
         // 缺 key 腿(有 baseUrl/model 无 key)同样 None + 显式错;消息面不含 key 域值。
-        {
-            let _f = OPENAI_COMPAT_FILE_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            save_openai_compat_file(&OpenAiCompatFile {
-                base_url: "http://127.0.0.1:1".to_string(),
-                model: "m".to_string(),
-                vision: false,
-            })
-            .unwrap();
-        }
+        std::fs::create_dir_all(&_guard.dir).unwrap();
+        std::fs::write(
+            _guard.dir.join("llm-openai-compat.json"),
+            r#"{"base_url":"http://127.0.0.1:1","model":"m"}"#,
+        )
+        .unwrap();
         assert!(
-            resolve_openai_compat().is_none(),
+            crate::custom_models::default_provider().is_none(),
             "缺 key 不得判 configured"
         );
-        assert!(!openai_compat_status().configured);
-        assert!(!openai_compat_status().key_configured);
+        let st = crate::custom_models::legacy_status_handler().await.0;
+        assert_eq!(st["configured"], false);
+        assert_eq!(st["keyConfigured"], false);
+        assert_eq!(st["model"], "m");
     }
 
     #[test]
@@ -4532,6 +4468,7 @@ mod tests {
             base_url: "http://x".to_string(),
             model: "m".to_string(),
             key: "sk-test-oai-REDLINE-debug".to_string(),
+            api: CustomApi::default(),
         };
         let dbg = format!("{p:?}");
         assert!(
@@ -4671,7 +4608,7 @@ mod tests {
             reasoning_effort: Some("xhigh".to_string()),
             thinking_enabled: None,
         };
-        let step = openai_compat_step(&base_url, "qwen2.5-7b", secret, &spec);
+        let step = custom_step(&base_url, "qwen2.5-7b", secret, &CustomApi::default(), &spec);
         // 假 executor:不触 MCP,记录调用。
         let executed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let executed2 = executed.clone();
@@ -4753,6 +4690,111 @@ mod tests {
             tool_msg["content"].as_str().unwrap().contains("entityId"),
             "tool 回注带执行反馈"
         );
+    }
+
+    /// D-049:Anthropic 格式的自定义模型走完一轮工具闭环——tool_use → executor → tool_result
+    /// 回注 → 终稿;请求面是 /v1/messages + x-api-key,max_tokens 取目录项声明值。
+    #[tokio::test]
+    async fn anthropic_custom_model_tool_loop_closed_round() {
+        use axum::{routing::post, Router};
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<(String, Value)>>> =
+            std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen2 = seen.clone();
+        let app = Router::new().route(
+            "/v1/messages",
+            post(move |req: axum::extract::Request| {
+                let seen = seen2.clone();
+                async move {
+                    let api_key = req
+                        .headers()
+                        .get("x-api-key")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let bytes = axum::body::to_bytes(req.into_body(), 1 << 20).await.unwrap();
+                    let body: Value = serde_json::from_slice(&bytes).unwrap();
+                    seen.lock().unwrap().push((api_key, body.clone()));
+                    let answered = body["messages"]
+                        .as_array()
+                        .and_then(|ms| ms.last())
+                        .and_then(|m| m["content"].as_array())
+                        .is_some_and(|blocks| blocks.iter().any(|b| b["type"] == "tool_result"));
+                    if answered {
+                        axum::Json(json!({
+                            "type": "message", "stop_reason": "end_turn",
+                            "content": [{ "type": "text", "text": "anthropic 终稿:立方体已创建" }],
+                            "usage": { "input_tokens": 20, "output_tokens": 6 },
+                        }))
+                    } else {
+                        axum::Json(json!({
+                            "type": "message", "stop_reason": "tool_use",
+                            "content": [
+                                { "type": "text", "text": "先建实体" },
+                                { "type": "tool_use", "id": "toolu_01", "name": "mcp__engine-scene__entity_create", "input": { "name": "Cube" } },
+                            ],
+                            "usage": { "input_tokens": 9, "output_tokens": 4 },
+                        }))
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let secret = "sk-test-anthropic-REDLINE-loop";
+        let api = CustomApi {
+            id: "custom:0000abcd".into(),
+            format: crate::custom_models::ApiFormat::Anthropic,
+            max_output_tokens: Some(4_096),
+            vision: false,
+        };
+        let step = custom_step(&format!("http://{addr}"), "glm-4.6", secret, &api, &RequestSpec::default());
+        let execute: Box<ExecFn> = Box::new(move |_name, args| {
+            Box::pin(async move { (args["name"] == "Cube", r#"{"ok":true,"entityId":7}"#.into()) })
+        });
+        let out = run_tool_loop(
+            "sys",
+            "创建一个立方体",
+            ToolLoopCfg {
+                tools: to_openai_tools(&[
+                    json!({ "name": "mcp__engine-scene__entity_create", "description": "d" }),
+                ]),
+                step: step.as_ref(),
+                execute: execute.as_ref(),
+                vision: false,
+                sink: None,
+                forbidden: None,
+                cancelled: None,
+                stream: None,
+                preamble: None,
+                inbox: None,
+                history: Vec::new(),
+                max_iters: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.text, "anthropic 终稿:立方体已创建");
+        assert_eq!(out.records.len(), 1);
+        assert!(out.records[0].ok, "tool_use.input 原样成为工具参数");
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        for (key, body) in seen.iter() {
+            assert_eq!(key, secret);
+            assert_eq!(body["model"], "glm-4.6");
+            assert_eq!(body["max_tokens"], 4_096);
+            assert_eq!(body["system"][0]["text"], "sys");
+            assert_eq!(body["tools"][0]["name"], "mcp__engine-scene__entity_create");
+            assert!(!body.to_string().contains(secret), "请求体含密钥(R-5)");
+        }
+        let second = seen[1].1["messages"].as_array().unwrap();
+        assert_eq!(second[1]["role"], "assistant");
+        assert_eq!(second[1]["content"][1]["type"], "tool_use");
+        assert_eq!(second[1]["content"][1]["id"], "toolu_01");
+        assert_eq!(second[2]["content"][0]["type"], "tool_result");
+        assert_eq!(second[2]["content"][0]["tool_use_id"], "toolu_01");
     }
 
     #[test]

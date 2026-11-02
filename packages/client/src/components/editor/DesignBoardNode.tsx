@@ -10,7 +10,6 @@ import {
   type BoardFeature,
   type BoardNode,
   type EntityKindDef,
-  type KindTone,
 } from '@/lib/designBoardStore';
 import type { AssetItem } from '@/lib/assetStore';
 import BoardAssetPicker from './BoardAssetPicker';
@@ -76,15 +75,9 @@ export function nodeTotalH(node: BoardNode): number {
   return ENTITY_CARD_H + FEATURE_TOP_GAP + node.features.length * (FEATURE_H + FEATURE_GAP);
 }
 
-// ---------- 类型配色 ----------
-
-export const TONE_META: Record<KindTone, { bar: string; text: string; dot: string }> = {
-  info: { bar: 'bg-info', text: 'text-info', dot: 'bg-info' },
-  sage: { bar: 'bg-sage', text: 'text-sage', dot: 'bg-sage' },
-  warn: { bar: 'bg-warn', text: 'text-warn', dot: 'bg-warn' },
-  acc: { bar: 'bg-acc', text: 'text-acc', dot: 'bg-acc' },
-  danger: { bar: 'bg-danger', text: 'text-danger', dot: 'bg-danger' },
-};
+// ---------- 类型图标 ----------
+// 纯色波(2026-10-08 用户拍板:按类型分色花花绿绿太丑):类型不再分色——色条走前景色、图标黑、
+// 类型名灰;强调色只留给选中、连线与端口。
 
 /** 类型图标:内置沿用三分类图标,自定义统一 Boxes */
 export function kindIcon(kind: EntityKindDef) {
@@ -216,7 +209,7 @@ function FeatureNode({ node, feature, pos, onLinkStart, onLinkMove, onLinkEnd }:
       title={feature.custom ? `${feature.type}(自定义,引擎未注册)` : `${feature.type}(引擎组件)`}
       className={cn(
         'group/feat absolute flex items-center gap-1 rounded border bg-shell-panel px-1 shadow-sm',
-        feature.custom ? 'border-dashed border-warn/60' : 'border-edge-strong',
+        feature.custom ? 'border-dashed border-fg-4' : 'border-edge-strong',
       )}
       style={{ left: pos[0], top: pos[1], width: FEATURE_W, height: FEATURE_H }}
     >
@@ -224,7 +217,7 @@ function FeatureNode({ node, feature, pos, onLinkStart, onLinkMove, onLinkEnd }:
         aria-hidden
         className={cn(
           'h-1.5 w-1.5 shrink-0 rounded-full',
-          feature.custom ? 'bg-warn' : 'bg-fg-4',
+          feature.custom ? 'bg-fg' : 'bg-fg-4',
         )}
       />
       <span
@@ -288,7 +281,7 @@ function FeatureNode({ node, feature, pos, onLinkStart, onLinkMove, onLinkEnd }:
         onPointerDown={(e) => onLinkStart(e, { node: node.id, feature: feature.id }, 'in')}
         onPointerMove={onLinkMove}
         onPointerUp={onLinkEnd}
-        className="absolute -left-[5px] block h-2.5 w-2.5 cursor-crosshair rounded-full border-2 border-edge-strong bg-shell-panel transition-colors hover:border-warn hover:bg-warn"
+        className="absolute -left-[5px] block h-2.5 w-2.5 cursor-crosshair rounded-full border-2 border-edge-strong bg-shell-panel transition-colors hover:border-acc hover:bg-acc"
         style={{ top: (FEATURE_H - 10) / 2 }}
       />
       {/* 特性出线 port(右缘):交互可直接挂在这个特性上 */}
@@ -299,7 +292,7 @@ function FeatureNode({ node, feature, pos, onLinkStart, onLinkMove, onLinkEnd }:
         onPointerDown={(e) => onLinkStart(e, { node: node.id, feature: feature.id }, 'out')}
         onPointerMove={onLinkMove}
         onPointerUp={onLinkEnd}
-        className="absolute -right-[5px] block h-2.5 w-2.5 cursor-crosshair rounded-full border-2 border-warn bg-shell-panel transition-colors hover:bg-warn"
+        className="absolute -right-[5px] block h-2.5 w-2.5 cursor-crosshair rounded-full border-2 border-acc bg-shell-panel transition-colors hover:bg-acc"
         style={{ top: (FEATURE_H - 10) / 2 }}
       />
     </div>
@@ -351,7 +344,6 @@ export default function BoardNodeCard({
   );
   const selectedIds = useDesignBoardStore((s) => s.selectedNodeIds);
   const selected = useDesignBoardStore((s) => s.selectedNodeId === node.id || s.selectedNodeIds.includes(node.id));
-  const tone = TONE_META[kind.tone];
   const Icon = kindIcon(kind);
   const [nameDraft, setNameDraft] = useState(node.name);
   const [dropActive, setDropActive] = useState(false);
@@ -413,10 +405,10 @@ export default function BoardNodeCard({
         onDragLeave={() => setDropActive(false)}
         onDrop={onAssetDrop}
       >
-        <div className={cn('rounded-t-md', tone.bar)} style={{ height: BAR_H }} />
+        <div className="rounded-t-md bg-fg" style={{ height: BAR_H }} />
         <div className="flex items-center gap-1 px-1.5" style={{ height: TITLE_H }}>
           <AnnotationHandle reference={editorReference('blueprint', { resourceId: 'main', selection: { nodeIds: selectedIds.includes(node.id) ? selectedIds : [node.id] } })} label={node.name} />
-          <Icon size={11} strokeWidth={1.8} className={cn('shrink-0', tone.text)} />
+          <Icon size={11} strokeWidth={1.8} className="shrink-0 text-fg" />
           {editingName ? (
             <input
               autoFocus
@@ -450,7 +442,7 @@ export default function BoardNodeCard({
               {node.name}
             </span>
           )}
-          <span className={cn('shrink-0 text-[10px]', tone.text)}>{kind.label}</span>
+          <span className="shrink-0 text-[10px] text-fg-3">{kind.label}</span>
           <button
             type="button"
             data-no-drag
@@ -568,7 +560,7 @@ export default function BoardNodeCard({
           onPointerDown={(e) => onLinkStart(e, { node: node.id }, 'in')}
           onPointerMove={onLinkMove}
           onPointerUp={onLinkEnd}
-          className="absolute -left-[6px] block h-3 w-3 cursor-crosshair rounded-full border-2 border-edge-strong bg-shell-panel transition-colors hover:border-warn hover:bg-warn"
+          className="absolute -left-[6px] block h-3 w-3 cursor-crosshair rounded-full border-2 border-edge-strong bg-shell-panel transition-colors hover:border-acc hover:bg-acc"
           style={{ top: ANCHOR_Y - 6 }}
         />
         {/* 实体出线 port(右缘) */}
@@ -579,7 +571,7 @@ export default function BoardNodeCard({
           onPointerDown={(e) => onLinkStart(e, { node: node.id }, 'out')}
           onPointerMove={onLinkMove}
           onPointerUp={onLinkEnd}
-          className="absolute -right-[6px] block h-3 w-3 cursor-crosshair rounded-full border-2 border-warn bg-shell-panel transition-colors hover:bg-warn"
+          className="absolute -right-[6px] block h-3 w-3 cursor-crosshair rounded-full border-2 border-acc bg-shell-panel transition-colors hover:bg-acc"
           style={{ top: ANCHOR_Y - 6 }}
         />
         {/* 收起态端口列:一个特性一颗端口,悬停出名牌;仍是连线的起手点与落点 */}
@@ -599,8 +591,8 @@ export default function BoardNodeCard({
               onPointerMove={onLinkMove}
               onPointerUp={onLinkEnd}
               className={cn(
-                'group/port absolute -right-[5px] block h-2.5 w-2.5 cursor-crosshair rounded-full border-2 border-warn transition-colors hover:bg-warn',
-                f.custom ? 'bg-warn/40' : 'bg-shell-panel',
+                'group/port absolute -right-[5px] block h-2.5 w-2.5 cursor-crosshair rounded-full border-2 border-acc transition-colors hover:bg-acc',
+                f.custom ? 'bg-acc-bg' : 'bg-shell-panel',
               )}
               style={{ top: collapsedPortY(i) - 5 }}
             >

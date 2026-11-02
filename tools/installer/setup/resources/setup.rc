@@ -1,0 +1,35 @@
+#pragma code_page(65001)
+#include <winver.h>
+
+// 序号 1:tao 的 Icon::from_resource(1) 与资源管理器里的程序图标都用它。
+1 ICON "../../../../packages/client/public/favicon.ico"
+1 24 "setup.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION FORGE_VERSION_NUM
+PRODUCTVERSION FORGE_VERSION_NUM
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404b0"
+    BEGIN
+      VALUE "CompanyName", "RurixForge contributors"
+      VALUE "FileDescription", "RurixForge 安装程序"
+      VALUE "FileVersion", FORGE_VERSION_STR
+      VALUE "InternalName", "forge-setup"
+      VALUE "LegalCopyright", "Copyright © 2026 RurixForge contributors · Apache-2.0"
+      VALUE "OriginalFilename", "forge-setup.exe"
+      VALUE "ProductName", "RurixForge"
+      VALUE "ProductVersion", FORGE_VERSION_STR
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x804, 1200
+  END
+END

@@ -45,10 +45,10 @@ export default function BoardEdgeLabel({
     <div
       data-board-edge-label={edge.id}
       title={title}
-      className="group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full border border-warn/40 bg-shell-panel px-1.5 py-0.5 shadow-sm"
+      className="glass group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-1.5 py-0.5"
       style={{ left: x, top: y }}
     >
-      <Zap size={10} strokeWidth={2} className="shrink-0 text-warn" />
+      <Zap size={10} strokeWidth={2} className="shrink-0 text-acc" />
       <AnnotationHandle reference={editorReference('blueprint', { resourceId: 'main', selection: { edgeIds: [edge.id] } })} label={edge.label || title} />
       {editing ? (
         <input

@@ -19,10 +19,12 @@ pub mod model;
 pub mod ops;
 pub mod project;
 pub mod refs;
+pub mod rig;
 pub mod sprite;
 pub mod status;
 pub mod texture;
 pub mod thumb;
+pub mod rasterizer;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -72,6 +74,8 @@ pub enum AssetType {
     Sprite,
     /// 字体 .ttf/.otf/.ttc(D-045:Text 组件按 GUID 引用)。
     Font,
+    /// 2D 绑骨 .rxrig(F-GAME-5 / D-050:部件网格 + 骨骼 + 参数 keyform + 物理 + clip)。
+    Rig,
 }
 
 impl AssetType {
@@ -88,6 +92,7 @@ impl AssetType {
             AssetType::Audio => "audio",
             AssetType::Sprite => "sprite",
             AssetType::Font => "font",
+            AssetType::Rig => "rig",
         }
     }
 
@@ -104,6 +109,7 @@ impl AssetType {
             "audio" => AssetType::Audio,
             "sprite" => AssetType::Sprite,
             "font" => AssetType::Font,
+            "rig" => AssetType::Rig,
             _ => return None,
         })
     }
@@ -123,6 +129,7 @@ impl AssetType {
             "rxgraph" => (AssetType::Script, "rxgraph"),
             "rxsprite" => (AssetType::Sprite, "sprite"),
             "ttf" | "otf" | "ttc" => (AssetType::Font, "font"),
+            "rxrig" => (AssetType::Rig, "rig"),
             _ => return None,
         })
     }

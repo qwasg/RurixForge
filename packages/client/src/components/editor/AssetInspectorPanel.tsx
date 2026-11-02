@@ -6,6 +6,7 @@ import { useSpriteStore, type SpriteDoc } from '@/lib/spriteStore';
 import { useToastStore } from '@/lib/toastStore';
 import { useWorkbenchStore } from '@/lib/workbenchStore';
 import Thumb from './assetThumb';
+import RigAssetSection from '@/components/rig/RigAssetSection';
 
 /**
  * F10 资产检视器(右栏第四页签「资产」):选中资产的文字简介/标签编辑
@@ -203,6 +204,8 @@ export default function AssetInspectorPanel() {
 
         {/* F-GAME-4:sprite 摘要 + 编辑器入口 */}
         {item.type === 'sprite' && <SpriteSection assetPath={item.path} />}
+        {/* F-GAME-5:rig 摘要 + 绑骨编辑器入口 */}
+        {item.type === 'rig' && <RigAssetSection assetPath={item.path} />}
 
         {/* 简介编辑 */}
         <div className="border-t border-edge px-2.5 py-2">

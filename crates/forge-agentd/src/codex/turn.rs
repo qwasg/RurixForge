@@ -152,6 +152,7 @@ fn developer_instructions(scope: &ScopeContext, computer_use: bool, extra: Optio
         );
     }
     s.push_str("\n【团队协作】\n委派与团队协作使用 forge-collaboration 的 task、agent_list、send_message 和 team_* 工具。用 agent_list 获取成员身份；消息中的发送者身份由宿主绑定。成员保持上下文，空闲后可继续接收任务与消息。任务依赖、并发与修复次数由共享任务板执行；及时报告进展、请求协助并处理用户或其他成员的引导消息。\n");
+    s.push_str(crate::agent::DELEGATION_PROMPT);
     s.push_str(&format!(
         "\n【工作目录与项目】\n\
          当前项目根:{}\n工作区根:{}\n\
@@ -1880,6 +1881,7 @@ pub fn thread_start_params(
             input.developer_extra.as_deref(),
         ),
         "config": {
+            "model_reasoning_summary": "auto",
             "features": { "multi_agent": false, "image_generation": sandbox != "read-only" },
             "mcp_servers": super::mcp_config::mcp_servers_json(
                 &input.scope.current.project_root,
@@ -1954,6 +1956,9 @@ pub fn turn_start_params(
     let mut params = json!({
         "threadId": thread_id,
         "input": items,
+        // Model defaults may disable summaries. Request visible summaries,
+        // independently of whether raw reasoning is available.
+        "summary": "auto",
     });
     let (approval_policy, sandbox) = approval_for_turn(permission_mode, input.mode);
     params["approvalPolicy"] = json!(approval_policy);
@@ -2576,6 +2581,7 @@ mod tests {
         let p = turn_start_params("th_1", &input, Some("gpt-5.6-terra"), &session(), "bypass");
         assert_eq!(p["threadId"], "th_1");
         assert_eq!(p["model"], "gpt-5.6-terra");
+        assert_eq!(p["summary"], "auto");
         assert_eq!(p["collaborationMode"]["mode"], "plan");
         assert_eq!(p["collaborationMode"]["settings"]["model"], "gpt-5.6-terra");
         assert_eq!(p["approvalPolicy"], "never");
@@ -2648,6 +2654,21 @@ mod tests {
     }
 
     #[test]
+    fn developer_instructions_require_main_agent_authored_delegation() {
+        let scope = crate::scope::ScopeContext::single(crate::scope::ScopeProject::for_test(
+            "D:/proj", "D:/ws",
+        ));
+        let instructions = developer_instructions(&scope, false, None);
+        assert!(instructions.contains(crate::agent::DELEGATION_PROMPT));
+        assert!(instructions.contains("包括第一轮在内"));
+        assert!(instructions.contains("先阅读用户需求"));
+        assert!(instructions.contains("每个子 agent 的详细提示词"));
+        assert!(instructions.contains("验证方法和回报格式"));
+        assert!(instructions.contains("不代替你理解需求或编写任务"));
+        assert!(instructions.contains("并行与后台执行可在你完成上述委派后进行"));
+    }
+
+    #[test]
     fn turn_start_response_yields_interrupt_id() {
         assert_eq!(
             turn_id_from_start(&json!({ "turn": { "id": "turn_457" } })).as_deref(),
@@ -2678,6 +2699,7 @@ mod tests {
             "read-only",
         );
         assert_eq!(params["sandbox"], "read-only");
+        assert_eq!(params["config"]["model_reasoning_summary"], "auto");
         assert!(params["developerInstructions"]
             .as_str()
             .is_some_and(|v| !v.is_empty()));

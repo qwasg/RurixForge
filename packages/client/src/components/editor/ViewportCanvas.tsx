@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { callTool, ForgeApiError } from '@/lib/forgeApi';
-import { bridge } from '@/lib/bridge';
+import { bridge, isDesktopBridge } from '@/lib/bridge';
 import { useEditorStore, type ViewportInfo } from '@/lib/editorStore';
 import { useAssetStore } from '@/lib/assetStore';
 import { useWorkspaceStore } from '@/lib/workspaceStore';
@@ -109,8 +109,8 @@ export function ViewportCanvas() {
     if (!el) return;
     const apply = (w: number, h: number) => {
       const next = {
-        w: clamp(Math.round(w), 16, 1920),
-        h: clamp(Math.round(h), 16, 1080),
+        w: Math.max(16, Math.round(w)),
+        h: Math.max(16, Math.round(h)),
         dpr: window.devicePixelRatio || 1,
       };
       setSize((prev) => prev.w === next.w && prev.h === next.h && prev.dpr === next.dpr ? prev : next);
@@ -175,12 +175,6 @@ export function ViewportCanvas() {
   }, []);
 
   // 推流分辨率按真实能力面限幅(CSS px，不乘 DPR)；保持宽高比且与 presenter 共享尺寸完全一致。
-  const streamLimits = renderCapabilities?.maxSize.stream ?? [1280, 720];
-  const streamMaxW = Math.max(16, streamLimits[0]);
-  const streamMaxH = Math.max(16, streamLimits[1]);
-  const scale = Math.min(1, streamMaxW / Math.max(1, size.w), streamMaxH / Math.max(1, size.h));
-  const physW = clamp(Math.round(size.w * scale), 16, streamMaxW);
-  const physH = clamp(Math.round(size.h * scale), 16, streamMaxH);
 
   const st = useEditorStore.getState;
   const isPlaying = playState === 'play_running';
@@ -195,7 +189,21 @@ export function ViewportCanvas() {
     && renderCapabilities != null
     && renderCapabilities.frameExits.sharedD3d12 === true
     && !showGrid
-    && !degraded;
+    && (!degraded || renderCapabilities.frameExits.nativeOnly === true);
+
+  const nativeOnly = useNativePresenter && isDesktopBridge() && sceneMode === '3d'
+    && renderCapabilities?.renderBackend === 'rurix' && renderCapabilities.frameExits.nativeOnly === true;
+  const streamLimits = nativeOnly ? (renderCapabilities?.maxSize.native ?? [2560, 1440]) : (renderCapabilities?.maxSize.stream ?? [1280, 720]);
+  const streamMaxW = Math.max(16, streamLimits[0]);
+  const streamMaxH = Math.max(16, streamLimits[1]);
+  const scale = Math.min(1, streamMaxW / Math.max(1, size.w), streamMaxH / Math.max(1, size.h));
+  const physW = nativeOnly ? streamMaxW : clamp(Math.round(size.w * scale), 16, streamMaxW);
+  const physH = nativeOnly ? streamMaxH : clamp(Math.round(size.h * scale), 16, streamMaxH);
+  const fitted = nativeOnly ? Math.min(size.w / physW, size.h / physH) : 1;
+  const displayW = nativeOnly ? physW * fitted : size.w;
+  const displayH = nativeOnly ? physH * fitted : size.h;
+  const displayX = (size.w - displayW) / 2;
+  const displayY = (size.h - displayH) / 2;
 
   // Bounds 只覆盖实际画布：状态 / 帧统计 / PIE 状态 / 操作提示都位于 presenter 矩形之外。
   // 同时把最终协商出的流分辨率传给桌面端，避免 DPI 缩放后二次推导尺寸不一致。
@@ -206,13 +214,14 @@ export function ViewportCanvas() {
     const send = (visible: boolean) => {
       const rect = el.getBoundingClientRect();
       report({
-        x: rect.left,
-        y: rect.top,
-        w: size.w,
-        h: size.h,
+        x: rect.left + displayX,
+        y: rect.top + displayY,
+        w: displayW,
+        h: displayH,
         dpr: size.dpr,
         streamW: physW,
         streamH: physH,
+        nativeOnly,
         workspaceId: activeWorkspaceId,
         visible: visible && rect.width > 0 && rect.height > 0,
       });
@@ -230,14 +239,14 @@ export function ViewportCanvas() {
       window.removeEventListener('scroll', onScroll, true);
       send(false);
     };
-  }, [size.w, size.h, size.dpr, physW, physH, useNativePresenter, activeWorkspaceId]);
+  }, [size.w, size.h, size.dpr, physW, physH, useNativePresenter, activeWorkspaceId, nativeOnly, displayX, displayY, displayW, displayH]);
 
   // ── 直连流通道:挂载建连,尺寸变化走 resize 消息(服务端有重建防抖);
   //    工作区切换 → 关旧连新(新工作区的 engine-host 是另一个进程/另一条 WS) ──
   useEffect(() => {
     const existing = streamRef.current;
     if (existing && streamWorkspaceRef.current === activeWorkspaceId) {
-      existing.resize(physW, physH);
+      existing.resize(physW, physH, nativeOnly ? 'native' : 'rgba8');
       return;
     }
     if (existing) {
@@ -252,6 +261,7 @@ export function ViewportCanvas() {
       width: physW,
       height: physH,
       maxFps: 60,
+      transport: nativeOnly ? 'native' : 'rgba8',
       onFrame: (f) => {
         frameRef.current = f;
         playingRef.current = f.playing;
@@ -261,6 +271,8 @@ export function ViewportCanvas() {
         }
       },
       onStatus: (s) => {
+        playingRef.current = s.playState === 'play_running';
+        lastFrameErr.current = null;
         useEditorStore.getState().setViewportStatus(null, {
           deviceName: s.deviceName,
           draws: s.draws,
@@ -281,7 +293,7 @@ export function ViewportCanvas() {
       },
     });
     // 卸载清理在独立 effect(本 effect 随尺寸/工作区重跑,不能顺手关连接)。
-  }, [physW, physH, activeWorkspaceId]);
+  }, [physW, physH, activeWorkspaceId, nativeOnly]);
 
   useEffect(
     () => () => {
@@ -394,7 +406,7 @@ export function ViewportCanvas() {
 
   // ── 轮询回退腿(流通道断时的既有 100ms viewport_frame 路径,原样保留) ──
   useEffect(() => {
-    if (channel !== 'poll') return;
+    if (channel !== 'poll' || nativeOnly) return;
     let alive = true;
     let timer: number | undefined;
     const tick = async () => {
@@ -452,7 +464,7 @@ export function ViewportCanvas() {
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [channel, physW, physH, selectedId, playState]);
+  }, [channel, physW, physH, selectedId, playState, nativeOnly]);
 
   // ── F-GAME-3:2D 网格只绘制在网页 canvas 回退通道上(编辑态 + 2D + 正交)。
   // 使用原生 presenter 时 bounds 会关闭，避免网页辅助层被不透明 HWND 覆盖；绝不改写引擎帧。
@@ -583,8 +595,8 @@ export function ViewportCanvas() {
       // 位置语义在图侧成立;只认 click 正值的旧图行为不变。
       // 引擎真相 playingRef 与 store 任一为运行即注入(agent 拉起 play 时 store 有时差)。
       if (isPlaying || playingRef.current) {
-        const nx = rect ? clamp((e.clientX - rect.left) / Math.max(rect.width, 1), 0, 1) : 0.5;
-        const ny = rect ? clamp((e.clientY - rect.top) / Math.max(rect.height, 1), 0, 1) : 0.5;
+        const nx = rect ? clamp((e.clientX - rect.left - displayX) / Math.max(displayW, 1), 0, 1) : 0.5;
+        const ny = rect ? clamp((e.clientY - rect.top - displayY) / Math.max(displayH, 1), 0, 1) : 0.5;
         const h = streamRef.current;
         if (h?.up) h.sendPointer('click', nx, ny);
         else
@@ -598,7 +610,7 @@ export function ViewportCanvas() {
         return;
       }
       if (rect) {
-        void st().pickAt(e.clientX - rect.left, e.clientY - rect.top, size.w, size.h);
+        void st().pickAt(e.clientX - rect.left - displayX, e.clientY - rect.top - displayY, displayW, displayH);
       }
     } else if (mode === 'gizmo' && (d.gx !== 0 || d.gy !== 0)) {
       // F-GAME-3:Ctrl 按住 = 临时禁用 2D 网格吸附(07 §2 规范)
@@ -629,6 +641,7 @@ export function ViewportCanvas() {
       <header className="shrink-0 border-b border-edge bg-shell-sunk px-2 py-1 text-2xs text-fg-3" data-testid="viewport-render-status">
         <div className="flex min-h-5 min-w-0 items-center gap-2">
           <ViewportAnnotation />
+          {nativeOnly && <span data-testid="native-output-resolution">{physW}×{physH} GPU 输出</span>}
           <AnnotationHandle reference={editorReference('scene')} label={sceneName || '当前场景'} />
           <span className="shrink-0 font-mono text-fg" data-testid="render-backend-label">
             {renderStatusForWorkspace && renderBackendInfo

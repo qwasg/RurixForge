@@ -96,3 +96,5 @@ export function isEventEnvelope(x: unknown): x is EventEnvelope {
 }
 export * from './editor.js';
 export * from './shaderGraph.js';
+export * from './worldBuild.js';
+

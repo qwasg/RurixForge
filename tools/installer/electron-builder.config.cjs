@@ -1,9 +1,11 @@
 'use strict';
 
-// RurixForge Windows 安装包配置(electron-builder + NSIS)。由 scripts/package-windows.ps1 调用:
-// Electron 应用目录(package.json + src/*.cjs)作为 --projectDir 传入,其余构建目录经环境变量传入:
+// RurixForge 内层安装包配置(electron-builder + NSIS)。由 scripts/package-windows.ps1 调用,
+// 生成的 RurixForge-Core-<版本>.exe 再由安装界面外壳(tools/installer/setup)包起来,静默运行;
+// 单独运行它则是 NSIS 自带的经典向导(外壳的 --classic 与无 WebView2 时的回退也走这里)。
+// Electron 应用目录(package.json + src/*.cjs、splash.html)作为 --projectDir 传入,其余构建目录经环境变量传入:
 //   FORGE_PKG_FORGE             随包运行根,装到 resources/forge(布局见 apps/desktop/src/backend.cjs)
-//   FORGE_PKG_OUT               安装包输出目录
+//   FORGE_PKG_OUT               内层安装包输出目录
 //   FORGE_PKG_ELECTRON_VERSION  Electron 版本(与 apps/desktop 锁定的一致)
 //   FORGE_PKG_ELECTRON_DIST     可选:本机已解压的 Electron(有就不再下载)
 
@@ -36,7 +38,7 @@ module.exports = {
   win: {
     target: [{ target: 'nsis', arch: ['x64'] }],
     icon,
-    artifactName: 'RurixForge-Setup-${version}.${ext}',
+    artifactName: 'RurixForge-Core-${version}.${ext}',
   },
   nsis: {
     // 精简向导:可改安装目录 → 安装 → 完成(可勾选立即运行);按用户安装,无需管理员权限。

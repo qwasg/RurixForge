@@ -197,19 +197,20 @@ pub fn runtime_tool_specs(kind: &str, mode: &str) -> Vec<Value> {
             if mode == "team" {
                 out.push(spec(
                     "plan_write",
-                    "写入结构化团队计划:每个任务带 role(执行工种)/prompt(完整委派词)/deps(依赖)/stage(阶段)/verify(qa|reviewer)。落库后编排器自动按依赖分层并行派发执行,无需逐个 task 派单。",
+                    "写入结构化团队计划:每个任务带 role(执行工种)/prompt(主 agent 阅读需求后编写的详细完整委派词)/deps(依赖)/stage(阶段)/verify(qa|reviewer)。当前 UltraPlan 流程的同名任务会原位更新显式提供的非空 prompt；运行中或已完成任务不可改词。落库后编排器按依赖分层并行执行已经明确的委派。",
                     obj_props(todo_items_schema(), &["todos"]),
                 ));
             }
             out.push(spec(
                 "todo_update",
-                "更新已有待办的 status/title/summary。",
+                "更新已有待办的 status/title/summary/prompt。主 agent 可用 prompt 原位完善 queued/failed/cancelled 任务的详细委派词（背景、目标、范围、约束、产物和验收）；prompt 不可空白，running/completed 任务不可改词。修复前先更新 prompt，再以 status=queued 重试。",
                 obj_props(
                     json!({
                         "id": { "type": "string" },
                         "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
                         "title": { "type": "string" },
-                        "summary": { "type": "string" }
+                        "summary": { "type": "string" },
+                        "prompt": { "type": "string", "minLength": 1, "description": "主 agent 根据本轮需求和失败证据编写的完整委派词，仅可更新 queued/failed/cancelled 任务；省略保留原值" }
                     }),
                     &["id"],
                 ),
@@ -396,6 +397,16 @@ mod tests {
     }
 
     /// F-GAME-4 wave.3:todo/plan 条目 schema 携带 Plan DAG 五字段(旧字段原样保留)。
+    #[test]
+    fn todo_update_exposes_in_place_delegation_prompt_updates() {
+        let tools = runtime_tool_specs("coding", "team");
+        let update = tools.iter().find(|tool| tool["function"]["name"] == "todo_update").unwrap();
+        assert_eq!(update["function"]["parameters"]["properties"]["prompt"]["type"], "string");
+        assert_eq!(update["function"]["parameters"]["properties"]["prompt"]["minLength"], 1);
+        assert!(update["function"]["description"].as_str().unwrap().contains("queued/failed/cancelled"));
+        assert_eq!(update["function"]["parameters"]["required"], json!(["id"]));
+    }
+
     #[test]
     fn todo_items_schema_carries_plan_dag_fields() {
         let schema = todo_items_schema();

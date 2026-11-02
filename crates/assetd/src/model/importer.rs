@@ -252,7 +252,7 @@ fn decode_bytes(path: &Path, bytes: &[u8], manifest: &ModelManifest) -> Result<M
             base_color: pbr.base_color_factor(),
             metallic: pbr.metallic_factor(),
             roughness: pbr.roughness_factor(),
-            emissive: m.emissive_factor(),
+            emissive: m.emissive_factor().map(|v| v * m.emissive_strength().unwrap_or(1.0)),
             base_color_texture: pbr.base_color_texture().map(|v| v.texture().index()),
             normal_texture: m.normal_texture().map(|v| v.texture().index()),
             metallic_roughness_texture: pbr
@@ -908,4 +908,15 @@ fn generate_tangents(
             [t[0], t[1], t[2], hand]
         })
         .collect()
+}
+
+#[cfg(test)]
+mod hdr_emission_tests {
+    #[test]
+    fn standard_gltf_hdr_emissive_strength_survives_material_decode() {
+        let source = r#"{"asset":{"version":"2.0"},"extensionsUsed":["KHR_materials_emissive_strength"],"materials":[{"emissiveFactor":[0.25,0.5,1.0],"extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":7.0}}}]}"#;
+        let gltf = gltf::Gltf::from_slice(source.as_bytes()).unwrap();
+        let material = gltf.document.materials().next().unwrap();
+        assert_eq!(material.emissive_factor().map(|v| v * material.emissive_strength().unwrap_or(1.0)), [1.75,3.5,7.0]);
+    }
 }

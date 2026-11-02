@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SnapshotModel } from '@/lib/chatStore';
-import { codexQuota, describeEngine, describeModel, humanDuration } from '@/lib/systemStore';
+import { useSessionStore } from '@/lib/sessionStore';
+import { codexQuota, describeEngine, describeModel, humanDuration, useSystemStore } from '@/lib/systemStore';
 
 const LOCAL = describeEngine('local', []);
 const MODELS: SnapshotModel[] = [
@@ -9,6 +10,57 @@ const MODELS: SnapshotModel[] = [
   { id: 'openai-compat', label: 'qwen2.5-7b', provider: 'openai-compat', availability: 'available' },
   { id: 'codex:gpt-5', label: 'gpt-5', provider: 'codex', availability: 'available' },
 ];
+
+describe('systemStore 重启恢复', () => {
+  const initialSessions = useSessionStore.getState();
+  const initialSystem = useSystemStore.getState();
+
+  beforeEach(() => {
+    useSessionStore.setState(initialSessions, true);
+    useSystemStore.setState(initialSystem, true);
+    localStorage.removeItem('forge:activeSessionId');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useSessionStore.setState(initialSessions, true);
+    useSystemStore.setState(initialSystem, true);
+    localStorage.removeItem('forge:activeSessionId');
+  });
+
+  it('首轮会话加载遇到后端重启失败后，健康探测恢复会重新加载并恢复会话', async () => {
+    localStorage.setItem('forge:activeSessionId', 'sess_saved');
+    useSessionStore.setState({ offline: true });
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const path = String(url);
+      const body = path.endsWith('/sessions')
+        ? { sessions: [{ id: 'sess_saved', agentEngine: 'codex' }] }
+        : path.endsWith('/chat-folders') ? { folders: [] } : {};
+      return { ok: true, status: 200, json: async () => body } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await useSystemStore.getState().refresh();
+
+    expect(useSessionStore.getState()).toMatchObject({
+      offline: false, activeSessionId: 'sess_saved',
+      sessions: [{ id: 'sess_saved', agentEngine: 'codex' }],
+    });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/chat-folders'))).toBe(true);
+  });
+
+  it('后端仍离线或会话请求正在进行时不并发重载会话', async () => {
+    const loadAll = vi.fn(async () => undefined);
+    useSessionStore.setState({ offline: true, loadAll });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('restarting')));
+    await useSystemStore.getState().refresh();
+    expect(loadAll).not.toHaveBeenCalled();
+
+    useSessionStore.setState({ loading: true });
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }) as Response));
+    await useSystemStore.getState().refresh();
+    expect(loadAll).not.toHaveBeenCalled();
+  });
+});
 
 describe('describeModel(与 Composer 模型选择器同口径)', () => {
   it('首轮探测前且无目录:检测中(不先亮写死结论)', () => {
