@@ -11,6 +11,7 @@ import {
   postCodexLogin,
   postCodexLoginCancel,
   postCodexLogout,
+  type CodexAccount,
   type CodexAuthSource,
   type CodexMcpServer,
   type CodexStatus,
@@ -22,6 +23,7 @@ import { useToastStore } from '@/lib/toastStore';
 import { officialAuthUrl, reserveOfficialAuth } from '@/lib/officialAuth';
 import { codexQuotaWindows, type QuotaWindow } from '@/lib/codexQuota';
 import AdvancedSection from './AdvancedSection';
+import CodexSetupProgress from './CodexSetupProgress';
 import { SetCard, SetH1, SetInput, SetRow, SetSelect, SetToggle, SmBtn } from './controls';
 
 const AUTH_SOURCE_LABEL: Record<CodexAuthSource, string> = {
@@ -117,6 +119,7 @@ export default function CodexPage() {
   const refreshSequence = useRef(0);
   const refreshRequest = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
+  const detailsInFlight = useRef<{ sequence: number; task: Promise<unknown> } | null>(null);
   const lastSharedAuthMode = useRef<string | null | undefined>(undefined);
   const accountReady = typeof status?.account?.authMode === 'string' && status.account.authMode !== '';
   const cloudAccount = useAccountStore((state) => state.status);
@@ -132,6 +135,8 @@ export default function CodexPage() {
     if (useAccountStore.getState().status === null) void refreshCloudAccount();
   }, [refreshCloudAccount]);
 
+  useEffect(() => setBinPath(status?.config?.codexBin ?? ''), [status?.config?.codexBin]);
+
   const refresh = useCallback(async () => {
     const request = refreshRequest.current + 1;
     refreshRequest.current = request;
@@ -141,75 +146,75 @@ export default function CodexPage() {
       // 同一次慢请求期间可能来了多个定时 tick，只让最后一个补拉一次。
       if (request !== refreshRequest.current) return;
     }
-    const sequence = refreshSequence.current + 1;
-    refreshSequence.current = sequence;
+    const sequence = refreshSequence.current;
+    const current = () => sequence === refreshSequence.current;
+    const applyAccount = (account: CodexAccount, installError?: string | null) => {
+      useChatStore.setState({ codexAccount: { ...account }, codexRateLimits: account.rateLimits ?? null });
+      const mode = account.authMode || null;
+      if (lastSharedAuthMode.current !== mode) {
+        if (mode || lastSharedAuthMode.current) void useChatStore.getState().ensureModels(true, 'codex');
+        lastSharedAuthMode.current = mode;
+      }
+      if (account.lastError) setLoginInfo(null);
+      setError(account.lastError || installError || null);
+    };
     const task = (async () => {
       try {
-        const [next, mcpResult] = await Promise.all([
-          getCodexStatus(sessionId),
-          getCodexMcpStatus(sessionId).catch(() => null),
-        ]);
-        let nextModels = modelsFrom(next.models);
-        if (nextModels.length === 0) {
-          const response = await getCodexModels().catch(() => ({ ok: false, models: [] }));
-          nextModels = modelsFrom(response.models);
-        }
-        const [freshAccount, freshLimits] = next.installed
-          ? await Promise.all([
-              getCodexAccount().catch(() => null),
-              getCodexRateLimits().catch(() => null),
-            ])
-          : [null, null];
-        if (sequence !== refreshSequence.current) return;
-        const mergedAccount = {
-          ...next.account,
-          ...(freshAccount ?? {}),
-          rateLimits: freshLimits?.rateLimits ?? freshAccount?.rateLimits ?? next.account.rateLimits,
+        // The local snapshot always renders before any live account or model calls.
+        const next = await getCodexStatus(sessionId);
+        if (!current()) return;
+        setStatus(next);
+        applyAccount(next.account, next.install?.error);
+        setMcp(next.mcp?.servers ?? []);
+        hydrateAgentDefaults(next.config?.defaultEngine);
+        setModels(modelsFrom(next.models));
+        if (next.install?.running || detailsInFlight.current?.sequence === sequence) return;
+
+        const accountTask = async () => {
+          if (!next.installed && next.authSource !== 'cloud') return;
+          const fresh = await getCodexAccount().catch(() => null);
+          if (!current() || !fresh) return;
+          const account = { ...next.account, ...fresh };
+          setStatus((snapshot) => snapshot && { ...snapshot, account });
+          applyAccount(account, next.install?.error);
+          if (!account.authMode) return;
+          await Promise.all([
+            getCodexRateLimits().then(({ rateLimits }) => {
+              if (!current() || !rateLimits) return;
+              setStatus((snapshot) => snapshot && {
+                ...snapshot, account: { ...snapshot.account, rateLimits },
+              });
+              useChatStore.setState({ codexRateLimits: rateLimits });
+            }).catch(() => undefined),
+            modelsFrom(next.models).length === 0
+              ? getCodexModels().then((response) => {
+                  if (current()) setModels(modelsFrom(response.models));
+                }).catch(() => undefined)
+              : Promise.resolve(),
+          ]);
         };
-        const mergedStatus = { ...next, account: mergedAccount };
-        setStatus(mergedStatus);
-        useChatStore.setState({
-          codexAccount: mergedAccount,
-          codexRateLimits: freshLimits?.rateLimits ?? null,
+        const mcpTask = async () => {
+          const result = await getCodexMcpStatus(sessionId).catch(() => null);
+          if (!current()) return;
+          setMcp(result?.servers ?? next.mcp?.servers ?? []);
+          setMcpLive(result?.live === true);
+          setMcpRuntime((result?.runtime?.data ?? []).flatMap((item) => {
+            if (typeof item.name !== 'string' || item.name === '') return [];
+            return [{
+              name: item.name,
+              runtimeStatus: typeof item.runtimeStatus === 'string' ? item.runtimeStatus : undefined,
+              authStatus: typeof item.authStatus === 'string' ? item.authStatus : undefined,
+            }];
+          }));
+          setMcpRuntimeError(typeof result?.runtimeError === 'string' ? result.runtimeError : null);
+        };
+        const details = Promise.allSettled([accountTask(), mcpTask()]);
+        detailsInFlight.current = { sequence, task: details };
+        void details.then(() => {
+          if (detailsInFlight.current?.task === details) detailsInFlight.current = null;
         });
-        const authMode =
-          typeof mergedAccount.authMode === 'string' ? mergedAccount.authMode : null;
-        if (lastSharedAuthMode.current !== authMode) {
-          lastSharedAuthMode.current = authMode;
-          void useChatStore.getState().ensureModels(true, 'codex');
-        }
-        let nextError: string | null = null;
-        if (typeof mergedAccount.lastError === 'string' && mergedAccount.lastError.trim() !== '') {
-          nextError = mergedAccount.lastError;
-          setLoginInfo(null);
-        } else if (typeof next.install?.error === 'string' && next.install.error.trim() !== '') {
-          nextError = next.install.error;
-        }
-        setError(nextError);
-        setBinPath(mergedStatus.config?.codexBin ?? '');
-        setMcp(mcpResult?.servers ?? next.mcp?.servers ?? []);
-        setMcpLive(mcpResult?.live === true);
-        setMcpRuntime(
-          Array.isArray(mcpResult?.runtime?.data)
-            ? mcpResult.runtime.data.flatMap((raw) => {
-                const item = raw;
-                if (typeof item.name !== 'string' || item.name === '') return [];
-                return [{
-                  name: item.name,
-                  runtimeStatus: typeof item.runtimeStatus === 'string' ? item.runtimeStatus : undefined,
-                  authStatus: typeof item.authStatus === 'string' ? item.authStatus : undefined,
-                }];
-              })
-            : [],
-        );
-        setMcpRuntimeError(
-          typeof mcpResult?.runtimeError === 'string' ? mcpResult.runtimeError : null,
-        );
-        hydrateAgentDefaults(mergedStatus.config?.defaultEngine);
-        setModels(nextModels);
       } catch (caught) {
-        if (sequence !== refreshSequence.current) return;
-        setError(errorText(caught));
+        if (current()) setError(errorText(caught));
       }
     })();
     refreshInFlight.current = task;
@@ -241,6 +246,7 @@ export default function CodexPage() {
   }, [accountReady, loginInfo, refresh]);
 
   const run = async (key: string, action: () => Promise<void>) => {
+    refreshSequence.current += 1;
     setBusy(key);
     setError(null);
     try {
@@ -272,8 +278,11 @@ export default function CodexPage() {
       setError(null);
       setLoginInfo(null);
       const response = await postCodexLogin({ kind, ...(kind === 'apiKey' ? { apiKey } : {}) });
+      const rawUrl = response.authUrl ?? response.verificationUrl ?? response.verificationUri ?? response.verification_uri;
+      if (kind !== 'apiKey' && !rawUrl && !(response.userCode ?? response.user_code ?? response.deviceCode)) {
+        throw new Error('Codex 未返回授权地址或设备码，请重试或切换授权方式。');
+      }
       setLoginInfo(response);
-      const rawUrl = response.authUrl ?? response.verificationUrl;
       if (typeof rawUrl === 'string' && rawUrl !== '') {
         const authUrl = officialAuthUrl('codex', rawUrl);
         if (!authUrl) {
@@ -331,7 +340,7 @@ export default function CodexPage() {
       </div>
       <div className="flex flex-col gap-3">
         {error && (
-          <div data-testid="codex-error" className="rounded-lg border border-edge bg-warn-bg px-3 py-2 text-[11px] text-warn">
+          <div role="alert" data-testid="codex-error" className="rounded-lg border border-edge bg-warn-bg px-3 py-2 text-[11px] text-warn">
             {error}
           </div>
         )}
@@ -381,11 +390,8 @@ export default function CodexPage() {
               </div>
             }
           />
-          {status?.install?.log && (
-            <pre className="max-h-28 overflow-auto border-t border-edge px-4 py-2 font-code text-[10px] whitespace-pre-wrap text-fg-4">
-              {status.install.log}
-            </pre>
-          )}
+          <CodexSetupProgress install={status?.install} installing={busy === 'install'}
+            startingLogin={busy?.startsWith('login-') && busy !== 'login-cancel'} />
         </SetCard>
 
         <SetCard testId="codex-auth-source-card">
@@ -493,7 +499,7 @@ export default function CodexPage() {
                         testId="codex-login-chatgpt"
                         label={<><ExternalLink size={11} />ChatGPT 登录</>}
                         accent
-                        disabled={busy !== null || status?.installed !== true}
+                        disabled={busy !== null || status?.installed !== true || status.install?.running}
                         onClick={() => void login('chatgpt')}
                       />
                     )
@@ -505,7 +511,7 @@ export default function CodexPage() {
                       title="设备码登录"
                       desc="浏览器登录不可用时使用设备码流程"
                       control={
-                        <SmBtn testId="codex-login-device" label="获取设备码" disabled={busy !== null || status?.installed !== true} onClick={() => void login('deviceCode')} />
+                        <SmBtn testId="codex-login-device" label="获取设备码" disabled={busy !== null || status?.installed !== true || status.install?.running} onClick={() => void login('deviceCode')} />
                       }
                     />
                     <SetRow
@@ -515,7 +521,7 @@ export default function CodexPage() {
                       control={
                         <div className="flex items-center gap-1.5">
                           <SetInput value={apiKey} onChange={setApiKey} type="password" width={230} testId="codex-api-key" placeholder="sk-…" />
-                          <SmBtn testId="codex-login-api-key" label="登录" disabled={busy !== null || apiKey.trim() === '' || status?.installed !== true} onClick={() => void login('apiKey')} />
+                          <SmBtn testId="codex-login-api-key" label="登录" disabled={busy !== null || apiKey.trim() === '' || status?.installed !== true || status.install?.running} onClick={() => void login('apiKey')} />
                         </div>
                       }
                     />

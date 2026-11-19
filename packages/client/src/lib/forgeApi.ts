@@ -385,8 +385,8 @@ export async function apiGenMesh(payload: {
 }
 
 /** 非 MCP 的 agentd REST GET(/api/forge/*  plain JSON,非信封)。 */
-export async function apiGet<T = unknown>(path: string): Promise<T> {
-  const res = await fetch(path);
+export async function apiGet<T = unknown>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = signal ? await fetch(path, { signal }) : await fetch(path);
   const body = (await res.json()) as unknown;
   if (!res.ok) {
     const err = (body as { error?: { code?: string; message?: string } })?.error;
@@ -663,11 +663,12 @@ export async function apiWorkspaceFileWrite(
 }
 
 /** 非 MCP 的 agentd REST POST(plain JSON)。 */
-export async function apiPost<T = unknown>(path: string, payload: unknown): Promise<T> {
+export async function apiPost<T = unknown>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    ...(signal ? { signal } : {}),
   });
   const body = (await res.json()) as unknown;
   if (!res.ok) {
@@ -1040,6 +1041,15 @@ export interface CodexModel {
   [key: string]: unknown;
 }
 
+export interface CodexInstallStatus {
+  running: boolean;
+  stage?: 'starting' | 'downloading' | 'preparing' | 'verifying' | 'finished' | 'failed' | null;
+  elapsedSeconds?: number | null;
+  log?: string;
+  error?: string | null;
+  finishedAt?: string | null;
+}
+
 export interface CodexStatus {
   ok?: boolean;
   installed: boolean;
@@ -1053,25 +1063,30 @@ export interface CodexStatus {
   config: CodexConfigFace;
   account: CodexAccount;
   models?: CodexModel[];
-  install: {
-    running: boolean;
-    log: string;
-    error?: string | null;
-    finishedAt?: string | null;
-  };
+  install: CodexInstallStatus;
   mcp?: CodexMcpStaticStatus;
   /** D-041:生效的认证来源(auto 已解析为 cloud / chatgpt)。 */
   authSource?: CodexAuthSource;
   cloud?: { loggedIn: boolean; serverUrl: string };
 }
 
+async function codexRequest<T>(timeoutMs: number, request: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    return await request(signal);
+  } catch (error) {
+    if (signal.aborted) throw new ForgeApiError('CODEX_LOCAL_TIMEOUT', '本机 Codex 服务响应超时，请刷新状态后重试。');
+    throw error;
+  }
+}
+
 export async function getCodexStatus(sessionId?: string | null): Promise<CodexStatus> {
   const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
-  return apiGet<CodexStatus>(`/api/forge/codex/status${q}`);
+  return codexRequest(5_000, (signal) => apiGet(`/api/forge/codex/status${q}`, signal));
 }
 
 export async function postCodexInstall(): Promise<{ ok: boolean; started?: boolean; running?: boolean }> {
-  return apiPost('/api/forge/codex/install', {});
+  return codexRequest(8_000, (signal) => apiPost('/api/forge/codex/install', {}, signal));
 }
 
 export async function postCodexConfig(payload: {
@@ -1083,7 +1098,7 @@ export async function postCodexConfig(payload: {
   computerUse?: boolean;
   authSource?: CodexAuthSource;
 }): Promise<CodexStatus> {
-  return apiPost<CodexStatus>('/api/forge/codex/config', payload);
+  return codexRequest(8_000, (signal) => apiPost('/api/forge/codex/config', payload, signal));
 }
 
 export async function postCodexLogin(payload: {
@@ -1096,35 +1111,38 @@ export async function postCodexLogin(payload: {
   deviceCode?: string;
   userCode?: string;
   verificationUrl?: string;
+  verificationUri?: string;
+  verification_uri?: string;
+  user_code?: string;
   account?: CodexAccount;
 }> {
-  return apiPost('/api/forge/codex/login', payload);
+  return codexRequest(42_000, (signal) => apiPost('/api/forge/codex/login', payload, signal));
 }
 
 export async function postCodexLoginCancel(loginId?: string): Promise<{ ok: boolean }> {
-  return apiPost('/api/forge/codex/login/cancel', loginId ? { loginId } : {});
+  return codexRequest(24_000, (signal) => apiPost('/api/forge/codex/login/cancel', loginId ? { loginId } : {}, signal));
 }
 
 export async function postCodexLogout(): Promise<{ ok: boolean }> {
-  return apiPost('/api/forge/codex/logout', {});
+  return codexRequest(24_000, (signal) => apiPost('/api/forge/codex/logout', {}, signal));
 }
 
 export async function getCodexAccount(): Promise<CodexAccount & { ok: boolean }> {
-  return apiGet('/api/forge/codex/account');
+  return codexRequest(24_000, (signal) => apiGet('/api/forge/codex/account', signal));
 }
 
 export async function getCodexModels(refresh = false): Promise<{ ok: boolean; models: CodexModel[] }> {
   const q = refresh ? '?refresh=true' : '';
-  return apiGet(`/api/forge/codex/models${q}`);
+  return codexRequest(24_000, (signal) => apiGet(`/api/forge/codex/models${q}`, signal));
 }
 
 export async function getCodexRateLimits(): Promise<{ ok: boolean; rateLimits: CodexRateLimits | null }> {
-  return apiGet('/api/forge/codex/rate-limits');
+  return codexRequest(24_000, (signal) => apiGet('/api/forge/codex/rate-limits', signal));
 }
 
 export async function getCodexMcpStatus(sessionId?: string | null): Promise<CodexMcpStatus> {
   const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
-  return apiGet(`/api/forge/codex/mcp/status${q}`);
+  return codexRequest(10_000, (signal) => apiGet(`/api/forge/codex/mcp/status${q}`, signal));
 }
 
 export interface GoalFace {

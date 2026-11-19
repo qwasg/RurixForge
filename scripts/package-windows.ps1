@@ -48,7 +48,8 @@ $forge = Join-Path $stage 'forge'
 $appDir = Join-Path $stage 'app'
 $nsisOut = Join-Path $Out 'nsis'
 $dist = Join-Path $Out 'out'
-$setupTarget = Join-Path $root 'target\forge-setup'
+$cargoTarget = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $root 'target' }
+$setupTarget = Join-Path $cargoTarget 'forge-setup'
 $version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 $godotTag = (Get-Content (Join-Path $root 'GODOT_PIN.json') -Raw | ConvertFrom-Json).godot.tag
 $started = Get-Date
@@ -107,7 +108,7 @@ $bin = Join-Path $forge 'bin'
 New-Item -ItemType Directory -Force -Path $bin, (Join-Path $appDir 'src') | Out-Null
 
 foreach ($name in $binaries) {
-    $src = Join-Path $root "target\release\$name.exe"
+    $src = Join-Path $cargoTarget "release\$name.exe"
     if (-not (Test-Path -LiteralPath $src)) { throw "缺少 $src;去掉 -SkipBuild 重新构建。" }
     Copy-Item -LiteralPath $src -Destination $bin
 }
@@ -134,7 +135,22 @@ if ($SkipGodot) {
 
 $ultraplan = Join-Path $root 'apps\desktop\dist\ultraplan-runtime'
 if (-not (Test-Path -LiteralPath (Join-Path $ultraplan 'runtime-manifest.json'))) { throw "缺少 $ultraplan;去掉 -SkipBuild 重新构建。" }
-Copy-Tree $ultraplan (Join-Path $forge 'ultraplan-runtime')
+$bundledRuntime = Join-Path $forge 'ultraplan-runtime'
+Copy-Tree $ultraplan $bundledRuntime
+# Reuse the shipped Node executable. Add the npm CLI from the same Node
+# distribution so managed Codex setup also works without Node on PATH.
+$buildNode = (& node -p 'process.execPath').Trim()
+$npmRoot = Join-Path (Split-Path -Parent $buildNode) 'node_modules\npm'
+foreach ($file in 'bin\npm-cli.js', 'package.json', 'LICENSE') {
+    if (-not (Test-Path -LiteralPath (Join-Path $npmRoot $file) -PathType Leaf)) {
+        throw '缺少 Node.js 自带的 npm 发行文件，请使用包含 npm 的 Node.js Windows 发行版打包。'
+    }
+}
+$bundledNpm = Join-Path $bundledRuntime 'node_modules\npm'
+Copy-Tree $npmRoot $bundledNpm
+$npmVersion = & (Join-Path $bundledRuntime 'node.exe') (Join-Path $bundledNpm 'bin\npm-cli.js') --version
+if ($LASTEXITCODE -ne 0 -or -not $npmVersion) { throw '安装包内的 npm 无法启动。' }
+Write-Note "Codex 托管安装运行时: npm $npmVersion"
 
 $hostDir = Join-Path $forge 'packages\host'
 Copy-Tree (Join-Path $root 'packages\host\dist') (Join-Path $hostDir 'dist')

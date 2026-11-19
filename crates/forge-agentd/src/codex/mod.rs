@@ -23,6 +23,7 @@ pub mod approvals;
 pub mod bin;
 pub mod config;
 pub mod imagegen;
+mod install;
 pub mod map;
 pub mod managed;
 pub mod mcp_config;

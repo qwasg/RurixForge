@@ -12,24 +12,17 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 
 use crate::events::{EventBus, EventDraft};
 
 use super::bin;
 use super::config;
+use super::install::{run_install, InstallState};
 use super::rpc::{CodexClient, CodexError, CodexTransport, Inbound, StdioTransport};
 
-/// 托管安装的进度状态(REST `GET /codex/status` 的 `install` 段)。
-#[derive(Debug, Clone, Default)]
-pub struct InstallState {
-    pub running: bool,
-    /// 最近一次安装的尾部日志(npm 输出;截断防爆内存)。
-    pub log: String,
-    pub error: Option<String>,
-    pub finished_at: Option<String>,
-}
-
-const INSTALL_LOG_MAX: usize = 8000;
+const ACCOUNT_RPC_TIMEOUT: Duration = Duration::from_secs(10);
+const LOGIN_RPC_TIMEOUT: Duration = Duration::from_secs(18);
 
 /// 账户/额度/模型缓存。全部来自 codex 自己的回答,本仓不落密钥(R-5)。
 #[derive(Debug, Clone, Default)]
@@ -162,24 +155,18 @@ impl CodexService {
     /// 取(必要时新建)客户端。未安装 codex → 显式 `CODEX_NOT_INSTALLED`。
     pub fn client(&self) -> Result<Arc<CodexClient>, CodexError> {
         let cfg = config::load();
-        let fp = if self.transport_override.lock().is_ok_and(|g| g.is_some()) {
+        let override_transport = self.transport_override.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let fp = if override_transport.is_some() {
             "scripted".to_string()
         } else {
             Self::compute_fingerprint(&cfg)
         };
-        {
-            let existing = self.client.lock().unwrap_or_else(|e| e.into_inner());
-            let same = *self.fingerprint.lock().unwrap_or_else(|e| e.into_inner()) == fp;
-            if let (Some(c), true) = (existing.as_ref(), same) {
-                return Ok(Arc::clone(c));
-            }
+        let mut slot = self.client.lock().unwrap_or_else(|e| e.into_inner());
+        let mut fingerprint = self.fingerprint.lock().unwrap_or_else(|e| e.into_inner());
+        if let (Some(c), true) = (slot.as_ref(), *fingerprint == fp) {
+            return Ok(Arc::clone(c));
         }
-        let transport: Arc<dyn CodexTransport> = match self
-            .transport_override
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-        {
+        let transport: Arc<dyn CodexTransport> = match override_transport {
             Some(t) => t,
             None => {
                 let launch = bin::resolve().ok_or_else(|| {
@@ -194,15 +181,13 @@ impl CodexService {
         };
         let fresh = Arc::new(CodexClient::new(transport));
         // 换了客户端 = 旧连接作废(旧子进程随出站端丢弃而退出)。
-        let old = self
-            .client
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .replace(Arc::clone(&fresh));
+        let old = slot.replace(Arc::clone(&fresh));
         if let Some(o) = old {
             o.suspend();
         }
-        *self.fingerprint.lock().unwrap_or_else(|e| e.into_inner()) = fp;
+        *fingerprint = fp;
+        drop(fingerprint);
+        drop(slot);
         self.spawn_account_watcher(Arc::clone(&fresh));
         Ok(fresh)
     }
@@ -307,7 +292,7 @@ impl CodexService {
             .clone()
     }
 
-    pub fn install_snapshot(&self) -> InstallState {
+    fn install_snapshot(&self) -> InstallState {
         self.install
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -362,10 +347,11 @@ impl CodexService {
             }
         }
         let c = self.ready_client().await?;
-        let (method, mut page) = match c.request("model/list", json!({})).await {
+        let deadline = tokio::time::Instant::now() + ACCOUNT_RPC_TIMEOUT;
+        let (method, mut page) = match c.request_with_timeout("model/list", json!({}), ACCOUNT_RPC_TIMEOUT).await {
             Ok(value) => ("model/list", value),
             Err(error) if is_method_not_found(&error) => {
-                ("models/list", c.request("models/list", json!({})).await?)
+                ("models/list", c.request_with_timeout("models/list", json!({}), deadline.saturating_duration_since(tokio::time::Instant::now())).await?)
             }
             Err(error) => return Err(error),
         };
@@ -392,7 +378,11 @@ impl CodexService {
             if !seen_cursors.insert(cursor.to_string()) {
                 return Err(CodexError("model/list 返回了重复 nextCursor".to_string()));
             }
-            page = c.request(method, json!({ "cursor": cursor })).await?;
+            page = c.request_with_timeout(
+                method,
+                json!({ "cursor": cursor }),
+                deadline.saturating_duration_since(tokio::time::Instant::now()),
+            ).await?;
         }
         if page
             .get("nextCursor")
@@ -413,48 +403,38 @@ impl CodexService {
     pub async fn login(&self, kind: &str, api_key: Option<&str>) -> Result<Value, CodexError> {
         self.cancelled_logins.lock().unwrap_or_else(|e| e.into_inner()).remove("*");
         self.account.lock().unwrap_or_else(|e| e.into_inner()).last_error = None;
-        let c = self.ready_client().await?;
-        let out = match kind {
-            "chatgpt" => {
-                request_first_supported(
-                    &c,
-                    &[
-                        ("account/login/start", json!({ "type": "chatgpt" })),
-                        ("loginChatGpt", json!({})),
-                    ],
-                )
-                .await?
-            }
-            "deviceCode" => {
-                request_first_supported(
-                    &c,
-                    &[(
-                        "account/login/start",
-                        json!({ "type": "chatgptDeviceCode" }),
-                    )],
-                )
-                .await?
-            }
+        eprintln!("[codex setup] 正在启动 Codex 登录服务");
+        let c = self.ready_client().await.map_err(|error| login_start_error(&error, true))?;
+        let requests = match kind {
+            "chatgpt" => vec![
+                ("account/login/start", json!({ "type": "chatgpt" })),
+                ("loginChatGpt", json!({})),
+            ],
+            "deviceCode" => vec![(
+                "account/login/start",
+                json!({ "type": "chatgptDeviceCode" }),
+            )],
             "apiKey" => {
                 let key = api_key
                     .map(str::trim)
                     .filter(|k| !k.is_empty())
                     .ok_or_else(|| CodexError("apiKey 不可空".to_string()))?;
-                request_first_supported(
-                    &c,
-                    &[
+                vec![
                         (
                             "account/login/start",
                             json!({ "type": "apiKey", "apiKey": key }),
                         ),
                         ("loginApiKey", json!({ "apiKey": key })),
-                    ],
-                )
-                .await?
+                ]
             }
             other => return Err(CodexError(format!("未知登录方式: {other}"))),
         };
-        Ok(out)
+        eprintln!("[codex setup] 正在向 Codex 请求授权");
+        let result = request_with_budget(&c, &requests, LOGIN_RPC_TIMEOUT)
+            .await
+            .map_err(|error| login_start_error(&error, false))?;
+        eprintln!("[codex setup] Codex 已返回授权步骤");
+        Ok(result)
     }
 
     pub async fn cancel_login(&self, login_id: Option<&str>) -> Result<Value, CodexError> {
@@ -499,12 +479,7 @@ impl CodexService {
             if st.running {
                 return Ok(false);
             }
-            *st = InstallState {
-                running: true,
-                log: String::new(),
-                error: None,
-                finished_at: None,
-            };
+            *st = InstallState::begin();
         }
         emit_install_event(
             &events,
@@ -516,13 +491,13 @@ impl CodexService {
         let npm = match bin::npm_launch() {
             Some(p) => p,
             None => {
-                let msg = "未找到 npm。Codex 与 open-computer-use 都以 npm 包分发,\
-                           请先安装 Node.js(含 npm)后重试"
-                    .to_string();
+                let msg = "未找到 npm。请重新安装 RurixForge，或安装 Node.js（含 npm）后重启应用。".to_string();
                 let mut st = self.install.lock().unwrap_or_else(|e| e.into_inner());
                 st.running = false;
                 st.error = Some(msg.clone());
                 st.finished_at = Some(now_iso());
+                st.stage = Some("failed");
+                st.append(&msg);
                 drop(st);
                 emit_install_event(
                     &events,
@@ -537,28 +512,31 @@ impl CodexService {
         let root = bin::managed_root();
         let state = Arc::clone(&self.install);
         tokio::spawn(async move {
-            let outcome = run_install(&npm, &root).await;
+            let outcome = run_install(&npm, &root, Arc::clone(&state)).await;
             let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
             st.running = false;
             st.finished_at = Some(now_iso());
             let payload = match outcome {
-                Ok(log) => {
-                    st.log = tail(&log, INSTALL_LOG_MAX);
+                Ok(()) => {
+                    st.stage = Some("finished");
+                    st.append("Codex 已通过启动检查，可以登录。");
                     st.error = None;
                     json!({ "ok": true })
                 }
-                Err((log, err)) => {
-                    st.log = tail(&log, INSTALL_LOG_MAX);
+                Err(err) => {
+                    st.stage = Some("failed");
+                    st.append(&err);
                     st.error = Some(err.clone());
                     json!({ "ok": false, "error": err })
                 }
             };
+            let stage = st.stage;
             drop(st);
             emit_install_event(
                 &events,
                 &session_ids,
                 "codex.install.progress",
-                json!({ "stage": "finished", "progress": 100 }),
+                json!({ "stage": stage }),
                 false,
             );
             emit_install_event(
@@ -712,6 +690,8 @@ impl CodexService {
             "models": acct.models,
             "install": {
                 "running": inst.running,
+                "stage": inst.stage,
+                "elapsedSeconds": inst.started_at.filter(|_| inst.running).map(|start| start.elapsed().as_secs()),
                 "log": inst.log,
                 "error": inst.error,
                 "finishedAt": inst.finished_at,
@@ -726,9 +706,22 @@ async fn request_first_supported(
     client: &CodexClient,
     candidates: &[(&str, Value)],
 ) -> Result<Value, CodexError> {
+    request_with_budget(client, candidates, ACCOUNT_RPC_TIMEOUT).await
+}
+
+async fn request_with_budget(
+    client: &CodexClient,
+    candidates: &[(&str, Value)],
+    budget: Duration,
+) -> Result<Value, CodexError> {
+    let deadline = tokio::time::Instant::now() + budget;
     let mut last: Option<CodexError> = None;
     for (method, params) in candidates {
-        match client.request(method, params.clone()).await {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(CodexError(format!("{method} 等待响应超时")));
+        }
+        match client.request_with_timeout(method, params.clone(), remaining).await {
             Ok(v) => return Ok(v),
             Err(e) if is_method_not_found(&e) => last = Some(e),
             Err(e) => return Err(e),
@@ -894,42 +887,25 @@ fn merge_non_null(existing: Option<Value>, update: Value) -> Value {
     old
 }
 
-async fn run_install(npm: &Path, root: &Path) -> Result<String, (String, String)> {
-    if let Err(e) = std::fs::create_dir_all(root) {
-        return Err((String::new(), format!("建托管目录失败: {e}")));
-    }
-    let args = bin::npm_install_args(root, &[bin::CODEX_NPM_SPEC, bin::COMPUTER_USE_NPM_SPEC]);
-    let out = tokio::process::Command::new(npm)
-        .args(&args)
-        .current_dir(root)
-        .output()
-        .await;
-    let out = match out {
-        Ok(o) => o,
-        Err(e) => return Err((String::new(), format!("启动 npm 失败: {e}"))),
-    };
-    let mut log = String::from_utf8_lossy(&out.stdout).into_owned();
-    log.push_str(&String::from_utf8_lossy(&out.stderr));
-    if out.status.success() {
-        Ok(log)
+fn login_start_error(error: &CodexError, starting: bool) -> CodexError {
+    let detail = error.0.to_ascii_lowercase();
+    let message = if detail.contains("codex_not_installed") {
+        "尚未安装 Codex。请先在设置中完成托管安装。"
+    } else if starting && detail.contains("超时") {
+        "等待 Codex 服务启动超时。请重试，或检查设置中指定的 Codex 路径和版本。"
+    } else if starting {
+        "无法启动 Codex 服务。请检查 Codex 路径或重新安装。"
+    } else if detail.contains("超时") || detail.contains("timed out") {
+        "请求 Codex 授权超时。请检查网络或代理后重试。"
+    } else if detail.contains("address already in use") || detail.contains("10048") {
+        "浏览器授权的本地回调端口被占用。请结束其他 Codex 登录，或改用设备码授权。"
+    } else if detail.contains("device") && (detail.contains("disabled") || detail.contains("403")) {
+        "设备码授权不可用。请检查 ChatGPT 的设备码授权设置，或使用浏览器登录。"
     } else {
-        Err((
-            log,
-            format!("npm install 失败(退出码 {:?})", out.status.code()),
-        ))
-    }
-}
-
-fn tail(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        return s.to_string();
-    }
-    // 按字符边界切,别把多字节 UTF-8 切一半。
-    let start = s.len() - max;
-    let start = (start..s.len())
-        .find(|i| s.is_char_boundary(*i))
-        .unwrap_or(s.len());
-    format!("…（前段省略）\n{}", &s[start..])
+        "Codex 无法开始授权。请检查网络或代理，或改用其他登录方式后重试。"
+    };
+    eprintln!("[codex setup] {message}");
+    CodexError(message.into())
 }
 
 fn now_iso() -> String {
@@ -1176,15 +1152,6 @@ mod tests {
         let account = service.account_snapshot();
         assert_eq!(account.auth_mode.as_deref(), Some("chatgpt"));
         assert!(account.last_error.is_none());
-    }
-
-    /// 日志截断按字符边界切(中文日志切一半会让 status JSON 序列化炸掉)。
-    #[test]
-    fn tail_respects_char_boundaries() {
-        let s = "安装进度".repeat(2000);
-        let out = tail(&s, 100);
-        assert!(out.len() <= 130, "截断后仍过长: {}", out.len());
-        assert!(out.contains("前段省略"));
     }
 
     #[test]

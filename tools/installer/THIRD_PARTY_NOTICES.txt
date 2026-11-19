@@ -19,6 +19,10 @@ Node.js (MIT) and Playwright (Apache-2.0)
   ultraplan-runtime/ contains node.exe and playwright-core for the UltraPlan browser checks.
   See ultraplan-runtime/README.txt and ultraplan-runtime/node_modules/playwright-core/{LICENSE,NOTICE}.
 
+npm (Artistic-2.0)
+  Codex setup uses the npm CLI from the Node.js distribution. See
+  ultraplan-runtime/node_modules/npm/LICENSE and the licenses shipped with its dependencies.
+
 Microsoft Visual C++ Runtime
   msvcp140.dll, vcruntime140.dll and vcruntime140_1.dll are redistributed unmodified under the
   Microsoft Visual Studio license terms for distributable code.

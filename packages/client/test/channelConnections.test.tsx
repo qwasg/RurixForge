@@ -7,12 +7,12 @@ import { useChatStore } from '@/lib/chatStore';
 import { useSessionStore } from '@/lib/sessionStore';
 import { useToastStore } from '@/lib/toastStore';
 
-const api = vi.hoisted(() => ({ status: vi.fn(), codexStatus: vi.fn(), login: vi.fn(), codexLogin: vi.fn(), cancel: vi.fn(), codexCancel: vi.fn(), bind: vi.fn() }));
+const api = vi.hoisted(() => ({ status: vi.fn(), codexStatus: vi.fn(), install: vi.fn(), login: vi.fn(), codexLogin: vi.fn(), cancel: vi.fn(), codexCancel: vi.fn(), bind: vi.fn() }));
 vi.mock('@/lib/channelApi', async (original) => ({ ...await original<typeof import('@/lib/channelApi')>(),
   getOfficialChannel: api.status, codexChannelStatus: api.codexStatus, loginOfficialChannel: api.login,
   cancelOfficialLogin: api.cancel, bindGlmKey: api.bind }));
 vi.mock('@/lib/forgeApi', async (original) => ({ ...await original<typeof import('@/lib/forgeApi')>(),
-  postCodexLogin: api.codexLogin, postCodexLoginCancel: api.codexCancel }));
+  postCodexInstall: api.install, postCodexLogin: api.codexLogin, postCodexLoginCancel: api.codexCancel }));
 const initialChat = useChatStore.getState();
 const initialSessions = useSessionStore.getState();
 
@@ -118,6 +118,39 @@ describe('official subscription cards', () => {
     expect(fallback).toHaveAttribute('rel', 'noopener noreferrer');
     fireEvent.click(await screen.findByRole('button', { name: '取消 Codex 登录' }));
     await waitFor(() => expect(api.codexCancel).toHaveBeenCalledWith('official-login'));
+  });
+
+  it('starts Codex authorization even while the optional account request is stalled', async () => {
+    const installed = { ...channelDefaults.codex, installed: true };
+    api.codexStatus.mockImplementation((onSnapshot: (status: ChannelStatus) => void) => {
+      onSnapshot(installed);
+      return new Promise(() => undefined);
+    });
+    api.codexLogin.mockResolvedValue({ loginId: 'ready', authUrl: 'https://auth.openai.com/codex' });
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    render(<OfficialChannelCard channel="codex" />);
+    fireEvent.click(await loginButton('codex'));
+    expect(await screen.findByRole('link', { name: /继续官方授权/ })).toBeInTheDocument();
+  });
+
+  it('shows live install logs, stops at a download failure and enables retry', async () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const installing = { ...channelDefaults.codex, install: {
+      running: true, stage: 'downloading', elapsedSeconds: 8, log: '[+4s] 软件包请求返回 HTTP 200',
+    } };
+    api.codexStatus.mockResolvedValueOnce(channelDefaults.codex).mockResolvedValue(installing);
+    api.install.mockResolvedValue({ ok: true, started: true });
+    render(<OfficialChannelCard channel="codex" />);
+    fireEvent.click(await loginButton('codex'));
+    expect(await screen.findByLabelText('Codex 安装日志')).toHaveTextContent('HTTP 200');
+    expect(screen.getByText('已用 8 秒')).toBeInTheDocument();
+    api.codexStatus.mockResolvedValue({ ...channelDefaults.codex, install: {
+      running: false, stage: 'failed', error: 'npm 无法解析下载服务器，请检查 DNS。',
+    } });
+    fireEvent.focus(window);
+    expect(await screen.findByRole('alert')).toHaveTextContent('DNS');
+    expect(await loginButton('codex')).not.toBeDisabled();
+    expect(api.codexLogin).not.toHaveBeenCalled();
   });
 
   it('cancels an unsafe Kimi authorization response and never opens its target', async () => {

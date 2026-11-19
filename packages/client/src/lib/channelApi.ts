@@ -1,4 +1,4 @@
-import { apiGet, apiPost, getCodexAccount, getCodexModels, getCodexRateLimits, getCodexStatus } from './forgeApi';
+import { apiGet, apiPost, getCodexAccount, getCodexModels, getCodexRateLimits, getCodexStatus, type CodexInstallStatus } from './forgeApi';
 import type { OfficialChannel } from './officialAuth';
 import { codexQuotaWindows, type QuotaWindow } from './codexQuota';
 
@@ -14,7 +14,7 @@ export interface ChannelStatus {
   account?: { email?: string | null; name?: string | null; planType?: string | null } | null;
   quota: { state: 'available' | 'unknown' | 'unavailable'; windows: QuotaWindow[]; updatedAt?: string | number; stale?: boolean; error?: string };
   quotaUrl?: string;
-  install?: { running: boolean; error?: string | null };
+  install?: CodexInstallStatus;
   login?: { state: string; authUrl?: string; userCode?: string; loginId?: string; error?: string };
   error?: string | null;
   cloudMode?: boolean;
@@ -27,15 +27,31 @@ export const channelDefaults: Record<OfficialChannel, ChannelStatus> = {
   glm: { id: 'glm', installed: true, configured: false, modelId: 'glm-coding', model: 'glm-5.3', quota: { state: 'unknown', windows: [] }, quotaUrl: 'https://bigmodel.cn/coding-plan/personal/overview' },
 };
 
-export async function codexChannelStatus(): Promise<ChannelStatus> {
+export async function codexChannelStatus(onSnapshot?: (snapshot: ChannelStatus) => void): Promise<ChannelStatus> {
   const status = await getCodexStatus();
   const cloudMode = status.authSource === 'cloud';
   let account = status.account;
   let models = status.models;
-  if (status.installed && !cloudMode) {
+  const snapshot = (): ChannelStatus => {
+    const choices = (models ?? []).flatMap((item) => {
+      const record = item as unknown as Record<string, unknown>;
+      const id = record.id ?? record.model;
+      return typeof id === 'string' ? [{ id: id.startsWith('codex:') ? id : `codex:${id}`, label: String(record.displayName ?? record.label ?? id) }] : [];
+    });
+    const windows = cloudMode ? [] : codexQuotaWindows(account.rateLimits, account.planType);
+    return { ...channelDefaults.codex, installed: status.installed, cloudMode,
+      configured: !cloudMode && !!account.authMode, authMode: cloudMode ? null : account.authMode,
+      modelId: choices[0]?.id ?? '', models: cloudMode ? [] : choices,
+      account: cloudMode ? null : account, install: status.install,
+      error: account.lastError ?? status.install?.error,
+      quota: { state: windows.length ? 'available' : 'unknown', windows } };
+  };
+  if (status.installed && !cloudMode && !status.install?.running) {
+    onSnapshot?.(snapshot());
     const current = await getCodexAccount().catch(() => null);
     account = { ...account, ...(current ?? {}) };
     if (account.authMode) {
+      onSnapshot?.(snapshot());
       const [limits, catalog] = await Promise.all([
         getCodexRateLimits().catch(() => null), getCodexModels().catch(() => null),
       ]);
@@ -45,18 +61,7 @@ export async function codexChannelStatus(): Promise<ChannelStatus> {
       account = { ...account, rateLimits: null };
     }
   }
-  const choices = (models ?? []).flatMap((item) => {
-    const record = item as unknown as Record<string, unknown>;
-    const id = record.id ?? record.model;
-    return typeof id === 'string' ? [{ id: id.startsWith('codex:') ? id : `codex:${id}`, label: String(record.displayName ?? record.label ?? id) }] : [];
-  });
-  const windows = cloudMode ? [] : codexQuotaWindows(account.rateLimits, account.planType);
-  return { ...channelDefaults.codex, installed: status.installed, cloudMode,
-    configured: !cloudMode && !!account.authMode, authMode: cloudMode ? null : account.authMode,
-    modelId: choices[0]?.id ?? '', models: cloudMode ? [] : choices,
-    account: cloudMode ? null : account, install: status.install,
-    error: account.lastError ?? status.install?.error,
-    quota: { state: windows.length ? 'available' : 'unknown', windows } };
+  return snapshot();
 }
 
 export async function getOfficialChannels(refresh = false) {

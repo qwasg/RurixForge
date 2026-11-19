@@ -38,7 +38,7 @@ impl Launch {
 
     fn via_node(script: PathBuf) -> Self {
         Launch {
-            program: PathBuf::from(node_program()),
+            program: bundled_node().unwrap_or_else(|| PathBuf::from("node")),
             prefix_args: vec![script.to_string_lossy().into_owned()],
         }
     }
@@ -61,18 +61,32 @@ pub fn managed_root() -> PathBuf {
     crate::agent_data_root().join("codex")
 }
 
-fn node_program() -> &'static str {
-    "node"
+fn bundled_node() -> Option<PathBuf> {
+    let runtime = PathBuf::from(std::env::var_os("FORGE_ULTRAPLAN_RUNTIME_DIR")?);
+    let node = runtime.join(if cfg!(windows) { "node.exe" } else { "node" });
+    (node.is_absolute() && node.is_file()).then_some(node)
 }
 
 /// 托管安装的 codex JS 入口。
-fn managed_codex_entry() -> PathBuf {
-    managed_root()
-        .join("node_modules")
-        .join("@openai")
-        .join("codex")
-        .join("bin")
-        .join("codex.js")
+pub(super) fn managed_codex_launch(root: &Path) -> Option<Launch> {
+    let scope = root.join("node_modules").join("@openai");
+    let codex = scope.join("codex");
+    #[cfg(windows)]
+    {
+        // npm can finish pulling the JS wrapper before the platform package
+        // downloads (or can skip a failed optional dependency entirely).
+        let (package, triple) = match std::env::consts::ARCH {
+            "x86_64" => ("codex-win32-x64", "x86_64-pc-windows-msvc"),
+            "aarch64" => ("codex-win32-arm64", "aarch64-pc-windows-msvc"),
+            _ => return None,
+        };
+        let native = Path::new("vendor").join(triple).join("bin/codex.exe");
+        if !scope.join(package).join(&native).is_file() && !codex.join(&native).is_file() {
+            return None;
+        }
+    }
+    let entry = codex.join("bin/codex.js");
+    entry.is_file().then(|| Launch::via_node(entry))
 }
 
 /// npm 在 `node_modules/.bin` 下生成的 shim(Windows 为 `.cmd`)。
@@ -131,11 +145,7 @@ pub fn resolve() -> Option<Launch> {
     if let Some(p) = which("codex") {
         return Some(Launch::direct(p));
     }
-    let entry = managed_codex_entry();
-    if entry.is_file() {
-        return Some(Launch::via_node(entry));
-    }
-    None
+    managed_codex_launch(&managed_root())
 }
 
 /// 路径形态 → 启动命令(`.js` 交给 node,其余直接执行)。
@@ -149,21 +159,18 @@ fn launch_for_path(p: PathBuf) -> Launch {
 
 /// open-computer-use 的 MCP 启动命令(托管安装优先,其次 PATH)。
 pub fn resolve_computer_use() -> Option<Launch> {
-    let shim = managed_shim(COMPUTER_USE_BIN_NAME);
-    if shim.is_file() {
-        return Some(Launch::direct(shim));
-    }
-    // 包内 bin 是带 shebang 的 node 脚本:Windows 上直接执行不了,统一交给 node。
+    // Use Node directly, so Windows npm shims do not require Node on the user's PATH.
     let raw = managed_root()
         .join("node_modules")
         .join("open-computer-use")
         .join("bin")
         .join(COMPUTER_USE_BIN_NAME);
-    if raw.is_file() && !cfg!(windows) {
-        return Some(Launch::direct(raw));
-    }
     if raw.is_file() {
         return Some(Launch::via_node(raw));
+    }
+    let shim = managed_shim(COMPUTER_USE_BIN_NAME);
+    if shim.is_file() {
+        return Some(Launch::direct(shim));
     }
     which(COMPUTER_USE_BIN_NAME).map(Launch::direct)
 }
@@ -171,17 +178,43 @@ pub fn resolve_computer_use() -> Option<Launch> {
 /// 托管安装是否已就位(codex 与 computer-use 分别报,前端据此显示两行状态)。
 pub fn managed_installed() -> (bool, bool) {
     (
-        managed_codex_entry().is_file(),
+        managed_codex_launch(&managed_root()).is_some(),
         resolve_computer_use().is_some(),
     )
 }
 
-/// npm 启动命令(Windows 上 npm 是 `npm.cmd`,Command 不认无后缀名)。
-pub fn npm_launch() -> Option<PathBuf> {
+/// The installer ships the npm CLI beside its Node runtime. Source checkouts
+/// can use a system npm. Prefer a direct Node process over a Windows batch shim.
+pub fn npm_launch() -> Option<Launch> {
+    if let Some(node) = bundled_node() {
+        let npm = node.parent()?.join("node_modules/npm/bin/npm-cli.js");
+        if npm.is_file() {
+            return Some(Launch {
+                program: node,
+                prefix_args: vec![npm.to_string_lossy().into_owned()],
+            });
+        }
+    }
     if cfg!(windows) {
-        which("npm.cmd").or_else(|| which("npm"))
+        let shim = which("npm.cmd").or_else(|| which("npm"))?;
+        let dir = shim.parent()?;
+        let cli = dir.join("node_modules/npm/bin/npm-cli.js");
+        if cli.is_file() {
+            let sibling_node = dir.join("node.exe");
+            if let Some(node) = sibling_node
+                .is_file()
+                .then_some(sibling_node)
+                .or_else(|| which("node.exe"))
+            {
+                return Some(Launch {
+                    program: node,
+                    prefix_args: vec![cli.to_string_lossy().into_owned()],
+                });
+            }
+        }
+        Some(Launch::direct(shim))
     } else {
-        which("npm")
+        which("npm").map(Launch::direct)
     }
 }
 
@@ -195,6 +228,16 @@ pub fn npm_install_args(root: &Path, specs: &[&str]) -> Vec<String> {
         "--no-save".to_string(),
         "--no-audit".to_string(),
         "--no-fund".to_string(),
+        "--no-progress".to_string(),
+        "--color=false".to_string(),
+        "--no-update-notifier".to_string(),
+        "--logs-max=0".to_string(),
+        "--loglevel=info".to_string(),
+        "--foreground-scripts".to_string(),
+        "--fetch-retries=1".to_string(),
+        "--fetch-retry-mintimeout=1000".to_string(),
+        "--fetch-retry-maxtimeout=4000".to_string(),
+        "--fetch-timeout=90000".to_string(),
     ];
     args.extend(specs.iter().map(|s| s.to_string()));
     args

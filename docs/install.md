@@ -12,6 +12,8 @@
 
 不需要事先安装 Node.js、Rust、Visual Studio 或 VC++ 运行库，安装包已经包含运行所需的一切。
 
+首次使用 Codex 时，在「设置 → Codex」点击「安装」，或在「官方订阅渠道 → Codex」点击「安装并官方授权」。安装包内置 Node.js 和 npm，首次下载 Codex 组件需要联网。设置页会即时显示安装阶段、耗时和日志，下载完成后会检查 Codex 是否可以启动。安装超时或失败后，可查看原因并重试。安装和授权诊断也写入应用日志目录中的 `agentd.log`。
+
 ### 安装
 
 1. 打开 [Releases 页面](https://github.com/qwasg/RurixForge/releases/latest)，下载 `RurixForge-Setup-<版本>.exe`。

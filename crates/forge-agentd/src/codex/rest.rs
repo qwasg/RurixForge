@@ -130,17 +130,16 @@ pub async fn login(State(state): State<Arc<AppState>>, Json(req): Json<LoginRequ
     match state.codex.login(&req.kind, req.api_key.as_deref()).await {
         Ok(v) => {
             let mut body = json!({ "ok": true });
-            if let Some(obj) = v.as_object() {
-                for (k, val) in obj {
-                    body[k] = val.clone();
+            for key in ["type", "state", "authUrl", "loginId", "userCode", "user_code",
+                        "deviceCode", "verificationUrl", "verificationUri", "verification_uri"] {
+                if let Some(value) = v.get(key).filter(|value| value.is_string()) {
+                    body[key] = value.clone();
                 }
             }
-            // 登录成功后账户态立刻刷一遍,前端不必再轮询一轮才看到 planType。
-            let account = state.codex.refresh_account().await.ok();
-            if let Some(a) = account {
-                body["account"] = json!({
-                    "authMode": a.auth_mode, "planType": a.plan_type, "email": a.email,
-                });
+            // Return the browser URL immediately. Account details are read separately.
+            if req.kind == "apiKey" {
+                let codex = Arc::clone(&state.codex);
+                tokio::spawn(async move { let _ = codex.refresh_account().await; });
             }
             Json(body).into_response()
         }
@@ -300,9 +299,10 @@ pub async fn mcp_status(
         return Json(body);
     };
     match client
-        .request(
+        .request_with_timeout(
             "mcpServerStatus/list",
             json!({ "threadId": thread_id, "detail": "toolsAndAuthOnly" }),
+            std::time::Duration::from_secs(8),
         )
         .await
     {

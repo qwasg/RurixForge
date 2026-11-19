@@ -14,15 +14,17 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
 /// 客户端信息(codex 侧用于遥测与能力协商)。
 const CLIENT_NAME: &str = "rurix_forge";
-const CLIENT_VERSION: &str = "0.1.0";
+const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 单个请求的等待上限。审批类**服务端请求**不受此限(那是反向的),
 /// 但客户端发出的 `thread/start` 等必须有底线,否则 app-server 半死时整轮无声挂住。
 const REQUEST_TIMEOUT_SECS: u64 = 120;
+const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexError(pub String);
@@ -184,6 +186,7 @@ pub struct CodexClient {
     connect_lock: tokio::sync::Mutex<()>,
     /// Arc:读循环发现 EOF 时要把它清空,好让下一次 `ensure_started` 重建连接。
     outgoing: Arc<StdMutex<Option<mpsc::UnboundedSender<String>>>>,
+    initialized: Arc<AtomicBool>,
     pending: Arc<StdMutex<Pending>>,
     subscribers: Arc<StdMutex<Subscribers>>,
     next_id: AtomicI64,
@@ -206,6 +209,7 @@ impl CodexClient {
             transport,
             connect_lock: tokio::sync::Mutex::new(()),
             outgoing: Arc::new(StdMutex::new(None)),
+            initialized: Arc::new(AtomicBool::new(false)),
             pending: Arc::new(StdMutex::new(HashMap::new())),
             subscribers: Arc::new(StdMutex::new(Vec::new())),
             next_id: AtomicI64::new(0),
@@ -222,10 +226,8 @@ impl CodexClient {
 
     /// 子进程是否在跑(状态面用;不主动拉起)。
     pub fn running(&self) -> bool {
-        self.outgoing
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .is_some()
+        let outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+        outgoing.is_some() && self.initialized.load(Ordering::Acquire)
     }
 
     /// 最近一次成功握手识别出的 Codex 版本（尚未启动或上游未返回时为 `None`）。
@@ -266,13 +268,17 @@ impl CodexClient {
     }
 
     async fn ensure_started_inner(&self) -> Result<(), CodexError> {
-        if self.sender().is_some() {
+        if self.running() {
             return Ok(());
         }
         let _g = self.connect_lock.lock().await;
         // 双检:排队期间别人可能已经连上了。
-        if self.sender().is_some() {
+        if self.running() {
             return Ok(());
+        }
+        // A cancelled caller can leave an uninitialized transport behind.
+        if self.sender().is_some() {
+            self.teardown();
         }
         let Channels { outgoing, incoming } = self.transport.open()?;
         self.handled_server_requests
@@ -283,7 +289,14 @@ impl CodexClient {
         *self.outgoing.lock().unwrap_or_else(|e| e.into_inner()) = Some(outgoing);
         self.spawn_reader(incoming, epoch);
         match self.handshake().await {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                let outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+                if outgoing.is_none() {
+                    return Err(CodexError::new("Codex 服务在启动期间退出"));
+                }
+                self.initialized.store(true, Ordering::Release);
+                Ok(())
+            }
             Err(e) => {
                 // 握手失败的连接不能留着:留着会让后续请求一直发给一个不认协议的进程。
                 self.teardown();
@@ -294,7 +307,7 @@ impl CodexClient {
 
     async fn handshake(&self) -> Result<(), CodexError> {
         let initialized = self
-            .request(
+            .request_with_timeout(
                 "initialize",
                 json!({
                     "clientInfo": {
@@ -308,6 +321,7 @@ impl CodexClient {
                         "mcpServerOpenaiFormElicitation": true
                     },
                 }),
+                INITIALIZE_TIMEOUT,
             )
             .await?;
         *self
@@ -321,6 +335,7 @@ impl CodexClient {
         let pending = Arc::clone(&self.pending);
         let subscribers = Arc::clone(&self.subscribers);
         let outgoing = Arc::clone(&self.outgoing);
+        let initialized = Arc::clone(&self.initialized);
         let epoch_now = Arc::clone(&self.epoch);
         tokio::spawn(async move {
             while let Some(line) = incoming.recv().await {
@@ -337,17 +352,22 @@ impl CodexClient {
             // EOF:连接状态归零(下次 ensure_started 会重建),等待中的请求如实失败,
             // 订阅者的 receiver 因 sender 被清而看到 None。
             // 已被换代的旧连接到这里只需静默退场:它清掉的会是别人的连接。
+            let mut outgoing = outgoing.lock().unwrap_or_else(|e| e.into_inner());
             if epoch_now.load(Ordering::Relaxed) != epoch {
                 return;
             }
-            *outgoing.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *outgoing = None;
+            initialized.store(false, Ordering::Release);
             fail_all(&pending, &subscribers);
         });
     }
 
     /// 主动断开(状态清零;下次 `ensure_started` 会重建)。
     pub fn teardown(&self) {
-        *self.outgoing.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
+        *outgoing = None;
+        self.epoch.fetch_add(1, Ordering::Relaxed);
+        self.initialized.store(false, Ordering::Release);
         fail_all(&self.pending, &self.subscribers);
     }
 
@@ -667,6 +687,40 @@ mod tests {
 
     fn client(t: ScriptedTransport) -> Arc<CodexClient> {
         Arc::new(CodexClient::new(Arc::new(t)))
+    }
+
+    #[tokio::test]
+    async fn concurrent_callers_wait_for_the_same_handshake() {
+        let request_id = Arc::new(StdMutex::new(None));
+        let initialize_sent = Arc::new(tokio::sync::Notify::new());
+        let scripted = ScriptedTransport::new({
+            let request_id = Arc::clone(&request_id);
+            let initialize_sent = Arc::clone(&initialize_sent);
+            move |request| {
+                if request["method"] == "initialize" {
+                    let previous = request_id.lock().unwrap().replace(request["id"].clone());
+                    assert!(previous.is_none(), "should only initialize once");
+                    initialize_sent.notify_one();
+                }
+                Vec::new()
+            }
+        });
+        let injector = scripted.injector();
+        let c = client(scripted);
+        let start = |client: Arc<CodexClient>| tokio::spawn(async move { client.ensure_started().await });
+        let first = start(Arc::clone(&c));
+        tokio::time::timeout(Duration::from_secs(1), initialize_sent.notified()).await.unwrap();
+        let second = start(Arc::clone(&c));
+        tokio::task::yield_now().await;
+        assert!(!c.running());
+        assert!(!second.is_finished());
+        let id = request_id.lock().unwrap().clone().unwrap();
+        assert!(injector.push(json!({ "id": id, "result": {} })));
+        tokio::time::timeout(Duration::from_secs(1), async {
+            first.await.unwrap().unwrap();
+            second.await.unwrap().unwrap();
+        }).await.unwrap();
+        assert!(c.running());
     }
 
     #[tokio::test]

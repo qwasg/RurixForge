@@ -9,6 +9,7 @@ import { useSessionStore } from '@/lib/sessionStore';
 import { useToastStore } from '@/lib/toastStore';
 import { channelBrands as brands, ChannelBrandHeader, QuotaMeter } from './ChannelBrand';
 import AntigravityConnectionCard from './AntigravityConnectionCard';
+import CodexSetupProgress from './CodexSetupProgress';
 import './channelConnections.css';
 
 export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
@@ -28,6 +29,7 @@ export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
   const sequence = useRef(0);
   const mounted = useRef(true);
   const authWindow = useRef<ReturnType<typeof reserveOfficialAuth> | null>(null);
+  const deviceAfterInstall = useRef(false);
   const wasConnected = useRef(false);
   const selectedModel = useChatStore((s) => s.selectedModelId);
   const sessionId = useSessionStore((s) => s.activeSessionId);
@@ -39,17 +41,20 @@ export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
   const refresh = useCallback((usage = false) => {
     if (request.current) return request.current;
     const version = sequence.current;
-    const task = (async () => {
-      try {
-        const next = channel === 'codex' ? await codexChannelStatus() : await getOfficialChannel(channel, usage);
+    const apply = (next: ChannelStatus) => {
         if (!mounted.current || version !== sequence.current) return;
         setStatus(next);
+        setLoading(false);
         if (channel === 'antigravity' && next.login?.state === 'pending') setLoginInfo(next.login);
         setError(next.error ?? next.install?.error ?? next.login?.error ?? null);
         if (next.configured && !wasConnected.current) {
           void useChatStore.getState().ensureModels(true, channel === 'codex' ? 'codex' : undefined);
         }
         wasConnected.current = next.configured;
+    };
+    const task = (async () => {
+      try {
+        apply(channel === 'codex' ? await codexChannelStatus(apply) : await getOfficialChannel(channel, usage));
       } catch (caught) {
         if (mounted.current && version === sequence.current) setError(caught instanceof Error ? caught.message : String(caught));
       } finally { if (mounted.current && version === sequence.current) setLoading(false); }
@@ -100,9 +105,11 @@ export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
     setBusy(operation);
     setError(null);
     try {
-      if (request.current) await request.current;
+      if (channel === 'codex') request.current = null;
+      else if (request.current) await request.current;
       await action();
-      await refresh(true);
+      if (channel === 'codex') void refresh(true);
+      else await refresh(true);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
       if (mounted.current) setError(message);
@@ -118,18 +125,34 @@ export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
     if (!resume) authWindow.current = reserveOfficialAuth(channel);
     return run('login', async () => {
       if (channel === 'codex' && !status.installed) {
-        await postCodexInstall();
+        deviceAfterInstall.current = device;
+        setStatus((current) => ({ ...current, install: { running: true, stage: 'starting' } }));
         setAfterInstall(true);
         setLoginInfo({ state: 'installing' });
+        try {
+          await postCodexInstall();
+        } catch (caught) {
+          setStatus((current) => ({ ...current, install: {
+            running: false, stage: 'failed', error: caught instanceof Error ? caught.message : String(caught),
+          } }));
+          throw caught;
+        }
         return;
       }
       const raw = channel === 'codex' ? await postCodexLogin({ kind: device ? 'deviceCode' : 'chatgpt' }) : await loginOfficialChannel(channel);
-      const url = raw.authUrl ?? ('verificationUrl' in raw ? raw.verificationUrl : undefined);
+      const url = raw.authUrl ?? ('verificationUrl' in raw ? raw.verificationUrl : undefined)
+        ?? ('verificationUri' in raw ? raw.verificationUri : undefined)
+        ?? ('verification_uri' in raw ? raw.verification_uri : undefined);
       const info = { ...raw, state: raw.state === 'installing' ? 'installing' : channel === 'glm' ? 'key_required' : 'pending',
-        authUrl: typeof url === 'string' ? url : undefined } as NonNullable<ChannelStatus['login']>;
+        authUrl: typeof url === 'string' ? url : undefined,
+        userCode: raw.userCode ?? ('user_code' in raw ? raw.user_code : undefined) ?? ('deviceCode' in raw ? raw.deviceCode : undefined),
+      } as NonNullable<ChannelStatus['login']>;
       setLoginInfo(info);
       if (channel !== 'codex') setStatus((s) => ({ ...s, login: info }));
       if (info.state === 'installing') { setAfterInstall(true); return; }
+      if (channel === 'codex' && !info.authUrl && !info.userCode) {
+        throw new Error('Codex 未返回授权地址或设备码，请重试或切换授权方式。');
+      }
       if (info.authUrl) {
         if (!officialAuthUrl(channel, info.authUrl)) {
           if (channel === 'codex') await postCodexLoginCancel(info.loginId);
@@ -142,11 +165,11 @@ export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
     });
   };
   useEffect(() => {
-    if (afterInstall && status.installed && !status.install?.running && !busy) {
+    if (afterInstall && status.installed && !status.install?.running && !status.install?.error && !busy) {
       setAfterInstall(false);
-      void login(true);
+      void login(true, channel === 'codex' && deviceAfterInstall.current);
     }
-  }, [afterInstall, status.installed, status.install?.running, busy]);
+  }, [channel, afterInstall, status.installed, status.install?.running, status.install?.error, busy]);
 
   const useModel = () => run('model', async () => {
     const engine = channel === 'codex' ? 'codex' : 'local';
@@ -184,6 +207,8 @@ export function OfficialChannelCard({ channel }: { channel: OfficialChannel }) {
       {(status.quota.stale || status.quota.updatedAt) && <div className="channel-data-time">{status.quota.stale ? '缓存数据 · 点击刷新获取最新额度' : `官方数据 · ${new Date(status.quota.updatedAt!).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`}</div>}
       <div className="channel-model-row"><span className="channel-eyebrow">调用模型</span>{status.models && status.models.length > 0 ? <select aria-label={`${brand.title} 调用模型`} value={choice || status.modelId} onChange={(event) => setChoice(event.target.value)}>{status.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <span className="channel-model-name">{status.model}</span>}</div>
       {error && <div role="alert" className="channel-error">{error}</div>}
+      {channel === 'codex' && <CodexSetupProgress install={status.install}
+        installing={afterInstall} startingLogin={busy === 'login' && !afterInstall && status.installed} />}
       {safeUrl && !status.configured && <div className="channel-auth-info"><span>{loginInfo?.userCode && <code>{loginInfo.userCode}</code>}</span><a href={safeUrl} target="_blank" rel="noopener noreferrer">继续官方授权<ExternalLink size={11} /></a></div>}
       {keyForm && channel === 'glm' && <form className="channel-key-form" onSubmit={(event) => { event.preventDefault(); void run('bind', async () => { const next = await bindGlmKey(apiKey.trim(), model.trim()); setStatus(next); setApiKey(''); setKeyForm(false); setLoginInfo(undefined); }); }}>
         <label htmlFor="glm-subscription-key">Coding Plan Key</label><input id="glm-subscription-key" type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="在官方登录页获取套餐 Key" />
