@@ -1,0 +1,51 @@
+/* 云端模型列表(设置·模型页)。中性底 + 单一强调色;厂商靠文字标注,不按色相区分(纯色波)。 */
+
+.cml { container-type: inline-size; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 16px; }
+.cml-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cml-head > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.cml-head strong { color: var(--text); font-size: 13px; font-weight: 600; }
+.cml-head > div > span { color: var(--text-2); font-size: 12px; }
+.cml-search { display: flex; align-items: center; gap: 6px; width: 220px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-sunk); color: var(--text-3); }
+.cml-search:focus-within { border-color: var(--accent); background: var(--bg-panel); }
+.cml-search input { min-width: 0; flex: 1; border: 0; background: transparent; color: var(--text); font-size: 12px; outline: none; }
+.cml-search input::placeholder { color: var(--text-4); }
+
+.cml-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.cml-filter { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-panel); color: var(--text-2); font-size: 12px; transition: background-color .15s, border-color .15s, color .15s; }
+.cml-filter span { color: var(--text-3); font-size: 12px; }
+.cml-filter:hover { background: var(--bg-hover); color: var(--text); }
+.cml-filter.is-selected { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+.cml-filter.is-selected span { color: var(--accent); }
+
+.cml-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 232px), 1fr)); gap: 10px; }
+.cml-tile { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 12px 13px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-panel); transition: border-color .2s, box-shadow .2s; }
+.cml-tile:hover { border-color: var(--line-strong); box-shadow: 0 4px 14px #00000009; }
+.cml-tile.is-current { border-color: var(--accent); }
+.cml-tile.is-unavailable { background: var(--bg-sunk); }
+.cml-tile.is-unavailable .cml-name { color: var(--text-3); }
+.cml-tile-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
+.cml-vendor { overflow: hidden; color: var(--text-3); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.cml-badges { display: flex; flex-shrink: 0; gap: 4px; }
+.cml-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; color: var(--text-2); font-size: 12px; }
+.cml-badge.is-muted { color: var(--text-3); }
+.cml-name { overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.cml-meta { color: var(--text-2); font-size: 12px; line-height: 1.5; }
+.cml-price { color: var(--text-3); font-size: 12px; line-height: 1.5; }
+.cml-tile-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding-top: 9px; border-top: 1px solid var(--line); }
+.cml-caps { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px 10px; }
+.cml-cap { display: inline-flex; align-items: center; gap: 3px; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.cml-cap svg { flex-shrink: 0; color: var(--text-3); }
+.cml-use { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-panel); color: var(--text-2); font-size: 12px; font-weight: 500; transition: background-color .15s, color .15s, border-color .15s; }
+.cml-use:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.cml-use:disabled { cursor: default; opacity: .5; }
+.cml-use.is-current { border-color: transparent; color: var(--accent); opacity: 1; }
+.cml-none { padding: 18px 0; color: var(--text-3); font-size: 12px; text-align: center; }
+.cml button:focus-visible, .cml input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@container (max-width: 520px) {
+  .cml-head { flex-direction: column; align-items: stretch; }
+  .cml-search { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cml-tile, .cml-filter, .cml-use { transition: none; }
+}
